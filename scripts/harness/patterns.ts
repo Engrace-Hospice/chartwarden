@@ -1027,10 +1027,7 @@ function interactiveInvocation(p: Parsed): boolean {
     const compose = args.indexOf("compose");
     if (compose >= 0) {
       const composeArgs = args.slice(compose + 1);
-      if (composeArgs.includes("exec")) {
-        return interactiveFlag(args) || !args.some((a) => /^(?:-T|--no-TTY)$/.test(a));
-      }
-      if (composeArgs.includes("run")) return interactiveFlag(args);
+      if (composeArgs.some((a) => /^(?:exec|run)$/.test(a))) return true;
     }
     if (args.some((a) => /^(?:exec|run)$/.test(a))) return interactiveFlag(args);
   }
