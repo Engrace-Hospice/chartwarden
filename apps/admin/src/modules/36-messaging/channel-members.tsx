@@ -108,12 +108,14 @@ export function ChannelMembers(): JSX.Element {
         {state.kind !== "forbidden" ? (
           <form
             ref={addFormRef}
+            noValidate
             className="wx-list-toolbar wx-list-toolbar-fields is-bottom"
             onSubmit={(ev) => void onAdd(ev)}
             aria-label="Add member"
           >
             <TextField
               label="User ID"
+              required
               value={userId}
               onChange={(ev) => setUserId(ev.target.value)}
               error={attempted && !userId.trim() ? "Enter the user id to add." : undefined}

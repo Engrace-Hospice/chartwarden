@@ -1,4 +1,4 @@
-import { Button, StatusPill, type StatusTone, useApiClient } from "@chartwarden/ui";
+import { Button, StatGrid, StatusPill, type StatusTone, useApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/36-messaging — Integrity jobs (`/admin/messaging/integrity`): a status tile for the M36
 // hash-verify / decrypt-integrity jobs, derived from `m36.*` audit rows (see integrity-status.ts).
 import { useMemo } from "react";
@@ -46,7 +46,7 @@ export function IntegrityTile({ source }: { source?: IntegritySource }): JSX.Ele
         </header>
         {fallback ??
           (summary ? (
-            <fieldset className="wx-stat-grid" aria-label="Integrity job status">
+            <StatGrid label="Integrity job status">
               <div className="wx-stat-card">
                 <div>
                   <span className="wx-stat-label">Hash verification</span>
@@ -72,7 +72,7 @@ export function IntegrityTile({ source }: { source?: IntegritySource }): JSX.Ele
                   ))}
                 </div>
               </div>
-            </fieldset>
+            </StatGrid>
           ) : null)}
       </div>
     </div>

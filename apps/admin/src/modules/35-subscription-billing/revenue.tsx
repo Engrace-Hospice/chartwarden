@@ -1,4 +1,4 @@
-import { Button, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import { Button, StatGrid, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Revenue (`/admin/revenue`, revenue.admin.read). The
 // MRR/ARR dashboard: the live current estimate (GET /api/admin/revenue/current) as KPI tiles, plus the
@@ -101,7 +101,7 @@ export function Revenue(): JSX.Element {
           <StateError message={error ?? "No revenue data."} onRetry={() => void load()} />
         ) : (
           <>
-            <fieldset className="wx-stat-grid" aria-label="Revenue summary">
+            <StatGrid label="Revenue summary">
               {stats.map((s) => (
                 <div key={s.label} className="wx-stat-card">
                   <div>
@@ -110,7 +110,7 @@ export function Revenue(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </fieldset>
+            </StatGrid>
             <h2 className="wx-action-title">Trailing snapshots</h2>
             {snapshots.length === 0 ? (
               <StateEmpty icon="bar-chart">

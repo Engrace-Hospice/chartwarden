@@ -3,6 +3,7 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  StatGrid,
   StatusPill,
   interactiveRowProps,
   useApiClient,
@@ -100,7 +101,7 @@ export function OutboxList(): JSX.Element {
 
         {!loading && !error ? (
           <>
-            <fieldset className="wx-stat-grid" aria-label="Outbox summary">
+            <StatGrid label="Outbox summary">
               {counts.map(({ s, n }) => (
                 <div key={s} className="wx-stat-card">
                   <div>
@@ -112,7 +113,7 @@ export function OutboxList(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </fieldset>
+            </StatGrid>
             <p className="wx-row-sub">
               Counts cover the {rows.length} most recent events in this view, not the whole outbox.
             </p>

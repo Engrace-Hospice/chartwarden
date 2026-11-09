@@ -202,6 +202,7 @@ export function DeliveryEndpoints(): JSX.Element {
                     >
                       <TextField
                         label={`Verification code for ${endpoint.target}`}
+                        required
                         maxLength={64}
                         value={tokens[endpoint.endpointId] ?? ""}
                         disabled={busy !== null}

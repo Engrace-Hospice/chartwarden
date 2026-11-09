@@ -1,4 +1,4 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import { Button, StatGrid, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.6 token ledger + forecast
 // (`/admin/ai-platform/tokens`, `ai.tokens.read`).
@@ -109,7 +109,7 @@ export function TokenLedger(): JSX.Element {
           <ErrorState message={error} onRetry={() => void load()} />
         ) : (
           <>
-            <fieldset className="wx-stat-grid" aria-label="Token summary">
+            <StatGrid label="Token summary">
               {stats.map((s) => (
                 <div key={s.label} className="wx-stat-card">
                   <div>
@@ -118,7 +118,7 @@ export function TokenLedger(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </fieldset>
+            </StatGrid>
 
             <SectionTitle>Forecast by capability</SectionTitle>
             {forecasts.length === 0 ? (

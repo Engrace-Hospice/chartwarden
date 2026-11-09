@@ -4,6 +4,7 @@ import {
   InlineAlert,
   LoadingSpinner,
   SelectField,
+  StatGrid,
   StatusPill,
   TextField,
   interactiveRowProps,
@@ -140,7 +141,7 @@ export function HallucinationQueue(): JSX.Element {
           />
         ) : (
           <>
-            <fieldset className="wx-stat-grid" aria-label="Triage summary">
+            <StatGrid label="Triage summary">
               {columns.map(({ status, items }) => (
                 <div key={status} className="wx-stat-card">
                   <div>
@@ -149,7 +150,7 @@ export function HallucinationQueue(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </fieldset>
+            </StatGrid>
             <div className="wx-list-table-wrap">
               <table className="wx-list-table">
                 <caption className="wx-sr-only">Hallucination reports</caption>

@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   Modal,
   SelectField,
+  StatGrid,
   TextAreaField,
   focusFirstInvalid,
   interactiveRowProps,
@@ -206,7 +207,7 @@ export function KillSwitches(): JSX.Element {
               </StandingNotice>
             )}
 
-            <fieldset className="wx-stat-grid" aria-label="Kill-switch summary">
+            <StatGrid label="Kill-switch summary">
               <div className="wx-stat-card">
                 <div>
                   <span className="wx-stat-label">Platform-wide kills</span>
@@ -219,7 +220,7 @@ export function KillSwitches(): JSX.Element {
                   <span className="wx-stat-value wx-nums">{tenantKills.length}</span>
                 </div>
               </div>
-            </fieldset>
+            </StatGrid>
 
             <SectionTitle>Active platform-wide kills</SectionTitle>
             {platformKills.length === 0 ? (

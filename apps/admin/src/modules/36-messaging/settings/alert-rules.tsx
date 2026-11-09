@@ -157,7 +157,9 @@ function RulesTable({
                       aria-disabled={busy || undefined}
                       onChange={(e) => patchRow({ enabled: e.target.checked })}
                     />
-                    {/* The name is "<rule> enabled: On|Off" so it contains the visible On/Off text (WCAG 2.5.3). */}
+                    {/* The state is in the name ON PURPOSE: the visible "On"/"Off" must be part of the accessible name (WCAG 2.5.3 Label in
+                        Name), so the name is "<rule> enabled: On|Off". A checkbox's checked state is announced as well, so
+                        a screen reader repeats it; that redundancy is the accepted cost of Label in Name. */}
                     <span className="wx-sr-only">{`${name} enabled: `}</span>
                     <span>{rule.enabled ? "On" : "Off"}</span>
                   </label>

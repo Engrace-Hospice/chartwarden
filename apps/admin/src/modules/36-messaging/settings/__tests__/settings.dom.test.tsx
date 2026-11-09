@@ -239,7 +239,7 @@ describe("DeliveryEndpoints", () => {
       target: { value: "me@example.org" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
-    fireEvent.change(await screen.findByLabelText("Verification code for me@example.org"), {
+    fireEvent.change(await screen.findByLabelText(/^Verification code for me@example\.org/), {
       target: { value: "123456" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Verify me@example.org" }));
@@ -274,18 +274,20 @@ describe("DeliveryEndpoints", () => {
         target: { value: address },
       });
       fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
-      await screen.findByLabelText(`Verification code for ${address}`);
+      await screen.findByLabelText(
+        new RegExp(`^Verification code for ${address.replace(/\./g, "\\.")}`),
+      );
     }
-    const second = screen.getByLabelText("Verification code for b@b.b");
+    const second = screen.getByLabelText(/^Verification code for b@b\.b/);
     fireEvent.change(second, { target: { value: "654321" } });
-    await userEvent.type(second, "{Enter}");
+    await userEvent.setup().type(second, "{Enter}");
     await screen.findByText("b@b.b is verified.");
     const verifies = calls.filter((c) => c.path.endsWith("/verify"));
     expect(verifies).toHaveLength(1);
     expect(verifies[0]?.path).toContain(OTHER);
     expect(verifies[0]?.body).toEqual({ token: "654321" });
     // The first row is untouched: still pending, its field still there.
-    expect(screen.getByLabelText("Verification code for a@a.a")).toBeTruthy();
+    expect(screen.getByLabelText(/^Verification code for a@a\.a/)).toBeTruthy();
   });
 
   it("Enter in an empty code field says what is missing and sends nothing", async () => {
@@ -296,11 +298,17 @@ describe("DeliveryEndpoints", () => {
       target: { value: "a@a.a" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
-    const code = await screen.findByLabelText("Verification code for a@a.a");
-    await userEvent.type(code, "{Enter}");
+    const code = await screen.findByLabelText(/^Verification code for a@a\.a/);
+    const user = userEvent.setup();
+    await user.type(code, "{Enter}");
     expect(await screen.findByText("Enter the verification code that was sent.")).toBeTruthy();
     expect(calls.filter((c) => c.path.endsWith("/verify"))).toHaveLength(0);
-    expect(document.activeElement).toBe(code);
+    // Focus must be MOVED to the empty field, not merely still be there: leave it first, then press the row's Verify button.
+    code.blur();
+    expect(document.activeElement).not.toBe(code);
+    fireEvent.click(screen.getByRole("button", { name: "Verify a@a.a" }));
+    await waitFor(() => expect(document.activeElement).toBe(code));
+    expect(calls.filter((c) => c.path.endsWith("/verify"))).toHaveLength(0);
   });
 
   it("shows no-access when registering is forbidden", async () => {
@@ -324,7 +332,7 @@ describe("DeliveryEndpoints", () => {
       target: { value: "a@b.c" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
-    fireEvent.change(await screen.findByLabelText("Verification code for a@b.c"), {
+    fireEvent.change(await screen.findByLabelText(/^Verification code for a@b\.c/), {
       target: { value: "000000" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Verify a@b.c" }));
@@ -334,9 +342,17 @@ describe("DeliveryEndpoints", () => {
 
 describe("BannerView", () => {
   it("keeps both wrappers mounted and announces each banner through exactly one live region", () => {
-    const { rerender } = render(<BannerView banner={null} />);
+    const { rerender, container } = render(<BannerView banner={null} />);
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
+    // Both regions sit in one slot that CSS keeps out of the stack's gaps while they are empty (they are still mounted).
+    const slot = container.querySelector(".wx-live-slot") as HTMLElement;
+    expect(slot).not.toBeNull();
+    expect(Array.from(slot.children).map((el) => el.getAttribute("role"))).toEqual([
+      "status",
+      "alert",
+    ]);
+    expect(Array.from(slot.children).every((el) => el.childElementCount === 0)).toBe(true);
 
     rerender(<BannerView banner={{ ok: true, message: "Saved." }} />);
     expect(screen.getAllByRole("status")).toHaveLength(1);

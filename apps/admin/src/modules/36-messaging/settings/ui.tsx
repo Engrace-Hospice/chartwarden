@@ -22,10 +22,11 @@ export interface Banner {
 
 /** Both live regions stay mounted so a banner appearing or changing is announced (a region inserted with its text is not).
  *  Deliberately kept over the no-nested-live-region rule: an inserted `<output>` is announced unreliably. The alert inside
- *  is `live={false}`, so each banner has exactly one live region (the wrapper), not a nested second one. */
+ *  is `live={false}`, so each banner has exactly one live region (the wrapper), not a nested second one. The two regions sit
+ *  in one `.wx-live-slot`, which keeps them out of the stack's gaps while they are empty. */
 export function BannerView({ banner }: { banner: Banner | null }): JSX.Element {
   return (
-    <>
+    <div className="wx-live-slot">
       {/* biome-ignore lint/a11y/useSemanticElements: <output> is the shared loading-spinner marker (screens-smoke settles on none) */}
       <div role="status">
         {banner?.ok ? (
@@ -41,6 +42,6 @@ export function BannerView({ banner }: { banner: Banner | null }): JSX.Element {
           </InlineAlert>
         ) : null}
       </div>
-    </>
+    </div>
   );
 }

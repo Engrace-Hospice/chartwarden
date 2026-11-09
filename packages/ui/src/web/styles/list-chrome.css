@@ -191,7 +191,7 @@
   /* A field beside a button (`is-bottom`): the button lines up with the INPUT, not the field's label or its hint/error text,
      which stay in flow under the input and push the toolbar's next row down when it wraps. Fields top-align; the button sits in
      a `.wx-list-toolbar-action` box that reserves the label line and the field's gap (`is-unlabelled` for an sr-only label,
-     which only leaves the gap) plus the input's height, and bottom-aligns the button in it — so it matches the input whether or
+     which has no label line and no gap: see below) plus the input's height, and bottom-aligns the button in it — so it matches the input whether or
      not a message is showing, and whatever the button's own size. The label's line-height is pinned to the same variable, so
      the reserved height is exact, not a guess at the browser's `normal` line height. */
   .wx-list-toolbar-fields.is-bottom {
@@ -208,12 +208,30 @@
     min-height: calc(var(--wx-field-label-line) + var(--space-2) + var(--wx-field-control-height));
   }
   .wx-list-toolbar-fields.is-bottom > .wx-list-toolbar-action.is-unlabelled {
-    min-height: calc(var(--space-2) + var(--wx-field-control-height));
+    min-height: var(--wx-field-control-height);
   }
   .wx-list-toolbar-fields > .wx-field {
     flex: 1 1 14rem;
     min-width: 0;
     max-width: 24rem;
+  }
+  /* A field whose label is screen-reader-only (`label={<span className="wx-sr-only">…</span>}`) has a zero-height label, which
+     would still take the field's flex gap and push the control down. Cancel exactly that gap, so the control sits where a
+     label-less control would, in a toolbar, a table cell or a page head; a hint or error below keeps its own gap. */
+  .wx-field > label:has(> .wx-sr-only:only-child) {
+    margin-bottom: calc(var(--space-2) * -1);
+  }
+  /* The messaging banner keeps its two live regions mounted while empty (a region inserted with its text is announced
+     unreliably). Empty, they must not take a grid track and its gap: take them out of flow at zero size — still in the
+     accessibility tree — and let the wrapper vanish so only a region with a message occupies the stack. */
+  .wx-live-slot {
+    display: contents;
+  }
+  .wx-live-slot > :empty {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
   }
   .wx-list-state {
     display: grid;
@@ -502,11 +520,9 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1rem;
   }
-  /* A labelled group of stat cards is a <fieldset>; its default min-width is min-content, which would stop the grid shrinking.
-     `wx-fieldset-reset` is the same fix for a fieldset that only exists to carry a name or focus (preflight already zeroes its
-     border, margin and padding). */
-  fieldset.wx-stat-grid,
-  fieldset.wx-work-summary,
+  /* `wx-fieldset-reset` is for a fieldset that only exists to carry a name or focus: its default min-width is min-content, which
+     would stop a grid inside it shrinking (preflight already zeroes its border, margin and padding). A labelled group of stat
+     cards is a `role="group"` div (StatGrid), which needs no reset. */
   fieldset.wx-fieldset-reset {
     min-width: 0;
   }

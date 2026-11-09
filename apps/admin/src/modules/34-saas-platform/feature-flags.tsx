@@ -5,6 +5,7 @@ import {
   InlineAlert,
   LoadingSpinner,
   SelectField,
+  StatGrid,
   StatusPill,
   TextField,
   interactiveRowProps,
@@ -260,7 +261,7 @@ function FlagKpis({
   const killed = loadFailed ? null : flags.filter((f) => f.killSwitchActive).length;
   const perTenant = loadFailed ? null : flags.filter((f) => f.organizationId !== null).length;
   return (
-    <fieldset className="wx-stat-grid" aria-label="Feature flag summary">
+    <StatGrid label="Feature flag summary">
       <StatCard icon="layout-grid" label="Total flags" value={total} sub="loaded" />
       <StatCard icon="check-circle" label="Enabled" value={enabled} sub="boolean · on" />
       <StatCard
@@ -271,7 +272,7 @@ function FlagKpis({
         alert={Boolean(killed)}
       />
       <StatCard icon="building" label="Per-tenant" value={perTenant} sub="org-scoped" />
-    </fieldset>
+    </StatGrid>
   );
 }
 

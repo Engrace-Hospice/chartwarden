@@ -5,6 +5,7 @@ import {
   Modal,
   ReverifyLink,
   SelectField,
+  StatGrid,
   TextAreaField,
   TextField,
   focusFirstInvalid,
@@ -134,7 +135,7 @@ export function WageIndexLoad(): JSX.Element {
           </div>
         </header>
 
-        <fieldset className="wx-work-summary" aria-label="Load summary">
+        <StatGrid label="Load summary" className="wx-work-summary">
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Fiscal year</span>
@@ -172,7 +173,7 @@ export function WageIndexLoad(): JSX.Element {
               <span className="wx-row-sub">Fix every one before loading</span>
             </div>
           </div>
-        </fieldset>
+        </StatGrid>
 
         {draft ? (
           <InlineAlert tone="info">

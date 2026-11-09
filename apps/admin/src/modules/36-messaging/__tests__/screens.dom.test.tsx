@@ -164,7 +164,7 @@ describe("Channel members", () => {
       `/m/${CH}`,
     );
     await screen.findByText("Dana Reyes");
-    fireEvent.change(screen.getByLabelText("User ID"), { target: { value: "u9" } });
+    fireEvent.change(screen.getByLabelText(/^User ID/), { target: { value: "u9" } });
     fireEvent.change(screen.getByLabelText("Role"), { target: { value: "read_only" } });
     fireEvent.click(screen.getByRole("button", { name: "Add member" }));
     await waitFor(() => expect(body).toEqual({ userId: "u9", role: "read_only" }));
@@ -193,7 +193,7 @@ describe("Channel members", () => {
       `/m/${CH}`,
     );
     await screen.findByText("Dana Reyes");
-    fireEvent.change(screen.getByLabelText("User ID"), { target: { value: "u9" } });
+    fireEvent.change(screen.getByLabelText(/^User ID/), { target: { value: "u9" } });
     fireEvent.click(screen.getByRole("button", { name: "Add member" }));
     expect(await screen.findByText(/do not have permission to add members/)).toBeTruthy();
     expect(screen.getByText("Dana Reyes")).toBeTruthy();
