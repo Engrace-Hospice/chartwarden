@@ -146,7 +146,7 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
       expect(runs).toBe(0);
     });
 
-    it("is matched by the STORED record having no `h1:` prefix, never by anything the request says", async () => {
+    it("a keyed record never falls back to the plain hash: the same body and user under another actor kind is a conflict (defensive: the prefix check itself is pinned in packages/shared)", async () => {
       // a keyed record never falls back to the plain hash: same user and body under a changed scope is a conflict
       const records = recordingStore();
       await build(records.store);
@@ -237,7 +237,7 @@ describe("the server key", () => {
     expect(a.equals(b)).toBe(false);
   });
 
-  it("refuses an unedited .env.example placeholder (the production env gate's reserved-host rule)", () => {
+  it("refuses a secret that contains an RFC 2606 reserved host (the production env gate's placeholder rule: a HOST check, not a general placeholder check)", () => {
     const placeholder = "a-long-placeholder-secret-name.example.com";
     expect(placeholder.length).toBeGreaterThanOrEqual(32);
     expect(() =>
@@ -251,6 +251,52 @@ describe("the server key", () => {
         applyIdempotency(Fastify(), createInMemoryIdempotencyStore(), { hmacKey }),
       ).toThrow(/hmac key|must not be empty/i);
     }
+  });
+
+  describe("outside production, a missing or invalid secret is not silent", () => {
+    const SHORT = "a-short-secret-value";
+    const warnings = (vars: Record<string, string>): string[] => {
+      const lines: string[] = [];
+      idempotencyHmacKey({ NODE_ENV: "test", ...vars }, (message) => lines.push(message));
+      return lines;
+    };
+
+    it.each([
+      ["absent", {}],
+      ["under 32 characters after the trim", { BETTER_AUTH_SECRET: `  ${"s".repeat(20)}  ` }],
+      [
+        "a reserved-host placeholder",
+        { BETTER_AUTH_SECRET: "a-long-placeholder-secret-name.example.com" },
+      ],
+    ])(
+      "warns ONCE when the secret is %s: the key is process-local, so a cross-process retry is IDEMPOTENCY_KEY_STALE",
+      (_why, vars) => {
+        const lines = warnings(vars);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toMatch(/process-local/);
+        expect(lines[0]).toMatch(/IDEMPOTENCY_KEY_STALE/);
+      },
+    );
+
+    it("never puts the secret's value in the warning", () => {
+      expect(warnings({ BETTER_AUTH_SECRET: SHORT }).join("\n")).not.toContain(SHORT);
+    });
+
+    it("says nothing when the secret is valid", () => {
+      expect(warnings({ BETTER_AUTH_SECRET: SECRET })).toEqual([]);
+    });
+
+    it("applyIdempotency logs the warning once through the app's logger", async () => {
+      const lines: string[] = [];
+      vi.stubEnv("NODE_ENV", "test");
+      vi.stubEnv("BETTER_AUTH_SECRET", "");
+      const app = Fastify({
+        logger: { level: "warn", stream: { write: (line: string) => lines.push(line) } },
+      });
+      applyIdempotency(app, createInMemoryIdempotencyStore());
+      await app.close();
+      expect(lines.filter((l) => /process-local/.test(l))).toHaveLength(1);
+    });
   });
 
   it("applyIdempotency with no explicit key takes it from the environment", async () => {

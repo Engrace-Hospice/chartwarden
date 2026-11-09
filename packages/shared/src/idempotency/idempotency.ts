@@ -64,7 +64,7 @@ export function idempotencyKeyIsStale(stored: string, requestHash: string): bool
 /**
  * The fingerprint this module stored BEFORE it was keyed: plain SHA-256 hex. Only ever COMPUTED, to recognise a record written
  * before the deploy that introduced the keyed hash (records live 24 h), so a client's retry of an in-flight or completed request
- * still replays instead of being re-executed. It is never written. ponytail: delete once one TTL has passed everywhere.
+ * still replays instead of being re-executed. It is never written. REMOVAL: remove this function and the legacy arm that uses it after 2026-11-16, once every environment has passed one TTL after deploy.
  */
 export function legacyIdempotencyHash(organizationId: string, key: string, body: unknown): string {
   return createHash("sha256")

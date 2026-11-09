@@ -123,6 +123,18 @@ describe("a fingerprint stored before the keyed hash (plain SHA-256)", () => {
     );
     expect(idempotencyHashMatches(keyed, rotated, legacyOf({ a: 1 }))).toBe(false);
   });
+
+  it("the legacy arm is chosen from the STORED value: a stored `h1:` record is never matched through the legacy hash, whatever it computes", () => {
+    // falsifiable: delete the `!stored.startsWith("h1:")` check and this returns true. A real legacy digest is plain hex and can never
+    // carry the prefix, so the lambda is made to return the stored value itself to prove the prefix, not the hex shape, decides.
+    const keyed = h(ORG, "k1", { a: 1 });
+    const other = h(ORG, "k1", { a: 2 });
+    expect(idempotencyHashMatches(keyed, other, () => keyed)).toBe(false);
+    // and an un-prefixed stored value is matched through the legacy hash only when that hash equals it
+    const plain = legacyIdempotencyHash(ORG, "k1", { a: 1 });
+    expect(idempotencyHashMatches(plain, other, () => plain)).toBe(true);
+    expect(idempotencyHashMatches(plain, other, () => "0".repeat(64))).toBe(false);
+  });
 });
 
 describe("runIdempotent", () => {

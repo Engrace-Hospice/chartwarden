@@ -59,10 +59,14 @@ const MIN_SECRET_LENGTH = 32;
  * process-local random key: nothing is replayable across a restart there, which only costs a dev a clean 409. Rotating the secret
  * makes every stored fingerprint a clean mismatch (409 IDEMPOTENCY_KEY_STALE), never a replay and never a re-run.
  */
-export function idempotencyHmacKey(env: NodeJS.ProcessEnv = process.env): Buffer {
+export function idempotencyHmacKey(
+  env: NodeJS.ProcessEnv = process.env,
+  warn?: (message: string) => void,
+): Buffer {
   // Trimmed, like the production env gate (assertProductionEnv trims before it checks), so the key is derived from the very
-  // value that gate validated; and held to its rules: at least 32 characters AFTER the trim, and not an unedited .env.example
-  // placeholder (a reserved host). A weak secret outside production is not used: a process-local random key.
+  // value that gate validated; and held to its rules: at least 32 characters AFTER the trim, and no RFC 2606 reserved host in it
+  // (the env gate's placeholder rule, reused: it is a HOST check, so a placeholder that is not a host is not recognised here, as it
+  // is not by the gate). A weak secret outside production is not used: a process-local random key, announced once through `warn`.
   const secret = env.BETTER_AUTH_SECRET?.trim() ?? "";
   const placeholder = reservedPlaceholderProblem(secret);
   if (secret.length >= MIN_SECRET_LENGTH && placeholder === null) {
@@ -73,8 +77,13 @@ export function idempotencyHmacKey(env: NodeJS.ProcessEnv = process.env): Buffer
       `BETTER_AUTH_SECRET (at least ${MIN_SECRET_LENGTH} characters, trimmed${placeholder === null ? "" : `; ${placeholder}`}) is required in production: it keys the Idempotency-Key request fingerprint`,
     );
   }
+  // Never the secret's value in the line: only that it was unusable.
+  warn?.(PROCESS_LOCAL_KEY_WARNING);
   return randomBytes(32);
 }
+
+const PROCESS_LOCAL_KEY_WARNING =
+  "BETTER_AUTH_SECRET is missing, shorter than 32 characters after the trim, or contains a reserved placeholder host: the Idempotency-Key fingerprint uses a process-local random key, so a retry that reaches another process, or one made after a restart, answers 409 IDEMPOTENCY_KEY_STALE (production refuses to boot in this state)";
 
 export interface ApplyIdempotencyOptions {
   /** The fingerprint's HMAC key. Default: {@link idempotencyHmacKey} over the process environment. */
@@ -86,7 +95,8 @@ export function applyIdempotency(
   store: IdempotencyStore,
   options: ApplyIdempotencyOptions = {},
 ): void {
-  const hmacKey = options.hmacKey ?? idempotencyHmacKey();
+  const hmacKey =
+    options.hmacKey ?? idempotencyHmacKey(process.env, (message) => app.log.warn(message));
   if (hmacKey.length === 0) {
     // an empty key would sign every fingerprint under nothing: refuse it instead of quietly weakening the HMAC
     throw new Error("the Idempotency-Key fingerprint HMAC key must not be empty");
@@ -130,6 +140,7 @@ export function applyIdempotency(
     // what origin/main's middleware wrote: the plain SHA-256 of `${orgId}|${userId}` (as the scope), key and body, and nothing
     // else (no method, route, params, query string or If-Match). Good enough for the 24 h a pre-deploy row lives: a retry of a
     // pre-deploy request replays, another body or another user is a 409, and nothing is ever re-run.
+    // REMOVAL: remove this arm and `legacyIdempotencyHash` after 2026-11-16, once every environment has passed one TTL after deploy.
     const legacyScope = `${orgId}|${request.context?.userId ?? ""}`;
     const cached = await claimIdempotencyKey(store, orgId, key, requestHash, () =>
       legacyIdempotencyHash(legacyScope, key, request.body ?? null),
