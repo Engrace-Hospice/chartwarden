@@ -8,7 +8,9 @@ import {
   clampLimit,
   configureCursorSigningKey,
   decodeKeysetCursor,
+  decodeOffsetCursor,
   encodeCursor,
+  encodeOffsetCursor,
   firstOrThrow,
   ifMatchVersionOf,
   isUniqueViolation,
@@ -233,6 +235,60 @@ describe("route-kit signed cursor", () => {
   it("refuses an unsigned legacy base64 cursor", () => {
     const legacy = Buffer.from(JSON.stringify({ a: "x", id: "y" })).toString("base64url");
     expect(() => decodeKeysetCursor(ORG_A, legacy, "text", { id: "text" })).toThrow(
+      InvalidCursorError,
+    );
+  });
+});
+
+describe("route-kit signed offset cursor", () => {
+  it("round-trips for the org that minted it", () => {
+    configureCursorSigningKey("k".repeat(32));
+    expect(decodeOffsetCursor(ORG_A, encodeOffsetCursor(ORG_A, 50))).toBe(50);
+    expect(decodeOffsetCursor(ORG_A, encodeOffsetCursor(ORG_A, 0))).toBe(0);
+  });
+
+  it.each([undefined, null, ""])("treats an absent cursor (%j) as offset 0", (raw) => {
+    expect(decodeOffsetCursor(ORG_A, raw)).toBe(0);
+  });
+
+  it("refuses a cursor minted for another org", () => {
+    configureCursorSigningKey("k".repeat(32));
+    expect(() => decodeOffsetCursor(ORG_B, encodeOffsetCursor(ORG_A, 50))).toThrow(
+      InvalidCursorError,
+    );
+  });
+
+  it.each(["garbage", "50", "1", ".", "a.b", "-1"])("refuses the unsigned cursor %j", (raw) => {
+    expect(() => decodeOffsetCursor(ORG_A, raw)).toThrow(
+      expect.objectContaining({ code: "INVALID_CURSOR", statusCode: 422 }),
+    );
+  });
+
+  it.each([["a", "b"], 5, {}])("refuses a non-string cursor %j (a repeated ?cursor=)", (raw) => {
+    expect(() => decodeOffsetCursor(ORG_A, raw)).toThrow(InvalidCursorError);
+  });
+
+  it("refuses a tampered cursor (edited body or signature)", () => {
+    configureCursorSigningKey("k".repeat(32));
+    const [body, sig] = encodeOffsetCursor(ORG_A, 50).split(".") as [string, string];
+    const forgedBody = Buffer.from(JSON.stringify({ o: 5000 })).toString("base64url");
+    expect(() => decodeOffsetCursor(ORG_A, `${forgedBody}.${sig}`)).toThrow(InvalidCursorError);
+    expect(() => decodeOffsetCursor(ORG_A, `${body}.${sig.slice(1)}A`)).toThrow(InvalidCursorError);
+  });
+
+  it.each([{ o: -1 }, { o: 1.5 }, { o: "5" }, { o: Number.MAX_SAFE_INTEGER + 1 }, {}, [], null])(
+    "refuses a validly signed payload that is not a non-negative safe integer offset: %j",
+    (payload) => {
+      configureCursorSigningKey("k".repeat(32));
+      expect(() => decodeOffsetCursor(ORG_A, encodeCursor(ORG_A, payload))).toThrow(
+        InvalidCursorError,
+      );
+    },
+  );
+
+  it("refuses a keyset cursor replayed on an offset list", () => {
+    configureCursorSigningKey("k".repeat(32));
+    expect(() => decodeOffsetCursor(ORG_A, encodeCursor(ORG_A, { a: "x", id: UUID }))).toThrow(
       InvalidCursorError,
     );
   });

@@ -179699,7 +179699,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "description": "Offset cursor returned by the previous page",
+              "description": "Opaque cursor returned by the previous page",
               "type": "string"
             }
           },
@@ -272564,7 +272564,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "description": "Offset cursor returned by the previous page",
+              "description": "Opaque cursor returned by the previous page",
               "type": "string"
             }
           },

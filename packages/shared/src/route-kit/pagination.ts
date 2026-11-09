@@ -1,4 +1,4 @@
-// @chartwarden/shared/route-kit — keyset pagination: one HMAC-signed opaque cursor and one page-query shape.
+// @chartwarden/shared/route-kit — pagination: one HMAC-signed opaque cursor (keyset or offset) and one page-query shape.
 //
 // A cursor is `base64url(JSON payload).base64url(HMAC-SHA256(key, orgId.body))`. The org id is mixed into the
 // HMAC input, so a cursor minted for org A does not verify for org B; a forged or tampered cursor is 422
@@ -76,6 +76,35 @@ export function decodeCursor<T>(
   }
   if (!isPayload(parsed)) throw new InvalidCursorError();
   return parsed;
+}
+
+/**
+ * The payload of an offset-paged list (SQL `OFFSET`): the position of the next page's first row. Offset paging
+ * stays where a list has no stable keyset, but its cursor is signed like every other one, so a tampered or
+ * garbage position is 422 INVALID_CURSOR instead of silently restarting at page 1.
+ */
+interface OffsetCursor {
+  readonly o: number;
+}
+
+function isOffsetCursor(value: unknown): value is OffsetCursor {
+  const o = (value as Partial<OffsetCursor> | null)?.o;
+  return typeof o === "number" && Number.isSafeInteger(o) && o >= 0;
+}
+
+/** Sign the offset of the next page's first row for `orgId`. */
+export function encodeOffsetCursor(orgId: string, offset: number): string {
+  return encodeCursor(orgId, { o: offset } satisfies OffsetCursor);
+}
+
+/**
+ * Verify + decode an offset cursor; absent (undefined, null, "") is offset 0, anything else that does not verify
+ * is {@link InvalidCursorError}. `raw` is `unknown` so a route that reads `request.query` unvalidated can pass it
+ * straight through: a repeated `?cursor=a&cursor=b` (an array) is refused, not coerced to page 1.
+ */
+export function decodeOffsetCursor(orgId: string, raw: unknown): number {
+  if (raw !== undefined && raw !== null && typeof raw !== "string") throw new InvalidCursorError();
+  return decodeCursor(orgId, raw, isOffsetCursor)?.o ?? 0;
 }
 
 /** The common keyset payload: a sort value (ISO instant/date or text) plus the tie-breaking row id. */

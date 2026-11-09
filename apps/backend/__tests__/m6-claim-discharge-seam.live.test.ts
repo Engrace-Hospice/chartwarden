@@ -646,7 +646,14 @@ describe.skipIf(!DB_URL)("M6 claim-assembly discharge seam — LIVE Postgres", (
         ORG_WIDE,
       );
       expect(second.items[0]?.admissionId).not.toBe(first.items[0]?.admissionId);
+      // The cursor is bound to its org: ORG_B refuses ORG_A's, and an unsigned position is refused, not page 1.
+      await expect(
+        worklist.list(ORG_B, { bucket: "ready", limit: 1, cursor: first.nextCursor }, ORG_WIDE),
+      ).rejects.toMatchObject({ code: "INVALID_CURSOR", statusCode: 422 });
     }
+    await expect(
+      worklist.list(ORG_A, { bucket: "ready", limit: 1, cursor: "1" }, ORG_WIDE),
+    ).rejects.toMatchObject({ code: "INVALID_CURSOR", statusCode: 422 });
 
     // RLS: another org sees none of it.
     for (const bucket of ["ready", "needs_details", "awaiting_cosign"] as const) {

@@ -176,6 +176,29 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(page.nextCursor).toBeNull();
   });
 
+  it("the offset lists page on a signed cursor: it pages, is bound to its org, and an unsigned one is a 422, not page 1", async () => {
+    const first = await service.listAdmissions(ORG_A, { limit: 1 });
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).toContain(".");
+    const second = await service.listAdmissions(ORG_A, {
+      limit: 1,
+      cursor: first.nextCursor as string,
+    });
+    expect(second.items.map((i) => i.id)).toEqual([seeded[ORG_A].otherAdmission]);
+    expect(second.nextCursor).toBeNull();
+    const refused = { code: "INVALID_CURSOR", statusCode: 422 };
+    await expect(
+      service.listAdmissions(ORG_B, { limit: 1, cursor: first.nextCursor as string }),
+    ).rejects.toMatchObject(refused);
+    for (const bad of ["garbage", "1"]) {
+      await expect(service.listAdmissions(ORG_A, { cursor: bad })).rejects.toMatchObject(refused);
+      await expect(service.listReferrals(ORG_A, { cursor: bad })).rejects.toMatchObject(refused);
+      await expect(service.listComplianceWindows(ORG_A, { cursor: bad })).rejects.toMatchObject(
+        refused,
+      );
+    }
+  });
+
   it("listAdmissions filters by patientId inside the org scope", async () => {
     const page = await service.listAdmissions(ORG_A, { state: "active", patientId: PATIENT });
     const ids = page.items.map((i) => i.id);

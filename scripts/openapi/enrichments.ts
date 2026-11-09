@@ -3941,7 +3941,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
         Type.String({ description: "Case-insensitive search over names, CCN, and NPI" }),
       ),
       cursor: Type.Optional(
-        Type.String({ description: "Offset cursor returned by the previous page" }),
+        Type.String({ description: "Opaque cursor returned by the previous page" }),
       ),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }),
@@ -3982,7 +3982,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
         Type.String({ description: "Case-insensitive search over name and address fields" }),
       ),
       cursor: Type.Optional(
-        Type.String({ description: "Offset cursor returned by the previous page" }),
+        Type.String({ description: "Opaque cursor returned by the previous page" }),
       ),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }),
