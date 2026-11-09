@@ -745,7 +745,7 @@ describe("a live session with no membership (the route kit's 403 contract, never
     const { app, id } = makeServer();
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/platform/tenants/acme/onboarding/${id("organisation")}/skip`,
+      url: `/api/v1/platform/tenants/acme/onboarding/${id("mac_configured")}/skip`,
       headers: { ...OPS, ...FRESH, ...NO_MEMBERSHIP },
       payload: { skipRationale: "customer migrating" },
     });
@@ -762,7 +762,7 @@ describe("a live session with no membership (the route kit's 403 contract, never
     ] as const) {
       const res = await app.inject({
         method: "POST",
-        url: `/api/v1/tenant/onboarding/${id("organisation")}/${action}`,
+        url: `/api/v1/tenant/onboarding/${id("mac_configured")}/${action}`,
         headers: { ...ADMIN, ...NO_MEMBERSHIP },
         payload,
       });
