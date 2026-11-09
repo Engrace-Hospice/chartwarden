@@ -269,6 +269,11 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
     for (const command of [
       "bash",
       "bash -l",
+      "bash -o vi",
+      "zsh -o SH_WORD_SPLIT",
+      "sh -o vi",
+      "ksh -o vi",
+      "fish --init-command true",
       "python3",
       "python3 -q",
       "python3 -E",
@@ -289,6 +294,11 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       "php --define x=1",
       "psql",
       "psql -h localhost",
+      "psql -e",
+      "pgcli -e",
+      "mysql -f",
+      "sqlite3 -echo",
+      "sqlite3 data.db",
       "bun repl",
       "sh -i",
     ]) {
@@ -309,6 +319,12 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       "node --inspect-port 9229 -- scripts/x.js",
       "node scripts/x.js",
       "psql -h localhost -c 'select 1'",
+      "psql -f scripts/query.sql",
+      "pgcli --file scripts/query.sql",
+      "mysql -e 'select 1'",
+      "sqlite3 data.db 'select 1'",
+      "bash -o vi -- scripts/x.sh",
+      "fish -c true",
       "bun run test",
     ]) {
       expect(shell(command).out, command).toBeNull();

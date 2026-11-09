@@ -1007,28 +1007,17 @@ const SHELL = /^(bash|sh|zsh|dash|fish|ksh)$/;
 const LANGUAGE_REPL = /^(python[0-9.]*|node|ruby|irb|perl|lua|php)$/;
 const DATABASE_REPL = /^(psql|pgcli|sqlite3|mysql)$/;
 
-function hasPositional(args: readonly string[], valueFlags: RegExp): boolean {
-  for (let k = 0; k < args.length; k++) {
-    const a = args[k] ?? "";
-    if (a === "--") return k + 1 < args.length;
-    if (valueFlags.test(a)) {
-      k++;
-      continue;
-    }
-    if (!a.startsWith("-")) return true;
-  }
-  return false;
-}
-
 function interactiveInvocation(p: Parsed): boolean {
   const { prog, args, ins, docs } = p;
   const explicitInput = ins.length + docs.length > 0;
 
   if (SHELL.test(prog)) {
     if (args.some((a) => /^(-h|--help|--version)$/.test(a))) return false;
-    if (args.some((a) => a === "-c" || a === "--command" || /^-c.+/.test(a))) return false;
+    if (args.some((a) => a === "--command" || /^-[^-]*c/.test(a))) return false;
     if (explicitInput) return false;
-    return !hasPositional(args, /^(--rcfile|--init-file|-O|--debugger)$/);
+    const delimiter = args.indexOf("--");
+    if (delimiter >= 0) return delimiter + 1 >= args.length;
+    return args.length === 0 || (args[0]?.startsWith("-") ?? true);
   }
 
   if (LANGUAGE_REPL.test(prog)) {
@@ -1065,7 +1054,17 @@ function interactiveInvocation(p: Parsed): boolean {
   if (DATABASE_REPL.test(prog)) {
     if (args.some((a) => /^(--help|-\?|--version|-V)$/.test(a))) return false;
     if (explicitInput) return false;
-    return !args.some((a) => /^(?:-[cfe].+|-[cfe]|--(?:command|file|execute)(?:=.+)?)$/.test(a));
+    if (/^(psql|pgcli)$/.test(prog)) {
+      return !args.some((a) => /^(?:-c.+|-c|-f.+|-f|--(?:command|file)(?:=.+)?)$/.test(a));
+    }
+    if (prog === "mysql") {
+      return !args.some((a) => /^(?:-e.+|-e|--execute(?:=.+)?)$/.test(a));
+    }
+    // A lone sqlite filename still opens a REPL. Only an explicit second positional SQL argument
+    // (or redirected input handled above) is terminating; option-prefixed forms fail closed.
+    return (
+      args.length < 2 || (args[0]?.startsWith("-") ?? true) || (args[1]?.startsWith("-") ?? true)
+    );
   }
 
   return /^(script|screen|tmux)$/.test(prog) && args.length === 0;
