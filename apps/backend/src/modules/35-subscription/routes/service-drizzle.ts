@@ -368,16 +368,20 @@ function pageSizeOf(limit: number | undefined): number {
   return Math.max(1, Math.min(MAX_PAGE_SIZE, limit ?? DEFAULT_PAGE_SIZE));
 }
 
-/** Keyset page (cursor signed for `scope`) from a DESC-sorted `(key, id)` row list already read from the DB. */
+/**
+ * Keyset page (cursor signed for `scope`) from a DESC-sorted `(key, id)` row list already read from the DB. `idKind` is the
+ * tie-breaker's shape: `uuid` for every M35 list but the Stripe webhook list, whose id is a TEXT Stripe event id (`evt_...`).
+ */
 function pageOf<T extends { readonly id: string }>(
   scope: string,
   rows: readonly T[],
   keyOf: (row: T) => string,
   cursor: string | undefined,
   limit: number | undefined,
+  idKind: "uuid" | "text" = "uuid",
 ): CursorPage<T> {
   const size = pageSizeOf(limit);
-  const key = decodeKeysetCursor(scope, cursor, "text");
+  const key = decodeKeysetCursor(scope, cursor, "text", { id: idKind });
   let start = 0;
   if (key) {
     start = rows.findIndex((r) => keyOf(r) < key.a || (keyOf(r) === key.a && r.id < key.id));
@@ -1939,6 +1943,7 @@ export function buildDrizzleM35RouteService(
           (r) => isoReq(r.receivedAt),
           cursor,
           limit,
+          "text",
         );
         return { ...page, items: page.items.map(webhookReceiptView) };
       });
