@@ -388,14 +388,17 @@ controls:
 
   - id: CW-AC-19
     title: >-
-      Auditors are never billed or provisioned as staff: the role key external_auditor is reserved for the system auditor role (a tenant role under that key is refused with 422 RESERVED_ROLE at the route and by a trigger in the database), so a real auditor always lands on the system role; the staff meter excludes auditors, family-portal users and support sessions as decided when each sign-in is observed (non_staff_observed), and a month that spans a pseudonym-key rotation counts its busiest single epoch and flags the statement needs_review.
+      Auditors are never billed or provisioned as staff: the role key external_auditor is reserved for the system auditor role (a tenant role under that key is refused with 422 RESERVED_ROLE at the route and by a trigger in the database; because the application role can write every column the system row's facts rest on, the trigger also requires the transaction-local marker only the auditor grant sets before it writes that row, which stops other application code paths from writing it, not a session that can run arbitrary SQL as the application role), so a real auditor always lands on the system role; the staff meter excludes auditors, family-portal users and support sessions as decided when each sign-in is observed (non_staff_observed), and a month that spans a pseudonym-key rotation counts its busiest single epoch and flags the statement needs_review.
     hipaa: ["164.308(a)(4)(ii)(B)", "164.308(a)(3)(ii)(A)"]
     soc2: ["CC6.2", "CC6.3", "PI1.3"]
     status: implemented
     evidence:
       - script: test:m35:tenant-pricing:live
       - ci: "M35 tenant pricing"
+      - script: test:m3:role-floor:live
+      - ci: "M3 role catalog floor"
       - file: packages/db/migrations/1415_m3_system_managed_role_key.sql
+      - file: packages/db/migrations/1439_m3_system_role_writer_marker.sql
       - file: packages/db/migrations/1416_m35_user_active_period_non_staff_observed.sql
       - file: apps/backend/src/modules/03-authorization/routes/authz-routes.ts
 
