@@ -414,10 +414,19 @@ function pageOf<T extends { readonly id: string }>(
 ): CursorPage<T> {
   const size = pageSizeOf(limit);
   const key = decodeKeysetCursor(scope, cursor, "text", { id: idKind });
+  // The cursor names the LAST ROW THE CLIENT SAW, so the continuation is the row AFTER it in the order the rows arrived in, not a
+  // re-comparison: the anchor is a JS Date's ISO string (milliseconds) while Postgres orders at microseconds, and a text id compares
+  // by the SQL collation (case-insensitive under en_US.utf8) where JavaScript compares code units, so a re-comparison can skip or
+  // repeat a row at the page boundary. A row that is gone since falls back to the keyset comparison.
   let start = 0;
   if (key) {
-    start = rows.findIndex((r) => keyOf(r) < key.a || (keyOf(r) === key.a && r.id < key.id));
-    if (start === -1) start = rows.length;
+    const seen = rows.findIndex((r) => r.id === key.id);
+    if (seen !== -1) {
+      start = seen + 1;
+    } else {
+      start = rows.findIndex((r) => keyOf(r) < key.a || (keyOf(r) === key.a && r.id < key.id));
+      if (start === -1) start = rows.length;
+    }
   }
   const slice = rows.slice(start, start + size);
   const hasMore = start + size < rows.length;
@@ -2071,7 +2080,7 @@ export function buildDrizzleM35RouteService(
 
     async listRecentWebhooks(cursor, limit) {
       return platform(async (tx) => {
-        const rows = await tx.select().from(WH).orderBy(desc(WH.receivedAt));
+        const rows = await tx.select().from(WH).orderBy(desc(WH.receivedAt), desc(WH.id));
         // stripe_webhook_event.id is TEXT (the Stripe event id); page on (receivedAt, id).
         const page = pageOf(
           PLATFORM_CURSOR_SCOPE,
