@@ -744,7 +744,9 @@ controls:
       BETTER_AUTH_SECRET with a purpose label (configuration the platform already requires; no key in code). Production refuses to boot
       without the secret; a non-production process with none uses a process-local random key. Across a deploy a record stored under the
       earlier plain SHA-256 still matches the same request by its legacy hash (computed, never written, for the 24 h TTL), so a retry
-      replays rather than re-executes, and a record under another key (a rotated secret, told by its key id) is a 409 of its own,
+      replays rather than re-executes (a record written before the deploy keeps its plain, unkeyed SHA-256 fingerprint in
+      idempotency_key until its 24 h TTL expires, because it is never rewritten, so for that window a reader of the table can still
+      test guesses against it), and a record under another key (a rotated secret, told by its key id) is a 409 of its own,
       IDEMPOTENCY_KEY_STALE, whose message says the first request may or may not have taken effect and to retry with a new key (the same
       key with another body stays IDEMPOTENCY_CONFLICT), never a replay or a re-run. Because of the key id, this control's strength against
       someone who can read idempotency_key rests on BETTER_AUTH_SECRET being high-entropy: it must be generated (at least 32 random bytes),
