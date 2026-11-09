@@ -35,6 +35,12 @@ describe("platform lists decode the cursor before entering the platform context"
       throw new Error("no platform bypass may be entered for a bad cursor");
     },
     platformJobId: "list-cursor-test",
+    // the feature-flag list reads through the platform pool as well: it must not be reached for a bad cursor either
+    featureFlags: {
+      list: async () => {
+        throw new Error("the platform pool must not be reached for a bad cursor");
+      },
+    },
   } as never);
 
   const lists: ReadonlyArray<readonly [string, (cursor: string) => Promise<unknown>]> = [
@@ -46,6 +52,7 @@ describe("platform lists decode the cursor before entering the platform context"
     ["listSignupIntents", (c) => service.listSignupIntents({}, c, 10)],
     ["listBaaRecords", (c) => service.listBaaRecords({}, c, 10)],
     ["listTenantExportJobs", (c) => service.listTenantExportJobs({}, c, 10)],
+    ["listFeatureFlags", (c) => service.listFeatureFlags({}, c, 10)],
   ];
 
   it.each(lists)(
