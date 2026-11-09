@@ -10335,7 +10335,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     //   1. queue connection only (here, always): `eligibility.refresh`, `validation-run`, `revalidate.consumer`
     //      and the three per-org watchdog crons (NOE/NOTR window-watch, eligibility stale-watch). They do no
     //      X12/MAC-portal I/O, so they must NOT sit behind the launch gateway — they did not exist at all before
-    //      (registerM23Workers had no caller), so revalidation jobs piled up unconsumed and every watch tick threw
+    //      (the old all-in-one registrar had no caller and has been deleted), so revalidation jobs piled up unconsumed and every watch tick threw
     //      `unboundWorkerPort`.
     //   2. + the launch gateway: claim/NOE/NOTR submit[.retry], the 999/277CA ack pulls and MAC-portal health.
     //   3. HETS 270/271 (`hets`) is bound only when `M23_HETS_TRANSPORT` is configured (M5's MbiUnlockReader

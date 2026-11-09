@@ -3168,103 +3168,6 @@ async function holdNewClaimsWork(
 }
 
 /**
- * Construct one BullMQ `Worker` per §4.8 WORK queue. Domain workers open the per-job `withOrgContext(orgId)` RLS
- * envelope here; claim submit/retry workers use their own short prepare/finalize scopes so no transaction spans
- * external transport. Returns the workers so the composition root can `close()` them
- * on shutdown — the caller owns the lifecycle; nothing here runs at import (constructing a Worker opens the
- * Valkey connection, which must happen only in production wiring, never in tests).
- */
-export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
-  const { connection } = deps;
-  const orgScoped = <D extends { organizationId: string }>(
-    queue: string,
-    concurrency: number,
-    run: (tx: BillingDb, deps: M23WorkerDeps, data: D) => Promise<void>,
-  ): Worker =>
-    new Worker(
-      queue,
-      async (job, token) => {
-        const data = job.data as D;
-        if (!data.organizationId) {
-          throw new Error(
-            `M23 worker ${queue}: job.data.organizationId missing (the JobEnqueuePort must enrich it)`,
-          );
-        }
-        await holdNewClaimsWork(deps, job, token, queue, data);
-        return withOrgContext(
-          deps.db,
-          {
-            organizationId: data.organizationId,
-            userId: M23_WORKER_SYSTEM_USER_ID,
-          },
-          (tx) => run(tx as unknown as BillingDb, deps, data),
-        );
-      },
-      { connection, concurrency },
-    );
-  const submissionScoped = <D extends { organizationId: string }>(
-    queue: string,
-    concurrency: number,
-    run: (tx: BillingDb, deps: M23WorkerDeps, data: D) => Promise<void>,
-  ): Worker =>
-    new Worker(
-      queue,
-      async (job, token) => {
-        const data = job.data as D;
-        if (!data.organizationId) throw new Error(`M23 worker ${queue}: organizationId missing`);
-        // ADR-0110 — claim submit / retry START new claims-billing work, so the add-on gate holds them here (before any transport).
-        await holdNewClaimsWork(deps, job, token, queue, data);
-        // Submission processors own short prepare/finalize tenant transactions. Never wrap transport in one.
-        return run(deps.db, deps, data);
-      },
-      { connection, concurrency },
-    );
-
-  return [
-    submissionScoped<ClaimSubmitJob>(
-      M23_QUEUES.claimSubmit,
-      M23_QUEUE_PARAMS.claimSubmit.concurrency,
-      runClaimSubmit,
-    ),
-    submissionScoped<ClaimSubmitRetryJob>(
-      M23_QUEUES.claimSubmitRetry,
-      M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
-      runClaimSubmitRetry,
-    ),
-    orgScoped<NoeSubmitJob>(
-      M23_QUEUES.noeSubmit,
-      M23_QUEUE_PARAMS.noeSubmit.concurrency,
-      runNoeSubmit,
-    ),
-    orgScoped<NotrSubmitJob>(
-      M23_QUEUES.notrSubmit,
-      M23_QUEUE_PARAMS.notrSubmit.concurrency,
-      runNotrSubmit,
-    ),
-    orgScoped<TransferNoticeSubmitJob>(
-      M23_QUEUES.transferNoticeSubmit,
-      M23_QUEUE_PARAMS.transferNoticeSubmit.concurrency,
-      runTransferNoticeSubmitJob,
-    ),
-    orgScoped<EligibilityRefreshJob>(
-      M23_QUEUES.eligibilityRefresh,
-      M23_QUEUE_PARAMS.eligibilityRefresh.concurrency,
-      runEligibilityRefresh,
-    ),
-    orgScoped<ValidationRunJob>(
-      M23_QUEUES.validationRun,
-      M23_QUEUE_PARAMS.validationRun.concurrency,
-      runValidationRun,
-    ),
-    orgScoped<RevalidateConsumerJob>(
-      M23_QUEUES.revalidateConsumer,
-      M23_QUEUE_PARAMS.revalidateConsumer.concurrency,
-      runRevalidateConsumer,
-    ),
-  ];
-}
-
-/**
  * The three §4.8 WORK queues that need no X12 / MAC-portal infrastructure: `eligibility.refresh`,
  * `validation-run` and `revalidate.consumer` (GAP-070). The composition root constructs them whenever a queue
  * connection exists — NOT behind the launch gateway, which only the submission workers need. Before this nothing
@@ -3474,7 +3377,7 @@ export function registerM23LaunchWorkers(
  * Construct the §4.8 CRON workers (the per-MAC-jurisdiction ack pulls + portal health, and the per-org window /
  * stale watchdogs). The cron tick carries no payload — each processor reads its own ports (the org / jurisdiction
  * enumerators) and opens `withOrgContext` INSIDE itself (it fans across orgs). Concurrency 1 — a cron tick is a
- * singleton. Returns the workers; the caller owns `close()`. Mirrors `registerM23Workers`; nothing runs at import.
+ * singleton. Returns the workers; the caller owns `close()`. Mirrors `registerM23DomainWorkers`; nothing runs at import.
  */
 export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
   const { connection } = deps;
