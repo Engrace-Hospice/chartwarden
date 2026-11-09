@@ -28,6 +28,11 @@ const AREAS: NavArea[] = [
     label: "Revenue Cycle",
     views: [
       { to: "/remittance", label: "Remittances", match: ["/remittance"] },
+      {
+        to: "/remittance/claimmd-era-review",
+        label: "Claim.MD ERA review",
+        match: ["/remittance/claimmd-era-review"],
+      },
       { to: "/remittance/denials", label: "Denials", match: ["/remittance/denials"] },
       { to: "/remittance/adrs", label: "ADR requests", match: ["/remittance/adrs"] },
       { to: "/remittance/audits", label: "Audits", match: ["/remittance/audits"] },

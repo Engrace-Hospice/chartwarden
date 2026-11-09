@@ -154,8 +154,9 @@ function scan(): Violation[] {
 
       for (const ref of registry) {
         // Named-import style: `import { visit } from '.../schema/...'`.
-        const namedImportUsed =
-          new RegExp(`\\b${ref.constName}\\b`).test(src) && /from ['"].*schema/.test(src);
+        const namedImportUsed = new RegExp(
+          `import\\s*\\{[^}]*\\b${ref.constName}\\b[^}]*\\}\\s*from\\s*['"][^'"]*schema[^'"]*['"]`,
+        ).test(src);
         // Namespace-binding style: `schema.<table>` member access, regardless of the import
         // specifier's own spelling (see comment above).
         const namespaceUsed =

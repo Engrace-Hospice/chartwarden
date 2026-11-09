@@ -139,8 +139,10 @@ const HISTORICAL_FILENAME_RENAMES: ReadonlyMap<string, string> = new Map([
   // Two branches both took ordinal 1063 (M23 ack-stage split, M36 structured message references). The M23 file was
   // already applied in production, so the M36 file moved to the next free ordinal; its bytes are unchanged.
   ["1065_m36_structured_message_references.sql", "1063_m36_structured_message_references.sql"],
-  // Two branches both took ordinal 1378 (FK supporting indexes, already applied in production; M23 reviewed-source
-  // fingerprint). The M23 file and the three that followed it moved to 1382-1385, bytes unchanged, order kept.
+  // Keep a checksum-verified bridge for databases that recorded the temporary FK-index rename during BIL-2 integration.
+  ["1382_fk_supporting_indexes_code_status_emergency_recipient.sql", "1378_fk_supporting_indexes_code_status_emergency_recipient.sql"],
+  // The FK-supporting-index migration retains its already-applied 1378 filename from origin/main. The BIL-2
+  // migrations moved their former 1378-1381 ordinals to 1382-1385; adopt old ledger names only after checksum proof.
   [
     "1382_m23_claim_reviewed_source_fingerprint.sql",
     "1378_m23_claim_reviewed_source_fingerprint.sql",
