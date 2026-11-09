@@ -1012,8 +1012,8 @@ const TERMINAL_INPUT =
 function interactiveFlag(args: readonly string[]): boolean {
   return args.some(
     (a) =>
-      /^--(?:interactive|tty|stdin)(?:=(?:true|1))?$/.test(a) ||
-      (/^-[^-]+$/.test(a) && (a.slice(1).includes("i") || a.slice(1).includes("t"))),
+      /^--(?:attach|interactive|tty|stdin)(?:=(?:true|t|1))?$/i.test(a) ||
+      (/^-[^-]+$/.test(a) && /[ait]/i.test(a.slice(1))),
   );
 }
 
@@ -1023,17 +1023,25 @@ function interactiveInvocation(p: Parsed): boolean {
   const explicitInput = !terminalInput && ins.length + docs.length > 0;
 
   if (prog === "rlwrap") return true;
-  if (/^(docker-compose|podman-compose)$/.test(prog) && args.some((a) => /^(?:exec|run)$/.test(a)))
-    return true;
+  if (/^(docker-compose|podman-compose)$/.test(prog)) {
+    if (args.some((a) => /^(?:attach|exec|run)$/.test(a))) return true;
+    if (args.includes("start") && interactiveFlag(args)) return true;
+  }
   if (/^(docker|podman|nerdctl)$/.test(prog)) {
+    if (args.includes("attach")) return true;
     const compose = args.indexOf("compose");
     if (compose >= 0) {
       const composeArgs = args.slice(compose + 1);
-      if (composeArgs.some((a) => /^(?:exec|run)$/.test(a))) return true;
+      if (composeArgs.some((a) => /^(?:attach|exec|run)$/.test(a))) return true;
+      if (composeArgs.includes("start") && interactiveFlag(args)) return true;
     }
     if (args.some((a) => /^(?:exec|run)$/.test(a))) return interactiveFlag(args);
+    if (args.includes("start") && interactiveFlag(args)) return true;
   }
-  if (prog === "kubectl" && args.includes("exec")) return interactiveFlag(args);
+  if (prog === "kubectl") {
+    if (args.includes("attach")) return true;
+    if (args.includes("exec")) return interactiveFlag(args);
+  }
 
   if (SHELL.test(prog)) {
     if (args.length === 1 && /^(-h|--help|--version)$/.test(args[0] ?? "")) return false;
