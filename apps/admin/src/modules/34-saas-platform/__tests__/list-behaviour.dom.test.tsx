@@ -3,7 +3,9 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // cleared with a notice, Enter opens a row's drawer, Escape closes it and hands focus back to the row, and a free-text
 // filter issues one request after the typing pauses (Apply / Enter still load at once). A drawer opened from the URL
 // survives a reload that still lists its record, is cleared (with the notice) by one that does not, is not re-mounted from
-// stale rows while a failed load is retried, and closes on Back.
+// stale rows while a failed load is retried, and closes on Back. Every screen's drawer selection is on `useSelectionParam`, so
+// they share one history contract: opening pushes a single entry, picking another row replaces it, closing (or a record that
+// vanishes) pops it, and no dead or duplicate entry is left for Back to land on.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -129,8 +131,12 @@ interface ParamCase {
   id: string;
   drawer: string;
   routes: Record<string, unknown>;
-  /** The button that reloads the list. Only the screens on `useSelectionParam` name one (see URL_DRAWER_CASES). */
+  /** The button that reloads the list. Only some screens have one (see URL_DRAWER_CASES). */
   reload?: string;
+  /** What distinguishes a second row, where the selection id is not the row's `id` field (tenants are picked by slug). */
+  second?: { id: string; fields: Record<string, unknown> };
+  /** Set where a failed reload keeps the rows it already had (so the drawer is never re-mounted from stale rows). */
+  keepsRowsOnFailure?: boolean;
 }
 
 const flag = {
@@ -267,6 +273,10 @@ const PARAM_CASES: ParamCase[] = [
         },
       ]),
     },
+    // The toolbar's Search reloads the list when the text is unchanged.
+    reload: "Search",
+    keepsRowsOnFailure: true,
+    second: { id: "cedar-2", fields: { id: "t-2", orgSlug: "cedar-2" } },
   },
   {
     name: "FeatureFlags",
@@ -383,9 +393,9 @@ function scriptedList(c: ParamCase): {
   };
 }
 
-// The four screens on `useSelectionParam` (flags, BAA register, DSAR, tenant exports): each reloads from a button, empties
-// its list when a load fails, and writes the selection through a functional updater. The other lists keep their rows through
-// a failed refresh, so their drawer is never re-mounted and has nothing to prove here.
+// The screens with a button that reloads their list (flags, BAA register, DSAR, tenant exports, tenants' Search): each empties
+// its list when a load fails and has a drawer that must survive, or be cleared by, a reload. The other lists keep their rows
+// through a failed refresh, so their drawer is never re-mounted and has nothing to prove here.
 const URL_DRAWER_CASES = PARAM_CASES.filter((c) => c.reload);
 
 describe.each(URL_DRAWER_CASES)("$name URL drawer across reloads", (c) => {
@@ -422,6 +432,51 @@ describe.each(URL_DRAWER_CASES)("$name URL drawer across reloads", (c) => {
     expect(screen.queryByRole("complementary")).toBeNull();
   });
 
+  const goBack = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+  };
+
+  it("a record that vanishes under a drawer opened from the list pops that entry: one Back reaches the previous page", async () => {
+    const list = scriptedList(c);
+    mount(c.element, c.path, list.routes, PREVIOUS_PATH);
+    await waitFor(rowShown);
+    fireEvent.click(firstRow());
+    await screen.findByRole("complementary", { name: c.drawer });
+    list.setPhase("gone");
+    reload();
+    expect(await screen.findByText(STALE_NOTICE)).toBeTruthy();
+    await waitFor(() => expect(search()).toBe(""));
+    // History depth: no duplicate list entry was left behind by the clear.
+    goBack();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("a stale deep link is cleared by replacing the param: one Back reaches the previous page", async () => {
+    const list = scriptedList(c);
+    mount(c.element, `${c.path}?${c.param}=missing`, list.routes, PREVIOUS_PATH);
+    expect(await screen.findByText(STALE_NOTICE)).toBeTruthy();
+    await waitFor(() => expect(search()).toBe(""));
+    goBack();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+});
+
+/** Screens whose list empties when a load fails (the others keep their rows through a failed refresh, so nothing re-mounts). */
+const EMPTIES_ON_FAILURE_CASES = URL_DRAWER_CASES.filter((c) => !c.keepsRowsOnFailure);
+
+describe.each(EMPTIES_ON_FAILURE_CASES)("$name URL drawer across a failed load", (c) => {
+  const open = async (): Promise<
+    ReturnType<typeof scriptedList> & { listCalls: (path: string) => Recorded[] }
+  > => {
+    const list = scriptedList(c);
+    const { listCalls } = mount(c.element, `${c.path}?${c.param}=${c.id}`, list.routes);
+    await screen.findByRole("complementary", { name: c.drawer });
+    return { ...list, listCalls };
+  };
+  const reload = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: c.reload }));
+  };
+
   it("does not re-mount the drawer from stale rows while a failed load is retried", async () => {
     const { setPhase, release, listPath, listCalls } = await open();
     setPhase("failing");
@@ -443,29 +498,18 @@ describe.each(URL_DRAWER_CASES)("$name URL drawer across reloads", (c) => {
     expect(await screen.findByRole("complementary", { name: c.drawer })).toBeTruthy();
     expect(search()).toBe(`?${c.param}=${c.id}`);
   });
-
-  it("keeps other query params when a row is opened and when the drawer closes", async () => {
-    mount(c.element, `${c.path}?keep=1`, c.routes);
-    await waitFor(rowShown);
-    fireEvent.keyDown(firstRow(), { key: "Enter" });
-    const drawer = await screen.findByRole("complementary", { name: c.drawer });
-    expect(new URLSearchParams(search()).get("keep")).toBe("1");
-    expect(new URLSearchParams(search()).get(c.param)).toBe(c.id);
-    fireEvent.keyDown(drawer, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
-    expect(search()).toBe("?keep=1");
-  });
 });
 
 /** The screen's list with a second row (the first one's id counted up), so a test can pick row A then row B. */
 function withSecondRow(c: ParamCase): { routes: Record<string, unknown>; secondId: string } {
   const [listPath, listed] = Object.entries(c.routes)[0] as [string, { items: { id: string }[] }];
   const first = listed.items[0] as { id: string };
-  const secondId = c.id.replace(/1$/, "2");
-  return { routes: { [listPath]: page([first, { ...first, id: secondId }]) }, secondId };
+  const secondId = c.second?.id ?? c.id.replace(/1$/, "2");
+  const secondRow = { ...first, id: secondId, ...c.second?.fields };
+  return { routes: { [listPath]: page([first, secondRow]) }, secondId };
 }
 
-describe.each(URL_DRAWER_CASES)("$name URL drawer history", (c) => {
+describe.each(PARAM_CASES)("$name URL drawer history", (c) => {
   const { routes, secondId } = withSecondRow(c);
   const openLists = async (): Promise<void> => {
     mount(c.element, c.path, routes, PREVIOUS_PATH);
@@ -477,6 +521,18 @@ describe.each(URL_DRAWER_CASES)("$name URL drawer history", (c) => {
   };
   const drawerShown = (): Promise<HTMLElement> =>
     screen.findByRole("complementary", { name: c.drawer });
+
+  it("keeps other query params when a row is opened and when the drawer closes", async () => {
+    mount(c.element, `${c.path}?keep=1`, routes);
+    await waitFor(rowShown);
+    fireEvent.keyDown(firstRow(), { key: "Enter" });
+    const drawer = await screen.findByRole("complementary", { name: c.drawer });
+    expect(new URLSearchParams(search()).get("keep")).toBe("1");
+    expect(new URLSearchParams(search()).get(c.param)).toBe(c.id);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("?keep=1");
+  });
 
   it("opening then closing the drawer leaves no dead entry: one Back reaches the previous page", async () => {
     await openLists();

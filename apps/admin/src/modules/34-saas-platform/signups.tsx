@@ -12,6 +12,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — Signup Intents queue (M34 Phase-3, §4.1 platform-ops; F02/ADR-0010).
@@ -22,7 +23,7 @@ import {
 // client; imports only @chartwarden/ui leaves + the Foundation tone map.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { SIGNUP_TONE, cap } from "./saas-status";
 
 // §3.11 wire vocab mirror — the route returns these intent statuses.
@@ -85,8 +86,8 @@ interface Banner {
 
 export function Signups(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("intent");
+  // The open intent lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close: closeDrawer } = useSelectionParam("intent");
   const [intents, setIntents] = useState<SignupIntentView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -117,8 +118,6 @@ export function Signups(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const closeDrawer = (): void => setParams({});
 
   // Qualify enqueues the `tenant.provision` flow (§7.1); reject records the rationale on the intent.
   async function qualify(
@@ -161,7 +160,12 @@ export function Signups(): JSX.Element {
   const visible =
     statusFilter === "all" ? intents : intents.filter((i) => i.intentStatus === statusFilter);
   const selected = selectedId ? intents.find((i) => i.id === selectedId) : undefined;
-  useStaleSelection({ param: "intent", ready: loaded, found: selected !== undefined });
+  useStaleSelection({
+    param: "intent",
+    ready: loaded,
+    found: selected !== undefined,
+    clear: closeDrawer,
+  });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -189,7 +193,7 @@ export function Signups(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(i) => setParams({ intent: i.id })}
+          onSelect={(i) => select(i.id)}
           onRetry={() => void load()}
         />
       </div>
@@ -268,7 +272,7 @@ function IntentTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, i.id)}
               >
                 <td>
                   <span className="wx-row-title">{i.legalBusinessName}</span>

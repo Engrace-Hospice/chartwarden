@@ -5,6 +5,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -15,7 +16,7 @@ import type { operations } from "@chartwarden/ui";
 // leads to a new refund request (`/admin/refunds/new`, not in the sidebar). Cursor-paged.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
 import { DrawerHead, LoadMore, StateEmpty, StateError, StateLoading } from "./ui";
 
@@ -33,8 +34,8 @@ const STATE_FILTERS = [
 export function RefundsQueue(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("refund");
+  // The open refund lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("refund");
   const [rows, setRows] = useState<Refund[]>([]);
   const [state, setState] = useState<string>("requested");
   const [cursor, setCursor] = useState<string | null>(null);
@@ -79,7 +80,7 @@ export function RefundsQueue(): JSX.Element {
   );
 
   const selected = selectedId ? (rows.find((r) => r.id === selectedId) ?? null) : null;
-  useStaleSelection({ param: "refund", ready: loaded, found: selected !== null });
+  useStaleSelection({ param: "refund", ready: loaded, found: selected !== null, clear: close });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -113,16 +114,12 @@ export function RefundsQueue(): JSX.Element {
           <StateEmpty icon="rotate-ccw">No refunds in this state.</StateEmpty>
         ) : (
           <>
-            <RefundsTable
-              rows={filtered}
-              selectedId={selectedId}
-              onOpen={(id) => setParams({ refund: id })}
-            />
+            <RefundsTable rows={filtered} selectedId={selectedId} onOpen={select} />
             <LoadMore hasMore={hasMore} loading={loading} onMore={() => void load(cursor, true)} />
           </>
         )}
       </div>
-      {selected ? <RefundDrawer refund={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <RefundDrawer key={selected.id} refund={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -161,7 +158,7 @@ function RefundsTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(r.id), r.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(r.id), r.id === selectedId, false, r.id)}
             >
               <td>
                 <span className="wx-row-title">

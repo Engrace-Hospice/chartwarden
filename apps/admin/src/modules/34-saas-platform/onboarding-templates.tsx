@@ -12,6 +12,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — onboarding-template catalog (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -23,7 +24,6 @@ import {
 // server-side). requiredPermission: `onboarding_template.list`. Mirrors the M40/M36 R1 exemplars.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
 
 // The onboarding-template view (mirrors the backend OnboardingTemplateViewSchema).
 interface OnboardingTemplate {
@@ -54,8 +54,8 @@ const NEW_TEMPLATE = "new";
 
 export function OnboardingTemplates(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const drawerParam = params.get("template");
+  // The open template (or `new`) lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId: drawerParam, select, close: closeDrawer } = useSelectionParam("template");
   const [items, setItems] = useState<OnboardingTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -101,8 +101,8 @@ export function OnboardingTemplates(): JSX.Element {
     ready: loaded,
     found: selected !== undefined,
     ignore: [NEW_TEMPLATE],
+    clear: closeDrawer,
   });
-  const closeDrawer = (): void => setParams({});
   const onSaved = () => {
     closeDrawer();
     void load();
@@ -117,7 +117,7 @@ export function OnboardingTemplates(): JSX.Element {
             <p>The onboarding step catalog: the canonical platform steps plus tenant additions.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button onClick={() => setParams({ template: NEW_TEMPLATE })}>Add template</Button>
+            <Button onClick={() => select(NEW_TEMPLATE)}>Add template</Button>
           </div>
         </header>
 
@@ -135,7 +135,7 @@ export function OnboardingTemplates(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(t) => setParams({ template: t.id })}
+          onSelect={(t) => select(t.id)}
           onRetry={() => void load()}
         />
       </div>
@@ -214,7 +214,7 @@ function TemplateTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, t.id)}
               >
                 <td className="wx-num-col wx-nums">{t.canonicalOrder}</td>
                 <td>

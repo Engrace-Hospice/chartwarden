@@ -10,6 +10,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.5 hallucination triage queue
@@ -32,7 +33,7 @@ import type { operations } from "@chartwarden/ui";
 // stop the clock a clinician started (status.ts `slaBreach`).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { TRIAGE_COLUMNS, severityTone, slaBreach, triageTone } from "./status";
 import {
   EmptyListState,
@@ -62,8 +63,8 @@ const SELECTED_PARAM = "report";
 
 export function HallucinationQueue(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get(SELECTED_PARAM);
+  // The open report lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam(SELECTED_PARAM);
   const [reports, setReports] = useState<Report[]>([]);
   const [capabilityKeys, setCapabilityKeys] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -165,7 +166,7 @@ export function HallucinationQueue(): JSX.Element {
                   {ordered.map((r) => {
                     const sla = slaBreach(r.reportedAt, r.closedAt, now);
                     const isSelected = r.id === selectedId;
-                    const open = (): void => setParams({ [SELECTED_PARAM]: r.id });
+                    const open = (): void => select(r.id);
                     return (
                       <tr
                         key={r.id}
@@ -174,7 +175,7 @@ export function HallucinationQueue(): JSX.Element {
                             ? "is-selected wx-data-row-interactive"
                             : "wx-data-row-interactive"
                         }
-                        {...interactiveRowProps(open, isSelected)}
+                        {...interactiveRowProps(open, isSelected, false, r.id)}
                       >
                         <td>
                           <span className="wx-row-title wx-data-md">{keyOf(r.capabilityId)}</span>
@@ -210,11 +211,11 @@ export function HallucinationQueue(): JSX.Element {
           report={selected}
           capabilityKey={selected ? keyOf(selected.capabilityId) : null}
           loading={loading}
-          onClose={() => setParams({})}
+          onClose={close}
           onDone={(message, ok) => {
             setOutcome({ ok, message });
             if (ok) {
-              setParams({});
+              close();
               void load();
             }
           }}

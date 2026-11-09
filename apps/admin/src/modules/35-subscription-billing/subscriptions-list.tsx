@@ -5,6 +5,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -15,7 +16,7 @@ import type { operations } from "@chartwarden/ui";
 // subscription in the drawer (`?subscription=<id>`), whose actions lead to its detail, pause and apply-promo pages.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { SUBSCRIPTION_STATUSES, cap, dunningTone, orgLabel, subscriptionTone } from "./status";
 import { DrawerHead, LoadMore, StateEmpty, StateError, StateLoading } from "./ui";
 
@@ -25,8 +26,8 @@ type AdminSub = SubscriptionsPage["items"][number];
 
 export function SubscriptionsList(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("subscription");
+  // The open subscription lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("subscription");
   const [rows, setRows] = useState<AdminSub[]>([]);
   const [status, setStatus] = useState<string>("");
   const [cursor, setCursor] = useState<string | null>(null);
@@ -67,7 +68,12 @@ export function SubscriptionsList(): JSX.Element {
   }, [load]);
 
   const selected = selectedId ? (rows.find((r) => r.id === selectedId) ?? null) : null;
-  useStaleSelection({ param: "subscription", ready: loaded, found: selected !== null });
+  useStaleSelection({
+    param: "subscription",
+    ready: loaded,
+    found: selected !== null,
+    clear: close,
+  });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -100,16 +106,12 @@ export function SubscriptionsList(): JSX.Element {
           <StateEmpty icon="receipt">No subscriptions match this filter.</StateEmpty>
         ) : (
           <>
-            <SubscriptionsTable
-              rows={rows}
-              selectedId={selectedId}
-              onOpen={(id) => setParams({ subscription: id })}
-            />
+            <SubscriptionsTable rows={rows} selectedId={selectedId} onOpen={select} />
             <LoadMore hasMore={hasMore} loading={loading} onMore={() => void load(cursor, true)} />
           </>
         )}
       </div>
-      {selected ? <SubscriptionDrawer sub={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <SubscriptionDrawer key={selected.id} sub={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -151,7 +153,7 @@ function SubscriptionsTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(r.id), r.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(r.id), r.id === selectedId, false, r.id)}
             >
               <td>
                 <span className="wx-row-title">

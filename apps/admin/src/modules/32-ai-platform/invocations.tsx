@@ -8,6 +8,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.4 invocation search (`/admin/ai-platform/invocations`,
@@ -34,7 +35,7 @@ import type { operations } from "@chartwarden/ui";
 // tenant's patients), not something a console should fake with a fan-out.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { invocationTone } from "./status";
 import {
   EmptyListState,
@@ -66,8 +67,8 @@ export function InvocationSearch({
   embedded = false,
 }: InvocationSearchProps): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get(SELECTED_PARAM);
+  // The open invocation lives in the URL, so Back closes the drawer and open/close keep any other query param (an embedding tab's).
+  const { selectedId, select, close } = useSelectionParam(SELECTED_PARAM);
   const [rows, setRows] = useState<Invocation[]>([]);
   const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
@@ -109,17 +110,6 @@ export function InvocationSearch({
   useEffect(() => {
     void load(null, false);
   }, [load]);
-
-  const select = (id: string | null): void =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (id) next.set(SELECTED_PARAM, id);
-        else next.delete(SELECTED_PARAM);
-        return next;
-      },
-      { replace: true },
-    );
 
   const filters = (
     <>
@@ -177,7 +167,7 @@ export function InvocationSearch({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, r.invocationId)}
               >
                 <td className="wx-nums">{formatDate(r.invokedAt)}</td>
                 <td>
@@ -263,9 +253,10 @@ export function InvocationSearch({
       </div>
       {selectedId ? (
         <InvocationDrawer
+          key={selectedId}
           id={selectedId}
           invocation={rows.find((r) => r.invocationId === selectedId) ?? null}
-          onClose={() => select(null)}
+          onClose={close}
         />
       ) : null}
     </div>

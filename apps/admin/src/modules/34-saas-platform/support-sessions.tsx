@@ -12,6 +12,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — Support Sessions queue (M34 Phase-3, §4.1 platform-ops; F01/D8/D16).
@@ -24,7 +25,7 @@ import {
 // Foundation tone map. Every cross-tenant read is an audited platform-ops read on the server.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { SUPPORT_SESSION_TONE, cap } from "./saas-status";
 
 // §3.6 wire vocab mirror — the route returns `open | expired | closed`. An OPEN session is the active
@@ -84,8 +85,8 @@ interface Banner {
 
 export function SupportSessions(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("session");
+  // The open session lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("session");
   const [sessions, setSessions] = useState<SupportSessionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -143,7 +144,12 @@ export function SupportSessions(): JSX.Element {
   const visible =
     statusFilter === "all" ? sessions : sessions.filter((s) => s.status === statusFilter);
   const selected = selectedId ? sessions.find((s) => s.id === selectedId) : undefined;
-  useStaleSelection({ param: "session", ready: loaded, found: selected !== undefined });
+  useStaleSelection({
+    param: "session",
+    ready: loaded,
+    found: selected !== undefined,
+    clear: close,
+  });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -191,11 +197,11 @@ export function SupportSessions(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(s) => setParams({ session: s.id })}
+          onSelect={(s) => select(s.id)}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <SessionDrawer session={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <SessionDrawer key={selected.id} session={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -260,7 +266,7 @@ function SessionTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, s.id)}
               >
                 <td className="wx-data-md">{s.id}</td>
                 <td className="wx-data-md">

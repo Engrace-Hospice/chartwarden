@@ -145,7 +145,7 @@ export function BaaDocumentField({
   }
 
   return (
-    <div className="wx-form-field-wide">
+    <div>
       <TextField
         key={inputKey}
         type="file"

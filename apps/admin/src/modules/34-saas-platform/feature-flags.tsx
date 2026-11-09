@@ -12,6 +12,7 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 import type { GlyphName, paths } from "@chartwarden/ui";
@@ -28,7 +29,6 @@ import type { GlyphName, paths } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { FLAG_KIND_TONE, statusLabel } from "./saas-status";
-import { useSelectionParam } from "./use-selection-param";
 
 // §4.7 wire enums (platform-typebox `FLAG_KIND` / `FLAG_VALUE_TYPE`) — the UI owns its copy.
 const FLAG_KINDS = ["product", "rollout", "kill_switch", "migration"] as const;
@@ -152,7 +152,7 @@ export function FeatureFlags(): JSX.Element {
 
   // A failed load empties the list, so no drawer shows a flag that was last read before the failure (and a retry cannot re-mount it from stale data).
   const selected = selectedId ? flags.find((f) => f.id === selectedId) : undefined;
-  useStaleSelection({ param: "flag", ready: loaded, found: selected !== undefined });
+  useStaleSelection({ param: "flag", ready: loaded, found: selected !== undefined, clear: close });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>

@@ -12,6 +12,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -23,7 +24,7 @@ import type { operations } from "@chartwarden/ui";
 // promo (`?promo=<id>`) with its Deactivate action; "New promo" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { PROMO_EMPTY_FORM, type PromoForm, promoFormErrors } from "./form-rules";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
@@ -74,8 +75,8 @@ export function Promos(): JSX.Element {
   // A step-up refusal sends the operator to /step-up and back; the typed promo is restored and the drawer reopens.
   const restored = useStepUpMemoryDraft<PromoForm>(PROMO_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("promo");
+  // The open promo lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("promo");
   const [form, setForm] = useState<PromoForm>(restored ?? PROMO_EMPTY_FORM);
   const [loaded, setLoaded] = useState(false);
   const guard = useRequestGuard();
@@ -155,6 +156,7 @@ export function Promos(): JSX.Element {
     ready: loaded,
     found: selected !== null,
     ignore: ["new"],
+    clear: close,
   });
   const hasDrawer = showCreate || selected !== null;
 
@@ -169,7 +171,7 @@ export function Promos(): JSX.Element {
           <div className="wx-list-toolbar-end">
             <Button
               onClick={() => {
-                setParams({});
+                if (selectedId !== null) close();
                 setShowCreate((s) => !s);
               }}
             >
@@ -195,7 +197,7 @@ export function Promos(): JSX.Element {
             selectedId={selectedId}
             onOpen={(id) => {
               setShowCreate(false);
-              setParams({ promo: id });
+              select(id);
             }}
           />
         )}
@@ -210,10 +212,11 @@ export function Promos(): JSX.Element {
         />
       ) : selected ? (
         <PromoDrawer
+          key={selected.id}
           promo={selected}
           busy={busy}
           onDeactivate={() => void deactivate(selected.id, selected.code)}
-          onClose={() => setParams({})}
+          onClose={close}
         />
       ) : null}
     </div>
@@ -253,7 +256,7 @@ function PromosTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId, false, p.id)}
             >
               <td>
                 <span className="wx-row-title wx-data-md">{p.code}</span>

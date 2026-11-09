@@ -177,6 +177,8 @@ export type { OffCanvasNav } from "./hooks/use-off-canvas-nav";
 export { useDisclosureDismiss } from "./hooks/use-disclosure-dismiss";
 export { useRequestGuard } from "./hooks/use-request-guard";
 export { STALE_SELECTION_MESSAGE, useStaleSelection } from "./hooks/use-stale-selection";
+export { useSelectionParam } from "./hooks/use-selection-param";
+export type { SelectionParam } from "./hooks/use-selection-param";
 export type { StaleSelectionOptions } from "./hooks/use-stale-selection";
 export type { ToastContextValue, ToastOptions, ToastTone } from "./system/toast";
 

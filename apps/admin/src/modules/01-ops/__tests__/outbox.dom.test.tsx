@@ -3,7 +3,7 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // a link must open the drawer, a row must be operable from the keyboard, and Escape must close the drawer and give focus back.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { OutboxEventRedirect, OutboxList } from "../outbox-list";
 
@@ -37,15 +37,30 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 
 function Where(): JSX.Element {
   const { pathname, search } = useLocation();
-  return <div data-testid="where">{`${pathname}${search}`}</div>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <div data-testid="where">{`${pathname}${search}`}</div>
+      <button type="button" onClick={() => navigate(-1)}>
+        history back
+      </button>
+    </>
+  );
 }
 
-function mount(entry: string): void {
+const PREVIOUS = "/previous";
+
+/** `withPrevious` seeds one earlier history entry (a different page), so a test can count how many Backs leave the list. */
+function mount(entry: string, withPrevious = false): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter
+        initialEntries={withPrevious ? [PREVIOUS, entry] : [entry]}
+        initialIndex={withPrevious ? 1 : 0}
+      >
         <Where />
         <Routes>
+          <Route path={PREVIOUS} element={<p>previous page</p>} />
           <Route path="/admin/ops/outbox" element={<OutboxList />} />
           <Route path="/admin/ops/outbox/:id" element={<OutboxEventRedirect />} />
         </Routes>
@@ -88,5 +103,24 @@ describe("Outbox list + drawer", () => {
   it("an unknown event id shows the drawer's own not-found message rather than nothing", async () => {
     mount("/admin/ops/outbox?event=99999999-9999-4999-8999-999999999999");
     expect(await screen.findByText("This outbox event could not be found.")).toBeTruthy();
+  });
+
+  it("picking another event replaces the entry and closing pops it: no dead entry, one Back leaves the list", async () => {
+    mount("/admin/ops/outbox", true);
+    const where = (): string => screen.getByTestId("where").textContent ?? "";
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: /m1\.alpha\.happened/ }))[0] as HTMLElement,
+    );
+    await waitFor(() => expect(where()).toBe(`/admin/ops/outbox?event=${EVENT_A}`));
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: /m1\.beta\.happened/ }))[0] as HTMLElement,
+    );
+    await waitFor(() => expect(where()).toBe(`/admin/ops/outbox?event=${EVENT_B}`));
+    fireEvent.keyDown(await screen.findByRole("complementary", { name: "Outbox event" }), {
+      key: "Escape",
+    });
+    await waitFor(() => expect(where()).toBe("/admin/ops/outbox"));
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+    expect(await screen.findByText("previous page")).toBeTruthy();
   });
 });

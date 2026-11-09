@@ -11,6 +11,7 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
@@ -24,7 +25,6 @@ import type { paths } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { PLATFORM_BAA_TONE, statusLabel } from "./saas-status";
-import { useSelectionParam } from "./use-selection-param";
 
 // §3.8 wire enum (platform-typebox `BAA_STATUS`) — the UI owns its copy.
 const BAA_STATUSES = ["executed", "pending", "terminated", "missing"] as const;
@@ -115,7 +115,7 @@ export function BaaRegister(): JSX.Element {
 
   // A failed load empties the list, so no drawer shows a record that was last read before the failure (and a retry cannot re-mount it from stale data).
   const selected = selectedId ? records.find((r) => r.id === selectedId) : undefined;
-  useStaleSelection({ param: "baa", ready: loaded, found: selected !== undefined });
+  useStaleSelection({ param: "baa", ready: loaded, found: selected !== undefined, clear: close });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>

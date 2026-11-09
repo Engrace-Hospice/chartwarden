@@ -488,13 +488,13 @@ describe("BaaPanel: uploading the signed agreement", () => {
     const choose = (file: File) =>
       fireEvent.change(screen.getByLabelText(/^Signed agreement/), { target: { files: [file] } });
     choose(new File(["plain"], "notes.txt", { type: "text/plain" }));
-    expect(await screen.findByText(/PDF, JPEG, PNG, TIFF or Word/)).toBeTruthy();
+    expect(await screen.findByText("Choose a PDF, JPEG, PNG, TIFF or Word file.")).toBeTruthy();
     choose(new File([], "empty.pdf", { type: "application/pdf" }));
     expect(await screen.findByText(/file is empty/i)).toBeTruthy();
     const big = new File([new Uint8Array(1)], "big.pdf", { type: "application/pdf" });
     Object.defineProperty(big, "size", { value: 10 * 1024 * 1024 + 1 });
     choose(big);
-    expect(await screen.findByText(/at most 10 MB/i)).toBeTruthy();
+    expect(await screen.findByText("The file can be at most 10 MB.")).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "Upload agreement" }) as HTMLButtonElement).disabled,
     ).toBe(true);

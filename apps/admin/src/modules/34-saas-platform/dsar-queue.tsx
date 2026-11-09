@@ -13,6 +13,7 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
@@ -28,7 +29,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { PatientFinder } from "./patient-finder";
 import { DSAR_TONE, cap } from "./saas-status";
-import { useSelectionParam } from "./use-selection-param";
 
 // The §164.524 DSAR job view (mirrors the backend DsarExportJobViewSchema).
 interface DsarExportJob {
@@ -128,7 +128,7 @@ export function DsarQueue(): JSX.Element {
 
   // A failed load empties the list, so no drawer shows a job that was last read before the failure (and a retry cannot re-mount it from stale data).
   const selected = selectedId ? items.find((j) => j.id === selectedId) : undefined;
-  useStaleSelection({ param: "job", ready: loaded, found: selected !== undefined });
+  useStaleSelection({ param: "job", ready: loaded, found: selected !== undefined, clear: close });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>

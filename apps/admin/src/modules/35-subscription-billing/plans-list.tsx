@@ -12,6 +12,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -23,7 +24,7 @@ import type { operations } from "@chartwarden/ui";
 // meter/pricing editor (`/admin/plans/:id/edit`); "New plan" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { PLAN_EMPTY_FORM, type PlanForm, planFormErrors } from "./form-rules";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
@@ -53,8 +54,8 @@ const CADENCE_OPTIONS = [
 
 export function PlansList(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("plan");
+  // The open plan lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("plan");
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,7 @@ export function PlansList(): JSX.Element {
     ready: loaded,
     found: selected !== null,
     ignore: ["new"],
+    clear: close,
   });
   const hasDrawer = showCreate || selected !== null;
 
@@ -138,7 +140,7 @@ export function PlansList(): JSX.Element {
           <div className="wx-list-toolbar-end">
             <Button
               onClick={() => {
-                setParams({});
+                if (selectedId !== null) close();
                 setShowCreate((s) => !s);
               }}
             >
@@ -164,7 +166,7 @@ export function PlansList(): JSX.Element {
             selectedId={selectedId}
             onOpen={(id) => {
               setShowCreate(false);
-              setParams({ plan: id });
+              select(id);
             }}
           />
         )}
@@ -178,7 +180,7 @@ export function PlansList(): JSX.Element {
           onClose={() => setShowCreate(false)}
         />
       ) : selected ? (
-        <PlanDrawer plan={selected} onClose={() => setParams({})} />
+        <PlanDrawer key={selected.id} plan={selected} onClose={close} />
       ) : null}
     </div>
   );
@@ -220,7 +222,7 @@ function PlansTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId, false, p.id)}
             >
               <td>
                 <span className="wx-row-title">{p.name}</span>

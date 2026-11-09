@@ -9,6 +9,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
@@ -22,7 +23,6 @@ import type { paths } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { TENANT_EXPORT_TONE, cap } from "./saas-status";
-import { useSelectionParam } from "./use-selection-param";
 
 // The tenant-export job view (mirrors the backend TenantExportJobViewSchema).
 interface TenantExportJob {
@@ -117,7 +117,12 @@ export function TenantExportQueue(): JSX.Element {
 
   // Looked up in the loaded list (not the purpose-filtered one). A failed load empties it, so no drawer shows a job last read before the failure.
   const selected = selectedId ? items.find((j) => j.id === selectedId) : undefined;
-  useStaleSelection({ param: "export", ready: loaded, found: selected !== undefined });
+  useStaleSelection({
+    param: "export",
+    ready: loaded,
+    found: selected !== undefined,
+    clear: close,
+  });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
