@@ -362,7 +362,7 @@ describe.skipIf(!DB_URL)(
       expect(await grants(reader)).toEqual(["nomnc.read"]);
       expect(await grants(recorder)).toEqual(["nomnc.read", "nomnc.record"]);
       // an auditor-shaped role (no admission / discharge key) gains nothing; not the key `external_auditor`,
-      // which migration 1384 reserves for the system auditor role
+      // which migration 1415 reserves for the system auditor role
       const auditorish = await staff(ORG_A, "auditor_shaped", []);
       expect(await grants(auditorish)).toEqual([]);
     });
