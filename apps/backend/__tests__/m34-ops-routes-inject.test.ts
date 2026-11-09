@@ -27,6 +27,8 @@ const ORG = "11111111-1111-4111-8111-111111111111";
 const OTHER_ORG = "22222222-2222-4222-8222-222222222222";
 const TASK_PENDING = "70000000-0000-4000-8000-000000000001";
 const TASK_DONE = "70000000-0000-4000-8000-000000000002";
+const TASK_ACCOUNT_CREATED = "70000000-0000-4000-8000-000000000003";
+const TASK_PLAN_CONTRACT = "70000000-0000-4000-8000-000000000004";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -99,10 +101,10 @@ function makeServer() {
         tasks: [
           {
             id: TASK_PENDING,
-            templateKey: "org_seeded",
+            templateKey: "mac_configured",
             status: "pending",
             isCanonical: true,
-            canonicalOrder: 1,
+            canonicalOrder: 4,
             dueAt: null,
             startedAt: null,
             completedAt: null,
@@ -115,6 +117,30 @@ function makeServer() {
             status: "done",
             isCanonical: true,
             canonicalOrder: 2,
+            dueAt: null,
+            startedAt: null,
+            completedAt: null,
+            blockerReason: null,
+            skipRationale: null,
+          },
+          {
+            id: TASK_ACCOUNT_CREATED,
+            templateKey: "account_created",
+            status: "pending",
+            isCanonical: true,
+            canonicalOrder: 1,
+            dueAt: null,
+            startedAt: null,
+            completedAt: null,
+            blockerReason: null,
+            skipRationale: null,
+          },
+          {
+            id: TASK_PLAN_CONTRACT,
+            templateKey: "plan_contract",
+            status: "pending",
+            isCanonical: false,
+            canonicalOrder: 100,
             dueAt: null,
             startedAt: null,
             completedAt: null,
@@ -276,8 +302,8 @@ describe("platform onboarding read + skip", () => {
       headers: OPS,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().currentStep).toBe("org_seeded");
-    expect(res.json().tasks).toHaveLength(2);
+    expect(res.json().currentStep).toBe("account_created");
+    expect(res.json().tasks).toHaveLength(4);
     expect(
       (
         await app.inject({
@@ -310,6 +336,23 @@ describe("platform onboarding read + skip", () => {
     expect(
       (await app.inject({ method: "POST", url: doneUrl, headers: stepped, payload })).statusCode,
     ).toBe(409);
+    await app.close();
+  });
+
+  it.each([
+    ["account creation", TASK_ACCOUNT_CREATED],
+    ["plan and contract", TASK_PLAN_CONTRACT],
+  ])("refuses to skip the protected %s step", async (_label, taskId) => {
+    const { app, ops } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/platform/tenants/acme/onboarding/${taskId}/skip`,
+      headers: { ...OPS, "x-step-up": "fresh" },
+      payload: { skipRationale: "operator attempted a prohibited bypass" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("CONFLICT");
+    expect(ops.skips).toHaveLength(0);
     await app.close();
   });
 
