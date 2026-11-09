@@ -101,6 +101,12 @@ const ACK_ACTOR_GUARD_HEAD =
 // ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
 // backstop, the same two functions, never a policy.
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);
+// M3 migration 1439: `app.system_role_writer` is the transaction-local marker only M3's auditor grant sets; the system-managed role key
+// guard (1415) reads it, because the app role can write every column the system row's facts rest on. The same backstop rule: that one
+// function head, never a policy.
+const SYSTEM_ROLE_GUARD_HEAD =
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?role_system_managed_key_guard\s*\(/i;
+const SYSTEM_ROLE_GUARD_VARS = new Set<string>(["app.system_role_writer"]);
 // Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
 // A spec opts a table out by adding it here with a justification (reviewed change).
 const NON_ORG_SCOPED = new Set<string>([
@@ -809,6 +815,7 @@ for (const base of allPaths) {
       // SQL only: for TypeScript `text` is the whole file, where this would mean nothing — the
       // tsPolicies windows below are what keeps the exemption out of a policy there.
       const isAckActorGuard = isSql && ACK_ACTOR_GUARD_HEAD.test(statementHead(text));
+      const isSystemRoleGuard = isSql && SYSTEM_ROLE_GUARD_HEAD.test(statementHead(text));
       const buildsPolicy = isSql && /\b(?:CREATE|ALTER)\s+POLICY\b/i.test(text);
       let m: RegExpExecArray | null;
       SESSION_VAR_RE.lastIndex = 0;
@@ -820,6 +827,7 @@ for (const base of allPaths) {
         if (!buildsPolicy && AUDIT_CONTEXT_VARS.has(m[1]!) && isAuditCapture) continue;
         if (!buildsPolicy && KEY_RING_CONTEXT_VARS.has(m[1]!) && isKeyRingDefiner) continue;
         if (!buildsPolicy && ACK_ACTOR_VARS.has(m[1]!) && isAckActorGuard) continue;
+        if (!buildsPolicy && SYSTEM_ROLE_GUARD_VARS.has(m[1]!) && isSystemRoleGuard) continue;
         violations.push({
           file,
           rule: "rls-session-variable",
