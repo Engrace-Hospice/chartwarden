@@ -168,6 +168,7 @@ export type { ModalProps } from "./system/modal";
 export { interactiveRowProps } from "./system/interactive-row";
 export type { InteractiveRowProps } from "./system/interactive-row";
 export { ToastProvider, useOptionalToast, useToast } from "./system/toast";
+export { useRestoreFocus } from "./hooks/use-restore-focus";
 export { useDrawerA11y } from "./hooks/use-drawer-a11y";
 export type { DrawerA11yProps } from "./hooks/use-drawer-a11y";
 export { DEFAULT_DEBOUNCE_MS, useDebouncedValue } from "./hooks/use-debounced-value";

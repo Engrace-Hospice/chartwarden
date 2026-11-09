@@ -85,9 +85,9 @@ export function checkRefundForm(form: RefundForm): {
   if (form.amount.trim() === "") errors.amount = "Enter the refund amount in dollars.";
   else if (amount === null || amount <= 0)
     errors.amount = "Enter a dollar amount greater than 0, with up to two decimals, e.g. 25.00.";
-  const length = form.detail.trim().length;
-  if (length < MIN_REFUND_REASON)
-    errors.detail = `Describe the reason in at least ${MIN_REFUND_REASON} characters (${length} so far).`;
+  // Static text: the running count lives in the field's hint, so the alert is not re-announced on every keystroke.
+  if (form.detail.trim().length < MIN_REFUND_REASON)
+    errors.detail = `Describe the reason in at least ${MIN_REFUND_REASON} characters.`;
   return { errors, amountCents: Object.keys(errors).length === 0 ? amount : null };
 }
 

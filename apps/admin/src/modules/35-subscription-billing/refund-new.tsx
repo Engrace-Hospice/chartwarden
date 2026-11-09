@@ -24,7 +24,7 @@ import {
 } from "./form-rules";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
-import { REFUND_REDIRECT_DELAY_MS, useSuccessRedirect } from "./use-success-redirect";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
 const KINDS = ["full", "partial", "credit_only"] as const;
@@ -91,12 +91,8 @@ export function RefundNew(): JSX.Element {
       setBusy(false);
       return;
     }
-    setOutcome({
-      ok: true,
-      message: "Refund request created — awaiting a distinct approver (four-eyes).",
-    });
     setBusy(false);
-    finish("/admin/refunds", REFUND_REDIRECT_DELAY_MS);
+    finish("/admin/refunds", "Refund request created — awaiting a distinct approver (four-eyes).");
   }, [busy, done, client, form, finish]);
 
   return (

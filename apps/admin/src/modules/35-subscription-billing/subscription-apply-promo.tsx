@@ -16,7 +16,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
-import { SUBSCRIPTION_REDIRECT_DELAY_MS, useSuccessRedirect } from "./use-success-redirect";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 export function SubscriptionApplyPromo(): JSX.Element {
   const client = useApiClient();
@@ -56,11 +56,11 @@ export function SubscriptionApplyPromo(): JSX.Element {
       setBusy(false);
       return;
     }
-    setOutcome({ ok: true, message: `Promo "${promoCode}" applied.` });
+    // Cleared before the redirect so the locked form never flashes "Enter the promo code" under its own success.
     setCode("");
     setAttempted(false);
     setBusy(false);
-    finish(`/admin/subscriptions/${id}`, SUBSCRIPTION_REDIRECT_DELAY_MS);
+    finish(`/admin/subscriptions/${id}`, `Promo "${promoCode}" applied.`);
   }, [busy, done, client, id, code, finish]);
 
   return (
@@ -98,6 +98,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
               <TextField
                 id="promo-code"
                 label="Promo code"
+                required
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 error={attempted && !code.trim() ? "Enter the promo code to apply." : undefined}

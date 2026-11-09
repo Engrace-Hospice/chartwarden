@@ -6,8 +6,9 @@ import {
   focusFirstInvalid,
   useApiClient,
   useRequestGuard,
+  useRestoreFocus,
 } from "@chartwarden/ui";
-import type { GlyphName, operations } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund approval (`/admin/refunds/:id/approve`,
 // refund.approve). THE sensitive path: approval carries a step-up AND the §4.8 four-eyes rule (the approver
 // MUST differ from the requester). The server enforces both; this screen surfaces each denial as a
@@ -17,7 +18,7 @@ import type { GlyphName, operations } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
+import { DECIDED_REFUND_ICON, cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
 import {
   DrawerHead,
   type Outcome,
@@ -28,17 +29,9 @@ import {
   failureOutcome,
   isNotFound,
 } from "./ui";
-import { REFUND_REDIRECT_DELAY_MS, useSuccessRedirect } from "./use-success-redirect";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 type Refund = operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
-
-/** The icon for a refund that is already past `requested`: a denial or failure must not read as a success tick. */
-const DECIDED_ICON: Record<string, GlyphName> = {
-  approved: "check-circle",
-  executed_success: "check-circle",
-  denied: "x-circle",
-  executed_failed: "alert-circle",
-};
 
 /** The parsed error body is the standard envelope `{ error: { code } }` (a flat `{ code }` is tolerated). */
 function errorCode(error: unknown): string | undefined {
@@ -70,6 +63,8 @@ export function RefundApprove(): JSX.Element {
   const [denyReason, setDenyReason] = useState("");
   const [denyAttempted, setDenyAttempted] = useState(false);
   const decisionRef = useRef<HTMLDivElement>(null);
+  // A refused decision re-enables the buttons: focus returns to the one that was pressed (it was disabled while in flight).
+  const captureFocus = useRestoreFocus(acting !== null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const guard = useRequestGuard();
@@ -102,6 +97,7 @@ export function RefundApprove(): JSX.Element {
 
   const approve = useCallback(async () => {
     if (!id || acting || done) return;
+    captureFocus();
     setActing("approve");
     setOutcome(null);
     const res = await client.POST("/api/admin/refunds/{id}/approve", {
@@ -113,9 +109,8 @@ export function RefundApprove(): JSX.Element {
       setActing(null);
       return;
     }
-    setOutcome({ ok: true, message: "Refund approved — queued for execution." });
-    finish("/admin/refunds", REFUND_REDIRECT_DELAY_MS);
-  }, [acting, done, client, id, finish]);
+    finish("/admin/refunds", "Refund approved — queued for execution.");
+  }, [acting, done, client, id, finish, captureFocus]);
 
   const deny = useCallback(async () => {
     if (!id || acting || done) return;
@@ -124,6 +119,7 @@ export function RefundApprove(): JSX.Element {
       focusFirstInvalid(decisionRef.current);
       return;
     }
+    captureFocus();
     setActing("deny");
     setOutcome(null);
     const res = await client.POST("/api/admin/refunds/{id}/deny", {
@@ -136,9 +132,8 @@ export function RefundApprove(): JSX.Element {
       setActing(null);
       return;
     }
-    setOutcome({ ok: true, message: "Refund denied." });
-    finish("/admin/refunds", REFUND_REDIRECT_DELAY_MS);
-  }, [acting, done, client, id, denyReason, finish]);
+    finish("/admin/refunds", "Refund denied.");
+  }, [acting, done, client, id, denyReason, finish, captureFocus]);
 
   const pageHead = (
     <header className="wx-page-head">
@@ -178,7 +173,7 @@ export function RefundApprove(): JSX.Element {
         </InlineAlert>
         {outcome ? <OutcomeBanner {...outcome} /> : null}
         {decided ? (
-          <StateEmpty icon={DECIDED_ICON[refund.status]}>
+          <StateEmpty icon={DECIDED_REFUND_ICON[refund.status]}>
             This refund is already {cap(refund.status)} — no action available.
           </StateEmpty>
         ) : (
@@ -199,6 +194,10 @@ export function RefundApprove(): JSX.Element {
               <TextAreaField
                 id="deny-reason"
                 label="Deny reason"
+                required
+                hint="Required to deny a refund; leave it blank to approve."
+                // The reason is what the decision sends: it must not change while a decision is in flight or after it landed.
+                readOnly={acting !== null || done}
                 value={denyReason}
                 onChange={(e) => setDenyReason(e.target.value)}
                 error={

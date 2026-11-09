@@ -48,6 +48,8 @@ export function AddonsPanel({
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Which row's cancel is in flight: every action locks while busy, but only that row's button shows the spinner.
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const load = useCallback(async () => {
@@ -98,13 +100,16 @@ export function AddonsPanel({
 
   const cancel = useCallback(
     async (addonId: string) => {
+      if (busy) return;
       setBusy(true);
+      setCancellingId(addonId);
       setOutcome(null);
       const res = await client.POST("/api/admin/subscriptions/{id}/addons/{addonId}/cancel", {
         params: { path: { id: subscriptionId, addonId } },
         headers: { "Idempotency-Key": idempotencyKey() },
       });
       setBusy(false);
+      setCancellingId(null);
       if (res.error) {
         setOutcome(failureOutcome(res.error, "Could not cancel the add-on."));
         return;
@@ -115,7 +120,7 @@ export function AddonsPanel({
       });
       await load();
     },
-    [client, subscriptionId, load],
+    [busy, client, subscriptionId, load],
   );
 
   return (
@@ -160,7 +165,8 @@ export function AddonsPanel({
                       <Button
                         tone="secondary"
                         size="sm"
-                        loading={busy}
+                        loading={cancellingId === r.addonId}
+                        disabled={busy}
                         onClick={() => void cancel(r.addonId)}
                       >
                         Cancel add-on
@@ -220,7 +226,7 @@ export function AddonsPanel({
             rows={2}
           />
           <div className="wx-drawer-actions">
-            <Button type="submit" loading={busy}>
+            <Button type="submit" loading={busy && cancellingId === null}>
               {mode === "trial" ? "Start trial" : "Grant add-on"}
             </Button>
           </div>

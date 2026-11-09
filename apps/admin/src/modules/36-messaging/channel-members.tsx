@@ -6,6 +6,7 @@ import {
   TextField,
   focusFirstInvalid,
   useApiClient,
+  useRestoreFocus,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/36-messaging — Channel members (`/admin/messaging/channels/:id/members`, M36 spec §4.1).
 // List, add (POST) and remove (DELETE) members of one channel, with role + source shown per row. The server is the
@@ -22,7 +23,7 @@ import {
   listMembers,
   removeMember,
 } from "./members-api";
-import { StateEmpty, renderLoadFallback, useLoad, useRestoreFocus } from "./ui";
+import { StateEmpty, renderLoadFallback, useLoad } from "./ui";
 
 const ROLE_LABELS: Record<MemberRole, string> = {
   owner: "Owner",

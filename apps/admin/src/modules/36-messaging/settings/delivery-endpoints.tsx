@@ -10,11 +10,12 @@ import {
   TextField,
   focusFirstInvalid,
   useApiClient,
+  useRestoreFocus,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { StateEmpty, useRestoreFocus } from "../ui";
+import { StateEmpty } from "../ui";
 import { humanize } from "./alert-rules";
 import { toResult } from "./api";
 import { type Banner, BannerView, PageHead } from "./ui";

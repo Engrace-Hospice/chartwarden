@@ -124,3 +124,49 @@ describe("Add-ons panel (ADR-0110)", () => {
     );
   });
 });
+
+describe("Add-ons panel cancel in flight", () => {
+  const OTHER_ADDON = "77777777-7777-4777-8777-777777777777";
+  const otherRow = {
+    ...liveRow,
+    id: "88888888-8888-4888-8888-888888888888",
+    addonId: OTHER_ADDON,
+    addonSlug: "extra_seats",
+    addonName: "Extra seats",
+  };
+
+  it("spins only the pressed row's Cancel, locks the other, and ignores a second press", async () => {
+    const cancels: string[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchStub = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const req = new Request(input as RequestInfo, init);
+      const path = new URL(req.url).pathname;
+      if (req.method === "GET") return json([liveRow, otherRow]);
+      cancels.push(path);
+      await gate;
+      return json({ ...liveRow, status: "canceled", live: false });
+    };
+    render(
+      <ApiClientProvider
+        client={createApiClient({ baseUrl: "http://localhost", fetch: fetchStub })}
+      >
+        <AddonsPanel subscriptionId={SUB} usage={null} />
+      </ApiClientProvider>,
+    );
+    const buttons = await screen.findAllByRole("button", { name: "Cancel add-on" });
+    const [first, second] = buttons as [HTMLButtonElement, HTMLButtonElement];
+    fireEvent.click(first);
+    fireEvent.click(first);
+    fireEvent.click(second);
+    await waitFor(() => expect(first.getAttribute("aria-busy")).toBe("true"));
+    expect(second.getAttribute("aria-busy")).toBeNull();
+    expect(second.disabled).toBe(true);
+    expect(cancels).toEqual([`/api/admin/subscriptions/${SUB}/addons/${ADDON}/cancel`]);
+    release();
+    await waitFor(() => expect(first.getAttribute("aria-busy")).toBeNull());
+    expect(second.disabled).toBe(false);
+  });
+});

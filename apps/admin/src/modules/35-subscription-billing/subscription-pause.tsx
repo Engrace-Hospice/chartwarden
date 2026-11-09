@@ -15,7 +15,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
-import { SUBSCRIPTION_REDIRECT_DELAY_MS, useSuccessRedirect } from "./use-success-redirect";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 export function SubscriptionPause(): JSX.Element {
   const client = useApiClient();
@@ -46,9 +46,8 @@ export function SubscriptionPause(): JSX.Element {
       setBusy(false);
       return;
     }
-    setOutcome({ ok: true, message: "Subscription paused." });
     setBusy(false);
-    finish(`/admin/subscriptions/${id}`, SUBSCRIPTION_REDIRECT_DELAY_MS);
+    finish(`/admin/subscriptions/${id}`, "Subscription paused.");
   }, [busy, done, client, id, until, finish]);
 
   return (

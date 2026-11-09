@@ -1,4 +1,4 @@
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — a step-up-gated write refused with 403 STEP_UP_REQUIRED must give
 // the operator a real way through: a Re-verify link to the console's /step-up page that returns here. Before, the
 // screens printed "re-verify and retry" with nowhere to re-verify — and read `.code` off the envelope's top level,
@@ -29,12 +29,14 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 function mount(): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <MemoryRouter initialEntries={[PAUSE_PATH]}>
-        <Routes>
-          <Route path="/admin/subscriptions/:id/pause" element={<SubscriptionPause />} />
-          <Route path="/step-up" element={<div data-testid="step-up-page" />} />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[PAUSE_PATH]}>
+          <Routes>
+            <Route path="/admin/subscriptions/:id/pause" element={<SubscriptionPause />} />
+            <Route path="/step-up" element={<div data-testid="step-up-page" />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </ApiClientProvider>,
   );
 }

@@ -1,4 +1,9 @@
-import { ApiClientProvider, createApiClient, discardStepUpDrafts } from "@chartwarden/ui";
+import {
+  ApiClientProvider,
+  ToastProvider,
+  createApiClient,
+  discardStepUpDrafts,
+} from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — money and counts the M35 forms send are parsed by string math: "1.005", "1e3" and
 // "0x1f" are refused (a float multiply or Number() would have taken them), and a valid amount is sent as exact cents ("0.29" is 29).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -14,7 +19,7 @@ const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 let posted: Array<{ url: string; body: unknown }> = [];
-let postReply: () => Response = () => json({ id: "r1" }, 201);
+let postReply: () => Response | Promise<Response> = () => json({ id: "r1" }, 201);
 const refusal = (status: number, code: string): Response =>
   json({ error: { code, message: "refused", correlationId: "c" } }, status);
 const PLAN = {
@@ -41,15 +46,17 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 function mount(path: string): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/admin/refunds/new" element={<RefundNew />} />
-          <Route path="/admin/refunds" element={<p>refunds</p>} />
-          <Route path="/admin/plans/:id/edit" element={<PlanEdit />} />
-          <Route path="/admin/promos" element={<Promos />} />
-          <Route path="/step-up" element={<p>step-up</p>} />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/admin/refunds/new" element={<RefundNew />} />
+            <Route path="/admin/refunds" element={<p>refunds</p>} />
+            <Route path="/admin/plans/:id/edit" element={<PlanEdit />} />
+            <Route path="/admin/promos" element={<Promos />} />
+            <Route path="/step-up" element={<p>step-up</p>} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </ApiClientProvider>,
   );
 }
@@ -113,11 +120,11 @@ describe("promo amount and percentage", () => {
 describe("plan meter", () => {
   it("refuses a strange overage, quantity or threshold and sends nothing; a valid one is exact cents", async () => {
     mount(`/admin/plans/${PLAN.id}/edit`);
-    await screen.findByLabelText("Event type");
+    await screen.findByLabelText(/^Event type/);
     const set = (label: string | RegExp, value: string): void => {
       fireEvent.change(screen.getByLabelText(label), { target: { value } });
     };
-    set("Event type", "seat");
+    set(/^Event type/, "seat");
     for (const value of BAD) {
       set(/^Overage/, value);
       fireEvent.click(screen.getByRole("button", { name: "Add meter" }));
@@ -148,20 +155,49 @@ describe("plan meter refusals", () => {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   };
   const typeMeter = (): void => {
-    set("Event type", "seat");
+    set(/^Event type/, "seat");
     set(/^Included qty/, "10");
     set(/^Overage/, "0.29");
     set(/^Warn %/, "75");
   };
   const values = () =>
-    ["Event type", /^Included qty/, /^Overage/, /^Warn %/].map(
+    [/^Event type/, /^Included qty/, /^Overage/, /^Warn %/].map(
       (label) => (screen.getByLabelText(label) as HTMLInputElement).value,
     );
+
+  it("a second submit while the first meter is in flight sends nothing", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    postReply = async () => {
+      await gate;
+      return json({ id: "m1" }, 201);
+    };
+    mount(`/admin/plans/${PLAN.id}/edit`);
+    await screen.findByLabelText(/^Event type/);
+    typeMeter();
+    const form = screen.getByRole("button", { name: "Add meter" }).closest("form") as HTMLElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await waitFor(() => expect(posted).toHaveLength(1));
+    release();
+    await screen.findByText(/Meter "seat" added/);
+    expect(posted).toHaveLength(1);
+  });
+
+  it("marks every validated meter field as required", async () => {
+    mount(`/admin/plans/${PLAN.id}/edit`);
+    await screen.findByLabelText(/^Event type/);
+    for (const label of [/^Event type/, /^Included qty/, /^Overage/, /^Warn %/]) {
+      expect((screen.getByLabelText(label) as HTMLInputElement).required).toBe(true);
+    }
+  });
 
   it("a 422 keeps what was typed, to fix and retry", async () => {
     postReply = () => refusal(422, "VALIDATION_FAILED");
     mount(`/admin/plans/${PLAN.id}/edit`);
-    await screen.findByLabelText("Event type");
+    await screen.findByLabelText(/^Event type/);
     typeMeter();
     fireEvent.click(screen.getByRole("button", { name: "Add meter" }));
     expect(await screen.findByText(/Could not add the meter/)).toBeTruthy();
@@ -171,18 +207,18 @@ describe("plan meter refusals", () => {
   it("a step-up refusal keeps the typed meter across Re-verify, restored once", async () => {
     postReply = () => refusal(403, "STEP_UP_REQUIRED");
     mount(`/admin/plans/${PLAN.id}/edit`);
-    await screen.findByLabelText("Event type");
+    await screen.findByLabelText(/^Event type/);
     typeMeter();
     fireEvent.click(screen.getByRole("button", { name: "Add meter" }));
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     await screen.findByText("step-up");
     cleanup();
     mount(`/admin/plans/${PLAN.id}/edit`);
-    await screen.findByLabelText("Event type");
+    await screen.findByLabelText(/^Event type/);
     expect(values()).toEqual(["seat", "10", "0.29", "75"]);
     cleanup();
     mount(`/admin/plans/${PLAN.id}/edit`);
-    await screen.findByLabelText("Event type");
+    await screen.findByLabelText(/^Event type/);
     expect(values()).toEqual(["", "0", "0", "80"]);
   });
 });

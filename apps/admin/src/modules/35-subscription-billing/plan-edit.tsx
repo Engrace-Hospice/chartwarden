@@ -129,7 +129,7 @@ function PlanEditBody(): JSX.Element {
   const meterRowRef = useRef<HTMLFormElement>(null);
 
   const addMeter = useCallback(async () => {
-    if (!id) return;
+    if (!id || busy) return;
     setMeterAttempted(true);
     const issues = meterErrors(meter);
     const inclusive = parseWholeNumber(meter.inclusive);
@@ -164,10 +164,10 @@ function PlanEditBody(): JSX.Element {
     if (!added) return; // a refused meter keeps what was typed, to fix and retry
     setMeter(BLANK_METER);
     setMeterAttempted(false);
-  }, [client, id, meter, run]);
+  }, [busy, client, id, meter, run]);
 
   const activate = useCallback(() => {
-    if (!id) return;
+    if (!id || busy) return;
     void run(
       () =>
         client.POST("/api/admin/plans/{id}/activate", {
@@ -177,10 +177,10 @@ function PlanEditBody(): JSX.Element {
       "Plan activated — queued for Stripe sync (product/price).",
       "Could not activate this plan.",
     );
-  }, [client, id, run]);
+  }, [busy, client, id, run]);
 
   const deprecate = useCallback(() => {
-    if (!id) return;
+    if (!id || busy) return;
     void run(
       () =>
         client.POST("/api/admin/plans/{id}/deprecate", {
@@ -190,7 +190,7 @@ function PlanEditBody(): JSX.Element {
       "Plan deprecated.",
       "Could not deprecate this plan.",
     );
-  }, [client, id, run]);
+  }, [busy, client, id, run]);
 
   const frame = (content: JSX.Element): JSX.Element => (
     <div className="wx-list-drawer">
@@ -258,12 +258,14 @@ function PlanEditBody(): JSX.Element {
           <div className="wx-form-grid">
             <TextField
               label="Event type"
+              required
               value={meter.eventType}
               onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
               error={meterIssues.eventType}
             />
             <TextField
               label="Included qty"
+              required
               value={meter.inclusive}
               inputMode="numeric"
               error={meterIssues.inclusive}
@@ -271,6 +273,7 @@ function PlanEditBody(): JSX.Element {
             />
             <TextField
               label="Overage $/unit"
+              required
               value={meter.overage}
               inputMode="decimal"
               error={meterIssues.overage}
@@ -278,6 +281,7 @@ function PlanEditBody(): JSX.Element {
             />
             <TextField
               label="Warn %"
+              required
               value={meter.threshold}
               inputMode="numeric"
               error={meterIssues.threshold}
