@@ -366,7 +366,11 @@ export interface M23WriteRouteService {
   submitClaim(
     actor: M23WriteActor,
     claimId: string,
-    route: { readonly expectedVersion: number; readonly expectedRouteFingerprint?: string; readonly reviewedSourceFingerprint: string },
+    route: {
+      readonly expectedVersion: number;
+      readonly expectedRouteFingerprint?: string;
+      readonly reviewedSourceFingerprint: string;
+    },
   ): Promise<ClaimSubmissionAcceptedView>;
   replaceClaim(
     actor: M23WriteActor,

@@ -5,10 +5,32 @@ import {
   requireStepUp,
 } from "@chartwarden/auth";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
+import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { createClaimMdEraRecoveryService } from "../../modules/25-remittance/ingest/claimmd-era-recovery";
 
-type RecoveryService = ReturnType<typeof createClaimMdEraRecoveryService>;
+/**
+ * The one M25 recovery method this route calls, typed structurally: bootstrap (M1) may not import M25. The composition
+ * root passes M25's `createClaimMdEraRecoveryService(...)`, which satisfies it.
+ */
+interface RecoveryService {
+  requeue(
+    input: {
+      readonly actionId: string;
+      readonly inboxId: string;
+      readonly accountReference: string;
+      readonly usage: "test" | "production";
+      readonly stage: "capture" | "ownership_resolution" | "m25_delivery";
+      readonly reasonCode: string;
+      readonly expectedState: string;
+      readonly expectedVersion: number;
+    },
+    actor: {
+      readonly id: string;
+      readonly kind: "platform_operator";
+      readonly authorization: string;
+    },
+  ): Promise<unknown>;
+}
 const RECOVERY_PERMISSION = "billing.rule_config.platform_admin";
 const RECOVERY_GUARDS = [
   requirePermission(RECOVERY_PERMISSION),
@@ -16,6 +38,30 @@ const RECOVERY_GUARDS = [
   requireStepUp(RECOVERY_PERMISSION),
 ];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Published request body for `POST /api/v1/ops/claimmd/eras/:inboxId/recovery` (OpenAPI only; the handler below
+ * still validates every field itself). Mirrors those checks exactly.
+ */
+export const ClaimMdEraRecoveryBodySchema = Type.Object({
+  actionId: Type.String({
+    format: "uuid",
+    description: "Client-generated id; a replay with the same id is idempotent",
+  }),
+  accountReference: Type.String({
+    pattern: "^[A-Za-z0-9._:-]{1,128}$",
+    description: "Must equal this runtime's configured Claim.MD account",
+  }),
+  usage: Type.Union([Type.Literal("test"), Type.Literal("production")]),
+  stage: Type.Union([
+    Type.Literal("capture"),
+    Type.Literal("ownership_resolution"),
+    Type.Literal("m25_delivery"),
+  ]),
+  reasonCode: Type.String({ pattern: "^[A-Z][A-Z0-9_]{2,63}$" }),
+  expectedState: Type.String({ minLength: 1, maxLength: 64 }),
+  expectedVersion: Type.Integer({ minimum: 0 }),
+});
 
 /**
  * Platform-only ERA recovery invocation. This endpoint accepts no tenant/provider identity and

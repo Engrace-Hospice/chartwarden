@@ -294,14 +294,16 @@ export function MedicaidClaimEditor(): JSX.Element {
               <Field label="Claim preparation" value="Available in WardenX" />
               <Field
                 label="Transport configuration"
-                value={claim.routeReadiness.transportConfigured ? "Present; not certified" : "Not configured"}
+                value={
+                  claim.routeReadiness.transportConfigured
+                    ? "Present; not certified"
+                    : "Not configured"
+                }
               />
               <Field label="Provider enrollment" value="Not verified for this route" />
               <Field label="Trading-partner certification" value="Not verified" />
               <Field label="Electronic submission" value="Unavailable — not certified" />
-              <output role="status" style={mutedStyle}>
-                {claim.routeReadiness.message}
-              </output>
+              <output style={mutedStyle}>{claim.routeReadiness.message}</output>
             </div>
           </Card>
 
@@ -392,9 +394,7 @@ export function MedicaidClaimEditor(): JSX.Element {
           <Field
             label="MCO"
             value={
-              claim.mcoId
-                ? "Managed-care assignment (unverified)"
-                : "State program not resolved"
+              claim.mcoId ? "Managed-care assignment (unverified)" : "State program not resolved"
             }
           />
           <Field label="Total charges" value={money(totalCharges)} />

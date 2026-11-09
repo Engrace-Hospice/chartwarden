@@ -2,8 +2,6 @@ import { timingSafeEqual } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
-import { applyCommercialClaimMdReceipt } from "../../41-billing-commercial/services/claimmd-ack-adapter";
-import type { CommercialOutboxPort } from "../../41-billing-commercial/services/types";
 import { interpretClaimMdStatus } from "./interpret";
 import { applyMedicareClaimMdReceipt } from "./medicare-adapter";
 import type { AckDeliveryLease, ResolvedClaimMdAck } from "./store";
@@ -18,6 +16,30 @@ type EvidenceCipher = {
     sealed: string;
   }): Promise<string>;
 };
+/**
+ * M41's Claim.MD receipt applier, injected by the composition root (apps/backend/src/index.ts). M23 cannot import M41:
+ * M41 depends on M23, so a direct import is a module cycle the boundary gate rejects.
+ */
+export type CommercialClaimMdReceiptApplier = (
+  tx: Tx,
+  input: {
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly locationId: string | null;
+    readonly claimId: string;
+    readonly submissionId: string;
+    readonly attemptKey: string;
+    readonly payerId: string;
+    readonly pcn: string;
+    readonly eventId: string;
+    readonly occurredAt: Date;
+  },
+) => Promise<{
+  readonly outcome: "applied" | "held";
+  readonly previousState: string | null;
+  readonly newState: string | null;
+  readonly reasonCode: string;
+}>;
 type Decision = {
   readonly outcome: "applied" | "held" | "informational" | "shadow";
   readonly previousState: string | null;
@@ -94,7 +116,7 @@ export function createClaimMdAckDispatcher(input: {
   };
   readonly mode: "shadow" | "apply";
   readonly evidenceCipher: EvidenceCipher;
-  readonly commercialOutbox: CommercialOutboxPort;
+  readonly applyCommercialReceipt: CommercialClaimMdReceiptApplier;
 }) {
   const R = schema.claimmdResponseResolutions;
   const E = schema.claimmdSubmissionEvidence;
@@ -206,7 +228,7 @@ export function createClaimMdAckDispatcher(input: {
             occurredAt: item.source.capturedAt,
           });
         else if (current.module === "M41")
-          decision = await applyCommercialClaimMdReceipt(tx, input.commercialOutbox, {
+          decision = await input.applyCommercialReceipt(tx, {
             organizationId: org,
             providerEntityId: evidence.providerEntityId,
             locationId: evidence.locationId,

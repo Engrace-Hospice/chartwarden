@@ -32,9 +32,9 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 14/14 ✅ |
 | M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 40/40 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 58/58 ✅ | ✅ | ✅ | — | 21/21 ✅ |
-| M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 96/96 ✅ | ✅ | ✅ | ✅ | 34/34 ✅ |
+| M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 97/97 ✅ | ✅ | ✅ | ✅ | 37/45 ⚠️ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 16/16 ✅ |
-| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 158/158 ✅ | ✅ | ✅ | ✅ | 45/45 ✅ |
+| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 160/160 ✅ | ✅ | ✅ | ✅ | 52/53 ⚠️ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | ✅ | 15/15 ✅ |
 | M28 FHIR Gateway | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ❌ | ✅ | — | 9/9 ✅ |
@@ -50,7 +50,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 22/22 ✅ |
 | M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 14/14 ✅ |
-| M41 Billing — Commercial | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 26/26 ✅ | ✅ | ✅ | — | 16/16 ✅ |
+| M41 Billing — Commercial | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 16/16 ✅ |
 
 ## Hard-fail consistency checks
 

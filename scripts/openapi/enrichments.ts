@@ -15520,3 +15520,28 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M41EnrollmentResponseSchema,
   },
 });
+
+// ── Claim.MD ERA recovery (platform ops) ──────────────────────────────────────────────────────────────────
+import { ClaimMdEraRecoveryBodySchema as M25ClaimMdEraRecoveryBodySchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-era-recovery";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/ops/claimmd/eras/:inboxId/recovery": {
+    summary:
+      "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",
+    body: M25ClaimMdEraRecoveryBodySchema,
+  },
+});
+
+// ── Claim.MD ERA review (M25 staged remittances) ──────────────────────────────────────────────────────────
+import { ClaimMdEraReviewQuerySchema as M25ClaimMdEraReviewQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/claimmd-era-review.routes";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/remittance/claimmd-era": {
+    summary:
+      "Claim.MD ERAs staged for M25 posting, filterable by provider entity and stage state, cursor-paginated",
+    query: M25ClaimMdEraReviewQuerySchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id": {
+    summary: "One Claim.MD ERA staged for M25 posting",
+  },
+});
