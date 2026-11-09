@@ -112,7 +112,7 @@ export type VendorOutboundPayload = HybridVendorOutboundPayload | CentralizedVen
 /** The keys each profile permits on the wire, at ANY depth — `kind`/`years` are {@link VendorAge}'s own
  *  nested keys and are listed because the guard walks the whole body, not just its top level. The guard
  *  rejects anything else, so an adapter that hand-rolls a body cannot quietly widen the projection. */
-export const VENDOR_PAYLOAD_ALLOWED_KEYS: {
+const VENDOR_PAYLOAD_ALLOWED_KEYS: {
   readonly [P in VendorMinimizationProfile]: readonly string[];
 } = {
   hybrid_phi_min: [
@@ -268,7 +268,7 @@ function collectStrings(value: unknown, into: Set<string>): void {
 /** Denylisted values shorter than this are not attributable: a three-character surname is a substring of
  *  half the medication names in the formulary, and a guard that cries wolf gets switched off. The
  *  compile-time union is what covers the short-value case. */
-export const MIN_ATTRIBUTABLE_VALUE_LENGTH = 4;
+const MIN_ATTRIBUTABLE_VALUE_LENGTH = 4;
 
 /**
  * The §7.10 property: given the source context a body was built from, no denylisted source VALUE appears

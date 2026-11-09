@@ -12,7 +12,7 @@
 //  3. LOCKED ONCE A PLAN EXISTS. After the death opens a plan the draft is carried into the initial score and is a closed
 //     record: the form is read-only and says why (the server answers 409 `DRAFT_LOCKED` to a late write).
 //  4. A 404 IS NOT-FOUND-OR-NOT-YOURS, never a hint about who is dying. The save carries the draft version read as
-//     `If-Match` (0 for the first write), so a colleague's concurrent edit is a 412, not a silent overwrite.
+//     `If-Match` (0 for the first write), so a colleague's concurrent edit is a 409 STALE_VERSION, not a silent overwrite.
 import {
   Button,
   EmptyState,

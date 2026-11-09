@@ -11,6 +11,7 @@
 //   - Resolution reuses the routing rules' precedence (domain `pickCodeKeyed`) and the same MAC lookup
 //     (`loadDenialCodes`), so a playbook and a route are read for the same MAC.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, type DocumentReader, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
@@ -29,8 +30,7 @@ import {
   validatePlaybookVersion,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation, loadDenialCodes } from "./denial-route-service";
+import { loadDenialCodes } from "./denial-route-service";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -509,7 +509,7 @@ export function buildDrizzlePlaybookService(
             409,
           );
         }
-        if (cur.rowVersion !== ifMatch) throw new VersionConflictError(cur.rowVersion);
+        if (cur.rowVersion !== ifMatch) throw new StaleVersionError();
         const updated = await tx
           .update(PV)
           .set({
@@ -520,7 +520,7 @@ export function buildDrizzlePlaybookService(
           })
           .where(and(eq(PV.id, versionId), eq(PV.rowVersion, ifMatch)))
           .returning({ id: PV.id, rowVersion: PV.rowVersion });
-        if (!updated[0]) throw new VersionConflictError(cur.rowVersion);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },
@@ -528,7 +528,7 @@ export function buildDrizzlePlaybookService(
     async publishVersion(actor, versionId, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await loadVersion(tx, versionId);
-        if (cur.rowVersion !== ifMatch) throw new VersionConflictError(cur.rowVersion);
+        if (cur.rowVersion !== ifMatch) throw new StaleVersionError();
         const refusal = checkPublish({
           status: cur.status as PlaybookVersionStatus,
           authorMembershipId: cur.authoredByMembershipId,
@@ -582,7 +582,7 @@ export function buildDrizzlePlaybookService(
             ),
           )
           .returning({ id: PV.id, rowVersion: PV.rowVersion });
-        if (!published[0]) throw new VersionConflictError(cur.rowVersion);
+        if (!published[0]) throw new StaleVersionError();
         return { ...published[0], effectiveFrom };
       });
     },
@@ -590,7 +590,7 @@ export function buildDrizzlePlaybookService(
     async retireVersion(actor, versionId, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         const cur = await loadVersion(tx, versionId);
-        if (cur.rowVersion !== ifMatch) throw new VersionConflictError(cur.rowVersion);
+        if (cur.rowVersion !== ifMatch) throw new StaleVersionError();
         if (checkRetire(cur.status as PlaybookVersionStatus) !== null) {
           throw new ChartWardenError(
             "PLAYBOOK_NOT_PUBLISHED",
@@ -603,7 +603,7 @@ export function buildDrizzlePlaybookService(
           .set({ status: "retired", retiredAt: new Date(), rowVersion: sql`${PV.rowVersion} + 1` })
           .where(and(eq(PV.id, versionId), eq(PV.rowVersion, ifMatch)))
           .returning({ id: PV.id, rowVersion: PV.rowVersion });
-        if (!updated[0]) throw new VersionConflictError(cur.rowVersion);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },

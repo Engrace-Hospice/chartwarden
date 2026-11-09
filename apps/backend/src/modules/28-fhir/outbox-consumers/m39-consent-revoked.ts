@@ -11,7 +11,7 @@
 // CRITICAL `revoked_cascade_failed` alert. A malformed payload THROWS (relay retry -> DLQ), never a silent ACK.
 //
 // TENANT from the envelope, never the payload. The ACK is idempotent; it runs on every delivery.
-export const M28_CONSENT_REVOKED_CONSUMER = {
+const M28_CONSENT_REVOKED_CONSUMER = {
   eventName: "m39.consent.revoked",
   consumerName: "m28.m39-consent-revoked",
 } as const;

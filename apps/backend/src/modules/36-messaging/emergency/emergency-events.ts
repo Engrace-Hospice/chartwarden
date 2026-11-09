@@ -15,7 +15,7 @@ export interface EmergencySentFacts {
   readonly at: Date;
 }
 
-export function emergencySentPayload(f: EmergencySentFacts): Record<string, unknown> {
+function emergencySentPayload(f: EmergencySentFacts): Record<string, unknown> {
   return {
     organizationId: f.orgId,
     emergencyId: f.emergencyId,

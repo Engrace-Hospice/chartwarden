@@ -1,3 +1,4 @@
+import "@chartwarden/shared/route-kit";
 import type { PermissionMirrorRow } from "@chartwarden/auth";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/03-authorization/routes/authz-typebox.ts — M3 (§4.3–4.4) request schemas.
@@ -22,7 +23,7 @@ import { ValidationError } from "@chartwarden/types";
 // acting user id (§3.2). Path params that address a ROLE stay permissive strings: a role id is a
 // platform-template reference as often as a uuid (`tmpl_administrator` in the slice store), and the
 // route's own `deps.roles.get()` → 404 is the real guard. Every other id param is uuid-shaped.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   BreakGlassStatus,
@@ -34,21 +35,8 @@ import type {
   RoleView,
 } from "../authz-ports";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 // Deliberately permissive (a local-part @ a dotted domain) — M3 only needs enough shape to refuse
 // junk before M2 mints an auditor magic-link to it; deliverability is the mail transport's verdict.
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set(
-    "email",
-    (v) => typeof v === "string" && /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v),
-  );
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {

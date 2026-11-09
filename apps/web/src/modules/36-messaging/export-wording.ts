@@ -16,7 +16,6 @@ import {
 } from "@chartwarden/types";
 
 export const REQUEST_PERMISSION = MESSAGING_EXPORT_REQUEST_PERMISSION;
-export const APPROVE_PERMISSION = MESSAGING_EXPORT_APPROVE_PERMISSION;
 export const DOWNLOAD_PERMISSION = MESSAGING_EXPORT_DOWNLOAD_PERMISSION;
 
 export const MINE_TITLE = "Message exports";
@@ -84,7 +83,6 @@ export const STATUS_LABELS: Readonly<Record<MessagingExportStatus, string>> = {
   rejected: "Rejected",
   cancelled: "Cancelled",
 };
-export const EXPIRED_LABEL = "Expired";
 export const expiresIn = (hours: number, minutes: number): string =>
   hours > 0 ? `Expires in ${hours} h ${minutes} min` : `Expires in ${minutes} min`;
 export const FAILED_TEXT = "The export could not be built. Request it again.";

@@ -3,9 +3,9 @@
 // §F08 Idempotency-Key. The rule registry is the FROZEN code-defined DEFAULT_MEDICAID_RULES (register is a
 // no-op until a dynamic platform-rule store lands); the rate-schedule load delegates to the M40 loader
 // (queued no-op until M40 binds) — the M26 platform-constant deferral posture.
+import { rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { rejectAiActor, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { m24ActorOf } from "./actor";
 import { P, STEP_UP } from "./guards";
 import { LoadRateScheduleBody, RegisterPlatformRuleBody, parse } from "./m24-typebox";
 import type { M24WriteService } from "./write-service";
@@ -14,7 +14,7 @@ export interface AdminRouteDeps {
   readonly writeService: M24WriteService;
 }
 
-const AI = rejectAiActor();
+const AI = rejectAiActor("AI principals cannot create or modify Medicaid billing records (D12)");
 const IDEMPOTENT = requireIdempotencyKey();
 
 export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps): void {
@@ -33,7 +33,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
     },
     async (request, reply) => {
       await writeService.registerPlatformRule(
-        writeActorOf(request),
+        m24ActorOf(request),
         parse(RegisterPlatformRuleBody, request.body),
       );
       return reply.code(202).send({ accepted: true });
@@ -56,7 +56,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
         .code(202)
         .send(
           await writeService.loadRateSchedule(
-            writeActorOf(request),
+            m24ActorOf(request),
             parse(LoadRateScheduleBody, request.body),
           ),
         ),

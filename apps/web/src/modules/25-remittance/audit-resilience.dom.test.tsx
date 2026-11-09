@@ -123,7 +123,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       tierVersion += 1;
       auditVersion += 1;
       deadlineVersion += 1;
-      return json(status, { error: { code: "VERSION_CONFLICT", message: "version moved" } });
+      return json(status, { error: { code: "STALE_VERSION", message: "version moved" } });
     }
     return json(200, { id: AUDIT, version: 9 });
   }

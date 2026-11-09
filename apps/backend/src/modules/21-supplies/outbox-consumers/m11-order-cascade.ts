@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/21-supplies/outbox-consumers/m11-order-cascade.ts — M21's live binding for two
 // of the three M11 cascade deciders in `../consumers/m11-orders.ts` (F-120, #248).
 //
@@ -15,9 +16,9 @@
 // `dme.v2`/`supply.v2` and M5 exposes `PatientAddressReader.primaryAddress` (the two gaps F-166/F-229 named).
 // `comfort_kit` settles there, unbound — see that file's header.
 //
-// WHY NOT `cancelSupplyRequest` / `M21WriteActor`. `routes/actor.ts`'s own doc comment is explicit: "the
-// §4.5.1 inbound cascades reach M21 through the outbox consumers, not through a route, and they attribute
-// their rows to the source event rather than to a human" — `writeActorOf` REFUSES a session with no
+// WHY NOT `cancelSupplyRequest` / `WriteActor`. The §4.5.1 inbound cascades reach M21 through the outbox
+// consumers, not through a route, and they attribute their rows to the source event rather than to a
+// human — `writeActorOf` REFUSES a session with no
 // membership, and fabricating one here would misattribute a system cascade to a person who did nothing on
 // a DEA chain-of-custody-adjacent table. This binding runs `transitionSupplyRequest` + `patchSupplyRequest`
 // directly (the same primitives `runRequestTransition` composes in `../routes/write-service-drizzle.ts`),
@@ -27,7 +28,7 @@
 // decider treats a second delivery for the same order as an idempotent skip rather than a second row — but
 // nothing in the schema enforces that, so this reads the MOST RECENTLY CREATED row rather than assuming
 // uniqueness.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   DmeRentalCadence,
@@ -53,9 +54,6 @@ import type { OutboxEmission, WriteOutboxPort } from "../routes/write-service";
 import { patchSupplyRequest } from "../routes/write-service-drizzle";
 
 const REQUEST = schema.supplyRequest;
-
-/** A consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export interface M21OrderCascadeDeps {
   readonly db: DbClient;

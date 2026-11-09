@@ -180,7 +180,7 @@ export class TransferNoticeRepository {
       filter.admissionId ? eq(T.admissionId, filter.admissionId) : undefined,
       filter.state ? eq(T.state, noticeStateCodec.toDb(filter.state)) : undefined,
       filter.action ? eq(T.action, filter.action) : undefined,
-      keysetBefore(T.createdAt, T.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(T.createdAt, T.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -188,7 +188,7 @@ export class TransferNoticeRepository {
       .where(where)
       .orderBy(desc(T.createdAt), desc(T.id))
       .limit(size + 1);
-    return buildCursorPage(rows.map(toRecord), size, (r) => ({
+    return buildCursorPage(organizationId, rows.map(toRecord), size, (r) => ({
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));

@@ -76,7 +76,7 @@ export async function loadAddendumSelections(
   return { ok: true, value: data };
 }
 
-/** The WHOLE tree, with the `If-Match` version of the last read/save (a 412 is someone else saving first). */
+/** The WHOLE tree, with the `If-Match` version of the last read/save (a 409 STALE_VERSION is someone else saving first). */
 export async function saveAddendumSelections(
   client: ApiClient,
   ids: Ids,

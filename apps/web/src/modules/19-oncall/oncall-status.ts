@@ -244,11 +244,6 @@ export const DEFAULT_ESCALATION_TIER = "tier_1_rn_supervisor";
 export const DEFAULT_ANSWER_TYPE = "boolean";
 export const DEFAULT_MINIMIZATION_PROFILE = "hybrid_phi_min";
 
-/** The §8.6 / D12 AI-governance confidence floor. A suggestion at or above it that the clinician overrides
- *  needs a ≥10-char reason; below it, no reason is demanded (see `M19_AI_CONFIDENCE_FLOOR`). Mirrored here
- *  as the BAND names the wire carries — the numeric floor is the server's and is never re-decided here. */
-export const AI_CONFIDENCE_AT_OR_ABOVE_FLOOR: readonly string[] = ["high"];
-
 /** §8.6 — the minimum length of a D12 override reason. The SERVER enforces it (`ApplyProtocolBody`'s
  *  `minLength: 10`); the form mirrors it so the clinician learns before the round trip, never instead. */
 export const AI_OVERRIDE_REASON_MIN_CHARS = 10;

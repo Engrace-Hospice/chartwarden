@@ -24,7 +24,7 @@ import { statusLabel, validationSeverityTone } from "./billing-status";
 // §4.7 `regulatory_required_rule_protected` predicate → 403). Non-regulatory overlays may be toggled,
 // re-severitied, re-parameterized (PATCH), reverted to the platform default (DELETE), or a tenant CUSTOM
 // rule may be added (POST .../custom). Every mutation carries the §2.5 If-Match version + an Idempotency-Key
-// (§4.1.1); a 412 surfaces inline ("reopen to retry"), a 403 as "regulatory-protected", a 503 as a seam
+// (§4.1.1); a 409 (stale version) surfaces inline ("reopen to retry"), a 403 as "regulatory-protected", a 503 as a seam
 // notice — never a toast. Lantern: AdminSplitLayout, No-Line rail, §6.6 StatusPills via billing-status.ts,
 // CSS-var tokens only. openapi emits no schemas for billing, so reads are cast and the mutation paths are
 // driven through `as never` inits (the server stays the authoritative parser).
@@ -57,7 +57,7 @@ interface RuleConfigPage {
 }
 
 function mutationError(status: number | undefined): string {
-  if (status === 412) return "This rule changed since you opened it — reopen to retry.";
+  if (status === 409) return "This rule changed since you opened it — reopen to retry.";
   if (status === 403) return "This rule is regulatory-required and cannot be changed.";
   if (status === 422) return "The overlay was rejected — review the rule parameters.";
   if (status === 503) return "Billing write seam unavailable — try again shortly.";

@@ -8,8 +8,8 @@
 // (onboarding/wizard-service.ts), not here; these routes compose the §4.5 keys, the §4.6 ABAC predicates, step-up where a
 // decision is security-relevant, and the human-actor (no AI) block.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf, rejectAiActor } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
 import type { OnboardingWizard } from "../../onboarding/wizard-service";
 import {
   GoLiveAttestRequest,
@@ -19,7 +19,6 @@ import {
   TenantCompleteStepRequest,
   TenantReopenStepRequest,
 } from "../onboarding-wizard-typebox";
-import { type PreHandler, actorOf } from "./actor";
 import {
   OnboardingBlockRequest,
   OnboardingListQuerySchema,
@@ -179,7 +178,8 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
 function tenantActor(actor: ReturnType<typeof actorOf>) {
   return {
     kind: "tenant" as const,
-    membershipId: actor.membershipId,
+    // The wizard service reads "no membership" as "" (the tenant route actor's contract before the kit).
+    membershipId: actor.membershipId ?? "",
     userId: actor.userId,
     roles: actor.roles,
   };

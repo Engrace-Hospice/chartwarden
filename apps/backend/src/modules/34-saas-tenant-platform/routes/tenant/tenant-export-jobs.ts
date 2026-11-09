@@ -10,8 +10,8 @@
 // route, separate file) before a download URL is issued. The list/download surfaces are auditRead-declared
 // in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";
 import {
   TenantExportJobParamsSchema,
@@ -55,7 +55,7 @@ export function registerTenantExportRoutes(
     "/api/v1/tenant/tenant-export-jobs",
     { preHandler: [REQUEST, ABAC_REQUEST, STEP_UP_REQUEST] },
     async (request, reply) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const body = parse(TenantExportRequest, request.body);
       const res = await service.requestTenantExport(organizationId, membershipId, {
         requestedPurpose: body.requestedPurpose,
@@ -78,7 +78,7 @@ export function registerTenantExportRoutes(
     "/api/v1/tenant/tenant-export-jobs/:id/download",
     { preHandler: [DOWNLOAD, ABAC_DOWNLOAD, STEP_UP_DOWNLOAD] },
     async (request) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const { id } = parse(TenantExportJobParamsSchema, request.params);
       return service.tenantExportDownloadUrl(organizationId, id, membershipId);
     },

@@ -25,7 +25,7 @@ import {
   ValidationError,
 } from "@chartwarden/types";
 import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
-import type { M35WriteActor } from "../routes/actor";
+import type { M35WriteActor } from "../routes/service";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
 import { type PlatformAuditPort, failClosedPlatformRunner, requireAuditPort } from "./ports";
 import { normalizeOptionalRef, normalizeReason, normalizeRequiredText } from "./text";

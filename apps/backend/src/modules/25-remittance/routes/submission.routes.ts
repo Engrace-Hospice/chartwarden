@@ -1,16 +1,15 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/submission.routes.ts - M25 milestone 6a routes: the submission attempt of
 // an ADR response, an appeal (incl. a QIC escalation request) and a reopening request. Reading gates on each subject's
 // own read key; recording a receipt gates on the subject's submit key + step-up (the operation key is the permission
 // key, guards.ts); cancelling gates on the submit key. No new permission keys. Every change is If-Match (409 when
 // stale) and requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
 // Nothing here sends anything outside ChartWarden: there is no send route in 6a.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP } from "./guards";
-import { parse } from "./m25-typebox";
 import type { SubmissionService, SubmissionSubjectKind } from "./submission-service";
 
 export interface SubmissionRouteDeps {
@@ -118,7 +117,7 @@ function handlersFor(svc: SubmissionService, kind: SubmissionSubjectKind, what: 
         kind,
         idOf(request),
         body,
-        ifMatchVersion(request),
+        ifMatchVersionOf(request),
       ),
     );
   };
@@ -131,7 +130,7 @@ function handlersFor(svc: SubmissionService, kind: SubmissionSubjectKind, what: 
         idOf(request),
         body.attemptId,
         body.reason,
-        ifMatchVersion(request),
+        ifMatchVersionOf(request),
       ),
     );
   };

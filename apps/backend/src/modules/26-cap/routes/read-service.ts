@@ -1,8 +1,16 @@
 // apps/backend/src/modules/26-cap/routes/read-service.ts — the M26 READ service interface (the §4.1 GET
 // surface). The Drizzle implementation lives in read-service-drizzle.ts; a route test may bind an in-memory
 // stand-in. Money crosses as integer cents; the seam read-views (seam-impls.ts) convert to cents-as-string.
-import type { M26ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
+import type { RouteActor } from "@chartwarden/shared/route-kit";
+
+/** The M26 actor: org + user + roles (a route actor or a cron/seam system actor). */
+export type M26Actor = Pick<RouteActor, "organizationId" | "userId" | "roles">;
+
+/** A §4.12 cursor page: the items plus the opaque signed cursor of the next page. */
+export interface CursorPage<T> {
+  readonly items: T[];
+  readonly nextCursor: string | null;
+}
 
 export interface PeriodView {
   id: string;
@@ -156,36 +164,36 @@ export interface DashboardView {
 }
 
 export interface M26ReadService {
-  listPeriods(actor: M26ReadActor): Promise<PeriodView[]>;
-  getPeriod(actor: M26ReadActor, periodId: string): Promise<PeriodView | null>;
-  listProjections(actor: M26ReadActor, periodId: string): Promise<ProjectionView[]>;
-  getAgencyProjection(actor: M26ReadActor, periodId: string): Promise<ProjectionView | null>;
+  listPeriods(actor: M26Actor): Promise<PeriodView[]>;
+  getPeriod(actor: M26Actor, periodId: string): Promise<PeriodView | null>;
+  listProjections(actor: M26Actor, periodId: string): Promise<ProjectionView[]>;
+  getAgencyProjection(actor: M26Actor, periodId: string): Promise<ProjectionView | null>;
   getPatientProjection(
-    actor: M26ReadActor,
+    actor: M26Actor,
     periodId: string,
     patientId: string,
   ): Promise<ProjectionView | null>;
-  getInpatientProjection(actor: M26ReadActor, periodId: string): Promise<ProjectionView | null>;
+  getInpatientProjection(actor: M26Actor, periodId: string): Promise<ProjectionView | null>;
   getPatientAccrual(
-    actor: M26ReadActor,
+    actor: M26Actor,
     periodId: string,
     patientId: string,
   ): Promise<PatientAccrualView | null>;
   listAccrualLines(
-    actor: M26ReadActor,
+    actor: M26Actor,
     periodId: string,
     patientId: string,
     cursor: string | undefined,
     limit: number,
   ): Promise<CursorPage<AccrualLineView>>;
-  getInpatientAccrual(actor: M26ReadActor, periodId: string): Promise<InpatientAccrualView | null>;
+  getInpatientAccrual(actor: M26Actor, periodId: string): Promise<InpatientAccrualView | null>;
   listThresholdEvents(
-    actor: M26ReadActor,
+    actor: M26Actor,
     filters: ThresholdEventFilters,
   ): Promise<ThresholdEventView[]>;
-  getPsrImport(actor: M26ReadActor, importId: string): Promise<PsrImportView | null>;
-  listPsrReconciliation(actor: M26ReadActor, importId: string): Promise<PsrVarianceView[]>;
-  getSettlement(actor: M26ReadActor, periodId: string): Promise<SettlementView | null>;
-  getDashboard(actor: M26ReadActor): Promise<DashboardView>;
+  getPsrImport(actor: M26Actor, importId: string): Promise<PsrImportView | null>;
+  listPsrReconciliation(actor: M26Actor, importId: string): Promise<PsrVarianceView[]>;
+  getSettlement(actor: M26Actor, periodId: string): Promise<SettlementView | null>;
+  getDashboard(actor: M26Actor): Promise<DashboardView>;
   listPlatformConstants(): Promise<PlatformConstantView[]>;
 }

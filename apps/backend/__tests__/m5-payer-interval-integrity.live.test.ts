@@ -433,7 +433,7 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     );
     const assemble = (serviceFrom: string, serviceTo: string) =>
       m24.assembleClaim(
-        { organizationId: ORG, userId: STAFF, roles: [], stepUpRecent: true },
+        { organizationId: ORG, userId: STAFF, roles: [] },
         {
           patientId,
           admissionId: "f0000000-0845-4000-8000-0000000000a2",
@@ -457,7 +457,7 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     );
     await expect(
       m24.assembleClaim(
-        { organizationId: ORG, userId: STAFF, roles: [], stepUpRecent: true },
+        { organizationId: ORG, userId: STAFF, roles: [] },
         {
           patientId: lapsed,
           admissionId: "f0000000-0845-4000-8000-0000000000a3",

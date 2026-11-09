@@ -1,4 +1,3 @@
-import { Button, SelectField, TextField, nowLocalInput, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the AUDIT RESPONSE PACKET section of the audit work rail (hospice ADR/TPE/QIC
 // PRD, milestone 7a-2). While the request is in assembly the specialist types the response checklist FROM THE REQUEST
 // LETTER (nothing is pre-filled: what an audit asks for is not something this app knows), attaches documents under a
@@ -12,6 +11,7 @@ import { Button, SelectField, TextField, nowLocalInput, useApiClient } from "@ch
 // reloaded, and when that reload FAILS nothing says "done" and every command stays disabled behind a Retry reload; a
 // conflict reloads the request but keeps the person's unsaved checklist edits on screen; the step-up draft is restored
 // only on a genuine return from the step-up page and never restores the late-filing acknowledgement.
+import { Button, SelectField, TextField, nowLocalInput, useApiClient } from "@chartwarden/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -66,7 +66,7 @@ interface FilingDraft {
 const CONFLICT_COPY =
   "This request changed while you were working. It was reloaded and your edit was not saved.";
 /** Refusals that mean the record moved under the person: the screen reloads and says the edit was not saved. */
-const MOVED_CODES = new Set(["VERSION_CONFLICT", "AUDIT_FROZEN", "AUDIT_WRONG_STATE"]);
+const MOVED_CODES = new Set(["STALE_VERSION", "AUDIT_FROZEN", "AUDIT_WRONG_STATE"]);
 
 function failureCopy(res: { status: number | null; code: string | null; message: string }): string {
   const moved = res.status === 409 && res.code !== null && MOVED_CODES.has(res.code);

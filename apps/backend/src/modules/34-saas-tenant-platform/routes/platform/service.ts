@@ -14,6 +14,7 @@
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import type { OnboardingProgress } from "../../onboarding/progress";
+import { type CursorPage, PLATFORM_CURSOR_SCOPE, paginate } from "../keyset-page";
 import {
   type BaaDocumentCheck,
   assertBaaDocumentFiled,
@@ -22,7 +23,6 @@ import {
   governingBaaIds,
   withGoverningFacts,
 } from "./baa-guards";
-import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (the thin worker-trigger seam the command routes inject) ─────────────────────────────
 
@@ -739,7 +739,7 @@ export function createInMemoryTenantPlatformBackend(
           )
           .map(toSummary),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
     },
     async isTenantSlugTaken(slug) {
       return tenants.has(slug); // the slice has no retired-slug aliases; the Drizzle service reads them
@@ -892,7 +892,7 @@ export function createInMemoryTenantPlatformBackend(
           )
           .map((i) => ({ ...i, createdAt: i.issuedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...i }) => i) };
     },
     async issueInvitation(_actorUserId, args) {
@@ -926,7 +926,7 @@ export function createInMemoryTenantPlatformBackend(
     },
     async listOnboardingTemplates(cursor, limit) {
       const rows = desc([...templates.values()].map((t) => ({ ...t })));
-      return paginate(rows, cursor, limit);
+      return paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
     },
     async upsertOnboardingTemplate(_actorUserId, args) {
       // A step becomes canonical (gating go-live for every tenant) only by migration: this upsert never promotes one.
@@ -955,14 +955,14 @@ export function createInMemoryTenantPlatformBackend(
           .filter((s) => (filter.status ? s.status === filter.status : true))
           .map((s) => ({ ...sessionView(s), createdAt: s.startedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...s }) => s) };
     },
     async listSessionEvents(sessionId, cursor, limit) {
       const s = sessions.get(sessionId);
       if (!s) throw new NotFoundError("support session");
       const rows = desc([...s.events].map((e) => ({ ...e, createdAt: e.occurredAt })));
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...e }) => e) };
     },
     async startSession(args) {
@@ -1062,7 +1062,7 @@ export function createInMemoryTenantPlatformBackend(
           .filter((i) => (filter.source ? i.source === filter.source : true))
           .map((i) => ({ ...i, createdAt: i.receivedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...i }) => i) };
     },
     async qualifyIntent(intentId, actorMembershipId, args) {
@@ -1125,7 +1125,7 @@ export function createInMemoryTenantPlatformBackend(
           filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
         )
         .filter((b) => (filter.status ? b.baaStatus === filter.status : true));
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       const items = page.items.map(({ createdAt: _c, ...b }) => b);
       return {
         ...page,
@@ -1201,7 +1201,7 @@ export function createInMemoryTenantPlatformBackend(
           .filter((j) => (filter.held === undefined ? true : j.held === filter.held))
           .map((j) => ({ ...j, createdAt: j.requestedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return {
         ...page,
         items: page.items.map(({ createdAt: _c, held, ...j }) => ({
@@ -1250,7 +1250,7 @@ export function createInMemoryTenantPlatformBackend(
           .filter((f) => (filter.flagKind ? f.flagKind === filter.flagKind : true))
           .map((f) => ({ ...f, createdAt: f.updatedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...f }) => f) };
     },
     async upsertFeatureFlag(_actorUserId, args) {

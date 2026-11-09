@@ -1,3 +1,4 @@
+import "@chartwarden/shared/route-kit";
 import type { EvvAggregatorSubmissionDto, EvvBracketDto, EvvEventDto } from "@chartwarden/types";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/18-evv/routes/evv-typebox.ts — M18-T06 TypeBox route schemas (§4.2).
@@ -8,7 +9,6 @@ import { ValidationError } from "@chartwarden/types";
 // resolve at authz time. Coordinates (D10) never leave the system through these schemas except on the inbound
 // capture body; the read DTOs are coordinate-free.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   ArrivalView as ServiceArrivalView,
@@ -19,14 +19,6 @@ import type {
   MetricsView as ServiceMetricsView,
   MissingResolutionView as ServiceMissingResolutionView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 const Coords = Type.Object({
   lat: Type.Number({ minimum: -90, maximum: 90 }),

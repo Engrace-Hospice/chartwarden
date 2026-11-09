@@ -114,7 +114,7 @@ export class ClaimAcknowledgmentRepository {
     const where = and(
       eq(A.organizationId, organizationId),
       inArray(A.outcomeStatus, DENIAL_OUTCOMES as unknown as string[]),
-      keysetBefore(A.createdAt, A.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(A.createdAt, A.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -122,7 +122,7 @@ export class ClaimAcknowledgmentRepository {
       .where(where)
       .orderBy(desc(A.createdAt), desc(A.id))
       .limit(size + 1);
-    return buildCursorPage(rows, size, (r) => ({
+    return buildCursorPage(organizationId, rows, size, (r) => ({
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));

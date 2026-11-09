@@ -14,6 +14,12 @@
 // The facilitator columns hold membership ids. A staff facilitator must resolve to a bereavement-capable paid discipline; a volunteer facilitator
 // to the volunteer discipline (gates checked at open and, through `bereavement_group_scope`, at every run route).
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type KeysetCursor as Cursor,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   BereavedContactRelationship,
@@ -35,7 +41,6 @@ import { loadContactEnrollments, loadGroupRoster } from "../groups/roster-drizzl
 import { BereavementStateError, checkVersion } from "../lifecycle/index";
 import { loadProgramContacts } from "../program/program-contacts";
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import { type Cursor, clampLimit, decodeCheckedCursor, toCursorPage } from "./concurrency";
 import type {
   GroupDetailView,
   GroupEnrollmentView,
@@ -330,7 +335,11 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
   return {
     async listGroups(actor, input) {
       const limit = clampLimit(input.limit, GROUP_PAGE);
-      const after: Cursor | null = decodeCheckedCursor(input.cursor, "instant");
+      const after: Cursor | null = decodeKeysetCursor(
+        actor.organizationId,
+        input.cursor,
+        "instant",
+      );
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const rows = await tx
@@ -354,6 +363,7 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
           rows.slice(0, limit).map((r) => r.id),
         );
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ a: r.createdAt.toISOString(), id: r.id }),

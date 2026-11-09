@@ -1,3 +1,4 @@
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/letter-service.ts — the physician condolence letter service interface (ADR-0109 D6,
 // routes 38 / 39 / 40).
 //
@@ -7,7 +8,6 @@
 // same transaction; M22 renders it. Everything here is oversight-only (`org_scope_bereavement_oversight`), so no volunteer or portal
 // shaping is needed.
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 export type PhysicianLetterStatus = "pending_review" | "approved" | "rendered" | "declined";
 

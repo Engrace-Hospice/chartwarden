@@ -64,6 +64,14 @@ import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
+import {
+  type CursorPage,
+  PLATFORM_CURSOR_SCOPE,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+  paginate,
+} from "../keyset-page";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
 import {
   type BaaDocumentCheck,
@@ -74,14 +82,6 @@ import {
   governingBaaIds,
   withGoverningFacts,
 } from "./baa-guards";
-import {
-  type CursorPage,
-  decodeCursor,
-  decodeSqlCursor,
-  encodeCursor,
-  pageSizeOf,
-  paginate,
-} from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import { readOnboardingProgress } from "./onboarding-progress-drizzle";
@@ -577,7 +577,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
               ? v.legalBusinessName.toLowerCase().includes(filter.search.toLowerCase())
               : true,
           );
-        const page = paginate(views, cursor, limit);
+        const page = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         // Progress is read for the tenants on THIS page only (three queries, never three per tenant), after the filter and the cut.
         const progress = await readOnboardingProgress(
           tx,
@@ -912,7 +912,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             expiresAt: iso(i.expiresAt),
             createdAt: isoReq(i.issuedAt),
           }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...i }) => i) };
       });
     },
@@ -1030,7 +1030,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const sorted = [...views].sort((a, b) =>
           a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
         );
-        return paginate(sorted, cursor, limit);
+        return paginate(PLATFORM_CURSOR_SCOPE, sorted, cursor, limit);
       });
     },
 
@@ -1100,7 +1100,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .map((r) => sessionView(r.s, r.grant, now))
           .filter((v) => (filter.status ? v.status === filter.status : true));
         const withCursor = views.map((v) => ({ ...v, createdAt: v.startedAt }));
-        const p = paginate(withCursor, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, withCursor, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1124,7 +1124,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           actorIp: e.actorIp ?? null,
           createdAt: isoReq(e.occurredAt),
         }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1193,7 +1193,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             tenantAccountId: i.tenantAccountId ?? null,
             createdAt: isoReq(i.receivedAt),
           }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1299,7 +1299,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
           .map(baaView)
           .map((v) => ({ ...v, createdAt: v.executedOn ?? v.effectiveOn ?? "0000-00-00" }));
-        const p = paginate(withCursor, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, withCursor, cursor, limit);
         const items = p.items.map(({ createdAt: _c, ...v }) => v);
         return { ...p, items: await withGoverningFacts(items, governingIds, boundTo(tx)) };
       });
@@ -1401,7 +1401,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     async listTenantExportJobs(filter, cursor, limit): Promise<CursorPage<TenantExportJobView>> {
       // The cursor goes into SQL as a timestamp and a uuid: checked strictly BEFORE the platform context is entered, so a value that is
       // neither is a clean 400 that leaves no platform bypass audit row.
-      const keyset = cursor ? decodeSqlCursor(cursor) : undefined;
+      const keyset = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list tenant export jobs", async (tx) => {
         const repo = new TenantExportRepository(tx);
         const size = pageSizeOf(limit);
@@ -1448,7 +1448,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         return {
           items,
           nextCursor:
-            hasMore && last ? encodeCursor({ createdAt: last.cursorTs, id: last.id }) : null,
+            hasMore && last
+              ? encodeKeyset(PLATFORM_CURSOR_SCOPE, { createdAt: last.cursorTs, id: last.id })
+              : null,
           hasMore,
         };
       });
@@ -1529,7 +1531,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       const sorted = [...withCursor].sort((a, b) =>
         a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
       );
-      const p = paginate(sorted, cursor, limit);
+      const p = paginate(PLATFORM_CURSOR_SCOPE, sorted, cursor, limit);
       return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
     },
 

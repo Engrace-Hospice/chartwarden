@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/05-patient/outbox-consumers/m22-intake-sud-privacy.ts — M5's half of the DocLens
 // SUD-detection round-trip (M22 §7.4 W4 / D8, M5 D10; F-237).
 //
@@ -22,7 +23,7 @@
 // Idempotent: each decision is a function of the CURRENT snapshot, so a redelivery that finds the change
 // already applied decides "no change" and emits nothing. A null/unknown patient is a silent no-op (the
 // convention of every M5 consumer); a malformed payload throws (dead-letter for a human).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   M22_INTAKE_SUD_CONFIRMED_EVENT,
@@ -38,7 +39,6 @@ import type { PrivacyFlag } from "../privacy/index";
 
 const P = schema.patients;
 const PFS = schema.patientPrivacyFlagSnapshots;
-const CONSUMER_USER_ID = "";
 
 export const M5_INTAKE_SUD_PRIVACY_CONSUMER = {
   eventNames: [

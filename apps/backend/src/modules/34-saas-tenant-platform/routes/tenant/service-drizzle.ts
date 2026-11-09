@@ -30,7 +30,7 @@ import {
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
-import { paginate } from "./concurrency";
+import { paginate } from "../keyset-page";
 import type {
   BaaRecordView,
   DownloadUrlView,
@@ -90,7 +90,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
       return inOrgCtx(organizationId, async (tx) => {
         const rows = await tx.select().from(SCG); // RLS scopes to app.org_id
         const views = rows.map(grantView).sort(byCreatedDesc);
-        return paginate(views, cursor, limit);
+        return paginate(organizationId, views, cursor, limit);
       });
     },
 
@@ -185,7 +185,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           .filter((v) => (filter.patientId ? v.patientId === filter.patientId : true))
           .filter((v) => (filter.status ? v.status === filter.status : true))
           .sort(byCreatedDesc);
-        return paginate(views, cursor, limit);
+        return paginate(organizationId, views, cursor, limit);
       });
     },
 
@@ -297,7 +297,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           .map(tenantExportView)
           .filter((v) => (filter.status ? v.status === filter.status : true))
           .sort(byCreatedDesc);
-        return paginate(views, cursor, limit);
+        return paginate(organizationId, views, cursor, limit);
       });
     },
 
@@ -334,7 +334,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
       return inOrgCtx(organizationId, async (tx) => {
         const rows = await tx.select().from(BAA);
         const views = rows.map(baaTenantView).sort(byCreatedDesc);
-        return paginate(views, cursor, limit);
+        return paginate(organizationId, views, cursor, limit);
       });
     },
 

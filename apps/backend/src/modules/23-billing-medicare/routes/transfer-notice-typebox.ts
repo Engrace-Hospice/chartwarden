@@ -2,6 +2,7 @@
 // shapes of the Medicare transfer-notice routes (TOB 8xC / corrected 8xC / 8xD; CMS Pub. 100-04 ch. 11 §20.1.3
 // / §20.1.4). Named `*-typebox` for the same table-ownership-heuristic reason as `billing-typebox.ts`. The route
 // handlers `parse(...)` the request schemas below; the OpenAPI enrichment reuses the SAME exports.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 
 const uuid = () => Type.String({ format: "uuid" });
@@ -28,8 +29,7 @@ const PATIENT_STATUS = Type.Union([Type.Literal("50"), Type.Literal("51")]);
 export const TransferNoticeIdParamsSchema = Type.Object({ id: uuid() });
 
 export const TransferNoticeListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
   patientId: Type.Optional(uuid()),
   admissionId: Type.Optional(uuid()),
   state: Type.Optional(NOTICE_STATE),
@@ -37,7 +37,8 @@ export const TransferNoticeListQuerySchema = Type.Object({
 
 const ExpectedVersion = Type.Integer({
   minimum: 0,
-  description: "The notice `version` the change is applied against (a stale value → 412).",
+  description:
+    "The notice `version` the change is applied against (a stale value → 409 STALE_VERSION).",
 });
 
 export const ConfirmPriorBillingBodySchema = Type.Object({

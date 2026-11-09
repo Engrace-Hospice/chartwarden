@@ -22,13 +22,3 @@ export const REFUND_TERMINAL_STATUSES: readonly RefundStatus[] = [
   "executed_success",
   "executed_failed",
 ];
-
-/** True iff `from → to` is a legal §2.2 refund transition. */
-export function canTransitionRefund(from: RefundStatus, to: RefundStatus): boolean {
-  return (REFUND_TRANSITIONS[from] as readonly RefundStatus[]).includes(to);
-}
-
-/** True iff the refund admits no further transition. */
-export function isTerminalRefundStatus(status: RefundStatus): boolean {
-  return REFUND_TERMINAL_STATUSES.includes(status);
-}

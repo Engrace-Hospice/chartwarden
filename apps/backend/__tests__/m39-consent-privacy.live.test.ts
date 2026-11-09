@@ -550,6 +550,25 @@ describe.skipIf(!DB_URL)(
           flags: ["sud"],
         }),
       ]);
+
+      // Offset paging rides a signed cursor: it pages, is bound to its org, and an unsigned one is refused.
+      const first = await svc.listRestricted(ORG_A, { limit: 1 });
+      expect(first.items).toHaveLength(1);
+      expect(first.nextCursor).toContain(".");
+      const second = await svc.listRestricted(ORG_A, {
+        limit: 1,
+        cursor: first.nextCursor as string,
+      });
+      expect(second.items).toHaveLength(1);
+      expect(second.items[0]?.patientId).not.toBe(first.items[0]?.patientId);
+      expect(second.nextCursor).toBeNull();
+      await expect(
+        svc.listRestricted(ORG_B, { limit: 1, cursor: first.nextCursor as string }),
+      ).rejects.toMatchObject({ code: "INVALID_CURSOR", statusCode: 422 });
+      await expect(svc.listRestricted(ORG_A, { cursor: "1" })).rejects.toMatchObject({
+        code: "INVALID_CURSOR",
+        statusCode: 422,
+      });
     });
 
     // ── M5 §4.5 `patient.snapshot_rebuild` — the quarterly full rebuild (same derivation as the resync) ──

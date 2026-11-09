@@ -7,6 +7,7 @@
 // other. A linked ADR / denial / claim must be visible to THIS org (a foreign key alone ignores RLS) and inside the
 // actor's scope, else it is a 404. The audit_request write-audit trigger and audit_request_event are the trail.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -30,8 +31,6 @@ import {
   loadAuditResponseView,
 } from "./audit-response-service";
 import { patientOfClaim } from "./claim-patient";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation } from "./denial-route-service";
 import {
   type RecordedDeadlineView,
   earliestOpenDueAt,
@@ -236,7 +235,7 @@ export function buildDrizzleAuditRequestService(
       .set({ version: sql`${AR.version} + 1`, updatedAt: new Date() })
       .where(and(eq(AR.id, cur.id), eq(AR.version, ifMatch)))
       .returning({ id: AR.id, version: AR.version });
-    if (!bumped[0]) throw new VersionConflictError(cur.version);
+    if (!bumped[0]) throw new StaleVersionError();
     return bumped[0];
   }
 
@@ -525,7 +524,7 @@ export function buildDrizzleAuditRequestService(
           .set({ ...next, version: sql`${AR.version} + 1`, updatedAt: new Date() })
           .where(and(eq(AR.id, id), eq(AR.version, ifMatch)))
           .returning({ id: AR.id, version: AR.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await event(tx, actor, id, "updated", { fields: Object.keys(patch) });
         return updated[0];
       });
@@ -632,7 +631,7 @@ export function buildDrizzleAuditRequestService(
           })
           .where(and(eq(AR.id, id), eq(AR.version, ifMatch), eq(AR.state, cur.state)))
           .returning({ id: AR.id, version: AR.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await event(tx, actor, id, to);
         return updated[0];
       });

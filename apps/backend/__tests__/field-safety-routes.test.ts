@@ -71,10 +71,7 @@ import {
   UnknownSafetyEffectError,
   coordinatesCaptured,
   decodeCoordinates,
-  decodeCursor,
   encodeCoordinates,
-  encodeCursor,
-  ifMatchVersion,
   runEffects,
 } from "../src/modules/20-field-safety/routes/index";
 import {
@@ -714,27 +711,6 @@ describe("M20-T06 / M20-F16 — the coordinate sentinel", () => {
 });
 
 // ── §4.1 concurrency policy ──────────────────────────────────────────────────────────────────────────
-
-describe("M20-T06 §4.1 — cursors and If-Match", () => {
-  it("a tampered cursor THROWS rather than silently serving page 1", () => {
-    const cursor = encodeCursor("org-1", { a: "2026-07-31T10:00:00.000Z", id: "row-1" });
-    expect(decodeCursor("org-1", cursor)).toEqual({ a: "2026-07-31T10:00:00.000Z", id: "row-1" });
-    expect(() => decodeCursor("org-1", `${cursor}x`)).toThrow();
-    // a cursor minted for another org does not verify here
-    expect(() => decodeCursor("org-2", cursor)).toThrow();
-    expect(decodeCursor("org-1", undefined)).toBeNull();
-  });
-
-  it("`If-Match` tolerates weak ETags and refuses a blank one when required", () => {
-    expect(ifMatchVersion({ headers: { "if-match": 'W/"3"' } })).toBe(3);
-    expect(ifMatchVersion({ headers: {} })).toBeUndefined();
-    expect(() => ifMatchVersion({ headers: {} }, true)).toThrow();
-    // `Number("")` is 0 and version 0 does not exist — the empty header is refused, not coerced
-    expect(() => ifMatchVersion({ headers: { "if-match": "" } }, true)).toThrow();
-  });
-});
-
-// ── §4.2 request schemas ─────────────────────────────────────────────────────────────────────────────
 
 describe("M20-T06 §4.2 — the request schemas", () => {
   it("the SOS press accepts a coordinate-free body (M20-F16 — §4.2's `required` loses)", () => {

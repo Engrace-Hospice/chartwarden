@@ -407,6 +407,33 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     await app.close();
   });
 
+  it("§4.2 the in-memory census pages on a signed cursor; a garbage cursor is a 422 INVALID_CURSOR, not page 1", async () => {
+    const second = { ...existing, id: "pat-second", mrn: "MRN-S", lastName: "TURING" };
+    const { service } = createInMemoryPatientRouteService({ patients: [existing, second] });
+    const first = await service.list(ORG, { limit: 1 }, null);
+    expect(first.items.map((p) => p.id)).toEqual([EXISTING]);
+    expect(first.nextCursor).toContain(".");
+    const next = await service.list(ORG, { limit: 1, cursor: first.nextCursor as string }, null);
+    expect(next.items.map((p) => p.id)).toEqual(["pat-second"]);
+    expect(next.nextCursor).toBeNull();
+    // a cursor minted for one org does not reposition a read in another
+    await expect(
+      service.list("org_b", { limit: 1, cursor: first.nextCursor as string }, null),
+    ).rejects.toMatchObject({ code: "INVALID_CURSOR", statusCode: 422 });
+
+    const { app } = makeServer();
+    for (const bad of ["garbage", "1"]) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients?limit=1&cursor=${bad}`,
+        headers: EDIT,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("INVALID_CURSOR");
+    }
+    await app.close();
+  });
+
   it("§4.2 census-metrics returns the org's active count + per-status breakdown (denies without read)", async () => {
     const { app } = makeServer();
     const res = await app.inject({

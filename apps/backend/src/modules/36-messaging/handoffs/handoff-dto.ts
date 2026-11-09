@@ -34,7 +34,7 @@ export interface ItemDtoDeps {
   readonly summaries: HandoffSummaryPorts;
 }
 
-export function countItems(items: readonly HandoffItemRow[]): HandoffItemCounts {
+function countItems(items: readonly HandoffItemRow[]): HandoffItemCounts {
   const counts: Record<HandoffItemState, number> = {
     pending: 0,
     accepted: 0,

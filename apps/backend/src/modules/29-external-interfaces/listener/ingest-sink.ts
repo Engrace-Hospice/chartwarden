@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 // apps/backend/src/modules/29-external-interfaces/listener/ingest-sink.ts — GAP-086. The REAL `MllpIngestSink`
 // (§4.11.3 steps 3-6): the Drizzle implementation that persists one `hl7_message_inbound` row per received frame.
 //
@@ -17,7 +18,7 @@
 // (a partitioned unique index must include the partition key). The dedup is therefore enforced here: a per-key
 // transaction-scoped advisory lock serialises two simultaneous copies of one MSH-10, and the second sees the first's
 // committed row.
-import { createHash, randomUUID } from "node:crypto";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -30,7 +31,6 @@ import type { MshEnvelope } from "./mllp-framing";
 import type { SupervisorFeedDescriptor } from "./supervisor";
 
 const INBOUND = schema.hl7MessageInbound;
-const SYSTEM_USER_ID = "";
 
 export interface IngestSinkDeps {
   readonly db: DbClient;
@@ -77,7 +77,7 @@ export function createDrizzleIngestSinkFactory(
   const log = deps.log ?? (() => {});
 
   return (feed) => {
-    const orgCtx = { organizationId: feed.organizationId, userId: SYSTEM_USER_ID };
+    const orgCtx = { organizationId: feed.organizationId, userId: CONSUMER_USER_ID };
 
     const exists = async (
       tx: DbClient,

@@ -24,7 +24,7 @@ import type {
   SraCycleStatus,
 } from "@chartwarden/quality";
 import type { M30ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
+import type { CursorPage } from "./pagination";
 import type { QualityPatientScope } from "./patient-scope";
 
 // Re-export the actor so route plugins import the read contract + actor from one barrel.

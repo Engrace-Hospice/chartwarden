@@ -367,7 +367,7 @@ describe("RepresentativePanel", () => {
   it("keeps typed values behind a visible cue when a save hits a stale version, and reads the record again", async () => {
     handlers[APPTS] = listOf([appointment({ recordedByMembershipId: ME })]);
     handlers["PATCH /api/v1/representative-appointments/a1"] = () =>
-      json(409, { error: { code: "VERSION_CONFLICT", message: "modified by another writer" } });
+      json(409, { error: { code: "STALE_VERSION", message: "modified by another writer" } });
     mount(<RepresentativePanel claimId={CLAIM} canManage canVerify />);
     await userEvent.click(
       await screen.findByRole("button", { name: /Open appointment of Fixture Person/ }),
@@ -495,7 +495,7 @@ describe("BeneficiaryAppealPanel", () => {
   it("keeps what was typed and shows the 'record changed' cue when a save hits a stale version", async () => {
     handlers[APPEALS] = listOf([appeal()]);
     handlers["PATCH /api/v1/beneficiary-appeals/b1"] = () =>
-      json(409, { error: { code: "VERSION_CONFLICT", message: "modified by another writer" } });
+      json(409, { error: { code: "STALE_VERSION", message: "modified by another writer" } });
     mount(manage());
     await userEvent.click(await screen.findByRole("button", { name: /Open beneficiary appeal/ }));
     const note = (await screen.findByLabelText(

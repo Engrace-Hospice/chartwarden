@@ -1,3 +1,11 @@
+import {
+  type AccountingScope,
+  type AuditContext,
+  type AuditExecutor,
+  type AuditQuery,
+  audit,
+} from "@chartwarden/audit";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/04-audit/routes/patient-accounting.ts — M4-T09 the §164.528 / 42 CFR
 // §2.13 patient accounting-of-disclosures route with scope differentiation (M4 spec §7, §10.3).
 //
@@ -12,21 +20,11 @@
 // reader — never a direct schema SELECT). The accounting request is ITSELF audited at the
 // matching retention class (§2.6 side effect): `compliance` for HIPAA, `compliance_42cfr_part2`
 // for Part 2 / all — through the mandated `audit()` surface (the field denylist runs there).
-import {
-  type AccountingScope,
-  type AuditContext,
-  type AuditExecutor,
-  type AuditQuery,
-  audit,
-} from "@chartwarden/audit";
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { AUDIT_ACCOUNTING_SCOPE_PREDICATE } from "../abac/audit-accounting-predicate";
 import { AccountingParamsSchema, AccountingQuerySchema, parse } from "./audit-typebox";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for the accounting route (mirrors `AuditRouteDeps`). */
 export interface PatientAccountingDeps {
@@ -38,13 +36,6 @@ export interface PatientAccountingDeps {
 
 /** Six years in whole calendar years — the §164.528 / §14 D7 HIPAA lookback clamp. */
 const HIPAA_LOOKBACK_YEARS = 6;
-
-/** The org-scoped actor (org binding is server-side: the context, never the query/body). */
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 /** Build the audit context for the "accounting requested" event from the request. */
 function auditContextFor(request: FastifyRequest): AuditContext {

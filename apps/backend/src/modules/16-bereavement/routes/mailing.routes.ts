@@ -1,3 +1,8 @@
+import {
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/mailing.routes.ts — M16 (ADR-0109 D10) routes 42-51: the mailing program.
 //
@@ -9,7 +14,6 @@ import { NotFoundError } from "@chartwarden/types";
 // event names WHICH run's batch was handed out (the M22 access ledger records the URL mint itself).
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_OVERSIGHT, P, STEP_UP } from "./guards";
 import { parse, parseQuery } from "./m16-typebox";
 import type { M16MailingService } from "./mailing-service";
@@ -61,7 +65,7 @@ export function registerBereavementMailingRoutes(
       return mailingService.putConfig(writeActorOf(request), mailingKey, {
         ...body,
         audienceRelationships: body.audienceRelationships,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -120,7 +124,7 @@ export function registerBereavementMailingRoutes(
       const body = parse(UpdateMailingRunContentBody, request.body);
       return mailingService.updateRunContent(writeActorOf(request), runId, {
         content: body.content,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -133,7 +137,7 @@ export function registerBereavementMailingRoutes(
     async (request) => {
       const { runId } = parse(MailingRunParams, request.params);
       return mailingService.generateRun(writeActorOf(request), runId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -165,7 +169,7 @@ export function registerBereavementMailingRoutes(
     async (request) => {
       const { runId } = parse(MailingRunParams, request.params);
       return mailingService.confirmMailed(writeActorOf(request), runId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -177,7 +181,7 @@ export function registerBereavementMailingRoutes(
     async (request) => {
       const { runId } = parse(MailingRunParams, request.params);
       return mailingService.cancelRun(writeActorOf(request), runId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

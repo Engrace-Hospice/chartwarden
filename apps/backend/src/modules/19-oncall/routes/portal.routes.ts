@@ -16,10 +16,10 @@
 //      clinician free text. §8.3.4 asks for a projection that is not filtered at runtime but is
 //      structurally incapable of carrying the content, and the read service's SELECT names six columns to
 //      match.
+import { rejectOffsetPagination } from "@chartwarden/shared/route-kit";
 import { ForbiddenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
-import { rejectOffsetPagination } from "./concurrency";
 import { ABAC_PORTAL_CONSENT, P } from "./guards";
 import { PortalRecentQuery, parseQuery } from "./m19-typebox";
 import type { M19ReadService } from "./read-service";

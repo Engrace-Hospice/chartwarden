@@ -23,9 +23,12 @@ import {
   type TenantClearinghouseVendor,
   transmitsThroughChartWarden,
 } from "@chartwarden/types";
-import { CLEARINGHOUSE_VENDOR_ENV, parseClearinghouseVendor } from "@chartwarden/x12-837-client";
+import {
+  CLEARINGHOUSE_VENDOR_ENV,
+  clearinghouseUsageFromEnv,
+  parseClearinghouseVendor,
+} from "@chartwarden/x12-837-client";
 import { eq } from "drizzle-orm";
-import { clearinghouseUsageFromEnv } from "../jobs/clearinghouse-context";
 import type { ConfigRow } from "./config-store";
 import type { PlatformFallback } from "./service";
 

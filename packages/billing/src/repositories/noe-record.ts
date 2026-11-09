@@ -8,7 +8,7 @@
 //     (`toNoeRecord`) and write, so callers only ever see the lowercase domain `NoticeState`.
 //   * KEYSET CURSOR PAGINATION — `listByOrgPage` over-fetches `size + 1` rows `(created_at DESC, id DESC)`.
 //   * OPTIMISTIC CONCURRENCY (§2.5) — `transitionToState` applies `state = nextState` + patch only when the
-//     persisted `version` matches, else returns `VERSION_CONFLICT` (the service → 412).
+//     persisted `version` matches, else returns `VERSION_CONFLICT` (the service → 409 STALE_VERSION).
 //
 // The 5-day-window watchdog cron enumerates in-flight rows past `window_target_at` via
 // `listWindowWatchCandidates` (backed by the §3.4 `noe_window_watch_idx` partial index) and stamps
@@ -207,7 +207,7 @@ export class NoeRepository {
       filter.patientId ? eq(N.patientId, filter.patientId) : undefined,
       filter.admissionId ? eq(N.admissionId, filter.admissionId) : undefined,
       filter.state ? eq(N.state, noticeStateCodec.toDb(filter.state)) : undefined,
-      keysetBefore(N.createdAt, N.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(N.createdAt, N.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -215,7 +215,7 @@ export class NoeRepository {
       .where(where)
       .orderBy(desc(N.createdAt), desc(N.id))
       .limit(size + 1);
-    return buildCursorPage(rows.map(toNoeRecord), size, (r) => ({
+    return buildCursorPage(organizationId, rows.map(toNoeRecord), size, (r) => ({
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));
@@ -341,7 +341,7 @@ export class NoeRepository {
    * `reduce(state, event)` (machines/noe) and passes the current `expectedVersion` (If-Match); this applies
    * `state = nextState` + `patch` only when the persisted version matches, bumping `version` + `updated_at`.
    * On a mismatch returns `VERSION_CONFLICT` carrying the current persisted version (or `null` when the row
-   * vanished) so the service can surface a 412. The state value is mapped to the DB enum here.
+   * vanished) so the service can surface a 409 STALE_VERSION. The state value is mapped to the DB enum here.
    */
   async transitionToState(
     id: string,

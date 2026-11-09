@@ -29,6 +29,7 @@ import {
   allPermissionMirrorRows,
 } from "@chartwarden/auth";
 import type { AbacContext } from "@chartwarden/auth";
+import { type PreHandler, clampLimit } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { IsoInstant } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
@@ -47,14 +48,6 @@ import {
   eraseBereavementRecord,
 } from "../src/modules/16-bereavement/index";
 import type { M16ReadActor } from "../src/modules/16-bereavement/routes/actor";
-import type { PreHandler } from "../src/modules/16-bereavement/routes/actor";
-import {
-  M16_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  encodeCursor,
-  toCursorPage,
-} from "../src/modules/16-bereavement/routes/concurrency";
 import {
   type BereavementDisclosurePort,
   isBereavementVolunteer,
@@ -65,6 +58,7 @@ import {
   runEffects,
 } from "../src/modules/16-bereavement/routes/effects-runner";
 import { ABAC_ANY } from "../src/modules/16-bereavement/routes/guards";
+import { M16_PAGE_SIZES } from "../src/modules/16-bereavement/routes/pagination";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const PLAN = "22222222-2222-4222-8222-222222222222";
@@ -755,26 +749,8 @@ describe("M16-T06 §7.13 / D10 — the disclosure gate", () => {
 
 // ── pagination envelope ─────────────────────────────────────────────────────────────────────────────
 
-describe("M16-T06 — the cursor envelope", () => {
-  it("round-trips an opaque cursor and treats a malformed one as 'from the beginning'", () => {
-    const cursor = encodeCursor({ a: "2026-01-01T00:00:00.000Z", id: PLAN });
-    expect(decodeCursor(cursor)).toEqual({ a: "2026-01-01T00:00:00.000Z", id: PLAN });
-    expect(decodeCursor("not-a-cursor")).toBeNull();
-    expect(decodeCursor(undefined)).toBeNull();
-  });
-
-  it("emits `{data, next_cursor, has_more}` and clamps `limit` into the route's policy", () => {
-    const rows = [1, 2, 3].map((n) => ({ id: `id-${n}`, at: `2026-01-0${n}T00:00:00.000Z` }));
-    const page = toCursorPage(
-      rows,
-      2,
-      (r) => ({ a: r.at, id: r.id }),
-      (r) => r.id,
-    );
-    expect(page.data).toEqual(["id-1", "id-2"]);
-    expect(page.has_more).toBe(true);
-    expect(page.next_cursor).not.toBeNull();
-
+describe("M16-T06 — the page-size policy", () => {
+  it("clamps `limit` into the route's policy and defaults a missing one", () => {
     expect(clampLimit("9999", M16_PAGE_SIZES.plans)).toBe(M16_PAGE_SIZES.plans.maxSize);
     expect(clampLimit("0", M16_PAGE_SIZES.plans)).toBe(1);
     expect(clampLimit(undefined, M16_PAGE_SIZES.outreach)).toBe(

@@ -24,7 +24,7 @@ import type {
 } from "./ports";
 
 /** §4.8: the `report.mv_refresh` queue exhausts retries at 5 attempts (30s/2m/10m/30m/2h backoff). */
-export const MV_REFRESH_MAX_ATTEMPTS = 5 as const;
+const MV_REFRESH_MAX_ATTEMPTS = 5 as const;
 
 /** The ports the refresh worker composes over (§2.4 effects + the PRIMARY refresh executor + a clock). */
 export interface MvRefreshWorkerPorts {
@@ -63,7 +63,7 @@ export class MvRefreshMetadataMissing extends Error {
 
 /** Raised when `REFRESH MATERIALIZED VIEW CONCURRENTLY` fails — rethrown so BullMQ retries per §4.8 backoff
  *  (or moves the exhausted job to the DLQ). The W-R-06 alerts are already emitted before this throws. */
-export class MvRefreshExecutionError extends Error {
+class MvRefreshExecutionError extends Error {
   constructor(
     public readonly mvKey: string,
     reason: string,
@@ -100,7 +100,7 @@ export interface RefreshAlertDecision {
  * fires only at 3 consecutive failures OR a single critical-tier failure (§4.8) — transient single failures on
  * non-critical MVs stay silent (retries will likely recover them).
  */
-export function decideRefreshAlert(input: RefreshAlertInput): RefreshAlertDecision {
+function decideRefreshAlert(input: RefreshAlertInput): RefreshAlertDecision {
   const exhausted = input.attempt + 1 >= input.maxAttempts;
   if (exhausted) return { emitWarn: false, emitExhausted: true };
   const warn = input.isCriticalTier || input.failureCount >= 3;

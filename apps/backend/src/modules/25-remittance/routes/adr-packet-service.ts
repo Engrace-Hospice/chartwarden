@@ -11,6 +11,7 @@
 //     and emits `m25.adr_packet.render_requested`, so M22 files the cover-and-index PDF as the retained copy.
 //     Database triggers keep the manifest, the filing facts and the enclosure list immutable afterwards.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -35,7 +36,6 @@ import {
   UNBOUND_APPEAL_SOURCES,
   describeEnclosures,
 } from "./appeal-packet-sources";
-import { VersionConflictError } from "./concurrency";
 import { providerEntityScopeCondition } from "./scope";
 import { recordFilingAttempt } from "./submission-service";
 import type { WriteOutboxPort } from "./write-service";
@@ -205,7 +205,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
       .set({ ...set, version: cur.version + 1 })
       .where(and(eq(ADR.id, cur.id), eq(ADR.version, ifMatch)))
       .returning({ id: ADR.id, version: ADR.version });
-    if (!updated[0]) throw new VersionConflictError(cur.version);
+    if (!updated[0]) throw new StaleVersionError();
     return updated[0];
   }
 

@@ -1,3 +1,4 @@
+import "@chartwarden/shared/route-kit";
 import { VOID_REASON_MIN_LENGTH } from "@chartwarden/emar";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/13-emar/routes/emar-typebox.ts — M13-T08 TypeBox route schemas (§4.2).
@@ -10,7 +11,6 @@ import { ValidationError } from "@chartwarden/types";
 // key on the ORDER's class from M12's `getAdministrationContext`, and a body value that disagrees with it is
 // refused (422 MED_CLASS_MISMATCH).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
@@ -27,14 +27,6 @@ import type {
 /** Literal-union helper — a response enum field mirrors the §3.2 pgEnum union (not a bare `Type.String()`,
  * which the M30 read-DTO lesson flagged as a "silent lie" that lets the wire vocab drift from the view). */
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 /** §2.1 — the administration mode discriminator (mirrors `AdministrationMode`). */
 const ADMINISTRATION_MODE = Type.Union([

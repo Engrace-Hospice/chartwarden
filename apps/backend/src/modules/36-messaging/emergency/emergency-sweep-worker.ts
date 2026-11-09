@@ -12,7 +12,7 @@ export interface M36EmergencySweepWorkerDeps
   readonly sweep: (orgId: string) => Promise<EmergencySweepSummary>;
 }
 
-export async function emergencySweepTick(
+async function emergencySweepTick(
   deps: Pick<M36EmergencySweepWorkerDeps, "activeOrgs" | "onError" | "sweep">,
 ): Promise<EmergencySweepSummary> {
   const totals = { alarms: 0, escalations: 0, failed: 0 };

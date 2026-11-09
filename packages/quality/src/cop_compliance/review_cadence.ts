@@ -13,10 +13,10 @@
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The default CoP review cadence in days (6 months, WF-17). */
-export const COP_REVIEW_CADENCE_DAYS = 180;
+const COP_REVIEW_CADENCE_DAYS = 180;
 
 /** How many days before the due date the cadence reports `due_soon` (a non-blocking heads-up window). */
-export const COP_REVIEW_DUE_SOON_DAYS = 14;
+const COP_REVIEW_DUE_SOON_DAYS = 14;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -62,7 +62,7 @@ export function computeNextReviewDueAt(lastReviewedAt: Date | string): string {
  * keep the function pure. A citation is `overdue` once `now - lastReviewedAt > 180 days`; `due_soon`
  * within the final 14 days before the due date; otherwise `current`.
  */
-export function evaluateReviewCadence(
+function evaluateReviewCadence(
   lastReviewedAt: Date | string,
   now: Date | string,
 ): CopReviewCadence {

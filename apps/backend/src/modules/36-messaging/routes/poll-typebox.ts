@@ -1,16 +1,15 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
 import type { PollDetailView, PollView } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/poll-typebox.ts - WP 2.10 request/response schemas (schemas only, so the
 // OpenAPI emitter does not import the auth stack). The request bounds here are loose on purpose: the service owns the
 // real ones (2..10 options, 300/100 characters, plain text only, no duplicates) and answers 422 with field details.
 import { type Static, Type } from "@sinclair/typebox";
-import { PollViewSchema, UUID_PATTERN } from "./messaging-typebox";
+import { PollViewSchema } from "./messaging-typebox";
 
 export { PollViewSchema };
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
-
-export const PollChannelParamsSchema = Type.Object({ id: Uuid });
-export const PollMessageParamsSchema = Type.Object({ id: Uuid, messageId: Uuid });
+export const PollChannelParamsSchema = Type.Object({ id: Uuid() });
+export const PollMessageParamsSchema = Type.Object({ id: Uuid(), messageId: Uuid() });
 
 export const CreatePollBodySchema = Type.Object({
   question: Type.String({ maxLength: 2_000 }),
@@ -19,9 +18,9 @@ export const CreatePollBodySchema = Type.Object({
   clientMessageId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
 });
 
-export const VotePollBodySchema = Type.Object({ optionId: Uuid });
+export const VotePollBodySchema = Type.Object({ optionId: Uuid() });
 
-export const PollVoterViewSchema = Type.Object({
+const PollVoterViewSchema = Type.Object({
   userId: Type.String(),
   displayName: Type.String(),
   votedAt: Type.String(),

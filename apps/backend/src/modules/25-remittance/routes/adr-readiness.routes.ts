@@ -3,15 +3,14 @@
 // disposition on `adr.readiness_dispose`. Nothing here is If-Match: a readiness review never moves the case version, and
 // nothing it says gates sign-off or filing. Every mutation requires an Idempotency-Key. Org, actor and provider-entity
 // scope are server-derived (actor.ts).
+import { parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { ADR_CHECKLIST_KEYS, READINESS_DISPOSITIONS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
 import type { AdrReadinessService } from "./adr-readiness-service";
-import { requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
-import { parse } from "./m25-typebox";
 
 export interface AdrReadinessRouteDeps {
   readonly adrReadinessService: AdrReadinessService;

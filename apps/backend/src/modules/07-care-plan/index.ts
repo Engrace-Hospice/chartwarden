@@ -114,7 +114,7 @@ export {
 
 // M7-T05 — the §4.1 route inventory behind requirePermission on the §4.5 keys M7 contributes to M3
 // (M7_CONTRIBUTED_PERMISSIONS). The three PATCH routes carry §4.1.1 (M07-F09) Idempotency-Key +
-// If-Match pre-handlers; §7.7 optimistic concurrency raises 412 STALE_VERSION on a stale write. Routes
+// If-Match pre-handlers; §7.7 optimistic concurrency raises 409 STALE_VERSION on a stale write. Routes
 // compose over the injected CarePlanRouteService (in-memory slice here; Drizzle in prod under
 // withOrgContext so RLS backstops).
 export { type CarePlanRouteDeps, registerCarePlanRoutes } from "./routes/care-plan-routes";
@@ -136,15 +136,6 @@ export {
   CarePlanAlreadyExistsError,
   createInMemoryCarePlanBackend,
 } from "./routes/service";
-export {
-  type PreHandler,
-  type WithIfMatch,
-  IdempotencyKeyRequiredError,
-  IfMatchRequiredError,
-  ifMatchVersionOf,
-  requireIdempotencyKey,
-  requireIfMatch,
-} from "./routes/concurrency";
 
 // M7-T06 — §7.3–7.6 authoring: the pure discipline/redaction/goal-attribution helpers + the five §6
 // ABAC predicate resolvers (caseload_or_scope / dpoa_active / sud_disclosure_allowed / signer_role_match

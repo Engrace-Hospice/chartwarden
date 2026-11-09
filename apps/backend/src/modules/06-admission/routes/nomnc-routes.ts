@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/06-admission/routes/nomnc-routes.ts — milestone 10a NOMNC delivery + BFCC-QIO expedited
 // review record-keeping. Every route hangs off the ADMISSION path, so the existing `admission.scope` ABAC predicate
 // scopes it on `:id` with no new resolver (the election-addendum precedent); the service binds each notice / review /
@@ -14,7 +15,7 @@
 //   POST   /api/v1/admissions/:id/expedited-reviews/:reviewId/withdraw
 //   POST   /api/v1/admissions/:id/expedited-reviews/:reviewId/deadlines           type a DENC / records / decision deadline
 //   PATCH  /api/v1/admissions/:id/expedited-deadlines/:deadlineId                 edit or satisfy
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { admissionScopeAccessOf } from "../abac-predicates";
@@ -39,8 +40,6 @@ import {
   WithdrawReviewSchema,
 } from "./nomnc-typebox";
 import { ResourceNotFoundError } from "./service";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const NOMNC_READ = P("nomnc.read");
@@ -70,12 +69,6 @@ const scope = (action: string): PreHandler =>
       access: admissionScopeAccessOf(action),
     }),
   }) as PreHandler;
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 export interface NomncRouteDeps {
   readonly service: NomncService;

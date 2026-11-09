@@ -1,3 +1,5 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/29-external-interfaces/inbound/inbound-seam-ports.ts — GAP-086. Binds the inbound parse worker's
 // consumed-module ports to the REGISTERED seams — resolved opaquely through `getSeam` and cast to locally-declared structural
 // interfaces (the `outbound/resolve-baa.ts` precedent: M29 carries no compile-time edge to M11 / M38 / M39, ADR-0005):
@@ -12,7 +14,7 @@
 //
 // The seams read ambient request context, so each call runs inside a system-actor `runWithRequestContext` for the org being
 // processed (a worker tick is not a request). Every seam is resolved at CALL time (they register after this is built).
-import { runWithRequestContext } from "@chartwarden/tenancy";
+import { Value } from "@sinclair/typebox/value";
 
 import { getSeam } from "../../../bootstrap/index";
 import type { LabOrderPort } from "./lab-patient-resolver";
@@ -20,7 +22,6 @@ import type { LabConsentPort, LabSudTerminologyPort } from "./lab-sud-redaction"
 
 /** The M38 value set whose LOINC members are 42 CFR Part 2 substance-use-disorder tests. */
 export const SUD_TEST_LOINC_VALUE_SET = "sud_test_loinc";
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface TerminologySeam {
   validate(
@@ -104,7 +105,7 @@ export function buildM29InboundSeamPorts(): M29InboundSeamPorts {
     orderReader: {
       async getOrderByPlacerId({ organizationId, placerOrderNumber }) {
         // The placer number IS `order_record.id` (a uuid); anything else cannot name an order.
-        if (!UUID_RE.test(placerOrderNumber)) return null;
+        if (!Value.Check(Uuid(), placerOrderNumber)) return null;
         const order = await asSystem(organizationId, () =>
           (getSeam("OrderProvider") as OrderSeam).getOrder({ orderId: placerOrderNumber }),
         );

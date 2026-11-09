@@ -1,10 +1,10 @@
 // apps/web/src/modules/16-bereavement — edit one grief-library item's details (ADR-0109 D10, route 79). The version the page READ goes in
-// `If-Match`; a 412/409/404 closes the dialog, and the page reloads and says why. The document itself is never replaced here: upload a new
+// `If-Match`; a 409/404 closes the dialog, and the page reloads and says why. The document itself is never replaced here: upload a new
 // item instead.
 import { useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
-import { errorMessage, isStaleWrite } from "./bereavement-api";
+import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import {
   ErrorText,
   Modal,
@@ -67,7 +67,7 @@ export function LibraryEditModal({
       const message = errorMessage(res.error, "The item could not be saved.");
       if (isStaleWrite(res.status)) {
         onStale(
-          res.status === 412
+          isStaleVersion(res.status, res.error)
             ? "This item changed while you were editing it. The library has been refreshed: check it and try again."
             : message,
         );

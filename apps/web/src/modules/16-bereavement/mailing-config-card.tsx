@@ -2,7 +2,7 @@
 //
 // Whether the mailing is sent, how many days ahead its draft run opens, which relationships receive it, the date override (only the
 // newsletter and the December card have one) and the agency's own wording. The save carries the config version the screen READ in
-// `If-Match` (0 for a mailing never configured). A 412 means someone else saved first: the card says so and offers a reload, which
+// `If-Match` (0 for a mailing never configured). A 409 STALE_VERSION means someone else saved first: the card says so and offers a reload, which
 // discards the unsaved edits, so it is never done for the reader. While the write is in flight every control is inert and the
 // button shows it; an unsaved edit is flagged, can be discarded, and the browser warns before the tab is closed over it. The card reports
 // "unsaved" or "saving" to the settings page, which holds the one in-app navigation blocker (a router supports one blocker at a time).
@@ -14,6 +14,7 @@ import {
   type BereavementRelationshipCode,
   type MailingConfig,
   errorMessage,
+  isStaleVersion,
   putMailingConfig,
 } from "./bereavement-api";
 import { humanize } from "./bereavement-status";
@@ -39,7 +40,6 @@ import {
   wordingProblems,
 } from "./mailing-status";
 
-const PRECONDITION_FAILED = 412;
 const CONFIG_MOVED =
   "Someone else saved this mailing's settings after you opened them. Reload to see the latest version; reloading discards your unsaved edits.";
 
@@ -119,7 +119,7 @@ export function MailingConfigCard({
     inFlight.current = false;
     setBusy(false);
     if (err || !saved) {
-      if (status === PRECONDITION_FAILED) setStale(true);
+      if (isStaleVersion(status, err)) setStale(true);
       else setError(errorMessage(err, `The ${label} settings could not be saved.`));
       return;
     }

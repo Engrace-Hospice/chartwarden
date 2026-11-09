@@ -37,7 +37,7 @@ const RED = schema.messageRedactions;
 const MSG = schema.messages;
 
 /** Redactions listed (newest first). */
-export const REDACTION_LIST_LIMIT = 100;
+const REDACTION_LIST_LIMIT = 100;
 
 export interface MessageRedactionDeps {
   readonly db: DbClient;
@@ -65,7 +65,7 @@ export interface MessageRedactionDeps {
 type RedactionRow = typeof RED.$inferSelect;
 
 /** What a row is, from the caller's clock: approved = FINAL (masks); a self-approval is awaiting its countersign until the deadline, then lapsed. */
-export function redactionStatus(row: RedactionRow, now: Date): MessageRedactionDto["status"] {
+function redactionStatus(row: RedactionRow, now: Date): MessageRedactionDto["status"] {
   if (row.approvedAt) return "approved";
   if (!row.selfApprovedAt) return "requested";
   return row.countersignDeadlineAt && row.countersignDeadlineAt.getTime() >= now.getTime()

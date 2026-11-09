@@ -2,11 +2,9 @@
 // surface (`/api/admin`). Reads gate on `subscription.admin.read` + `platform_billing_scope`; grant / cancel reuse
 // `subscription.admin.write` + platform scope + a fresh step-up + the AI-actor block + `Idempotency-Key` (no new permission keys). The
 // acting membership is taken from `request.context`, never the body. Writes run on the platform runner only.
+import { rejectAiActor, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-// The same D13 AI-actor block the M23 NPI-verification writes compose: the add-on decides who may start claims billing.
-import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
 import type { AddonService } from "../addon/addon-service";
-import { writeActorOf } from "./actor";
 import { IDEMPOTENT, P, PLATFORM_SCOPE, STEP_UP } from "./guards";
 import {
   GrantAddonBodySchema,
@@ -28,7 +26,8 @@ export function registerAddonRoutes(app: FastifyInstance, deps: AddonRouteDeps):
     P(WRITE),
     PLATFORM_SCOPE(WRITE),
     STEP_UP(WRITE),
-    rejectAiActor(),
+    // The same D13 AI-actor block the M23 NPI-verification writes compose: the add-on decides who may start claims billing.
+    rejectAiActor("AI principals cannot create or modify billing records (D13)"),
     IDEMPOTENT,
   ];
 

@@ -10,7 +10,7 @@ import type {
 import { M36_TASK_EVENTS } from "../tasks/task-events";
 
 export const M36_TASK_NOTIFICATION_CONSUMER = "m36.task-notifications" as const;
-export const M36_TASK_NOTIFICATION_EVENTS = [
+const M36_TASK_NOTIFICATION_EVENTS = [
   M36_TASK_EVENTS.created,
   M36_TASK_EVENTS.reassigned,
   M36_TASK_EVENTS.needsOwner,

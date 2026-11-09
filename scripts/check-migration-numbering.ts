@@ -31,9 +31,9 @@
  *
  * Run:  bun run arch:migration-numbering   (in `arch:fitness`)
  */
-import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MIGRATIONS_DIR, listMigrations } from "./lib/gate-scan";
 
 // Rooted off the script's own file location (not process.cwd()) so it always validates the real
 // migrations directory regardless of the caller's working directory. `import.meta.dir` is a Bun
@@ -43,7 +43,6 @@ import { fileURLToPath } from "node:url";
 // (check-design-tokens.ts / fitness-gates.test.ts) — unset in every real invocation.
 const FITNESS_ROOT_OVERRIDE = process.env.CHARTWARDEN_FITNESS_ROOT;
 const ROOT = FITNESS_ROOT_OVERRIDE ?? join(dirname(fileURLToPath(import.meta.url)), "..");
-const MIGRATIONS_DIR = join("packages", "db", "migrations");
 
 /** `0216_admission_location_backfill.sql` → ordinal 216, slug `admission_location_backfill`. */
 const MIGRATION_NAME = /^(\d{4})_([a-z0-9][a-z0-9_]*)\.sql$/;
@@ -172,9 +171,7 @@ export function analyze(
 }
 
 export function readMigrations(root = ROOT): string[] {
-  return readdirSync(join(root, MIGRATIONS_DIR))
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
+  return listMigrations(join(root, MIGRATIONS_DIR));
 }
 
 function main(): void {

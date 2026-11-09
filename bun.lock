@@ -39,7 +39,6 @@
       "name": "@chartwarden/admin",
       "version": "0.0.0",
       "dependencies": {
-        "@chartwarden/admin-ui-shell": "workspace:*",
         "@chartwarden/types": "workspace:*",
         "@chartwarden/ui": "workspace:*",
         "@fontsource-variable/inter": "^5.2.8",
@@ -131,17 +130,6 @@
         "vite": "^6.4.5",
       },
     },
-    "packages/admin-ui-shell": {
-      "name": "@chartwarden/admin-ui-shell",
-      "version": "0.0.0",
-      "dependencies": {
-        "@chartwarden/ui": "workspace:*",
-        "react": "^18.3.1",
-      },
-      "devDependencies": {
-        "@types/react": "^18.3.0",
-      },
-    },
     "packages/ai-platform": {
       "name": "@chartwarden/ai-platform",
       "version": "0.0.0",
@@ -162,6 +150,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@chartwarden/db": "workspace:*",
+        "@chartwarden/shared": "workspace:*",
       },
     },
     "packages/auth": {
@@ -243,10 +232,6 @@
       "dependencies": {
         "@chartwarden/types": "workspace:*",
       },
-    },
-    "packages/domain": {
-      "name": "@chartwarden/domain",
-      "version": "0.0.0",
     },
     "packages/dosespot": {
       "name": "@chartwarden/dosespot",
@@ -587,8 +572,6 @@
 
     "@chartwarden/admin": ["@chartwarden/admin@workspace:apps/admin"],
 
-    "@chartwarden/admin-ui-shell": ["@chartwarden/admin-ui-shell@workspace:packages/admin-ui-shell"],
-
     "@chartwarden/ai-platform": ["@chartwarden/ai-platform@workspace:packages/ai-platform"],
 
     "@chartwarden/assessments": ["@chartwarden/assessments@workspace:packages/assessments"],
@@ -614,8 +597,6 @@
     "@chartwarden/db": ["@chartwarden/db@workspace:packages/db"],
 
     "@chartwarden/discipline-plans": ["@chartwarden/discipline-plans@workspace:packages/discipline-plans"],
-
-    "@chartwarden/domain": ["@chartwarden/domain@workspace:packages/domain"],
 
     "@chartwarden/dosespot": ["@chartwarden/dosespot@workspace:packages/dosespot"],
 

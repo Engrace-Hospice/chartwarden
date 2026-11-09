@@ -21,9 +21,9 @@ import {
 // the view carries only the safe identifiers + a `hasSecret` flag (§3.6); the secret is WRITE-ONLY and is
 // encrypted at the persistence boundary. An upsert is a PRIVILEGED config act gated by a §D14 step-up
 // assertion at the route layer — the UI gates it behind a CeremonyModal (the §7.4 attestation with a step-up
-// challenge). The first insert omits If-Match; an update carries the §2.5 version (412 on stale). Every
+// challenge). The first insert omits If-Match; an update carries the §2.5 version (409 STALE_VERSION on stale). Every
 // mutation carries an Idempotency-Key (§4.1.1). The server is the only authz point (ADR-0030): a 401/403
-// surfaces inline as "step-up required", a 412 as "reopen to retry", a 503 as a seam notice — never a toast.
+// surfaces inline as "step-up required", a 409 as "reopen to retry", a 503 as a seam notice — never a toast.
 // Identifiers render through MaskedIdentifier (read-only mask; no reveal seam is exposed). The Test-Sandbox
 // affordance is shown but inert — no sandbox-test route is exposed by the M23 API (no backend changes here).
 // Lantern: AdminSplitLayout, No-Line rail, §6.6 StatusPills, CSS-var tokens only. openapi emits no billing
@@ -588,7 +588,7 @@ function UpsertCeremony({
       setActionError(
         s === 401 || s === 403
           ? "Re-authentication (step-up) is required to save credentials."
-          : s === 412
+          : s === 409
             ? "This credential changed since you opened it — reopen to retry."
             : s === 422
               ? "The credential was rejected — review the fields."

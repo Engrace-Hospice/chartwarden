@@ -10,7 +10,8 @@
     "./dates": "./src/dates/org-local-date.ts",
     "./rhc": "./src/rhc/carry-chain.ts",
     "./phone": "./src/phone/e164.ts",
-    "./geo": "./src/geo/point-in-rings.ts"
+    "./geo": "./src/geo/point-in-rings.ts",
+    "./route-kit": "./src/route-kit/index.ts"
   },
   "types": "./src/index.ts",
   "dependencies": {

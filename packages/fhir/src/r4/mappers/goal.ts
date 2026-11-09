@@ -4,7 +4,7 @@ import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { Goal } from "../types";
 import type { GoalDomain } from "./domain";
 
-export const US_CORE_GOAL_PROFILE = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-goal";
+const US_CORE_GOAL_PROFILE = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-goal";
 
 const ACHIEVEMENT_STATUS_SYSTEM = "http://terminology.hl7.org/CodeSystem/goal-achievement";
 

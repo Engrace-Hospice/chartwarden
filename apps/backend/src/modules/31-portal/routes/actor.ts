@@ -21,24 +21,21 @@
 // Both are set by M2 when it mints a portal session (the same posture as `membershipId` / `sessionClass`);
 // until a real portal session carries them, the portal predicates fail CLOSED (403) — never fall back to a
 // caller-supplied value.
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+import {
+  type ContextCarrier,
+  type RouteActor,
+  actorOf as routeActorOf,
+} from "@chartwarden/shared/route-kit";
+import { ForbiddenError } from "@chartwarden/types";
 
 const str = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
 
-/** The org-scoped actor every M31 route resolves from `request.context` (server-assembled). */
-export interface M31Actor {
-  readonly organizationId: string;
-  readonly userId: string;
-  /** The acting M2 membership (null on a portal session, which carries none). */
-  readonly membershipId: string | null;
-  readonly roles: readonly string[];
-  /** The M2 session class (`staff` when unset). */
-  readonly sessionClass: string;
+/**
+ * The org-scoped actor every M31 route resolves from `request.context` (server-assembled): the kit actor
+ * (whose `membershipId` is null on a portal session, which carries none) plus the portal anchors.
+ */
+export interface M31Actor extends RouteActor {
   /** The portal account the session is bound to (portal sessions only; null otherwise). */
   readonly portalAccountId: string | null;
   /** The M2 session id (`attributes.sessionId`, stamped by the authenticate hook); the portal mint's audit anchor. */
@@ -48,16 +45,11 @@ export interface M31Actor {
 }
 
 /** Extract the org-scoped actor from `request.context`, or 401 when unauthenticated / unbound. */
-export function actorOf(request: FastifyRequest): M31Actor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const attrs = ctx.attributes ?? {};
+export function actorOf(request: ContextCarrier): M31Actor {
+  const actor = routeActorOf(request);
+  const attrs = request.context?.attributes ?? {};
   return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    membershipId: str(attrs.membershipId),
-    roles: ctx.roles ?? [],
-    sessionClass: str(attrs.sessionClass) ?? "staff",
+    ...actor,
     portalAccountId: str(attrs.portalAccountId),
     sessionId: str(attrs.sessionId),
     portalPatientId: str(attrs.sessionPatientId),

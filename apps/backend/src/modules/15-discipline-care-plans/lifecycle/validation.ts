@@ -204,7 +204,7 @@ export function checkVolunteerOutOfScopeAcknowledged(acknowledged: ReadonlyArray
 
 /**
  * §2.5 / §7.10 — optimistic concurrency: a PATCH carries the row `version` it read (`If-Match`); a mismatch
- * against the current row version is a stale write and is refused with 412 + the current row state.
+ * against the current row version is a stale write and is refused with 409 + the current row state.
  */
 export function checkOptimisticConcurrency(expectedVersion: number, currentVersion: number): void {
   require_(

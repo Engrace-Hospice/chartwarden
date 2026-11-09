@@ -1,3 +1,12 @@
+import {
+  ClaimAssembleRequest,
+  type ClaimDocument837iDetail,
+  type ClaimGap,
+  ClaimReplaceRequest,
+  ClaimSubmitRequest,
+  ClaimVoidRequest,
+  ManualValidateRequest,
+} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/claims.routes.ts — M23 (§4.1 routes #1–#13, claims
 // core). The claim lifecycle surface: server-authoritative assembly, the validation re-run trigger, the
 // READY→SUBMITTED submit (+M2 step-up), the TOB-817 replace / TOB-818 void builders, the cursor-paginated
@@ -12,7 +21,7 @@
 //     claim's patient in caseload AND its PE in scope) — the spec's `caseload_or_scope (via patient FK)`.
 //   - every MUTATING route composes `rejectAiActor` FIRST (D13 AI-block) + `Idempotency-Key` presence
 //     (§4.1.1); the versioned-root edits (PATCH / submit / replace / void) additionally carry `If-Match`
-//     (§2.5; the write service surfaces a stale precondition as 412 VERSION_CONFLICT).
+//     (§2.5; the write service surfaces a stale precondition as 409 STALE_VERSION).
 //   - submit / replace / void are filing actions → `provider_entity_billing_scope` + the §D14 `requireStepUp`
 //     assertion; the write service ALSO re-validates step-up freshness at dispatch (D2).
 //   - `claim_line` is INTERNAL-WRITE-ONLY (§3.3): there is NO line-mutation route; lines are written only by
@@ -28,13 +37,14 @@
 // actor may not carry the economic total fields (403 FIELD_OUT_OF_SCOPE). TOB re-choice routes through
 // :replace / :void (817/818) per §4.1, not this PATCH.
 import {
-  ClaimAssembleRequest,
-  ClaimReplaceRequest,
-  ClaimSubmitRequest,
-  ClaimVoidRequest,
-  ManualValidateRequest,
-} from "@chartwarden/billing";
-import type { ClaimDocument837iDetail, ClaimGap } from "@chartwarden/billing";
+  StaleVersionError,
+  actorOf,
+  ifMatchVersionOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
 import { ChartWardenError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -45,14 +55,12 @@ import {
   notApplicableClaimRouteFingerprint,
   verifyClaimPreviewToken,
 } from "../services/claim-preview-integrity";
-import { type M23WriteActor, actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { type M23WriteActor, writeActorOf } from "./actor";
 import {
   ClaimIdParamsSchema,
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
-  parse,
 } from "./billing-typebox";
-import { parseIfMatch, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import {
   CLAIM_CASELOAD,
   P,
@@ -465,7 +473,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const body = parse(ClaimPatchDraftBodySchema, request.body);
       enforceCoderIcdScope(actor, body);
-      const expectedVersion = parseIfMatch(request);
+      const expectedVersion = ifMatchVersionOf(request);
       const res = await writeService.updateDraftClaim(actor, id, {
         expectedVersion,
         lines: body.lines,
@@ -514,13 +522,9 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       // §2.5 precondition presence; the write service re-asserts the row version + step-up freshness (D2).
       // The §4.2 `ClaimSubmitRequest` body fields (ifVersion/acknowledgeAllOverrides) are belt-and-suspenders
       // only — the authoritative version is the If-Match header and the blocking guard is server-side.
-      const expectedVersion = parseIfMatch(request);
+      const expectedVersion = ifMatchVersionOf(request);
       if (body.ifVersion !== expectedVersion) {
-        throw new ChartWardenError(
-          "VERSION_CONFLICT",
-          "the claim version does not match the reviewed preview",
-          412,
-        );
+        throw new StaleVersionError("the claim version does not match the reviewed preview");
       }
       if (
         !deps.previewIntegrityKey ||
@@ -625,7 +629,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const actor = writeActorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const body = parse(ClaimReplaceRequest, request.body);
-      parseIfMatch(request);
+      ifMatchVersionOf(request);
       const originalLines = await readService.listClaimLines(actor, id);
       const res = await writeService.replaceClaim(actor, id, {
         reason: body.reason,
@@ -643,7 +647,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const actor = writeActorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const body = parse(ClaimVoidRequest, request.body);
-      parseIfMatch(request);
+      ifMatchVersionOf(request);
       const res = await writeService.voidClaim(actor, id, { reason: body.reason });
       return reply.code(201).send(res);
     },

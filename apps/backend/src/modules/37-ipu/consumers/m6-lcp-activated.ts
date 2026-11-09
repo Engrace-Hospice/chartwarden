@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/37-ipu/consumers/m6-lcp-activated.ts — the M6 -> M37 half of the IPU
 // level-of-care handshake (M37 spec §2.2 row `bed_assigned -> active`, §4.5; M6 §2.3.5).
 //
@@ -21,16 +22,13 @@
 // IDEMPOTENT: a redelivery that finds the admission already past `bed_assigned` returns without acting. A
 // concurrent delivery that loses the race makes `confirm` throw an illegal transition; the consumer re-reads
 // and treats "now activated" as success, and rethrows anything else.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { IpuRouteService } from "../routes/service";
 import { m6LcpAckActor } from "../routes/system-actor";
 
 const A = schema.ipuAdmission;
-
-/** The `withOrgContext` session-GUC actor for a consumer-driven read (F-102's empty-string convention). */
-const CONSUMER_USER_ID = "";
 
 /** States a confirmed admission has reached or passed: a redelivery must not act on any of them. */
 const ALREADY_CONFIRMED_STATES: ReadonlySet<string> = new Set([

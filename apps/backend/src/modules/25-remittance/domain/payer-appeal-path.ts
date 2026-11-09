@@ -11,7 +11,6 @@ export const PAYER_PROGRAMS = ["commercial", "medicare_advantage"] as const;
 export type PayerProgram = (typeof PAYER_PROGRAMS)[number];
 
 export const PATH_STATUSES = ["draft", "active", "retired"] as const;
-export type PathStatus = (typeof PATH_STATUSES)[number];
 
 export const LEVEL_KINDS = ["internal", "external_review", "other"] as const;
 export type LevelKind = (typeof LEVEL_KINDS)[number];

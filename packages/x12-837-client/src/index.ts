@@ -403,6 +403,7 @@ export {
 } from "./clearinghouse/claimmd-webhook";
 export type { ClaimMdDelivery, ClaimMdDeliveryEvent } from "./clearinghouse/claimmd-webhook";
 export { scopeKey } from "./clearinghouse/submission-identity";
+export { CLEARINGHOUSE_USAGE_ENV, clearinghouseUsageFromEnv } from "./clearinghouse/usage";
 export {
   extractX12SubmissionEvidence,
   X12EvidenceError,

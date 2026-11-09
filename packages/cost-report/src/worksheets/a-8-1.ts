@@ -6,7 +6,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4319 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** One related-organization line: the related party, the service furnished, the cost to the related org, and
  *  the amount included in the hospice's allowable cost (the adjustment basis). */
@@ -26,5 +26,3 @@ export const WorksheetA81 = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export type WorksheetA81Data = Static<typeof WorksheetA81>;

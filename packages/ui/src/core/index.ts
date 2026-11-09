@@ -44,8 +44,6 @@ export type {
   FeatureFlagContextValue,
   FeatureFlagProviderProps,
 } from "./providers/feature-flag-provider";
-export { SocketProvider, useSocket } from "./providers/socket-provider";
-export type { SocketLike, SocketProviderProps } from "./providers/socket-provider";
 export { SystemStatusProvider, useSystemStatus } from "./providers/system-status-provider";
 export type {
   SystemStatusContextValue,
@@ -82,7 +80,7 @@ export { hundredthsText, parseHundredths, parsePriceCents, parseWholeNumber } fr
 export type { OpsWrite, OpsWriteOutcome } from "./ops-write/use-ops-write";
 
 // Theme tokens (plain data — no styling runtime)
-export { brandColors, colors, statusColors } from "./theme/colors";
+export { brandColors } from "./theme/colors";
 
 // Date-only helpers (PARAM-004 — local-calendar parsing, never a UTC-instant off-by-one)
 export {

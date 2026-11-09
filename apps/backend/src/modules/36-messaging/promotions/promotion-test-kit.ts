@@ -16,7 +16,7 @@ export const P1 = "00000000-0000-4000-8000-0000000000e1";
 export const CHANNEL = "00000000-0000-4000-8000-0000000000c1";
 export const MESSAGE = "00000000-0000-4000-8000-0000000000d1";
 export const MEETING = "00000000-0000-4000-8000-0000000000f1";
-export const BODY_TEXT = "Patient reports new pain in left hip";
+const BODY_TEXT = "Patient reports new pain in left hip";
 export const NOW = new Date("2026-10-14T12:00:00.000Z");
 
 export const fakeDb = {

@@ -1,3 +1,4 @@
+import { type CursorPage, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox.ts — M15 (§4.2) request schemas.
 //
@@ -12,9 +13,7 @@ import { ValidationError } from "@chartwarden/types";
 // (`request.context`): no body or query carries an org id or an acting membership id, which is the §8.6
 // (S) spoofing control at the boundary.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { CursorPage } from "./concurrency";
 import type { RedactedCategory } from "./disclosure";
 import type {
   AideSupervisoryVisitView,
@@ -33,14 +32,6 @@ import type {
   VolunteerEffectiveStatusView,
 } from "./read-service";
 import type { VolunteerHourEntryView } from "./write-service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -125,21 +116,18 @@ export const PlanListQuerySchema = Type.Object({
   admissionId: Type.Optional(Uuid),
   kind: Type.Optional(PlanKind),
   status: Type.Optional(Type.String({ maxLength: 32 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 export const VersionListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+  ...pageQuery({ max: 50 }),
 });
 
 export const GateListQuerySchema = Type.Object({
   volunteerMembershipId: Type.Optional(Uuid),
   gateKind: Type.Optional(GateKind),
   expiringWithinDays: Type.Optional(Type.Integer({ minimum: 0, maximum: 365 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 export const HourRatioQuerySchema = Type.Object({
@@ -150,14 +138,12 @@ export const HourRatioQuerySchema = Type.Object({
 export const RelevantElementsQuerySchema = Type.Object({
   patientId: Type.Optional(Uuid),
   planId: Type.Optional(Uuid),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const RiskFactorQuerySchema = Type.Object({
   admissionId: Uuid,
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 export const VolunteerStatusQuerySchema = Type.Object({ volunteerMembershipId: Uuid });
@@ -166,8 +152,7 @@ export const SupervisoryCadenceQuerySchema = Type.Object({
   providerEntityId: Type.Optional(Uuid),
   locationId: Type.Optional(Uuid),
   overdueOnly: Type.Optional(Type.Boolean()),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────

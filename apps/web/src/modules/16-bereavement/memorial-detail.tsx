@@ -3,7 +3,7 @@
 //  1. PUBLISH invites, set-based: every family eligible at that moment gets an invitation, and an invitation MAILING RUN is drafted for the
 //     families who receive post. No default wording ships: staff write the invitation on that run's page (linked here once it exists).
 //  2. THE HEADER DECIDES THE VERSION. Every write carries the version the page READ in `If-Match` and one `Idempotency-Key` per attempt;
-//     a 412/409 reloads the service, closes the dialog and says why.
+//     a 409 reloads the service, closes the dialog and says why.
 //  3. A 403 renders nothing; any other failure is announced and never unmounts what is on screen.
 import {
   Button,
@@ -18,7 +18,7 @@ import { useCallback, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
-import { errorMessage, isStaleWrite } from "./bereavement-api";
+import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
 import {
   Card,
@@ -110,8 +110,9 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
     inFlight.current = false;
     setBusy(false);
     if (res.error || !res.data) {
-      const message =
-        res.status === 412 ? MOVED : errorMessage(res.error, "The service could not be changed.");
+      const message = isStaleVersion(res.status, res.error)
+        ? MOVED
+        : errorMessage(res.error, "The service could not be changed.");
       if (isStaleWrite(res.status)) {
         void reload();
         setCeremony(null);

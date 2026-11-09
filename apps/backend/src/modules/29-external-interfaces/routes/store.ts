@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/29-external-interfaces/routes/store.ts — M29-T08 route-facing repo PORT + DTOs
 // + in-memory impl.
 //
@@ -51,7 +52,7 @@ import {
   type ProposalSnapshot,
   decideProposal,
 } from "../proposals/decision";
-import { decodeObservationCursor, encodeObservationCursor, isAfterCursor } from "./lab-list-scope";
+import { isAfterCursor } from "./lab-list-scope";
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1001,7 +1002,7 @@ export function createInMemoryM29Store(
     },
 
     async listObservations(orgId, filter) {
-      const cursor = decodeObservationCursor(filter.cursor);
+      const cursor = decodeKeysetCursor(orgId, filter.cursor, "instant");
       const limit = filter.limit ?? 50;
       const rows = [...observations.values()]
         .filter((o) => o.organizationId === orgId)
@@ -1042,8 +1043,8 @@ export function createInMemoryM29Store(
       return rows.length > limit && last
         ? {
             items,
-            nextCursor: encodeObservationCursor({
-              d: new Date(last.observationDate).toISOString(),
+            nextCursor: encodeCursor(orgId, {
+              a: new Date(last.observationDate).toISOString(),
               id: last.id,
             }),
           }

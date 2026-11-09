@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/definitions.routes.ts — M33 (§4.1 #8–#14).
 //
 // The tenant report-definition authoring surface + the D9 IMMUTABLE VERSION CHAIN: create a definition
@@ -16,10 +17,9 @@
 // the tenant's own definitions/versions; the §164.312(b) read-audit anchor is the M4 write-audit trigger
 // on the `withOrgContext` path (no per-handler audit call — the M33 read-route convention). Org/actor/owner
 // binding is ALWAYS server-side (request.context, never the body). Mirrors M22 routes/documents-routes.ts.
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { parse } from "./reporting-typebox";
 import type { M33WriteRouteService } from "./write-service";
 import {

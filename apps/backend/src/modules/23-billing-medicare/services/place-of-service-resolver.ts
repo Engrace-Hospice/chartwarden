@@ -37,9 +37,7 @@
 // `place_of_service_consistency` compares every line to one documented value), so a range whose residence
 // resolves to two DIFFERENT Q-codes - or is not covered end to end by primary address history - cannot be
 // answered honestly: NULL (Q5009). Splitting lines at the move date is the proper fix and is out of scope.
-import { POS_BY_QCODE } from "@chartwarden/billing";
-
-import type { DateRange } from "./claim-assembly";
+import { type DateRange, POS_BY_QCODE } from "@chartwarden/billing";
 
 /** M40 `facility.kind` mirrored structurally (no cross-module import; matches `packages/db/src/enums.ts`). */
 export type M23FacilityKind =

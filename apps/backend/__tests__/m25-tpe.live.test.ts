@@ -330,9 +330,7 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
     const rule = rules[0] as { version: number };
     const edit = { macName, exitErrorRatePct: 12, effectiveFrom: daysAgo(300) };
     await svc().upsertRule(A(), edit, rule.version);
-    expect((await refused(svc().upsertRule(A(), edit, rule.version)))?.code).toBe(
-      "VERSION_CONFLICT",
-    );
+    expect((await refused(svc().upsertRule(A(), edit, rule.version)))?.code).toBe("STALE_VERSION");
   });
 
   it("resolves a re-recorded 'none' threshold as of the letter's date, not today", async () => {
@@ -860,7 +858,7 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
     await svc().setEducation(A(), r.id, { educationOn: daysAgo(5) }, stale);
     expect(
       (await refused(svc().setEducation(A(), r.id, { educationOn: daysAgo(4) }, stale)))?.code,
-    ).toBe("VERSION_CONFLICT");
+    ).toBe("STALE_VERSION");
     const staleProgram = await pver(id);
     await svc().closeProgram(A(), id, staleProgram);
     expect((await refused(svc().closeProgram(A(), id, staleProgram)))?.statusCode).toBe(409);
@@ -1013,7 +1011,7 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
         headers: WRITE_HEADERS(),
         payload: { noticeOn: daysAgo(5) },
       });
-      expect(noMatch.statusCode).toBe(400);
+      expect(noMatch.statusCode).toBe(428);
       const round = await app.inject({
         method: "POST",
         url: `/api/v1/tpe-programs/${id}/rounds`,

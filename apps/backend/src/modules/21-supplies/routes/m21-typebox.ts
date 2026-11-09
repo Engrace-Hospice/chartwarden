@@ -1,9 +1,3 @@
-import {
-  HospiceCoverageFieldsSchema,
-  HospiceCoverageSchema,
-  SetHospiceCoverageBodySchema,
-  ValidationError,
-} from "@chartwarden/types";
 // apps/backend/src/modules/21-supplies/routes/m21-typebox.ts — M21 (§4.2) request schemas.
 //
 // TypeBox request bodies, path params and list queries for the §4.1 Supplies routes. They are the runtime
@@ -16,7 +10,7 @@ import {
 // The string-literal unions MIRROR the frozen `@chartwarden/db` pgEnum value lists (packages/db/src/enums.ts,
 // M21-T01) — the schema wins on conflict. Org / actor / membership binding is server-side
 // (`request.context`): no body or query carries an org id or an acting membership id, which is the DEA
-// chain-of-custody control at the boundary (see routes/actor.ts).
+// chain-of-custody control at the boundary (see `writeActorOf`, @chartwarden/shared/route-kit).
 //
 // THE PER-KIND `data` PAYLOAD IS NOT RE-DECLARED HERE. §4.2.1 sketches a `kindPayload` union inline, but
 // `@chartwarden/supplies` already owns the D1 per-kind TypeBox (`SUPPLY_REQUEST_DATA_SCHEMAS`) plus the §2.10
@@ -29,7 +23,14 @@ import {
 // never `Type.Number()`. A 0.1 mL of a CII solution that round-trips through a JS float is not the number
 // the DEA perpetual log recorded, and §4.2.2's own sketch (which uses `Type.Number`) is the one place the
 // spec contradicts its own §3.1 column types — the columns win.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { pageQuery } from "@chartwarden/shared/route-kit";
+import {
+  HospiceCoverageFieldsSchema,
+  HospiceCoverageSchema,
+  SetHospiceCoverageBodySchema,
+  ValidationError,
+} from "@chartwarden/types";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   ComfortKitReturnDetail as ServiceComfortKitReturnDetail,
@@ -51,14 +52,6 @@ import type {
   CreateSupplyRequestResult as ServiceCreateSupplyRequestResult,
   ReconcileReturnResult as ServiceReconcileReturnResult,
 } from "./write-service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -222,10 +215,7 @@ export const ParStockIdParams = Type.Object({ parStockId: Uuid });
 
 // ── list queries ─────────────────────────────────────────────────────────────────────────────────────
 
-const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
-};
+const PageQuery = pageQuery({ max: 500 });
 
 export const ListSupplyRequestsQuery = Type.Object({
   ...PageQuery,
@@ -354,7 +344,7 @@ export const MarkInTransitBody = Type.Object({
 });
 
 /** D7 — the courier attestation. `deliveredByMembershipId` is NOT here: the server stamps the acting
- *  membership (routes/actor.ts). A courier who could name someone else has attested to nothing. */
+ *  membership (`writeActorOf`, the route kit). A courier who could name someone else has attested to nothing. */
 export const MarkDeliveredBody = Type.Object({
   deliveredAt: Instant,
   deliveryMethod: SupplyDeliveryMethod,
@@ -362,7 +352,7 @@ export const MarkDeliveredBody = Type.Object({
 });
 
 /** F-193 (#248) — M21's own caregiver-signature capture. `capturedByMembershipId` is NOT here — the
- *  server stamps the acting membership (routes/actor.ts), the same D7 rule `MarkDeliveredBody` follows.
+ *  server stamps the acting membership (`writeActorOf`, the route kit), the same D7 rule `MarkDeliveredBody` follows.
  *  The per-method evidence floor is enforced by the pure validator
  *  (`../lifecycle/caregiver-signature.ts`'s `requireCaregiverSignatureEvidence`), not by this shape —
  *  every field here is optional at the wire level because which ones are REQUIRED depends on
@@ -1000,7 +990,7 @@ export const PerpetualLogViewSchema = Type.Object({
   lines: Type.Array(PerpetualLogLineViewSchema),
 });
 
-/** The cursor-paginated envelope the list reads return (`concurrency.ts` `CursorPage<T>`). */
+/** The cursor-paginated envelope the list reads return (the route kit `CursorPage<T>`). */
 const Page = <T extends TSchema>(item: T) =>
   Type.Object({
     data: Type.Array(item),

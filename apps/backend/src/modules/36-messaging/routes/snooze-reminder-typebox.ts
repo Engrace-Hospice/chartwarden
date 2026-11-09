@@ -1,12 +1,10 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/snooze-reminder-typebox.ts - WP 4.10 (ADR-0077) request/response schemas (schemas only,
 // so the OpenAPI emitter does not import the auth stack).
 import { Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
-
-export const MessageParamsSchema = Type.Object({ id: Uuid });
+export const MessageParamsSchema = Type.Object({ id: Uuid() });
 
 /** The bounds are enforced again (typed 422) by the service and by a database CHECK; here they only shape the contract. */
 export const SnoozeBodySchema = Type.Object(

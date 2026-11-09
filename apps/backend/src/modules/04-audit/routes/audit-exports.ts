@@ -1,3 +1,6 @@
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/04-audit/routes/audit-exports.ts — GAP-003 the §4.3/§4.4 compliance
 // export surface (M04-F04 / SEC-052).
 //
@@ -18,9 +21,7 @@
 // extra infra: `justification` is a required, min-length TypeBox field (enforced below), and the
 // "1 export/hour/user" rate limit is a live COUNT against the very table this route writes to — no
 // Redis, no estimate.
-import { type AuditContext, audit } from "@chartwarden/audit";
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
-import { type DbClient, schema } from "@chartwarden/db";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError, RateLimitedError, UnauthorizedError } from "@chartwarden/types";
 import { and, eq, gte } from "drizzle-orm";
@@ -31,9 +32,6 @@ import {
   CreateAuditExportBodySchema,
   parse,
 } from "./audit-typebox";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for the audit-exports routes. */
 export interface AuditExportsRouteDeps {
@@ -48,16 +46,6 @@ const EXPORT = schema.auditExports;
 const EXPORT_TTL_DAYS = 7;
 /** M04-F04 / SEC-052 — one export request per user per rolling hour. */
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  roles: readonly string[];
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
-}
 
 function auditContextFor(request: FastifyRequest): AuditContext {
   const ctx = request.context;

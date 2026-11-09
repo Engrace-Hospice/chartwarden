@@ -1,8 +1,8 @@
+// The DDE work queue (ADR-0052): paging, deep links, filters, the action dispatch (expected version + idempotency
+// key), the stale-version notice held by the screen, double-submit protection, the step-up round trip (returnTo, exactly one
+// post, the form restored), and the absence of any MBI field.
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
-// The DDE work queue (ADR-0052): paging, deep links, filters, the action dispatch (expected version + idempotency
-// key), the 412 notice held by the screen, double-submit protection, the step-up round trip (returnTo, exactly one
-// post, the form restored), and the absence of any MBI field.
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -372,8 +372,8 @@ describe("DdeQueue actions", () => {
     });
   });
 
-  it("holds a 412 notice on the screen (role=alert) and reloads, without remounting the rail", async () => {
-    const post = vi.fn(async () => fail(412, "VERSION_CONFLICT"));
+  it("holds a stale-version notice on the screen (role=alert) and reloads, without remounting the rail", async () => {
+    const post = vi.fn(async () => fail(409, "STALE_VERSION"));
     const { api, get } = setup({
       post,
       pages: [
@@ -539,10 +539,10 @@ describe("DdeQueue paging races and notices", () => {
     expect(screen.queryByText("DDE queue unavailable")).toBeNull();
   });
 
-  it("clears the 412 notice once an action succeeds, without nesting alerts", async () => {
+  it("clears the stale-version notice once an action succeeds, without nesting alerts", async () => {
     const post = vi
       .fn()
-      .mockResolvedValueOnce(fail(412, "VERSION_CONFLICT"))
+      .mockResolvedValueOnce(fail(409, "STALE_VERSION"))
       .mockResolvedValue(ok({}));
     const { api } = setup({
       post,

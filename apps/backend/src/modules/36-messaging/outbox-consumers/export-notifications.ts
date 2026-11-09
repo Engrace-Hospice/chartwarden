@@ -15,7 +15,7 @@ import type {
 import { M36_EXPORT_EVENTS } from "../export/export-events";
 
 export const M36_EXPORT_NOTIFICATION_CONSUMER = "m36.export-notifications" as const;
-export const M36_EXPORT_NOTIFICATION_EVENTS = [M36_EXPORT_EVENTS.requested] as const;
+const M36_EXPORT_NOTIFICATION_EVENTS = [M36_EXPORT_EVENTS.requested] as const;
 
 /** Provisional copy (compliance sign-off pending): says what happened, never who, what or why. */
 export const EXPORT_REQUESTED_ALERT_TEXT =

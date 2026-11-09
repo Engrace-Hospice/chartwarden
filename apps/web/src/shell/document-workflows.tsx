@@ -2115,7 +2115,7 @@ function errorMessage(err: unknown, fallback: string): string {
     return "Patient not accessible.";
   }
 
-  if (/VERSION_MISMATCH|412/i.test(message)) {
+  if (/STALE_VERSION|(changed|modified) since you read it/i.test(message)) {
     return "This document changed since you opened it. Refresh and try again.";
   }
 

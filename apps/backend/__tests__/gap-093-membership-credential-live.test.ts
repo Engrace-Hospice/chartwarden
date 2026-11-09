@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * GAP-093 — M17's `clinician_credentials_active` (§1.1 D8 predicate) was a permanent deny stub: no
  * clinical-license/credential data model existed anywhere in the platform (M17's own spec assumes an
@@ -41,6 +42,9 @@ import {
 } from "../src/modules/17-scheduling/index";
 import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+
+/** A fresh Idempotency-Key — every M17/M18 mutating route requires one (ADR-0021). */
+const idem = () => ({ "idempotency-key": randomUUID() });
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -231,6 +235,7 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
       method: "POST",
       url: "/api/v1/visits",
       headers: {
+        ...idem(),
         "x-test-user": rn.userId,
         "x-test-membership": rn.membershipId,
         "x-test-org": org,
@@ -253,7 +258,7 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
     const grantRes = await app.inject({
       method: "POST",
       url: `/api/v1/memberships/${rn.membershipId}/credentials`,
-      headers,
+      headers: { ...headers, ...idem() },
       payload: { credentialType: "rn", effectiveAt: "2020-01-01", issuingBody: "Oregon BON" },
     });
     expect(grantRes.statusCode).toBe(201);
@@ -274,7 +279,7 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
     const createRes = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers,
+      headers: { ...headers, ...idem() },
       payload: visitPayload(),
     });
     expect(createRes.statusCode).toBe(201);
@@ -283,7 +288,7 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
     const revokeRes = await app.inject({
       method: "DELETE",
       url: `/api/v1/memberships/${rn.membershipId}/credentials/${credentialId}`,
-      headers,
+      headers: { ...headers, ...idem() },
       payload: { reason: "license lapsed per state board notice" },
     });
     expect(revokeRes.statusCode).toBe(204);
@@ -292,7 +297,7 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
     const deniedRes = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers,
+      headers: { ...headers, ...idem() },
       payload: visitPayload(),
     });
     expect(deniedRes.statusCode).toBe(403);

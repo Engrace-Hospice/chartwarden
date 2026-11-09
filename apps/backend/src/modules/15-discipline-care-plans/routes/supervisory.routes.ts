@@ -6,9 +6,12 @@
 // location, the §6 documented override) may attest, and the acting membership is stamped server-side, so
 // a caller cannot attest as someone else by putting their id in the body. The sign route adds the §4.1
 // step-up gate.
+import {
+  ifMatchVersionOf,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { ABAC_SUPERVISOR, P, STEP_UP, planCaseloadScope } from "./guards";
 import {
   CreateSupervisoryVisitBody,
@@ -71,7 +74,7 @@ export function registerAideSupervisoryRoutes(
     async (request) => {
       const { planId, visitId } = parse(SupervisoryVisitParams, request.params);
       return writeService.signSupervisoryVisit(writeActorOf(request), planId, visitId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

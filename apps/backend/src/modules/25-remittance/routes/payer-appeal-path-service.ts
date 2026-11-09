@@ -4,6 +4,7 @@
 // author != verifier rule atomically; the checks here only give a friendly error first). Edit = retire the draft and write
 // a new one. The payer's name comes through the M40 seam (fail closed): an unresolved payer cannot be written or activated.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
@@ -17,8 +18,6 @@ import {
   noticeDayOf,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation } from "./denial-route-service";
 import { type PayerSeam, buildSeamPayerSeam } from "./payer-seam";
 
 export interface PathLevelView extends PathLevelInput {
@@ -310,7 +309,7 @@ export function buildDrizzlePayerAppealPathService(
           })
           .where(and(eq(P.id, id), eq(P.version, ifMatch), eq(P.status, "draft")))
           .returning({ id: P.id, version: P.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },
@@ -326,7 +325,7 @@ export function buildDrizzlePayerAppealPathService(
           .set({ status: "retired", version: sql`${P.version} + 1`, updatedAt: new Date() })
           .where(and(eq(P.id, id), eq(P.version, ifMatch), sql`${P.status} <> 'retired'`))
           .returning({ id: P.id, version: P.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },

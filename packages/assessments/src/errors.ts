@@ -33,7 +33,7 @@ export const M9_ERROR_STATUS = {
   // §4.4 / §2.2.1 — correction-chain integrity (the append-only amendment path).
   CORRECTION_MISMATCH: 422,
   CORRECTION_TARGET_NOT_ACTIVE: 409,
-  STALE_VERSION: 412,
+  STALE_VERSION: 409,
   // §4.4 / §7.4 — the cosignature read gate (a consumer surface refuses an un-cosigned row).
   COSIGN_REQUIRED: 412,
   // Domain-internal lifecycle codes (the pure machines below; not in the §4.4 client table).

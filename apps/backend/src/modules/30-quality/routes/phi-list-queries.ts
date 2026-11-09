@@ -6,10 +6,10 @@
 // are all in the WHERE clause, and a page is fetched as `size + 1` rows so `hasMore` is exact.
 import { schema } from "@chartwarden/db";
 import type { QualityDb } from "@chartwarden/quality";
-import { ChartWardenError } from "@chartwarden/types";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { type SQL, and, desc, eq, gte, inArray, lt, lte, ne, or } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
-import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
+import type { CursorPage } from "./pagination";
 import { type QualityPatientScope, patientScopeCondition } from "./patient-scope";
 import type { IncidentListFilter, InfectionEventFilter, MortalityListFilter } from "./read-service";
 
@@ -111,15 +111,13 @@ export function infectionEventListWhere(
   return where as SQL;
 }
 
-/** Decode the opaque cursor into its keyset; a malformed cursor is a 400, never "page from the start". */
-export function toListCursor(cursor: string | undefined): ListCursor | undefined {
-  if (!cursor) return undefined;
-  const key = decodeCursor(cursor);
-  const at = new Date(key.createdAt);
-  if (Number.isNaN(at.getTime())) {
-    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
-  }
-  return { at, id: key.id };
+/** Verify + decode the signed cursor into its keyset; a tampered, non-instant or non-uuid cursor is 422, never page 1. */
+export function toListCursor(
+  organizationId: string,
+  cursor: string | undefined,
+): ListCursor | undefined {
+  const key = decodeKeysetCursor(organizationId, cursor, "instant");
+  return key ? { at: new Date(key.a), id: key.id } : undefined;
 }
 
 /** Trim the `size + 1` probe row off a fetched page; its presence is what makes `hasMore` exact. */
@@ -182,6 +180,7 @@ export async function fetchInfectionEventPage(
 
 /** Project a fetched page onto a {@link CursorPage}, minting `nextCursor` from the last row's keyset. */
 export function toKeysetPage<R, V>(
+  organizationId: string,
   fetched: { readonly page: readonly R[]; readonly hasMore: boolean },
   keyOf: (row: R) => { readonly at: Date; readonly id: string },
   map: (row: R) => V,
@@ -189,7 +188,7 @@ export function toKeysetPage<R, V>(
   const last = fetched.page[fetched.page.length - 1];
   const nextCursor =
     fetched.hasMore && last
-      ? encodeCursor({ createdAt: keyOf(last).at.toISOString(), id: keyOf(last).id })
+      ? encodeCursor(organizationId, { a: keyOf(last).at.toISOString(), id: keyOf(last).id })
       : null;
   return { items: fetched.page.map(map), nextCursor, hasMore: fetched.hasMore };
 }

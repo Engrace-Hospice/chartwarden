@@ -229,7 +229,7 @@ export class NotrRepository {
       filter.admissionId ? eq(N.admissionId, filter.admissionId) : undefined,
       filter.triggerKind ? eq(N.triggerKind, filter.triggerKind) : undefined,
       filter.state ? eq(N.state, noticeStateCodec.toDb(filter.state)) : undefined,
-      keysetBefore(N.createdAt, N.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(N.createdAt, N.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -237,7 +237,7 @@ export class NotrRepository {
       .where(where)
       .orderBy(desc(N.createdAt), desc(N.id))
       .limit(size + 1);
-    return buildCursorPage(rows.map(toNotrRecord), size, (r) => ({
+    return buildCursorPage(organizationId, rows.map(toNotrRecord), size, (r) => ({
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));

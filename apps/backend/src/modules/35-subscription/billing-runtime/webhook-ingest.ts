@@ -1,4 +1,5 @@
 import { schema } from "@chartwarden/db";
+import { Uuid } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/35-subscription/billing-runtime/webhook-ingest.ts - GAP-058.
 //
 // Binds the M35 inbound webhook route to the §4.14 ingestion core (`ingestStripeWebhook`): HMAC verify with
@@ -16,10 +17,9 @@ import {
   type WebhookPayloadEncryptor,
   ingestStripeWebhook,
 } from "@chartwarden/subscription-billing";
+import { Value } from "@sinclair/typebox/value";
 import type { PlatformRunner } from "../routes/service-drizzle";
 import type { M35WebhookIngest } from "../routes/webhooks.routes";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface M35WebhookIngestDeps {
   readonly platformRunner: PlatformRunner;
@@ -31,15 +31,13 @@ export interface M35WebhookIngestDeps {
 }
 
 /** Tenant attribution is best-effort and ONLY from a value M35 itself stamped on the Stripe object. */
-export function orgFromStripeMetadata(event: StripeEventEnvelope): string | null {
+function orgFromStripeMetadata(event: StripeEventEnvelope): string | null {
   const data = event.raw.data as { object?: { metadata?: Record<string, unknown> } } | undefined;
   const candidate = data?.object?.metadata?.organization_id;
-  return typeof candidate === "string" && UUID_RE.test(candidate) ? candidate : null;
+  return typeof candidate === "string" && Value.Check(Uuid(), candidate) ? candidate : null;
 }
 
-export function createDrizzleWebhookEventStore(
-  platformRunner: PlatformRunner,
-): StripeWebhookEventStore {
+function createDrizzleWebhookEventStore(platformRunner: PlatformRunner): StripeWebhookEventStore {
   return {
     async insertIfNew(row) {
       return platformRunner(async (tx) => {

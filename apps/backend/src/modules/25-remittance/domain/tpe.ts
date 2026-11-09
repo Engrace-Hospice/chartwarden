@@ -13,23 +13,14 @@ export const TPE_SAMPLE_MIN = 20;
 export const TPE_SAMPLE_MAX = 40;
 
 export type TpeProgramState = "active" | "compliant" | "referred" | "closed";
-export const TPE_PROGRAM_STATES: readonly TpeProgramState[] = [
-  "active",
-  "compliant",
-  "referred",
-  "closed",
-];
 
 /** The result the MAC's letter states for a round; the letter, not our count, is official. */
 export const TPE_MAC_RESULTS = ["compliant", "non_compliant"] as const;
-export type TpeMacResult = (typeof TPE_MAC_RESULTS)[number];
 
 export const TPE_CLAIM_RESULTS = ["pending", "no_error", "error"] as const;
-export type TpeClaimResult = (typeof TPE_CLAIM_RESULTS)[number];
 
 /** Referral kinds from the PRD; the full CMS list (for example UPIC) is SME-unconfirmed, `other` covers it. */
 export const TPE_REFERRAL_KINDS = ["prepay_review", "extrapolation", "rac", "other"] as const;
-export type TpeReferralKind = (typeof TPE_REFERRAL_KINDS)[number];
 
 // The same edges as the database guard trigger in migration 1118.
 const PROGRAM_EDGES: Readonly<Record<TpeProgramState, readonly TpeProgramState[]>> = {

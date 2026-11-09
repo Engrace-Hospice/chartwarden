@@ -25,7 +25,7 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_EMAR_ALERT_CONSUMER = "m36.emar-alerts" as const;
+const M36_EMAR_ALERT_CONSUMER = "m36.emar-alerts" as const;
 
 interface EmarAlertPlan {
   readonly alertEventType: string;

@@ -17,6 +17,7 @@
 //                    whose patient has no later admission: the readmission candidates (newest first).
 // The page's discharge/transfer facts are read with ONE extra query per table, bounded by the page size.
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
@@ -42,10 +43,6 @@ const DEFAULT_LIMIT = 50;
 
 const clampLimit = (n?: number): number =>
   n === undefined ? DEFAULT_LIMIT : Math.max(1, Math.min(MAX_LIMIT, Math.trunc(n)));
-const parseOffset = (cursor?: string): number => {
-  const n = cursor ? Number.parseInt(cursor, 10) : 0;
-  return Number.isFinite(n) && n > 0 ? n : 0;
-};
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -103,10 +100,10 @@ function baseItem(a: AdmissionRow): DischargeWorklistItem {
   };
 }
 
-function page<T>(rows: readonly T[], limit: number, offset: number) {
+function page<T>(organizationId: string, rows: readonly T[], limit: number, offset: number) {
   return {
     rows: rows.slice(0, limit),
-    nextCursor: rows.length > limit ? String(offset + limit) : null,
+    nextCursor: rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
   };
 }
 
@@ -178,6 +175,7 @@ export function createDbDischargeWorklistService(
     filters: SQL[],
     limit: number,
     offset: number,
+    organizationId: string,
   ): Promise<DischargeWorklistPage> {
     const rows = await tx
       .select(ADMISSION_COLS)
@@ -192,7 +190,7 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(ADM.admissionAt), desc(ADM.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(rows, limit, offset);
+    const p = page(organizationId, rows, limit, offset);
     return { items: p.rows.map(baseItem), nextCursor: p.nextCursor };
   }
 
@@ -201,6 +199,7 @@ export function createDbDischargeWorklistService(
     filters: SQL[],
     limit: number,
     offset: number,
+    organizationId: string,
   ): Promise<DischargeWorklistPage> {
     const rows = await tx
       .select(ADMISSION_COLS)
@@ -223,7 +222,7 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(ADM.dischargedAt), desc(ADM.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(rows, limit, offset);
+    const p = page(organizationId, rows, limit, offset);
     const ids = p.rows.map((r) => r.id);
     if (ids.length === 0) return { items: [], nextCursor: p.nextCursor };
 
@@ -281,6 +280,7 @@ export function createDbDischargeWorklistService(
     filters: SQL[],
     limit: number,
     offset: number,
+    organizationId: string,
   ): Promise<DischargeWorklistPage> {
     const rows = await tx
       .select({
@@ -295,7 +295,7 @@ export function createDbDischargeWorklistService(
       .orderBy(asc(DE.createdAt), asc(DE.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(rows, limit, offset);
+    const p = page(organizationId, rows, limit, offset);
     return {
       items: p.rows.map((r) => ({
         ...baseItem(r),
@@ -312,6 +312,7 @@ export function createDbDischargeWorklistService(
     filters: SQL[],
     limit: number,
     offset: number,
+    organizationId: string,
   ): Promise<DischargeWorklistPage> {
     const LATER = schema.admissions;
     const rows = await tx
@@ -335,7 +336,7 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(ADM.dischargedAt), desc(ADM.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(rows, limit, offset);
+    const p = page(organizationId, rows, limit, offset);
     const ids = p.rows.map((r) => r.id);
     if (ids.length === 0) return { items: [], nextCursor: p.nextCursor };
     const revs = await tx
@@ -381,6 +382,7 @@ export function createDbDischargeWorklistService(
     filters: SQL[],
     limit: number,
     offset: number,
+    organizationId: string,
   ): Promise<DischargeWorklistPage> {
     const nextDeadline = sql<string | null>`(
       SELECT min(d.due_at) FROM expedited_deadline d
@@ -394,7 +396,7 @@ export function createDbDischargeWorklistService(
       .orderBy(sql`${nextDeadline} ASC NULLS FIRST`, asc(QR.qioNotifiedAt), asc(QR.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(rows, limit, offset);
+    const p = page(organizationId, rows, limit, offset);
     return {
       items: p.rows.map((r) => ({
         ...baseItem(r),
@@ -409,6 +411,7 @@ export function createDbDischargeWorklistService(
     filters: SQL[],
     limit: number,
     offset: number,
+    organizationId: string,
   ): Promise<DischargeWorklistPage> {
     const rows = await tx
       .select({ ...ADMISSION_COLS, deliveredAt: NN.deliveredAt })
@@ -425,7 +428,7 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(NN.deliveredAt), asc(NN.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(rows, limit, offset);
+    const p = page(organizationId, rows, limit, offset);
     return {
       items: p.rows.map((r) => ({ ...baseItem(r), noticeDeliveredAt: iso(r.deliveredAt) })),
       nextCursor: p.nextCursor,
@@ -439,21 +442,23 @@ export function createDbDischargeWorklistService(
       scope: AdmissionReadScope,
     ): Promise<DischargeWorklistPage> {
       const limit = clampLimit(query.limit);
-      const offset = parseOffset(query.cursor);
+      const offset = decodeOffsetCursor(organizationId, query.cursor);
       const scopeFilter = scopeFilterOf(scope);
       if (scopeFilter === "none") return { items: [], nextCursor: null };
       const page = await withOrgContext(db, { organizationId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const filters: SQL[] = [eq(ADM.organizationId, organizationId)];
         if (scopeFilter !== "org") filters.push(scopeFilter);
-        if (query.bucket === "ready") return ready(tx, filters, limit, offset);
-        if (query.bucket === "needs_details") return needsDetails(tx, filters, limit, offset);
+        if (query.bucket === "ready") return ready(tx, filters, limit, offset, organizationId);
+        if (query.bucket === "needs_details")
+          return needsDetails(tx, filters, limit, offset, organizationId);
         if (query.bucket === "recently_discharged")
-          return recentlyDischarged(tx, filters, limit, offset);
-        if (query.bucket === "qio_review_open") return qioReviewOpen(tx, filters, limit, offset);
+          return recentlyDischarged(tx, filters, limit, offset, organizationId);
+        if (query.bucket === "qio_review_open")
+          return qioReviewOpen(tx, filters, limit, offset, organizationId);
         if (query.bucket === "nomnc_no_deadline")
-          return nomncNoDeadline(tx, filters, limit, offset);
-        return awaitingCosign(tx, filters, limit, offset);
+          return nomncNoDeadline(tx, filters, limit, offset, organizationId);
+        return awaitingCosign(tx, filters, limit, offset, organizationId);
       });
       // The seam opens its own org context, so the names are read after the worklist transaction.
       return query.bucket === "recently_discharged" ? withPatients(organizationId, page) : page;

@@ -1,3 +1,4 @@
+import { type CursorPage, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 import type { PortalTriageSummary } from "@chartwarden/types";
 // apps/backend/src/modules/19-oncall/routes/m19-typebox.ts — M19-T07 (§4.2) request schemas.
@@ -30,9 +31,8 @@ import type { PortalTriageSummary } from "@chartwarden/types";
 // (`routes/actor.ts`), which is what makes §8.3.1's spoofing controls structural. `red_flag_hit` is
 // likewise absent from every request body: D5 makes it the SERVER's evaluation, and a client that could
 // assert it could assert its absence.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { CursorPage } from "./concurrency";
 import type {
   CurrentOnCallView,
   EscalationInboxItem,
@@ -51,17 +51,6 @@ import type {
   VendorTriageCallView,
 } from "./read-service";
 import type { AnswerWriteResult, OpenTriageCallResult } from "./write-service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -689,15 +678,10 @@ export const PaperReentryBody = Type.Object(
 
 // ── list queries (§4.1.1 cursor pagination) ─────────────────────────────────────────────────────────
 
-const CursorFields = {
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
-};
-
 /** §4.1 row 2 — the supervisor board / caseload list. */
 export const ListTriageCallsQuery = Type.Object(
   {
-    ...CursorFields,
+    ...pageQuery(),
     state: Type.Optional(TriageCallState),
     /** The §3.4 "all open cases right now" board — the six non-terminal states in one filter. */
     openOnly: Type.Optional(Type.Boolean()),
@@ -712,7 +696,7 @@ export const ListTriageCallsQuery = Type.Object(
 /** §4.1 row 16 — the escalation inbox. */
 export const ListEscalationsQuery = Type.Object(
   {
-    ...CursorFields,
+    ...pageQuery(),
     tier: Type.Optional(EscalationTier),
     /** Default true — an inbox shows what is outstanding. */
     openOnly: Type.Optional(Type.Boolean()),
@@ -724,7 +708,7 @@ export const ListEscalationsQuery = Type.Object(
 /** §4.1 row 19 — the shift schedule. */
 export const ListShiftsQuery = Type.Object(
   {
-    ...CursorFields,
+    ...pageQuery(),
     providerEntityId: UuidOpt,
     discipline: Type.Optional(ShiftDiscipline),
     from: InstantOpt,
@@ -742,7 +726,7 @@ export const CurrentOnCallQuery = Type.Object(
 /** §4.1 row 27 — the protocol catalog (platform floor + this tenant's rows). */
 export const ListProtocolsQuery = Type.Object(
   {
-    ...CursorFields,
+    ...pageQuery(),
     /** Default true — a retired protocol is catalog history, not a thing to apply at 2 a.m. */
     effectiveOnly: Type.Optional(Type.Boolean()),
     disciplineRequired: Type.Optional(ShiftDiscipline),
@@ -753,7 +737,7 @@ export const ListProtocolsQuery = Type.Object(
 
 /** §4.1 row 36 — the portal's lay-language recent-activity list. */
 export const PortalRecentQuery = Type.Object(
-  { ...CursorFields, sinceDays: Type.Optional(Type.Integer({ minimum: 1, maximum: 90 })) },
+  { ...pageQuery(), sinceDays: Type.Optional(Type.Integer({ minimum: 1, maximum: 90 })) },
   { additionalProperties: false },
 );
 
@@ -856,7 +840,7 @@ const RedactedCategoryEnum = Type.Union([
   Type.Literal("caller_free_text"),
 ]);
 
-/** `CursorPage<T>` (concurrency.ts) — `{ data, next_cursor, has_more }`, NOT `{ items, nextCursor }`. */
+/** The route kit's `CursorPage<T>` — `{ data, next_cursor, has_more }`, NOT `{ items, nextCursor }`. */
 const Page = <T extends TSchema>(item: T) =>
   Type.Object({
     data: Type.Array(item),

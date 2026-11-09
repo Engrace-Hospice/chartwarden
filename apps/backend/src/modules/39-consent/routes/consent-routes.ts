@@ -22,6 +22,7 @@ import type {
   UpsertConsentOverlayInput,
 } from "@chartwarden/consent";
 import { ConsentRouteError } from "@chartwarden/consent";
+import { actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ConsentAccessDeps, ConsentStaffActor } from "../access-scope";
@@ -46,7 +47,6 @@ import {
   RE_RENDER_STEP_UP,
   SIGN,
   SIGN_STEP_UP,
-  actorOf,
   commandContextOf,
   deriveStaffRevocationAttribution,
   mapError,

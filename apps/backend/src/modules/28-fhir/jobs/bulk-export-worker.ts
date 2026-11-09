@@ -34,6 +34,7 @@ import {
   planBulkExportArtifact,
 } from "@chartwarden/fhir";
 import type { OperationOutcome } from "@chartwarden/fhir";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext } from "@chartwarden/tenancy";
 import type { FhirBulkExportJobId, FhirClientId } from "@chartwarden/types";
 
@@ -70,7 +71,6 @@ import { EXPORT_MAX_RESOURCES_PER_JOB, EXPORT_PATIENT_PAGE_SIZE } from "./queues
 const PER_PATIENT_RESOURCE_LIMIT = 10_000;
 /** `_since` absent means "everything", not the 5-year default window a synchronous search applies. */
 const EPOCH_ISO = "1970-01-01T00:00:00.000Z";
-const SYSTEM_USER_ID = "";
 const OUTCOME_TYPE = "OperationOutcome";
 
 export interface BulkExportWorkerDeps {
@@ -102,7 +102,7 @@ export type BulkExportOutcome =
   | { readonly status: "skipped" };
 
 /** A refusal the client may be told about (no PHI, no internals) — everything else becomes a generic reason. */
-export class BulkExportRefused extends Error {}
+class BulkExportRefused extends Error {}
 
 const GENERIC_FAILURE_REASON = "the export could not be completed; see the server log";
 
@@ -432,7 +432,7 @@ async function execute(
   // Some owner-module seams resolve the tenant from the ambient request context; a worker has none, so it
   // enters one for THIS org with the system actor (the worker is not a request and acts for no human).
   const collected = await runWithRequestContext(
-    { organizationId: job.organizationId, userId: SYSTEM_USER_ID, systemActor: true },
+    { organizationId: job.organizationId, userId: CONSUMER_USER_ID, systemActor: true },
     () => collectResources(deps, job, ctx),
   );
   if (collected === null) return { status: "cancelled" };

@@ -40,8 +40,8 @@ import {
 } from "@chartwarden/reporting";
 import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
-import type { CursorPage } from "./concurrency";
-import { paginate } from "./concurrency";
+import type { CursorPage } from "./pagination";
+import { paginate } from "./pagination";
 import type {
   DashboardDetailView,
   DrilldownAuditView,
@@ -228,7 +228,7 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
         id: d.dashboardId,
         createdAt: `${(rows.length - i).toString().padStart(12, "0")}`,
       }));
-      const page = paginate(withKeys, cursor, limit);
+      const page = paginate(actor.organizationId, withKeys, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d) };
     },
 
@@ -365,7 +365,7 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
         .sort((a, b) =>
           a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
         );
-      return paginate(mapped, cursor, limit) as CursorPage<ReportBaseView>;
+      return paginate(actor.organizationId, mapped, cursor, limit) as CursorPage<ReportBaseView>;
     },
 
     async getBase(actor, baseKey) {
@@ -401,7 +401,7 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
         .sort((a, b) =>
           a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
         );
-      return paginate(mapped, cursor, limit) as CursorPage<ReportMetricView>;
+      return paginate(actor.organizationId, mapped, cursor, limit) as CursorPage<ReportMetricView>;
     },
 
     async listMvMetadata(actor, filter, cursor, limit) {
@@ -410,7 +410,7 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
         return new ReportCatalogRepository(db).listMvMetadata(status);
       });
       const withKeys = rows.map((r) => ({ ...mapMvRow(r), createdAt: r.mvKey }));
-      const page = paginate(withKeys, cursor, limit);
+      const page = paginate(actor.organizationId, withKeys, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...v }) => v) };
     },
 
@@ -481,7 +481,7 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
         accessedAt: r.accessedAt.toISOString(),
         createdAt: r.accessedAt.toISOString(),
       }));
-      const page = paginate(mapped, cursor, limit);
+      const page = paginate(actor.organizationId, mapped, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...d }) => d) };
     },
 

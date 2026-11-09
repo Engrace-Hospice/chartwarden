@@ -7,10 +7,10 @@
 // the server-authoritative `evaluateJ2051Trigger` (D4) reads at sign — so the trigger/ SFV flow is wired
 // end-to-end. The server IGNORES any client-sent trigger flag (D4); the `data` object is otherwise carried
 // opaquely and narrowed by the per-section validators server-side.
+import "@chartwarden/shared/route-kit";
 import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
 import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   HopeAnswerPatchResult as ServiceAnswerPatchResult,
@@ -25,14 +25,6 @@ import type {
   HopeValidationRunView as ServiceValidationRunView,
   HopeWorkflowStateView as ServiceWorkflowStateView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 

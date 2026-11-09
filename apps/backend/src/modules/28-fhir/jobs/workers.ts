@@ -3,6 +3,8 @@
 //
 // Queue names and job ids contain no ':' (BullMQ forbids it in a custom id). The bulk-export job id is
 // deterministic per `fhir_bulk_export_job` row, so a re-enqueue by the sweeper cannot double-queue it.
+import { Uuid } from "@chartwarden/shared/route-kit";
+import { Value } from "@sinclair/typebox/value";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { type BulkExportSweeperDeps, runBulkExportSweeper } from "./bulk-export-sweeper";
@@ -19,7 +21,6 @@ import { type SessionSweeperDeps, runClientSessionSweeper } from "./session-swee
 
 /** §4.8: 4 export jobs per backend node. The per-client limit is the 429 at submission + the DB claim. */
 const BULK_EXPORT_CONCURRENCY = 4;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface M28WorkerDeps {
   readonly connection: ConnectionOptions;
@@ -41,8 +42,8 @@ export function parseBulkExportJobData(data: unknown): BulkExportJobData {
   if (
     typeof d?.organizationId !== "string" ||
     typeof d.jobId !== "string" ||
-    !UUID_RE.test(d.organizationId) ||
-    !UUID_RE.test(d.jobId)
+    !Value.Check(Uuid(), d.organizationId) ||
+    !Value.Check(Uuid(), d.jobId)
   ) {
     throw new Error("fhir.bulk-export: job data must carry a uuid organizationId and jobId");
   }

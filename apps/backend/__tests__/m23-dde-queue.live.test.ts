@@ -304,12 +304,12 @@ describe.skipIf(!DB_URL)("M23 DDE work queue, LIVE Postgres (ADR-0052)", () => {
       expect(noe.rows[0].state).toBe("READY");
     });
 
-    it("refuses a stale version (412), a cancel after submission (409), and MBI-shaped or over-long notes (422)", async () => {
+    it("refuses a stale version (409 STALE_VERSION), a cancel after submission (409), and MBI-shaped or over-long notes (422)", async () => {
       const noeId = await seedNoe();
       const item = (await post("", asA(), { itemType: "noe", subjectId: noeId })).json();
       expect(
         (await post(`/${item.ddeWorkItemId}/claim`, asA(), { expectedVersion: 7 })).statusCode,
-      ).toBe(412);
+      ).toBe(409);
       const mbi = await post("", asA(), {
         itemType: "notr",
         subjectId: randomUUID(),

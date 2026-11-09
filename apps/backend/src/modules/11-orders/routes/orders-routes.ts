@@ -1,3 +1,11 @@
+import {
+  type AbacTarget,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/11-orders/routes/orders-routes.ts — M11-T06 the §4.1 route inventory (28 routes)
 // behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the
 // §4.6 keys M11 registers into M3's catalog (M11_CONTRIBUTED_PERMISSIONS). Org binding is server-side
@@ -20,14 +28,7 @@
 // `requireAbac('signer_eligible')` (target = `:id`); the cosign route adds `requireAbac('m11.cosigner_role_match')`
 // (target = `:id`). The §4.1 caseload column maps to the shared `caseload_or_scope` predicate (registered by
 // M7, bound by name here — see the GAP-030 note above).
-import {
-  type AbacTarget,
-  hasOrgWideScope,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-  resolveActorPermissions,
-} from "@chartwarden/auth";
+import { type PreHandler, membershipActorOf } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -66,9 +67,6 @@ import {
   type OrderRouteService,
   inReadScope,
 } from "./service";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OrderRouteDeps {
   service: OrderRouteService;
@@ -110,19 +108,6 @@ export async function readScopeOf(
   }
 }
 
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-} {
-  const ctx = request.context;
-  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" — same bug/fix as
-  // M7/M8/M9/M10: this used to read `ctx.userId` (the raw Better Auth user id, a DIFFERENT id from
-  // the org membership), FK-violating `order_record_drafter_membership_id_membership_id_fk`.
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId };
-}
-
 /** GAP-031 — refuse a body-supplied discipline the authenticated caller's session does not hold. */
 function requireHeld(request: FastifyRequest, claimed: string): void {
   assertDisciplineHeld(request.context.roles, claimed);
@@ -130,7 +115,7 @@ function requireHeld(request: FastifyRequest, claimed: string): void {
 
 /** Assemble the read-projection actor from the authenticated request context and M3's existing resolver. */
 async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor> {
-  const { organizationId, userId: membershipId } = actorOf(request);
+  const { organizationId, userId: membershipId } = membershipActorOf(request);
   const ctx = request.context;
   const granted = await resolveActorPermissions({
     organizationId,
@@ -231,7 +216,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // patient nobody covers → 404, never an allow.
   const resolvedPatient = new WeakMap<object, string>();
   const RESOLVE_ORDER_PATIENT: PreHandler = async (request) => {
-    const { organizationId } = actorOf(request);
+    const { organizationId } = membershipActorOf(request);
     const { id } = parse(OrderParamsSchema, request.params);
     const facts = await service.loadOrder(organizationId, id);
     resolvedPatient.set(request, facts?.patientId ?? UNRESOLVED_PATIENT);
@@ -279,7 +264,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   };
   // Standing orders: resolve the template's patient (an unknown / cross-tenant id is the service's 404).
   const RESOLVE_STANDING_PATIENT: PreHandler = async (request) => {
-    const { organizationId } = actorOf(request);
+    const { organizationId } = membershipActorOf(request);
     const { id } = parse(StandingOrderParamsSchema, request.params);
     const view = await service.getStandingOrder(organizationId, id);
     resolvedPatient.set(request, view.patientId);
@@ -303,7 +288,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       config: { auditRead: { resourceKind: "order", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(OrderListQuerySchema, request.query);
       return service.listOrders(
         organizationId,
@@ -327,7 +312,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       config: { auditRead: { resourceKind: "order", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.pendingSignature(organizationId, await readScope(request));
     },
   );
@@ -339,7 +324,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       config: { auditRead: { resourceKind: "order", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.verbalExpiring(organizationId, await readScope(request));
     },
   );
@@ -351,7 +336,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       config: { auditRead: { resourceKind: "order", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.cosignPending(organizationId, await readScope(request));
     },
   );
@@ -363,7 +348,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       config: { auditRead: { resourceKind: "lab_order", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.resultsPendingReview(organizationId, await readScope(request));
     },
   );
@@ -380,7 +365,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.suggestions(organizationId, patientId);
     },
@@ -391,7 +376,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders",
     { preHandler: [DRAFT, bodyPatientScope("orders.draft"), ABAC_DRAFT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(CreateOrderRequest, request.body);
       requireHeld(request, body.drafterDiscipline);
       const res = await service.createDraft(
@@ -421,7 +406,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/verbal-orders",
     { preHandler: [DRAFT, bodyPatientScope("orders.draft"), ABAC_DRAFT, VERBAL] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(CreateVerbalOrderRequest, request.body);
       requireHeld(request, body.order.drafterDiscipline);
       const res = await service.createVerbalOrder(
@@ -445,7 +430,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       config: { auditRead: { resourceKind: "order", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       return service.getOrder(organizationId, id, await detailActorOf(request));
     },
@@ -456,7 +441,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id",
     { preHandler: [DRAFT, ...orderScope("orders.draft")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(UpdateOrderRequest, request.body);
       return service.editDraft(
@@ -475,7 +460,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/request-signature",
     { preHandler: [DRAFT, ...orderScope("orders.draft")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(RequestSignatureRequest, request.body);
       requireHeld(request, body.signerDiscipline);
@@ -496,7 +481,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/sign",
     { preHandler: [SIGN, ...orderScope("orders.sign"), ABAC_SIGN] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(SignOrderRequest, request.body);
       requireHeld(request, body.signerDiscipline);
@@ -518,7 +503,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/sign-on-behalf",
     { preHandler: [SIGN_ON_BEHALF, ...orderScope("orders.sign_on_behalf"), ABAC_SIGN] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(SignOnBehalfRequest, request.body);
       requireHeld(request, body.signerDiscipline);
@@ -542,7 +527,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/verbal",
     { preHandler: [VERBAL, ...orderScope("orders.verbal.record")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(RecordVerbalRequest, request.body);
       requireHeld(request, body.recorderDiscipline);
@@ -568,7 +553,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/cosign",
     { preHandler: [COSIGN, ...orderScope("orders.cosign"), ABAC_COSIGN] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(CosignRequest, request.body);
       return service.cosignOrder(
@@ -589,7 +574,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/discontinue",
     { preHandler: [DISCONTINUE, ...orderScope("orders.discontinue")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(DiscontinueRequest, request.body);
       return service.discontinueOrder(
@@ -618,7 +603,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       ],
     },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(CorrectOrderRequest, request.body);
       requireHeld(request, body.drafterDiscipline);
@@ -650,7 +635,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/complete",
     { preHandler: [COMPLETE, ...orderScope("orders.complete")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(CompleteOrderRequest, request.body);
       return service.completeOrder(
@@ -670,7 +655,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/review-results",
     { preHandler: [COMPLETE, ...orderScope("orders.complete")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(ReviewResultsRequest, request.body);
       return service.reviewLabResults(
@@ -692,7 +677,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/resend-transmission",
     { preHandler: [RECOVER, ...orderScope("orders.transmission.recover")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       return service.resendLabTransmission(
         organizationId,
@@ -719,7 +704,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/recover-transmission",
     { preHandler: [RECOVER, ...orderScope("orders.transmission.recover"), RECOVER_STEP_UP] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(RecoverLabTransmissionRequest, request.body);
       return service.recoverLabTransmission(
@@ -744,7 +729,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/recover-transmission/:requestId/cosign",
     { preHandler: [RECOVER_COSIGN, ...orderScope("orders.transmission.recover"), RECOVER_STEP_UP] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
       return service.cosignLabTransmissionRecovery(
         organizationId,
@@ -763,7 +748,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/:id/recover-transmission/:requestId/cancel",
     { preHandler: [RECOVER, ...orderScope("orders.transmission.recover")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
       return service.cancelLabTransmissionRecovery(
         organizationId,
@@ -784,7 +769,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       config: { auditRead: { resourceKind: "standing_order", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const scope = await readScope(request);
       const { standingOrders } = await service.listStandingOrders(organizationId);
       return { standingOrders: standingOrders.filter((t) => inReadScope(scope, t.patientId)) };
@@ -800,7 +785,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
       return service.getStandingOrder(organizationId, id);
     },
@@ -810,7 +795,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/standing-orders",
     { preHandler: [STANDING_MANAGE, bodyPatientScope("orders.standing.manage")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(CreateStandingOrderRequest, request.body);
       const res = await service.createStandingOrder(organizationId, userId, {
         patientId: body.patientId,
@@ -832,7 +817,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/standing-orders/:id",
     { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
       const body = parse(UpdateStandingOrderRequest, request.body);
       return service.editStandingOrder(organizationId, id, {
@@ -847,7 +832,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/standing-orders/:id/pause",
     { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
       return service.pauseStandingOrder(organizationId, id);
     },
@@ -857,7 +842,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/standing-orders/:id/resume",
     { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
       return service.resumeStandingOrder(organizationId, id);
     },
@@ -867,7 +852,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/standing-orders/:id/discontinue",
     { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
       const body = parse(DiscontinueStandingOrderRequest, request.body);
       return service.discontinueStandingOrder(
@@ -882,7 +867,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/standing-orders/:id/spawn",
     { preHandler: [STANDING_SPAWN, ...standingScope("orders.standing.spawn")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
       parse(SpawnStandingOrderRequest, request.body);
       const res = await service.spawnStandingOrder(organizationId, userId, id);
@@ -902,7 +887,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.getVerbalPolicy(organizationId);
     },
   );
@@ -911,7 +896,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/admin/orders/verbal-policy",
     { preHandler: [POLICY_MANAGE] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(VerbalPolicyRequest, request.body);
       return service.putVerbalPolicy(organizationId, {
         windowHours: body.windowHours,
@@ -926,7 +911,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/admin/orders/regenerate-verbal-timer/:id",
     { preHandler: [ADMIN_REGEN] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(VerbalTimerParamsSchema, request.params);
       parse(RegenerateVerbalTimerRequest, request.body);
       return service.regenerateVerbalTimer(organizationId, id, await detailActorOf(request));

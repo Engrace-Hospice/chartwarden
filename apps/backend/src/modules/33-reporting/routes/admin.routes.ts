@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/admin.routes.ts — M33 (§4.1 #37–#41).
 //
 // The platform / compliance admin surface: the materialized-view registry (list / refresh / suspend),
@@ -12,9 +13,9 @@
 // (MV refresh / suspend) ENQUEUE the on-PRIMARY `report.mv_refresh` worker and return HTTP 202 with the
 // job id — idempotent via the deterministic `<mvKey>:<op>` job key (BullMQ jobId dedup; §2.4 / §4.8). The
 // refresh never runs on the request thread. Org/actor binding is ALWAYS server-side (request.context).
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
+import { actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";
 import {
   DrilldownAuditListQuerySchema,

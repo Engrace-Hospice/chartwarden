@@ -14,7 +14,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The §7.2–§7.4 / D8 / D9 / D14 telehealth failure-code catalog → HTTP status. */
-export const TELEHEALTH_ERROR_STATUS = {
+const TELEHEALTH_ERROR_STATUS = {
   /** §2.2.3 / D8 — an illegal visit/room lifecycle transition (e.g. `reconciled` → `in_progress`). The state
    *  machine is append-forward; a request that names a transition not in `TELEHEALTH_TRANSITIONS` raced the
    *  live row and is refused rather than silently forcing the state. */
