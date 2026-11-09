@@ -107,7 +107,7 @@ async function listScopeOf(
  * role-derived disciplines, for every RFA kind and every claimed value (never the body's word). An
  * unresolvable id falls to the strict (non-SFV) floor.
  */
-async function assertCorrectionAttribution(
+async function assertAmendmentAttribution(
   service: HopeRouteService,
   request: FastifyRequest,
   organizationId: string,
@@ -407,13 +407,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(CorrectTimepointSchema, request.body);
-      await assertCorrectionAttribution(
-        service,
-        request,
-        organizationId,
-        id,
-        body.authorDiscipline,
-      );
+      await assertAmendmentAttribution(service, request, organizationId, id, body.authorDiscipline);
       const res = await service.correctTimepoint(organizationId, userId, id, {
         correctionReason: body.correctionReason,
         ifVersion: body.ifVersion,
@@ -432,6 +426,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(InactivateTimepointSchema, request.body);
+      await assertAmendmentAttribution(service, request, organizationId, id, body.authorDiscipline);
       const res = await service.inactivateTimepoint(organizationId, userId, id, body);
       return reply.code(201).send(res);
     },

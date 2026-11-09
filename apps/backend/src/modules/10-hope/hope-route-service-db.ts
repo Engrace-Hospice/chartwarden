@@ -1917,7 +1917,7 @@ export function createDbHopeBackend(
               locationId: original.locationId,
               signedAt: null,
               signedByMembershipId: null,
-              authorDiscipline: original.authorDiscipline,
+              authorDiscipline: args.authorDiscipline as AssessmentRow["authorDiscipline"],
               createdByMembershipId: userId,
               correctsAssessmentId: id,
             })

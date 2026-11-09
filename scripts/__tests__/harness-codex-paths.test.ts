@@ -26,6 +26,11 @@ describe("isProtectedPath", () => {
     "compliance/controls.yaml",
     "bunfig.toml",
     "AGENTS.override.md",
+    ".trivyignore.yaml",
+    ".github/workflows/ci.yml",
+    "deploy/production/compose.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
   ])("protects %s", (p) => expect(isProtectedPath(p)).toBe(true));
 
   it.each([
@@ -36,6 +41,11 @@ describe("isProtectedPath", () => {
     "COMPLIANCE/controls.yaml",
     "BunFig.toml",
     "AGENTS.OVERRIDE.MD",
+    ".TRIVYIGNORE.YAML",
+    ".GITHUB/WORKFLOWS/CI.YML",
+    "DEPLOY/PRODUCTION/COMPOSE.YML",
+    "agents.md",
+    "claude.md",
   ])("protects the case variant %s", (p) => expect(isProtectedPath(p)).toBe(true));
 
   it.each([
@@ -56,7 +66,8 @@ describe("isProtectedPath", () => {
     "docs/scripts/harness-notes.md",
     "src/bunfig.ts",
     "apps/backend/src/index.ts",
-    "AGENTS.md",
+    "docs/AGENTS.md",
+    "apps/web/CLAUDE.md",
     ".codex/sessions/x.jsonl",
   ])("leaves %s alone", (p) => expect(isProtectedPath(p)).toBe(false));
 });
@@ -90,6 +101,19 @@ describe("isInteractiveShell — a shell the guard cannot follow (Codex's write_
     "node",
     "env bash",
     "psql",
+    "bash -l",
+    "bash --login",
+    "python3 -q",
+    "python3 -E",
+    "python3 -v",
+    "python3 -W ignore",
+    "node --interactive",
+    "node -r dotenv/config",
+    "ruby -I lib",
+    "psql -h localhost -U postgres",
+    "psql -v ON_ERROR_STOP=1",
+    "mysql --host localhost --user root",
+    "true; bash -l",
     "bun repl",
     "  tmux ",
   ])("refuses the bare %j", (cmd) => expect(isInteractiveShell(cmd)).toBe(true));
@@ -100,6 +124,10 @@ describe("isInteractiveShell — a shell the guard cannot follow (Codex's write_
     "python3 -V",
     "bun run test",
     "sh -c 'ls'",
+    "bash --login scripts/deploy.sh",
+    "python3 -q scripts/x.py",
+    "psql -h localhost -c 'select 1'",
+    "mysql -h localhost -e 'select 1'",
     "ls",
   ])("allows %j", (cmd) => expect(isInteractiveShell(cmd)).toBe(false));
 });

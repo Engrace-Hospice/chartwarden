@@ -146,6 +146,11 @@ describe("checkHarness", () => {
     expect(v).toMatch(/pre-tool-guard/);
     expect(v).toMatch(/Read\(\.\/\.env\)/);
   });
+  it("requires human approval for both root instruction files", () => {
+    const s = JSON.parse(settings);
+    s.permissions.ask = s.permissions.ask.filter((a: string) => a !== "Edit(/AGENTS.md)");
+    expect(checkHarness({ settings: JSON.stringify(s), gitignore }).join()).toMatch(/AGENTS\.md/);
+  });
   it("fails when .gitignore swallows .claude/ again, or AGENTS.md drifts", () => {
     expect(checkHarness({ settings, gitignore: `${gitignore}\n.claude/\n` }).join()).toMatch(
       /ignores the whole \.claude/,

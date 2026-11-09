@@ -38,6 +38,8 @@
       "Edit(/.githooks/**)",
       "Edit(/.gitleaks.toml)",
       "Edit(/.trivyignore.yaml)",
+      "Edit(/AGENTS.md)",
+      "Edit(/CLAUDE.md)",
       "Edit(/.github/workflows/**)",
       "Edit(/deploy/production/**)",
       "Bash(git push *)",

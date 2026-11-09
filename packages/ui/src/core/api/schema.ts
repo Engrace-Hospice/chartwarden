@@ -66097,7 +66097,7 @@ export interface operations {
                     ifVersion?: number;
                     /** Format: date-time */
                     targetDate: string;
-                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
                     authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     data: {
                         I?: {
@@ -66241,6 +66241,8 @@ export interface operations {
                 "application/json": {
                     reason: string;
                     ifVersion?: number;
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
+                    authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                 };
             };
         };

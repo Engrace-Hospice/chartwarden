@@ -195,6 +195,12 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
     "COMPLIANCE/controls.yaml",
     "BunFig.toml",
     "AGENTS.override.md",
+    ".TRIVYIGNORE.YAML",
+    ".GITHUB/WORKFLOWS/CI.YML",
+    "DEPLOY/PRODUCTION/COMPOSE.YML",
+    "agents.md",
+    "claude.md",
+    "apps/web/../../AGENTS.md",
     "apps/web/.codex/config.toml",
     "../../home/.codex/hooks.json",
   ])("denies %s: a case variant, a nested file or one outside the repo", (path) => {
@@ -260,10 +266,30 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
     );
   });
   it("refuses a bare interactive shell or REPL, and allows the same programs running a script", () => {
-    for (const command of ["bash", "python3", "node", "psql", "bun repl", "sh -i"]) {
+    for (const command of [
+      "bash",
+      "bash -l",
+      "python3",
+      "python3 -q",
+      "python3 -E",
+      "node",
+      "node --interactive",
+      "node -r dotenv/config",
+      "psql",
+      "psql -h localhost",
+      "bun repl",
+      "sh -i",
+    ]) {
       expect(decision(shell(command)), command).toBe("deny");
     }
-    for (const command of ["python3 --version", "node -v", "bun run test"]) {
+    for (const command of [
+      "python3 --version",
+      "python3 -q scripts/x.py",
+      "node -v",
+      "node scripts/x.js",
+      "psql -h localhost -c 'select 1'",
+      "bun run test",
+    ]) {
       expect(shell(command).out, command).toBeNull();
     }
   });

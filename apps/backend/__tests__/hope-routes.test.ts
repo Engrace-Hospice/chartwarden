@@ -139,6 +139,10 @@ function makeServer(
         status: "signed",
         signedAt: "2026-06-02T10:00:00.000Z",
         signedBy: "rn_1",
+        // Pre-1394 production rows may be NULL even though new in-memory records are typed non-null.
+        ...(options.assessmentAuthorDisciplineOverride !== undefined
+          ? { authorDiscipline: options.assessmentAuthorDisciplineOverride as unknown as string }
+          : {}),
       },
     ],
     submissions: [
@@ -226,6 +230,10 @@ function makeServer(
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn", "x-test-pe": "pe_1" };
 const NP = { "x-test-user": "np_1", "x-test-org": ORG, "x-test-roles": "np", "x-test-pe": "pe_1" };
+const NP_CLINICAL_LEAD = {
+  ...NP,
+  "x-test-roles": "np,clinical_lead",
+};
 const ADMIN_OVERRIDER = {
   "x-test-user": "admin_1",
   "x-test-org": ORG,
@@ -773,6 +781,54 @@ describe("M10-T06 — correction chain (§4.4)", () => {
       payload: { correctionReason: "again", targetDate: NOW, authorDiscipline: "RN", data: {} },
     });
     expect(dup.statusCode).toBe(409);
+    await app.close();
+  });
+});
+
+describe("M10-T06 — inactivation attribution", () => {
+  const inactivate = (
+    app: ReturnType<typeof makeServer>["app"],
+    headers: Record<string, string>,
+    authorDiscipline: string,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${SIGNED_A}/inactivations`,
+      headers,
+      payload: {
+        reason: "recorded against the wrong chart",
+        authorDiscipline,
+      },
+    });
+
+  it("binds same-discipline and cross-discipline clinical-lead drafts to the acting clinician", async () => {
+    const { app: sameDisciplineApp } = makeServer();
+    const sameDiscipline = await inactivate(sameDisciplineApp, RN, "RN");
+    expect(sameDiscipline.statusCode).toBe(201);
+    expect(sameDiscipline.json().authorDiscipline).toBe("RN");
+    await sameDisciplineApp.close();
+
+    const { app: clinicalLeadApp } = makeServer();
+    const clinicalLead = await inactivate(clinicalLeadApp, NP_CLINICAL_LEAD, "NP");
+    expect(clinicalLead.statusCode).toBe(201);
+    expect(clinicalLead.json().authorDiscipline).toBe("NP");
+    await clinicalLeadApp.close();
+  });
+
+  it("fails closed when a clinical lead claims an unheld discipline", async () => {
+    const { app } = makeServer();
+    const denied = await inactivate(app, NP_CLINICAL_LEAD, "RN");
+    expect(denied.statusCode).toBe(403);
+    expect(JSON.stringify(denied.json())).toContain("M10_DISCIPLINE_NOT_PERMITTED");
+    await app.close();
+  });
+
+  it("re-attributes a legacy NULL original to the acting clinical lead's validated discipline", async () => {
+    const { app, backend } = makeServer({ assessmentAuthorDisciplineOverride: null });
+    expect((await backend.loadAssessment(ORG, SIGNED_A))?.authorDiscipline).toBeNull();
+    const res = await inactivate(app, NP_CLINICAL_LEAD, "NP");
+    expect(res.statusCode).toBe(201);
+    expect(res.json().authorDiscipline).toBe("NP");
     await app.close();
   });
 });

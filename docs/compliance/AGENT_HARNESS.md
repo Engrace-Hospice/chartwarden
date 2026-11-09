@@ -52,9 +52,11 @@ from Codex's hook protocol:
   the shell only exactly one `apply_patch <<'EOF' … EOF` is accepted, run in the session directory or the
   call's `workdir`; `cd`, a pipe, a redirect or a second command is refused, because `apply_patch` is on
   PATH and each of those applies a patch the guard cannot place. Codex has no Read/Grep/Glob tools; its reads
-  are shell commands. A bare interactive shell or REPL is refused: what is typed into it later reaches it
-  through `write_stdin`, which Codex does not hook. A command or workdir that is present and not text is
-  refused, never coerced with `String()` and judged.
+  are shell commands. An interactive shell, language REPL or database client is refused even when it has
+  login, quiet or connection flags: what is typed into it later reaches it through `write_stdin`, which
+  Codex does not hook. A script, inline command, input file, or help/version invocation is terminating and
+  remains available. A command or workdir that is present and not text is refused, never coerced with
+  `String()` and judged.
 - **MCP tools** arrive as `mcp__<server>__<tool>` with arbitrary JSON, and nothing says which field is a path
   or text. The guard therefore judges EVERY string in `tool_input`, object keys included, at any depth: each
   line as a secret path and as a protected path (as written, and resolved from the session directory with
@@ -134,8 +136,8 @@ are removed, or if the guard or Stop hook is unwired.
 ## What needs a human
 
 The harness answers **ask** (you approve or decline) for these:
-- edits to `compliance/**`, the harness itself, `.githooks/**`, `.gitleaks.toml`, `.trivyignore.yaml`,
-  CI workflows and `deploy/production/**`;
+- edits to `compliance/**`, the harness itself, the root `CLAUDE.md` / `AGENTS.md`, `.githooks/**`,
+  `.gitleaks.toml`, `.trivyignore.yaml`, CI workflows and `deploy/production/**`;
 - `git push` (and always for pushes to main), `gh pr merge`, `gh secret`;
 - `ssh`/`scp`/`rsync`, raw sockets (`nc`, `socat`, `openssl s_client`), outbound uploads with
   `curl -d/-F/-T`, and requests to a remote host that expand shell values into the URL;

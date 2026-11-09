@@ -47,6 +47,9 @@ controls:
       - script: arch:request-header-auth
       - script: test:auth:live
       - script: test:m10:s04-override:live
+      # #874 — the correction/void service runs as chartwarden_app; the live suite denies cross-tenant
+      # payer-row ids and preserves claim-linked rows.
+      - script: test:m5:payer-intervals:live
       # #883 — HOPE assessment attribution is frozen on the row; edit/sign require the actor to hold
       # that stored discipline. The live suite proves the resolver query as chartwarden_app/NOBYPASSRLS.
       - script: test:m10:write:live
@@ -206,6 +209,9 @@ controls:
       - script: test:m4:audit-integrity:live
       - script: test:m4:read-audit:live
       - script: test:m5:code-status:live
+      # #874 — the live suite proves a successful coverage void records a critical audit event keyed to
+      # the payer row with its enumerated reason.
+      - script: test:m5:payer-intervals:live
       # #909 - a returned lab's clinician review is an append-only, audited, DB-stamped record (reviewer + discipline),
       # an amended result re-opens it, and results unreviewed for 24 h alert (clinical-safety control).
       - script: test:m11:lab-result-review:live
@@ -312,7 +318,7 @@ controls:
       - file: scripts/object-store-copy.ts
       - file: .github/workflows/backup-image.yml
     gap:
-      reason: DR_BCP records that no streaming replica or WAL archiving is running yet; restore drills exist for M36 but not as a scheduled whole-database drill with recorded RTO/RPO. The coordinated drill and the Debian to Wolfi migration rehearsal (audit/restore-drill/2026-11-08-*) ran at synthetic scale on a developer machine, outside CI and unscheduled; reindex time on production data is unmeasured. The repository now publishes a signed, attested backup image for a fresh host to pull without rebuilding from GitHub and the Go proxies, but the first successful main publication, production digest pin and witnessed DR-host pull remain operational evidence to capture.
+      reason: DR_BCP records that no streaming replica or WAL archiving is running yet; restore drills exist for M36 but not as a scheduled whole-database drill with recorded RTO/RPO. The coordinated drill and the Debian to Wolfi migration rehearsal (audit/restore-drill/2026-11-08-*) ran at synthetic scale on a developer machine, outside CI and unscheduled; reindex time on production data is unmeasured. The repository now defines a workflow that will publish a signed, attested backup image for a fresh host to pull without rebuilding from GitHub and the Go proxies after a successful manual main run; that first publication, the production digest pin and a witnessed DR-host pull remain operational evidence to capture.
       owner: platform
       review_by: 2027-01-31
 
@@ -339,7 +345,7 @@ controls:
       - ci: "syft "
       - file: .github/workflows/backup-image.yml
     gap:
-      reason: No static analysis (SAST) runs on the TypeScript source. Add pinned Semgrep rule packs with a findings ratchet before the first SOC 2 observation window. backup-image.yml now rebuilds and scans the pinned pgBackRest/mc toolchain weekly in one non-matrix job; capture the first successful scheduled run before treating that operational evidence as established.
+      reason: No static analysis (SAST) runs on the TypeScript source. Add pinned Semgrep rule packs with a findings ratchet before the first SOC 2 observation window. backup-image.yml defines a weekly rebuild and scan of the pinned pgBackRest/mc toolchain in one non-matrix job; capture the first successful scheduled run before treating that operational evidence as established.
       owner: engineering
       review_by: 2027-01-31
 

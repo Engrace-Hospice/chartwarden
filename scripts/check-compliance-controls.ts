@@ -188,6 +188,13 @@ export const REQUIRED_CODEOWNED = [
   "/.gitleaks.toml",
 ];
 export const REQUIRED_DENIES = ["Bash(git push --force *)", "Bash(git * --no-verify*)"];
+export const REQUIRED_ASKS = [
+  "Edit(/AGENTS.md)",
+  "Edit(/CLAUDE.md)",
+  "Edit(/.trivyignore.yaml)",
+  "Edit(/.github/workflows/**)",
+  "Edit(/deploy/production/**)",
+];
 /** Prefix globs that also match a mutating sibling command. */
 const LOOSE_ALLOW = /^Bash\(git (status|diff|log|show|branch)\*\)$/;
 
@@ -196,7 +203,7 @@ interface HookEntry {
   hooks?: Array<{ type?: string; command?: string; async?: boolean; timeout?: number }>;
 }
 interface Settings {
-  permissions?: { deny?: string[]; allow?: string[] };
+  permissions?: { deny?: string[]; ask?: string[]; allow?: string[] };
   hooks?: Record<string, HookEntry[]>;
   env?: Record<string, string>;
 }
@@ -377,6 +384,7 @@ export function checkHarness(files: HarnessFiles): string[] {
     return [`.claude/settings.json does not parse: ${String(e)}`];
   }
   const deny = new Set(s.permissions?.deny ?? []);
+  const ask = new Set(s.permissions?.ask ?? []);
   for (const d of REQUIRED_READ_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
   for (const p of PINNED_CLAUDE_HOOKS) {
@@ -390,6 +398,8 @@ export function checkHarness(files: HarnessFiles): string[] {
   }
   for (const d of REQUIRED_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
+  for (const a of REQUIRED_ASKS)
+    if (!ask.has(a)) v.push(`.claude/settings.json: permissions.ask is missing \`${a}\``);
   for (const a of s.permissions?.allow ?? [])
     if (LOOSE_ALLOW.test(a))
       v.push(

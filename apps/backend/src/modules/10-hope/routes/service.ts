@@ -341,6 +341,7 @@ export interface CorrectTimepointArgs {
 export interface InactivateTimepointArgs {
   readonly reason: string;
   readonly ifVersion?: number;
+  readonly authorDiscipline: string;
 }
 
 /** The §4.1 route service contract (the routes compose over it; the in-mem slice + the prod Drizzle
@@ -1705,6 +1706,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         regulatory: { specVersionId: original.regulatory.specVersionId, isc: "XX" },
         version: 1,
         data: { inactivationReason: args.reason },
+        authorDiscipline: args.authorDiscipline,
       };
       assessments.set(inactivationId, inactivation);
       const byItem = new Map<

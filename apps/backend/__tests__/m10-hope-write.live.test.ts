@@ -564,7 +564,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect(await count()).toBe(3);
   });
 
-  it("#883 persists RN attribution and the shared edit/sign predicate refuses an NP under the NOBYPASSRLS app role", async () => {
+  it("#883 persists actor-bound attribution for same-discipline, clinical-lead and legacy inactivations", async () => {
     const adm = await admitted();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
@@ -596,6 +596,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
     const inactivation = await svc.inactivateTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
       reason: "recorded against the wrong chart",
+      authorDiscipline: "RN",
     });
     expect(inactivation.authorDiscipline).toBe("RN");
     expect(
@@ -607,6 +608,68 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     ).toBe("RN");
     expect(await predicate(context(["rn"]), { id: inactivation.id })).toBe(true);
     expect(await predicate(context(["np"]), { id: inactivation.id })).toBe(false);
+
+    const crossDisciplineAdmission = await admitted();
+    await seedSchedule(ORG_A, crossDisciplineAdmission);
+    const crossDisciplineOriginal = await svc.recordTimepoint(
+      ORG_A,
+      memberOf[ORG_A],
+      crossDisciplineAdmission,
+      recordArgs(QUIET_DATA),
+    );
+    await answerForSign(crossDisciplineOriginal.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], crossDisciplineOriginal.id);
+    const crossDisciplineInactivation = await svc.inactivateTimepoint(
+      ORG_A,
+      memberOf[ORG_A],
+      crossDisciplineOriginal.id,
+      {
+        reason: "clinical lead inactivation",
+        authorDiscipline: "NP",
+      },
+    );
+    expect(crossDisciplineInactivation.authorDiscipline).toBe("NP");
+    expect(
+      (
+        await admin.query("SELECT author_discipline FROM hope_assessment WHERE id=$1", [
+          crossDisciplineInactivation.id,
+        ])
+      ).rows[0].author_discipline,
+    ).toBe("NP");
+    expect(await predicate(context(["np"]), { id: crossDisciplineInactivation.id })).toBe(true);
+    expect(await predicate(context(["rn"]), { id: crossDisciplineInactivation.id })).toBe(false);
+
+    const legacyAdmission = await admitted();
+    await seedSchedule(ORG_A, legacyAdmission);
+    const legacyOriginal = await svc.recordTimepoint(
+      ORG_A,
+      memberOf[ORG_A],
+      legacyAdmission,
+      recordArgs(QUIET_DATA),
+    );
+    await answerForSign(legacyOriginal.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], legacyOriginal.id);
+    await admin.query("UPDATE hope_assessment SET author_discipline=NULL WHERE id=$1", [
+      legacyOriginal.id,
+    ]);
+    const legacyInactivation = await svc.inactivateTimepoint(
+      ORG_A,
+      memberOf[ORG_A],
+      legacyOriginal.id,
+      {
+        reason: "legacy attribution repair",
+        authorDiscipline: "NP",
+      },
+    );
+    expect(legacyInactivation.authorDiscipline).toBe("NP");
+    expect(
+      (
+        await admin.query("SELECT author_discipline FROM hope_assessment WHERE id=$1", [
+          legacyInactivation.id,
+        ])
+      ).rows[0].author_discipline,
+    ).toBe("NP");
+    expect(await predicate(context(["np"]), { id: legacyInactivation.id })).toBe(true);
   });
 
   it("a J2051 moderate answer opens the SFV; recordSfv completes it; the signed admission carries the trigger", async () => {

@@ -153595,7 +153595,7 @@
                     "type": "string"
                   },
                   "authorDiscipline": {
-                    "description": "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
+                    "description": "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
                     "anyOf": [
                       {
                         "const": "RN",
@@ -154305,7 +154305,8 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "reason"
+                  "reason",
+                  "authorDiscipline"
                 ],
                 "properties": {
                   "reason": {
@@ -154316,6 +154317,31 @@
                   "ifVersion": {
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "authorDiscipline": {
+                    "description": "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
+                    "anyOf": [
+                      {
+                        "const": "RN",
+                        "type": "string"
+                      },
+                      {
+                        "const": "NP",
+                        "type": "string"
+                      },
+                      {
+                        "const": "MD",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LPN",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LVN",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }

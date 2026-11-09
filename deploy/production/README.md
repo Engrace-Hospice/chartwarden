@@ -238,8 +238,9 @@ Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving 
 (versioned SSE-C mirror to an object-locked bucket), tied together by a per-snapshot marker (DB LSN + object
 manifest with sha256). Design, variables, key management and RPO/RTO: `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`
 §4.8; operating loop and alerts: `CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §5.7. `deploy.yml` ships `compose.backup.yml` and
-the source/drill kit in `backup/` with every release; production pulls the scanned, signed image published by
-`.github/workflows/backup-image.yml`, so a fresh host does not need GitHub or the Go module proxies to rebuild it.
+the source/drill kit in `backup/` with every release. After a successful manual `main` publication by
+`.github/workflows/backup-image.yml`, production will pull that scanned, signed image, so a fresh host will not need
+GitHub or the Go module proxies to rebuild it. The workflow definition alone is not evidence that publication ran.
 Nothing runs until it is enabled once:
 
 ```sh
@@ -417,8 +418,8 @@ Dev compose, every CI live-DB job and the restore drills build it from this fold
 `.github/workflows/postgres-image.yml` (manual, `main` only) builds, scans, signs and publishes as
 `ghcr.io/engrace-hospice/chartwarden-postgres`. `compose.yml` pins its digest, and so does the `POSTGRES_IMAGE` default of
 `backup/Dockerfile`: production runs `postgres` through the backup overlay, so the image it actually starts is the
-digest-pinned `CHARTWARDEN_BACKUP_IMAGE` published by `backup-image.yml`, built `FROM` that Postgres digest plus
-pgBackRest and `mc`. The image opens a volume the Debian image
+digest-pinned `CHARTWARDEN_BACKUP_IMAGE` after its successful `backup-image.yml` publication, built `FROM` that
+Postgres digest plus pgBackRest and `mc`. The image opens a volume the Debian image
 created as is: postgres is uid/gid 999, PGDATA is `/var/lib/postgresql/18/docker`, and the server also listens on
 `/var/run/postgresql`.
 

@@ -995,15 +995,81 @@ const SECRET_MENTION =
 // instruction files that an agent (or `bun`) loads from ANY directory — nested, or under `~` — are matched
 // at any depth. `bunfig.toml` is one: a `preload` line in it runs before the guard itself does.
 const PROTECTED_PATH =
-  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.agents\/(rules|agents|skills|plugins)(\/|$)|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.gitleaks\.toml$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)|(^|\/)(\.claude\/settings(\.local)?\.json|\.codex\/(hooks\.json|config\.toml)|\.?bunfig\.toml|AGENTS\.override\.md)$|(^|\/)\.codex\/(hooks|rules)\//i;
+  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.agents\/(rules|agents|skills|plugins)(\/|$)|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.github\/workflows(\/|$)|deploy\/production(\/|$)|\.gitleaks\.toml$|\.trivyignore\.yaml$|AGENTS\.md$|CLAUDE\.md$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)|(^|\/)(\.claude\/settings(\.local)?\.json|\.codex\/(hooks\.json|config\.toml)|\.?bunfig\.toml|AGENTS\.override\.md)$|(^|\/)\.codex\/(hooks|rules)\//i;
 /** A repo-relative path the harness protects: guard, ledger, rules, compliance record, Codex hook config. */
 export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel);
 
-// A bare interactive shell or REPL. What is typed into it later reaches it through Codex's `write_stdin`,
-// which does NOT fire PreToolUse, so the guard would never see it. Only the obvious bare form is caught.
-const INTERACTIVE =
-  /^\s*(?:(?:env|exec|sudo)\s+)*(?:bash|sh|zsh|dash|fish|ksh|python[0-9.]*|node|bun|deno|ruby|irb|perl|lua|php|psql|sqlite3|mysql|script|screen|tmux)(?:\s+(?:repl|-[a-z]*[is][a-z]*))?\s*$/i;
-export const isInteractiveShell = (cmd: string): boolean => INTERACTIVE.test(cmd);
+// What is typed into an interactive process later reaches it through Codex's `write_stdin`, which does
+// NOT fire PreToolUse. Login, quiet and connection flags do not make a process terminate: require a real
+// command/script/input instead. This deliberately judges every simple command, so `true; bash -l` cannot
+// hide the interactive process behind a harmless prefix.
+const SHELL = /^(bash|sh|zsh|dash|fish|ksh)$/;
+const LANGUAGE_REPL = /^(python[0-9.]*|node|ruby|irb|perl|lua|php)$/;
+const DATABASE_REPL = /^(psql|pgcli|sqlite3|mysql)$/;
+
+function hasPositional(args: readonly string[], valueFlags: RegExp): boolean {
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k] ?? "";
+    if (a === "--") return k + 1 < args.length;
+    if (valueFlags.test(a)) {
+      k++;
+      continue;
+    }
+    if (!a.startsWith("-")) return true;
+  }
+  return false;
+}
+
+function interactiveInvocation(p: Parsed): boolean {
+  const { prog, args, ins, docs } = p;
+  const explicitInput = ins.length + docs.length > 0;
+
+  if (SHELL.test(prog)) {
+    if (args.some((a) => /^(-h|--help|--version)$/.test(a))) return false;
+    if (args.some((a) => a === "-c" || a === "--command" || /^-c.+/.test(a))) return false;
+    if (explicitInput) return false;
+    return !hasPositional(args, /^(--rcfile|--init-file|-O|--debugger)$/);
+  }
+
+  if (LANGUAGE_REPL.test(prog)) {
+    const informationOnly = args.some(
+      (a) =>
+        /^(--help|--version)$/.test(a) ||
+        (/^python[0-9.]*$/.test(prog) ? /^(-h|-V)$/.test(a) : /^(-h|-v|-V)$/.test(a)),
+    );
+    if (informationOnly) return false;
+    if (prog === "irb") return true;
+    if (args.some((a) => a === "--interactive" || /^-[^-]*i/.test(a))) return true;
+    const executesCode =
+      (/^python[0-9.]*$/.test(prog) && args.some((a) => /^(?:-c|-m)(?:.+)?$/.test(a))) ||
+      (prog === "node" && args.some((a) => /^(?:-e|-p|--eval|--print)(?:=?.+)?$/.test(a))) ||
+      (prog === "ruby" && args.some((a) => /^(?:-e|--eval)(?:=?.+)?$/.test(a))) ||
+      (prog === "perl" && args.some((a) => /^(?:-e|-E)(?:.+)?$/.test(a))) ||
+      (prog === "lua" && args.some((a) => /^(?:-e)(?:.+)?$/.test(a))) ||
+      (prog === "php" && args.some((a) => /^(?:-r|-f)(?:.+)?$/.test(a)));
+    if (executesCode) return false;
+    if (explicitInput || args.includes("-")) return false;
+    const valueFlags =
+      /^(-W|-X|-I|-M|-m|-F|-C|-l|-d|--require|-r|--loader|--import|--conditions|--title|--openssl-config|--icu-data-dir)$/;
+    return !hasPositional(args, valueFlags);
+  }
+
+  if (prog === "bun" || prog === "deno") {
+    if (args.some((a) => /^(-h|--help|-v|-V|--version)$/.test(a))) return false;
+    return args.length === 0 || args[0] === "repl";
+  }
+
+  if (DATABASE_REPL.test(prog)) {
+    if (args.some((a) => /^(--help|-\?|--version|-V)$/.test(a))) return false;
+    if (explicitInput) return false;
+    return !args.some((a) => /^(?:-[cfe].+|-[cfe]|--(?:command|file|execute)(?:=.+)?)$/.test(a));
+  }
+
+  return /^(script|screen|tmux)$/.test(prog) && args.length === 0;
+}
+
+export const isInteractiveShell = (cmd: string): boolean =>
+  segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg)));
 
 // ---------------------------------------------------------------------------------------------------
 // Paths: where a write lands once `cd`, `..`, `~`, `$HOME` and `$PWD` are accounted for
@@ -1103,6 +1169,11 @@ const PROTECTED_SAMPLES: readonly string[] = [
   "compliance/x",
   ".githooks/x",
   ".github/codeowners",
+  ".github/workflows/x",
+  "deploy/production/x",
+  ".trivyignore.yaml",
+  "agents.md",
+  "claude.md",
   "~/.codex/hooks.json",
   "~/.codex/config.toml",
   "~/.claude/settings.json",
@@ -1265,7 +1336,7 @@ const squash = (s: string): string => s.replace(/['"`+\\\s]/g, "");
 // by a path component (`docs/compliance/` is a docs page); settings and hook files count at any depth.
 const PROTECTED_FRAGMENT = new RegExp(
   [
-    String.raw`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_-]\/)(?:\.claude\/(?:audit|\.cache|rules|agents|skills)|\.agents\/(?:rules|agents|skills|plugins)|scripts\/harness|compliance\/|\.githooks|\.gitleaks\.toml|scripts\/check-compliance-controls|\.github\/codeowners)`,
+    String.raw`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_-]\/)(?:\.claude\/(?:audit|\.cache|rules|agents|skills)|\.agents\/(?:rules|agents|skills|plugins)|scripts\/harness|compliance\/|\.githooks|\.github\/workflows|deploy\/production|\.gitleaks\.toml|\.trivyignore\.yaml|agents\.md|claude\.md|scripts\/check-compliance-controls|\.github\/codeowners)`,
     String.raw`(?<![A-Za-z0-9_-])(?:\.claude\/settings(?:\.local)?\.json|\.codex\/(?:hooks|config\.toml|rules)|\.?bunfig\.toml|agents\.override\.md)`,
   ].join("|"),
   "i",

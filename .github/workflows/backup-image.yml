@@ -16,6 +16,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/engrace-hospice/chartwarden-backup
   LOCAL_IMAGE: chartwarden-backup:scheduled-${{ github.run_id }}
+  PUBLISH_IMAGE: ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-${{ github.sha }}
 
 jobs:
   scheduled-scan:
@@ -26,9 +27,9 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -41,7 +42,7 @@ jobs:
             || { echo "backup/Dockerfile POSTGRES_IMAGE is not the published digest-pinned Postgres image: $base" >&2; exit 1; }
 
       - name: Build scheduled scan image (not pushed)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: deploy/production/backup
           load: true
@@ -71,41 +72,51 @@ jobs:
       packages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Assert the runtime starts from the published Postgres digest
         run: |
           base=$(sed -n 's/^ARG POSTGRES_IMAGE=//p' deploy/production/backup/Dockerfile | head -n 1)
           printf '%s\n' "$base" | grep -Eq \
             '^ghcr\.io/engrace-hospice/chartwarden-postgres:[^@]+@sha256:[0-9a-f]{64}$' \
             || { echo "backup/Dockerfile POSTGRES_IMAGE is not the published digest-pinned Postgres image: $base" >&2; exit 1; }
-      - uses: docker/login-action@v4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push immutable image
-        id: publish
-        uses: docker/build-push-action@v7
+      - name: Build publish image locally (not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: deploy/production/backup
           platforms: linux/amd64
-          push: true
-          tags: ${{ env.IMAGE }}:18-tools-sha-${{ github.sha }}
+          load: true
+          push: false
+          tags: ${{ env.PUBLISH_IMAGE }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=backup-image
           cache-to: type=gha,mode=max,scope=backup-image
-      - name: Scan published image (HIGH/CRITICAL fail)
+      - name: Scan local publish image (HIGH/CRITICAL fail before push)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: ${{ env.IMAGE }}@${{ steps.publish.outputs.digest }}
+          image-ref: ${{ env.PUBLISH_IMAGE }}
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
           ignore-unfixed: false
           trivyignores: .trivyignore.yaml
-      - uses: sigstore/cosign-installer@v3
-      - uses: anchore/sbom-action/download-syft@v0
+      - name: Push scanned image and capture its registry digest
+        id: publish
+        env:
+          TAGGED_IMAGE: ${{ env.PUBLISH_IMAGE }}
+        run: |
+          docker push "$TAGGED_IMAGE"
+          digest=$(docker buildx imagetools inspect "$TAGGED_IMAGE" --format '{{.Manifest.Digest}}')
+          printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' \
+            || { echo "push did not produce a registry digest: $digest" >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
       - name: Sign, attest SBOM, verify and print the production pin
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
@@ -130,3 +141,8 @@ jobs:
             echo '```'
             echo "Copy this exact digest-pinned value into production only after the documented cosign verification."
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove publish image and SBOM from the persistent runner
+        if: ${{ always() }}
+        run: |
+          docker image rm -f "${PUBLISH_IMAGE}" >/dev/null 2>&1 || true
+          rm -f sbom-backup.spdx.json
