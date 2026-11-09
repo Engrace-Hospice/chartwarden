@@ -5,6 +5,7 @@
 // typed 503. A reservation under an unconfigured key no longer collides with anything, so a save could seal a credential another
 // organization holds under that key. A check that failed or has not finished counts as incomplete.
 import { ChartWardenError } from "@chartwarden/types";
+import { safeErrorMessage } from "../../../bootstrap/redact-database-error";
 import { RETIRED_FINGERPRINT_KEYS_ENV } from "./secret-cipher";
 
 /** What the boot check counts (ids and counts only, never a fingerprint or an organization). */
@@ -95,9 +96,16 @@ export function createFingerprintKeyGate(opts: {
       })
       .catch((err: unknown) => {
         complete = false;
-        // error, not warn: a check that silently stops running (missing column grant, failed bypass audit) is a lost control
+        // error, not warn: a check that silently stops running (missing column grant, failed bypass audit) is a lost control.
+        // The raw error is NOT logged: this query's bound parameters are credential fingerprints, and a failing query's error
+        // carries them in its message, its `params` and its stack. The name and the redacted message keep what diagnoses it
+        // (the SQLSTATE, the table, the constraint) and drop every value.
         opts.log.error(
-          { err, code: "M23_PLATFORM_CREDENTIAL_CHECK_FAILED" },
+          {
+            errName: err instanceof Error ? err.name : typeof err,
+            error: safeErrorMessage(err),
+            code: "M23_PLATFORM_CREDENTIAL_CHECK_FAILED",
+          },
           "m23.clearinghouse: the platform credential check failed; credential saves are refused until it succeeds",
         );
       })
