@@ -44,6 +44,8 @@ import {
 
 const PREVIEW_ROWS = 12;
 const PROBLEMS_SHOWN = 20;
+/** The preview's problem list, which the table field is described by while there are problems. */
+const PROBLEMS_ID = "wage-index-problems";
 const NOW_FY = fiscalYearStartingOf(new Date());
 const FY_OPTIONS = [NOW_FY + 1, NOW_FY, NOW_FY - 1].map((fy) => ({
   value: String(fy),
@@ -228,6 +230,7 @@ export function WageIndexLoad(): JSX.Element {
             />
             <TextAreaField
               label="Paste the table"
+              aria-describedby={parsed.problems.length > 0 ? PROBLEMS_ID : undefined}
               rows={8}
               value={table}
               error={tableError}
@@ -282,9 +285,9 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
         </p>
       ) : null}
       {parsed.problems.length > 0 ? (
-        // One live region holds the summary and the list, so the problems are announced with it (the alert text is a <p>,
-        // which cannot hold the list; `live={false}` keeps the summary from announcing a second time).
-        <div role="alert">
+        // Not a live region: the list re-parses on every keystroke, so announcing it would re-read it per edit. It is announced once
+        // per review instead — Review focuses the table field, whose description is its (static) error plus this list.
+        <div id={PROBLEMS_ID}>
           <InlineAlert tone="error" live={false}>
             <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
           </InlineAlert>

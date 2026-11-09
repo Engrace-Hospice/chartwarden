@@ -5,6 +5,7 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  UnstyledList,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/admin/src/shell — Organization Select (M1/M34, ADR-0030). Ported from
@@ -102,9 +103,7 @@ export function OrganizationSelect(): JSX.Element {
           />
         ) : null}
         {state.kind === "ready" && state.memberships.length > 0 ? (
-          // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
-          // biome-ignore lint/a11y/useSemanticElements: the element already is a <ul>; the role only restores its semantics
-          <ul className="wx-form-stack" role="list" aria-label="Your organizations">
+          <UnstyledList className="wx-form-stack" aria-label="Your organizations">
             {state.memberships.map((m) => (
               <li key={m.membershipId} className="wx-drawer-card">
                 <div className="wx-drawer-card-head">
@@ -126,7 +125,7 @@ export function OrganizationSelect(): JSX.Element {
                 </div>
               </li>
             ))}
-          </ul>
+          </UnstyledList>
         ) : null}
       </div>
     </CenteredCardLayout>

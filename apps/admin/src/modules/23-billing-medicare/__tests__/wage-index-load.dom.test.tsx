@@ -277,16 +277,36 @@ describe("Platform wage-index load (M23 §4.1 #42)", () => {
     expect(alert.querySelector("p ul")).toBeNull();
   });
 
-  it("announces the preview's problem summary and its line list through one alert", async () => {
+  it("lists the preview's problems outside any live region, so typing does not re-announce them per keystroke", async () => {
     mount();
     fill("381588,1.0\n38158,1.1");
     const line = await screen.findByText(/Line 2:/);
-    const alert = line.closest('[role="alert"]') as HTMLElement;
-    expect(alert).not.toBeNull();
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(within(alert).getByText(/1 problem in the table/)).toBeTruthy();
-    expect(within(alert).getByRole("list")).toBeTruthy();
-    expect(alert.querySelector("p ul")).toBeNull();
+    expect(line.closest('[role="alert"]')).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText(/1 problem in the table/)).toBeTruthy();
+    fill("381588,1.0\n38158,1.1\n38159,x");
+    expect(await screen.findByText(/2 problems in the table/)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("announces the problems once per review: Review focuses the table, described by its error and the problem list", async () => {
+    mount();
+    fill("381588,1.0\n38158,1.1");
+    await screen.findByText(/Line 2:/);
+    fireEvent.click(screen.getByRole("button", { name: "Review and load" }));
+    const table = screen.getByLabelText(/Paste the table/);
+    await waitFor(() => expect(document.activeElement).toBe(table));
+    const described = (table.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ");
+    expect(described).toMatch(/Fix the lines listed under the preview\./);
+    expect(described).toMatch(/Line 2:/);
+    // The one alert is the field's own, with static text: editing the table does not change it.
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    fill("381588,1.0\n38158,1.1\n38159,x");
+    expect(screen.getAllByRole("alert")[0]?.textContent).toBe(alerts[0]?.textContent);
   });
 
   it("keeps the same Idempotency-Key when the operator retries the same confirmation", async () => {

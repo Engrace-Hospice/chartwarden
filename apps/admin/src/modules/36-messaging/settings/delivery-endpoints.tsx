@@ -8,6 +8,7 @@ import {
   SelectField,
   StatusPill,
   TextField,
+  UnstyledList,
   focusFirstInvalid,
   useApiClient,
   useRestoreFocus,
@@ -161,9 +162,7 @@ export function DeliveryEndpoints(): JSX.Element {
         {endpoints.length === 0 ? (
           <StateEmpty>No endpoints added in this session. Add one above.</StateEmpty>
         ) : (
-          // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
-          // biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops
-          <ul role="list" className="wx-fact-list" aria-label="Endpoints added this session">
+          <UnstyledList className="wx-fact-list" aria-label="Endpoints added this session">
             {endpoints.map((endpoint) => {
               const verified = endpoint.verificationStatus === "verified";
               const removeButton = (
@@ -235,7 +234,7 @@ export function DeliveryEndpoints(): JSX.Element {
                 </li>
               );
             })}
-          </ul>
+          </UnstyledList>
         )}
       </div>
     </div>

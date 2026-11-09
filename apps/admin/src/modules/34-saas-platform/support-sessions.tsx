@@ -8,6 +8,7 @@ import {
   SelectField,
   StatusPill,
   type StatusTone,
+  UnstyledList,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
@@ -370,9 +371,7 @@ function SessionDrawer({
           ) : events.length === 0 ? (
             <span className="wx-row-sub">No ledger entries recorded yet.</span>
           ) : (
-            // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
-            // biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops
-            <ul role="list" className="wx-form-stack">
+            <UnstyledList className="wx-form-stack">
               {events.map((ev) => (
                 <li key={ev.id}>
                   <span className="wx-row-title">{cap(ev.eventKind)}</span>
@@ -394,7 +393,7 @@ function SessionDrawer({
                   </span>
                 </li>
               ))}
-            </ul>
+            </UnstyledList>
           )}
         </section>
       </div>

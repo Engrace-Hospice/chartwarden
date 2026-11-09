@@ -6,6 +6,7 @@ import {
   Glyph,
   LoadingSpinner,
   ToastProvider,
+  UnstyledList,
 } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 // apps/admin — the Platform-Ops console SPA shell (M34 §5.1, ADR-0030). The ChartWarden-staff control-plane
@@ -49,9 +50,7 @@ function AdminHome({ sections }: { sections: readonly AdminNavSection[] }): JSX.
             aria-label={section.label ?? ""}
           >
             <h2>{section.label}</h2>
-            {/* biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none */}
-            {/* biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops */}
-            <ul role="list">
+            <UnstyledList>
               {section.entries.map((entry) => (
                 <li key={entry.key}>
                   <Link to={entry.to}>
@@ -60,7 +59,7 @@ function AdminHome({ sections }: { sections: readonly AdminNavSection[] }): JSX.
                   </Link>
                 </li>
               ))}
-            </ul>
+            </UnstyledList>
           </section>
         ))}
       </div>

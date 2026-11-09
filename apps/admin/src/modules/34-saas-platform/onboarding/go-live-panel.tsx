@@ -8,6 +8,7 @@ import {
   FactList,
   InlineAlert,
   REASON_RULES,
+  UnstyledList,
   useApiClient,
 } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
@@ -135,15 +136,13 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           <>
             <p>Go-live opens once every earlier step is settled.</p>
             {open.length > 0 ? (
-              // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
-              // biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops
-              <ul role="list">
+              <UnstyledList>
                 {open.map((s) => (
                   <li key={s.key}>
                     <Link to={stepHref(orgSlug, s.key)}>{s.title}</Link>
                   </li>
                 ))}
-              </ul>
+              </UnstyledList>
             ) : null}
           </>
         ) : null}
