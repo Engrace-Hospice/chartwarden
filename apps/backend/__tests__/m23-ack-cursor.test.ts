@@ -147,7 +147,8 @@ describe("pullTransportAcks with a persisted cursor (#749)", () => {
       calls += 1;
       if (calls === 2) throw new Error("apply failed");
     });
-    expect(pulled.failures).toEqual([expect.stringContaining("apply failed")]);
+    // a code or class, never the error's message (a degraded vendor answer's reason must not reach a job error)
+    expect(pulled.failures).toEqual([expect.stringMatching(/: Error$/)]);
     expect([...rows.values()][0]?.cursor).toBe("2"); // only page 1 is durable
     const retry = collect();
     await pullTransportAcks(t, ORG, "ack_999", retry.onPage);
@@ -244,7 +245,7 @@ describe("pullTransportAcks with a persisted cursor (#749)", () => {
       },
     };
     const pulled = await pullTransportAcks(stuck, ORG, "ack_999", async () => {});
-    expect(pulled.failures).toEqual([expect.stringContaining("did not advance")]);
+    expect(pulled.failures).toEqual([expect.stringContaining(CH.INVALID_REQUEST)]);
   });
 
   it("fails on a vendor cursor that cycles A -> B -> A, keeping the cursor at the last applied page", async () => {
@@ -268,7 +269,7 @@ describe("pullTransportAcks with a persisted cursor (#749)", () => {
       },
     };
     const pulled = await pullTransportAcks(cycling, ORG, "ack_999", async () => {});
-    expect(pulled.failures).toEqual([expect.stringContaining("repeated position")]);
+    expect(pulled.failures).toEqual([expect.stringContaining(CH.INVALID_REQUEST)]);
     expect([...rows.values()][0]?.cursor).toBe("B"); // pages A and B were applied; the repeat was refused
   });
 
@@ -304,7 +305,7 @@ describe("pullTransportAcks with a persisted cursor (#749)", () => {
       },
     };
     const pulled = await pullTransportAcks(bad, ORG, "ack_999", async () => {});
-    expect(pulled.failures).toEqual([expect.stringContaining("unusable length")]);
+    expect(pulled.failures).toEqual([expect.stringContaining(CH.INVALID_REQUEST)]);
   });
 
   it("quarantines an unroutable event (clearinghouse-stage partial) instead of stalling the stream behind it", async () => {

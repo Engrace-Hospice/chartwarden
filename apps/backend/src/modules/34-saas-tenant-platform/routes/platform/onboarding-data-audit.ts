@@ -35,7 +35,6 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   /** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (vendor, mode, sealed credential). */
   clearinghouseSet: "m34.tenant_onboarding.clearinghouse_set",
   clearinghouseVerified: "m34.tenant_onboarding.clearinghouse_verified",
-  clearinghouseActivated: "m34.tenant_onboarding.clearinghouse_activated",
   /** A platform operator verified the BAA the tenant recorded for its own vendor account (a live tenant too: not status-gated). */
   clearinghouseBaaVerified: "m34.tenant_onboarding.clearinghouse_baa_verified",
   /** A platform operator released the clearinghouse credentials a tenant still held, except its current one (not status-gated). */

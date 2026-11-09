@@ -139,6 +139,18 @@ const HISTORICAL_FILENAME_RENAMES: ReadonlyMap<string, string> = new Map([
   // Two branches both took ordinal 1063 (M23 ack-stage split, M36 structured message references). The M23 file was
   // already applied in production, so the M36 file moved to the next free ordinal; its bytes are unchanged.
   ["1065_m36_structured_message_references.sql", "1063_m36_structured_message_references.sql"],
+  // Two branches both took ordinal 1378 (FK supporting indexes, already applied in production; M23 reviewed-source
+  // fingerprint). The M23 file and the three that followed it moved to 1382-1385, bytes unchanged, order kept.
+  [
+    "1382_m23_claim_reviewed_source_fingerprint.sql",
+    "1378_m23_claim_reviewed_source_fingerprint.sql",
+  ],
+  ["1383_m23_claim_submission_dispatch_state.sql", "1379_m23_claim_submission_dispatch_state.sql"],
+  [
+    "1384_m41_clearinghouse_rejection_corrections.sql",
+    "1380_m41_clearinghouse_rejection_corrections.sql",
+  ],
+  ["1385_m41_correction_metadata_not_null.sql", "1381_m41_correction_metadata_not_null.sql"],
 ]);
 
 export interface ApplyMigrationsOptions {

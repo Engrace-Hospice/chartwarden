@@ -163,26 +163,45 @@ describe("M23 Claim.MD evidence boundary", () => {
 
   it("holds an already queued attempt when the configured payer route changes", async () => {
     const order: string[] = [];
-    const transport = makeTransport(order, undefined, { ...context, claimMdRouteFingerprint: "b".repeat(64) });
-    await expect(transportUpload(transport)(request)).rejects.toThrow(/route changed after submission was authorized/);
+    const transport = makeTransport(order, undefined, {
+      ...context,
+      claimMdRouteFingerprint: "b".repeat(64),
+    });
+    await expect(transportUpload(transport)(request)).rejects.toThrow(
+      /route changed after submission was authorized/,
+    );
     expect(order).toEqual([]);
   });
 
   it("preserves known pre-send refusal versus ambiguous transport outcome without vendor text", async () => {
-    const known = makeTransport([]) as { binding: { transport: { submitClaim: () => Promise<unknown> } } };
-    known.binding.transport.submitClaim = async () => ({ ok: false, degraded: { code: "CH_UNAVAILABLE", reason: "synthetic refused" } });
+    const known = makeTransport([]) as {
+      binding: { transport: { submitClaim: () => Promise<unknown> } };
+    };
+    known.binding.transport.submitClaim = async () => ({
+      ok: false,
+      degraded: { code: "CH_UNAVAILABLE", reason: "synthetic refused" },
+    });
     await expect(transportUpload(known as never)(request)).rejects.toMatchObject({
-      name: "ClearinghouseTransportError", code: "CH_UNAVAILABLE", ambiguous: false,
+      name: "ClearinghouseTransportError",
+      code: "CH_UNAVAILABLE",
+      ambiguous: false,
     });
 
-    const uncertain = makeTransport([]) as { binding: { transport: { submitClaim: () => Promise<unknown> } } };
+    const uncertain = makeTransport([]) as {
+      binding: { transport: { submitClaim: () => Promise<unknown> } };
+    };
     uncertain.binding.transport.submitClaim = async () => ({
-      ok: false, degraded: { code: "CH_UNAVAILABLE", reason: "synthetic timeout", ambiguous: true },
+      ok: false,
+      degraded: { code: "CH_UNAVAILABLE", reason: "synthetic timeout", ambiguous: true },
     });
     await expect(transportUpload(uncertain as never)(request)).rejects.toMatchObject({
-      name: "ClearinghouseTransportError", code: "CH_UNAVAILABLE", ambiguous: true,
+      name: "ClearinghouseTransportError",
+      code: "CH_UNAVAILABLE",
+      ambiguous: true,
     });
-    expect(new ClearinghouseTransportError("claim", "CH_UNAVAILABLE").message).not.toContain("SYNTHETIC");
+    expect(new ClearinghouseTransportError("claim", "CH_UNAVAILABLE").message).not.toContain(
+      "SYNTHETIC",
+    );
   });
 
   it("keeps notice uploads off by default and commits typed evidence before any notice transport call", async () => {

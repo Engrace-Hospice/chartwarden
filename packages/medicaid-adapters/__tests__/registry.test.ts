@@ -139,7 +139,9 @@ describe("electronicSubmissionRefusal (S11)", () => {
     (state) => {
       const r = electronicSubmissionRefusal(state, false, "synthetic-mco-id");
       expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
-      expect(r?.message).toContain(state === "TX" ? "No verified Medicaid state/program route" : "not implemented");
+      expect(r?.message).toContain(
+        state === "TX" ? "No verified Medicaid state/program route" : "not implemented",
+      );
     },
   );
 });

@@ -25,7 +25,12 @@ import {
   gap,
   repositories,
 } from "@chartwarden/billing";
-import type { MbiDisclosurePurpose, MbiUnlockReader, PatientAddressReader, PatientReader } from "@chartwarden/types";
+import type {
+  MbiDisclosurePurpose,
+  MbiUnlockReader,
+  PatientAddressReader,
+  PatientReader,
+} from "@chartwarden/types";
 import type { Claim837iInput, ClearinghouseContext } from "@chartwarden/x12-837-client";
 import {
   type Claim837iParties,
@@ -35,8 +40,11 @@ import {
   render837i,
 } from "./claim-837i-mapper";
 import type { AdmissionContextReader } from "./claim-assembly-types";
+import {
+  fingerprintClaim837iBusinessInput,
+  notApplicableClaimRouteFingerprint,
+} from "./claim-preview-integrity";
 import { SensitiveValue } from "./sensitive-value";
-import { fingerprintClaim837iBusinessInput, notApplicableClaimRouteFingerprint } from "./claim-preview-integrity";
 
 /** The disclosure purpose recorded on the MBI-unlock audit event. */
 export const CLAIM_837I_DISCLOSURE_PURPOSE = "claim_837i_submission" as const;
@@ -89,6 +97,11 @@ export interface Claim837iLoaderDeps {
   readonly previewIntegrityKey?: string;
   /** Stable non-secret account identifier; never the Claim.MD AccountKey. */
   readonly accountReference?: string;
+  /**
+   * The same identifier resolved per organization (a tenant's own Claim.MD account is not the platform's); wins over
+   * `accountReference` when both are set. The preview route and the submit worker must resolve it the same way.
+   */
+  readonly accountReferenceFor?: (organizationId: string) => Promise<string>;
 }
 
 export interface LoadClaim837iArgs {
@@ -328,25 +341,32 @@ async function loadOnce(
   // A builder refusal is a field-name-only gap, so the caller never holds an unsendable input.
   const rendered = render837i(mapped.value);
   if (!rendered.ok) return fail(rendered.gaps);
-  const sourceFingerprint = deps.previewIntegrityKey && deps.previewIntegrityKey.length >= 32 && deps.accountReference
-    ? fingerprintClaim837iBusinessInput(
-        mapped.value as unknown as Record<string, unknown>,
-        deps.previewIntegrityKey,
-        {
-          organizationId: claim.organizationId,
-          claimId: claim.id,
-          providerEntityId: claim.providerEntityId,
-          patientPayerId: claim.patientPayerId,
-          claimVersion: claim.version,
-          accountReference: deps.accountReference,
-          usage: context.usage,
-          payerId: context.payerId,
-          billingNpi: context.billingNpi ?? null,
-          routeFingerprint: args.routeFingerprint ?? context.claimMdRouteFingerprint ?? notApplicableClaimRouteFingerprint(claim.organizationId, claim.providerEntityId),
-          rendererVersion: "m23-837i-renderer-bil-2.1.2-v1",
-        },
-      )
-    : null;
+  const accountReference = deps.accountReferenceFor
+    ? await deps.accountReferenceFor(claim.organizationId)
+    : deps.accountReference;
+  const sourceFingerprint =
+    deps.previewIntegrityKey && deps.previewIntegrityKey.length >= 32 && accountReference
+      ? fingerprintClaim837iBusinessInput(
+          mapped.value as unknown as Record<string, unknown>,
+          deps.previewIntegrityKey,
+          {
+            organizationId: claim.organizationId,
+            claimId: claim.id,
+            providerEntityId: claim.providerEntityId,
+            patientPayerId: claim.patientPayerId,
+            claimVersion: claim.version,
+            accountReference,
+            usage: context.usage,
+            payerId: context.payerId,
+            billingNpi: context.billingNpi ?? null,
+            routeFingerprint:
+              args.routeFingerprint ??
+              context.claimMdRouteFingerprint ??
+              notApplicableClaimRouteFingerprint(claim.organizationId, claim.providerEntityId),
+            rendererVersion: "m23-837i-renderer-bil-2.1.2-v1",
+          },
+        )
+      : null;
   return {
     ok: true,
     document: documentResult.value,
@@ -382,7 +402,12 @@ export async function loadAndRender837i(
 > {
   const loaded = await loadOnce(deps, args);
   return loaded.ok
-    ? { ok: true, document: loaded.document, rendered: new SensitiveValue(loaded.rendered), sourceFingerprint: loaded.sourceFingerprint }
+    ? {
+        ok: true,
+        document: loaded.document,
+        rendered: new SensitiveValue(loaded.rendered),
+        sourceFingerprint: loaded.sourceFingerprint,
+      }
     : loaded;
 }
 
@@ -396,7 +421,11 @@ export async function renderClaim837iPreview(
   deps: Claim837iLoaderDeps,
   args: LoadClaim837iArgs,
 ): Promise<
-  | { readonly ok: true; readonly document: ClaimDocument837iDetail; readonly sourceFingerprint: string | null }
+  | {
+      readonly ok: true;
+      readonly document: ClaimDocument837iDetail;
+      readonly sourceFingerprint: string | null;
+    }
   | LoadClaim837iFailure
 > {
   const result = await loadAndRender837i(deps, {

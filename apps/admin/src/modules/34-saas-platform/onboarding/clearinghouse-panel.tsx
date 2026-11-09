@@ -1,7 +1,8 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — step 7, Billing: clearinghouse. Choose Stedi, Claim.MD or billing outside
 // ChartWarden for the tenant, then walk a vendor to active: the tenant records its vendor BAA, an operator verifies it (its own key; the
 // write is PINNED to the record the operator read, so a BAA the tenant swapped meanwhile is never verified unseen), the connection is
-// verified (a no-PHI test for Claim.MD, an attestation with evidence for Stedi), and the config is activated. The vendor credential is
+// verified (a no-PHI test for Claim.MD, an attestation with evidence for Stedi); the tenant's own billing administrator then activates it
+// (no operator action: CW-AC-17). The vendor credential is
 // write-only: sealed under the tenant's key, never returned, never shown, never stashed through a re-verify.
 import {
   Button,
@@ -53,7 +54,7 @@ const EVIDENCE_NOTE_MIN = 8;
 const EVIDENCE_NOTE_MAX = 500;
 const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:clearinghouse_selected:choice`;
 
-type Dialog = "choose" | "verify" | "activate" | null;
+type Dialog = "choose" | "verify" | null;
 type TestOutcome = "ok" | "credential_rejected" | "unreachable";
 const TEST_PROBLEM: Record<Exclude<TestOutcome, "ok">, string> = {
   credential_rejected:
@@ -280,16 +281,6 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
     await settled();
   }
 
-  async function activate(reason: string): Promise<void> {
-    const outcome = await write.run(`activate:${reason}`, (key) =>
-      client.POST("/api/v1/platform/tenants/{orgSlug}/clearinghouse/activate", {
-        params: { path: { orgSlug }, header: { "Idempotency-Key": key } },
-        body: { reason },
-      }),
-    );
-    if (outcome.ok) await settled();
-  }
-
   function askToAttest(): void {
     const trimmed = note.trim();
     if (trimmed.length < EVIDENCE_NOTE_MIN || trimmed.length > EVIDENCE_NOTE_MAX) {
@@ -372,20 +363,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
                   : "Run the connection test"}
               </Button>
             ) : null}
-            {available.canActivate ? (
-              <Button
-                onClick={() => {
-                  write.clear();
-                  setDialog("activate");
-                }}
-              >
-                Activate
-              </Button>
-            ) : null}
           </div>
         ) : null}
-        {available?.activateBlockedReason ? (
-          <p className="wx-row-sub">{available.activateBlockedReason}</p>
+        {available?.tenantActivationNote ? (
+          <p className="wx-row-sub">{available.tenantActivationNote}</p>
         ) : null}
       </section>
 
@@ -495,16 +476,6 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         write={write}
         orgSlug={orgSlug}
         onConfirm={(reason) => void verifyConnection(reason)}
-        onCancel={closeDialog}
-      />
-      <RecordSaveDialog
-        open={dialog === "activate"}
-        title="Activate the clearinghouse"
-        description="Claims and eligibility work can go out through this clearinghouse once it is active."
-        confirmLabel="Activate"
-        write={write}
-        orgSlug={orgSlug}
-        onConfirm={(reason) => void activate(reason)}
         onCancel={closeDialog}
       />
     </StepFrame>

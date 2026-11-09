@@ -21,7 +21,6 @@ import {
 
 const CH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
 const VERIFY = `${CH}/verify`;
-const ACTIVATE = `${CH}/activate`;
 const BAA_VERIFY = `${CH}/baa/verify`;
 const SUBSCRIPTION = "/api/v1/platform/tenants/{orgSlug}/subscription";
 const TYPED_VALUE = "vendor-credential-for-test-only";
@@ -780,23 +779,22 @@ describe("ClearinghousePanel: verifying the connection and activating", () => {
     });
   });
 
-  it("holds activation back until the BAA is verified, and says why", async () => {
+  it("has no Activate action for the operator: it says the tenant activates, and what is still missing first", async () => {
     mount({ ...CLAIMMD, status: "verified", baa: BAA });
     await screen.findByText(/Secret on file/);
     expect(screen.queryByRole("button", { name: "Activate" })).toBeNull();
     expect(screen.getByText(/Verify the vendor BAA first/)).toBeTruthy();
+    expect(screen.getByText(/tenant's own billing administrator/)).toBeTruthy();
   });
 
-  it("activates a verified clearinghouse whose BAA is verified, and re-reads the wizard (the step settles)", async () => {
-    const { client, ctx } = mount(
-      { ...CLAIMMD, status: "verified", baa: VERIFIED_BAA },
-      { POST: { [ACTIVATE]: () => ok({ ...CLAIMMD, status: "active" }) } },
-    );
-    fireEvent.click(await screen.findByRole("button", { name: "Activate" }));
-    confirm("Everything verified, ticket CHG-8003", "Activate");
-    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
-    expect(lastCall(client.POST.mock.calls)[0]).toBe(ACTIVATE);
-    await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
+  it("with everything verified it still offers no Activate, sends no activate request, and says this step settles when the tenant activates", async () => {
+    const { client } = mount({ ...CLAIMMD, status: "verified", baa: VERIFIED_BAA });
+    await screen.findByText(/Secret on file/);
+    expect(screen.queryByRole("button", { name: "Activate" })).toBeNull();
+    expect(
+      screen.getByText(/tenant's own billing administrator activates.*settles when they do/s),
+    ).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
   });
 });
 

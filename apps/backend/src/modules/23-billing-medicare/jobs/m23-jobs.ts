@@ -998,16 +998,23 @@ export async function runClaimSubmitWithinLegacyTransaction(
   const claim = await claims.findById(job.claimId);
   if (!claim) throw new Error(`claim ${job.claimId} not found`);
   const reservedSubmission = await submissions.findById(job.submissionId);
-  if (!reservedSubmission || reservedSubmission.claimId !== job.claimId ||
-      reservedSubmission.organizationId !== job.organizationId || reservedSubmission.attemptIndex !== job.attemptIndex) {
+  if (
+    !reservedSubmission ||
+    reservedSubmission.claimId !== job.claimId ||
+    reservedSubmission.organizationId !== job.organizationId ||
+    reservedSubmission.attemptIndex !== job.attemptIndex
+  ) {
     throw new Error("claim submission reservation does not match the worker job");
   }
   // Tenant clearinghouses: the vendor is the ORG's own (per-organization binding), never the platform's.
   // (This deprecated processor is handed an already-open transaction, so it cannot resolve before it; it resolves once.)
   const orgTransport = await transportForOrg(deps, job.organizationId);
   const claimMd = orgTransport?.binding.vendor === "claimmd";
-  if (claimMd &&
-    (!job.reviewedSourceFingerprint || job.reviewedSourceFingerprint !== reservedSubmission.reviewedSourceFingerprint)) {
+  if (
+    claimMd &&
+    (!job.reviewedSourceFingerprint ||
+      job.reviewedSourceFingerprint !== reservedSubmission.reviewedSourceFingerprint)
+  ) {
     await submissions.terminalize(job.submissionId, {
       outcome: "held_stale_source",
       outcomeReason: "CLAIM_PREVIEW_STALE",
@@ -1039,7 +1046,9 @@ export async function runClaimSubmitWithinLegacyTransaction(
         claimId: job.claimId,
         submissionId: job.submissionId,
         attemptIndex: job.attemptIndex,
-        ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
+        ...(job.expectedRouteFingerprint
+          ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+          : {}),
         reason,
       },
     });
@@ -1065,11 +1074,13 @@ export async function runClaimSubmitWithinLegacyTransaction(
       job.claimControlNumber,
       orgTransport,
     );
-    if (reviewedClaimSourceIsStale(
-      reservedSubmission.reviewedSourceFingerprint,
-      generated.sourceFingerprint,
-      claimMd,
-    )) {
+    if (
+      reviewedClaimSourceIsStale(
+        reservedSubmission.reviewedSourceFingerprint,
+        generated.sourceFingerprint,
+        claimMd,
+      )
+    ) {
       await submissions.terminalize(job.submissionId, {
         outcome: "held_stale_source",
         outcomeReason: "CLAIM_PREVIEW_STALE",
@@ -1109,7 +1120,9 @@ export async function runClaimSubmitWithinLegacyTransaction(
         claimId: job.claimId,
         submissionId: job.submissionId,
         attemptIndex: job.attemptIndex,
-        ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
+        ...(job.expectedRouteFingerprint
+          ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+          : {}),
         reason,
       },
     });
@@ -1137,7 +1150,9 @@ export async function runClaimSubmitWithinLegacyTransaction(
         claimId: job.claimId,
         submissionId: job.submissionId,
         attemptIndex: job.attemptIndex,
-        ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
+        ...(job.expectedRouteFingerprint
+          ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+          : {}),
         reason,
       },
     });
@@ -1222,7 +1237,9 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         claimId: job.claimId,
         submissionId: job.submissionId,
         attemptIndex,
-        ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
+        ...(job.expectedRouteFingerprint
+          ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+          : {}),
       },
     });
     return;
@@ -1286,7 +1303,9 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         claimId: job.claimId,
         submissionId: job.submissionId,
         attemptIndex,
-        ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
+        ...(job.expectedRouteFingerprint
+          ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+          : {}),
         reason,
       },
     });
@@ -1397,7 +1416,9 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         claimId: job.claimId,
         submissionId: submission.id,
         attemptIndex,
-        ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
+        ...(job.expectedRouteFingerprint
+          ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+          : {}),
         reason: failureReason,
       },
     });
@@ -1441,9 +1462,14 @@ export async function runClaimSubmit(
     const claim = await claims.findById(job.claimId);
     if (!claim) throw new Error("M23 claim submission target not found");
     const submission = await submissions.findById(job.submissionId);
-    if (!submission || submission.claimId !== job.claimId || submission.organizationId !== job.organizationId ||
+    if (
+      !submission ||
+      submission.claimId !== job.claimId ||
+      submission.organizationId !== job.organizationId ||
       submission.providerEntityId !== claim.providerEntityId ||
-      submission.attemptIndex !== job.attemptIndex || submission.claimControlNumber !== job.claimControlNumber) {
+      submission.attemptIndex !== job.attemptIndex ||
+      submission.claimControlNumber !== job.claimControlNumber
+    ) {
       throw new Error("claim submission reservation does not match the worker job");
     }
     if (submission.outcome !== "queued" || submission.dispatchState === "finished") return null;
@@ -1451,26 +1477,42 @@ export async function runClaimSubmit(
       return { kind: "already_started" as const, claim, submission };
     }
     const jobFingerprint = job.reviewedSourceFingerprint ?? null;
-    if (jobFingerprint !== submission.reviewedSourceFingerprint ||
-      (claimMd && jobFingerprint === null)) {
+    if (
+      jobFingerprint !== submission.reviewedSourceFingerprint ||
+      (claimMd && jobFingerprint === null)
+    ) {
       await submissions.terminalize(job.submissionId, {
-        outcome: "held_stale_source", outcomeReason: "CLAIM_PREVIEW_STALE",
-        generatedFileUri: null, submittedAt: null, workerCorrelationId: null,
+        outcome: "held_stale_source",
+        outcomeReason: "CLAIM_PREVIEW_STALE",
+        generatedFileUri: null,
+        submittedAt: null,
+        workerCorrelationId: null,
       });
       return null;
     }
     const preflight = await preflightClaimSubmit(tx as unknown as BillingDb, claim);
     if ("error" in preflight) {
       await submissions.terminalize(job.submissionId, {
-        outcome: "failed_worker", outcomeReason: "CLAIM_NO_LONGER_ELIGIBLE",
-        generatedFileUri: null, submittedAt: null, workerCorrelationId: null,
+        outcome: "failed_worker",
+        outcomeReason: "CLAIM_NO_LONGER_ELIGIBLE",
+        generatedFileUri: null,
+        submittedAt: null,
+        workerCorrelationId: null,
       });
       await outboxOf(deps).publish(tx as unknown as BillingDb, {
-        eventName: "m23.claim.submission_failed", organizationId: job.organizationId,
-        aggregateKind: "claim", aggregateId: job.claimId,
-        payload: { claimId: job.claimId, submissionId: job.submissionId, attemptIndex: job.attemptIndex,
-          ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
-          reason: "CLAIM_NO_LONGER_ELIGIBLE" },
+        eventName: "m23.claim.submission_failed",
+        organizationId: job.organizationId,
+        aggregateKind: "claim",
+        aggregateId: job.claimId,
+        payload: {
+          claimId: job.claimId,
+          submissionId: job.submissionId,
+          attemptIndex: job.attemptIndex,
+          ...(job.expectedRouteFingerprint
+            ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+            : {}),
+          reason: "CLAIM_NO_LONGER_ELIGIBLE",
+        },
       });
       return null;
     }
@@ -1486,29 +1528,54 @@ export async function runClaimSubmit(
       );
     } catch {
       await submissions.terminalize(job.submissionId, {
-        outcome: "failed_worker", outcomeReason: "CLAIM_PREPARATION_FAILED",
-        generatedFileUri: null, submittedAt: null, workerCorrelationId: null,
+        outcome: "failed_worker",
+        outcomeReason: "CLAIM_PREPARATION_FAILED",
+        generatedFileUri: null,
+        submittedAt: null,
+        workerCorrelationId: null,
       });
       await outboxOf(deps).publish(tx as unknown as BillingDb, {
-        eventName: "m23.claim.submission_failed", organizationId: job.organizationId,
-        aggregateKind: "claim", aggregateId: job.claimId,
-        payload: { claimId: job.claimId, submissionId: job.submissionId, attemptIndex: job.attemptIndex,
-          ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}),
-          reason: "CLAIM_PREPARATION_FAILED" },
+        eventName: "m23.claim.submission_failed",
+        organizationId: job.organizationId,
+        aggregateKind: "claim",
+        aggregateId: job.claimId,
+        payload: {
+          claimId: job.claimId,
+          submissionId: job.submissionId,
+          attemptIndex: job.attemptIndex,
+          ...(job.expectedRouteFingerprint
+            ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+            : {}),
+          reason: "CLAIM_PREPARATION_FAILED",
+        },
       });
       return null;
     }
-    if (reviewedClaimSourceIsStale(submission.reviewedSourceFingerprint, generated.sourceFingerprint, claimMd)) {
+    if (
+      reviewedClaimSourceIsStale(
+        submission.reviewedSourceFingerprint,
+        generated.sourceFingerprint,
+        claimMd,
+      )
+    ) {
       await submissions.terminalize(job.submissionId, {
-        outcome: "held_stale_source", outcomeReason: "CLAIM_PREVIEW_STALE",
-        generatedFileUri: null, submittedAt: null, workerCorrelationId: generated.correlationId,
+        outcome: "held_stale_source",
+        outcomeReason: "CLAIM_PREVIEW_STALE",
+        generatedFileUri: null,
+        submittedAt: null,
+        workerCorrelationId: generated.correlationId,
       });
       return null;
     }
-    const reservation = await submissions.beginDispatch(job.submissionId, submission.reviewedSourceFingerprint, (deps.now ?? (() => new Date()))());
-    if (reservation.kind !== "claimed") return reservation.kind === "already_started"
-      ? { kind: "already_started" as const, claim, submission: reservation.row }
-      : null;
+    const reservation = await submissions.beginDispatch(
+      job.submissionId,
+      submission.reviewedSourceFingerprint,
+      (deps.now ?? (() => new Date()))(),
+    );
+    if (reservation.kind !== "claimed")
+      return reservation.kind === "already_started"
+        ? { kind: "already_started" as const, claim, submission: reservation.row }
+        : null;
     return { kind: "prepared" as const, claim, generated, token: reservation.token, submission };
   });
 
@@ -1517,32 +1584,60 @@ export async function runClaimSubmit(
     // Reconcile only from the durable clearinghouse attempt store. Never resend a committed dispatch.
     const transport = orgTransport?.binding.vendor ? orgTransport : null;
     if (!transport) return;
-    const currentRoute = await transport.contexts.contextFor(job.organizationId, prepared.claim.providerEntityId);
-    if (job.expectedRouteFingerprint && currentRoute.claimMdRouteFingerprint !== job.expectedRouteFingerprint) return;
-    const remote = await priorClaimAttempt(transport, job.organizationId, prepared.claim.providerEntityId, job.claimControlNumber);
+    const currentRoute = await transport.contexts.contextFor(
+      job.organizationId,
+      prepared.claim.providerEntityId,
+    );
+    if (
+      job.expectedRouteFingerprint &&
+      currentRoute.claimMdRouteFingerprint !== job.expectedRouteFingerprint
+    )
+      return;
+    const remote = await priorClaimAttempt(
+      transport,
+      job.organizationId,
+      prepared.claim.providerEntityId,
+      job.claimControlNumber,
+    );
     if (remote?.status !== "sent" || !remote.clearinghouseSubmissionId) return;
     await withOrgContext(deps.db, ctx, async (tx) => {
       const submissions = new ClaimSubmissionRepository(tx as unknown as BillingDb);
       const claims = new ClaimRepository(tx as unknown as BillingDb);
       const row = await submissions.findById(job.submissionId);
-      if (!row || !["sending", "in_doubt"].includes(row.dispatchState) || !row.dispatchToken) return;
+      if (!row || !["sending", "in_doubt"].includes(row.dispatchState) || !row.dispatchToken)
+        return;
       const now = (deps.now ?? (() => new Date()))();
-      const finalized = await submissions.finishDispatch(row.id, row.dispatchToken, row.dispatchState as "sending" | "in_doubt", {
-        outcome: "submitted", outcomeReason: null,
-        generatedFileUri: `clearinghouse:${transport.binding.vendor}:${remote.clearinghouseSubmissionId}`,
-        submittedAt: now, workerCorrelationId: randomUUID(),
-      });
+      const finalized = await submissions.finishDispatch(
+        row.id,
+        row.dispatchToken,
+        row.dispatchState as "sending" | "in_doubt",
+        {
+          outcome: "submitted",
+          outcomeReason: null,
+          generatedFileUri: `clearinghouse:${transport.binding.vendor}:${remote.clearinghouseSubmissionId}`,
+          submittedAt: now,
+          workerCorrelationId: randomUUID(),
+        },
+      );
       if (!finalized) return;
       const current = await claims.findById(job.claimId);
       if (current) {
         const currentPreflight = await preflightClaimSubmit(tx as unknown as BillingDb, current);
-        if (!("error" in currentPreflight)) await claims.transitionToState(job.claimId, current.version, currentPreflight.to);
+        if (!("error" in currentPreflight))
+          await claims.transitionToState(job.claimId, current.version, currentPreflight.to);
       }
       await outboxOf(deps).publish(tx as unknown as BillingDb, {
-        eventName: "m23.claim.submitted", organizationId: job.organizationId,
-        aggregateKind: "claim", aggregateId: job.claimId,
-        payload: { claimId: job.claimId, submissionId: job.submissionId, claimControlNumber: job.claimControlNumber,
-          macJurisdiction: prepared.claim.macJurisdiction, submittedAt: now.toISOString() },
+        eventName: "m23.claim.submitted",
+        organizationId: job.organizationId,
+        aggregateKind: "claim",
+        aggregateId: job.claimId,
+        payload: {
+          claimId: job.claimId,
+          submissionId: job.submissionId,
+          claimControlNumber: job.claimControlNumber,
+          macJurisdiction: prepared.claim.macJurisdiction,
+          submittedAt: now.toISOString(),
+        },
       });
     });
     return;
@@ -1551,35 +1646,68 @@ export async function runClaimSubmit(
   let uploaded: Awaited<ReturnType<ReturnType<typeof macPortalOf>["upload"]>>;
   try {
     uploaded = await macPortalOf(deps).upload({
-      organizationId: job.organizationId, providerEntityId: prepared.claim.providerEntityId,
-      kind: "claim_837i", x12: prepared.generated.x12, stediJson: prepared.generated.stediJson,
-      controlNumber: job.claimControlNumber, claimId: job.claimId, submissionId: job.submissionId,
-      attemptIndex: job.attemptIndex, expectedRouteFingerprint: job.expectedRouteFingerprint,
+      organizationId: job.organizationId,
+      providerEntityId: prepared.claim.providerEntityId,
+      kind: "claim_837i",
+      x12: prepared.generated.x12,
+      stediJson: prepared.generated.stediJson,
+      controlNumber: job.claimControlNumber,
+      claimId: job.claimId,
+      submissionId: job.submissionId,
+      attemptIndex: job.attemptIndex,
+      expectedRouteFingerprint: job.expectedRouteFingerprint,
     });
   } catch (error) {
     if (error instanceof ClearinghouseTransportError && !error.ambiguous) {
       await withOrgContext(deps.db, ctx, async (tx) => {
         const submissions = new ClaimSubmissionRepository(tx as unknown as BillingDb);
         const outbox = outboxOf(deps);
-        const finalized = await submissions.finishDispatch(job.submissionId, prepared.token, "sending", {
-          outcome: "failed_portal", outcomeReason: error.code,
-          generatedFileUri: null, submittedAt: null, workerCorrelationId: prepared.generated.correlationId,
-        });
+        const finalized = await submissions.finishDispatch(
+          job.submissionId,
+          prepared.token,
+          "sending",
+          {
+            outcome: "failed_portal",
+            outcomeReason: error.code,
+            generatedFileUri: null,
+            submittedAt: null,
+            workerCorrelationId: prepared.generated.correlationId,
+          },
+        );
         if (!finalized) return;
         await outbox.publish(tx as unknown as BillingDb, {
-          eventName: "m23.claim.submission_failed", organizationId: job.organizationId,
-          aggregateKind: "claim", aggregateId: job.claimId,
-          payload: { claimId: job.claimId, submissionId: job.submissionId, attemptIndex: job.attemptIndex,
-            ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}), reason: error.code },
+          eventName: "m23.claim.submission_failed",
+          organizationId: job.organizationId,
+          aggregateKind: "claim",
+          aggregateId: job.claimId,
+          payload: {
+            claimId: job.claimId,
+            submissionId: job.submissionId,
+            attemptIndex: job.attemptIndex,
+            ...(job.expectedRouteFingerprint
+              ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+              : {}),
+            reason: error.code,
+          },
         });
       });
-      deps.logger?.error({ component: "m23.claim.submit", outcome: "failed_portal", reasonCode: error.code },
-        "Claim submission was refused before an uncertain send");
+      deps.logger?.error(
+        { component: "m23.claim.submit", outcome: "failed_portal", reasonCode: error.code },
+        "Claim submission was refused before an uncertain send",
+      );
       return;
     }
-    await withOrgContext(deps.db, ctx, (tx) => new ClaimSubmissionRepository(tx as unknown as BillingDb)
-      .markDispatchInDoubt(job.submissionId, prepared.token, "TRANSPORT_OUTCOME_UNCERTAIN"));
-    deps.logger?.error({ component: "m23.claim.submit", outcome: "in_doubt" }, "Claim submission transport outcome requires reconciliation");
+    await withOrgContext(deps.db, ctx, (tx) =>
+      new ClaimSubmissionRepository(tx as unknown as BillingDb).markDispatchInDoubt(
+        job.submissionId,
+        prepared.token,
+        "TRANSPORT_OUTCOME_UNCERTAIN",
+      ),
+    );
+    deps.logger?.error(
+      { component: "m23.claim.submit", outcome: "in_doubt" },
+      "Claim submission transport outcome requires reconciliation",
+    );
     return;
   }
 
@@ -1589,24 +1717,48 @@ export async function runClaimSubmit(
     const outbox = outboxOf(deps);
     const now = (deps.now ?? (() => new Date()))();
     if (!uploaded.accepted) {
-      const finalized = await submissions.finishDispatch(job.submissionId, prepared.token, "sending", {
-        outcome: "failed_portal", outcomeReason: "CLAIM_TRANSPORT_REJECTED",
-        generatedFileUri: uploaded.generatedFileUri, submittedAt: null,
-        workerCorrelationId: prepared.generated.correlationId,
-      });
+      const finalized = await submissions.finishDispatch(
+        job.submissionId,
+        prepared.token,
+        "sending",
+        {
+          outcome: "failed_portal",
+          outcomeReason: "CLAIM_TRANSPORT_REJECTED",
+          generatedFileUri: uploaded.generatedFileUri,
+          submittedAt: null,
+          workerCorrelationId: prepared.generated.correlationId,
+        },
+      );
       if (!finalized) return;
       await outbox.publish(tx as unknown as BillingDb, {
-        eventName: "m23.claim.submission_failed", organizationId: job.organizationId,
-        aggregateKind: "claim", aggregateId: job.claimId,
-        payload: { claimId: job.claimId, submissionId: job.submissionId, attemptIndex: job.attemptIndex,
-          ...(job.expectedRouteFingerprint ? { expectedRouteFingerprint: job.expectedRouteFingerprint } : {}), reason: "CLAIM_TRANSPORT_REJECTED" },
+        eventName: "m23.claim.submission_failed",
+        organizationId: job.organizationId,
+        aggregateKind: "claim",
+        aggregateId: job.claimId,
+        payload: {
+          claimId: job.claimId,
+          submissionId: job.submissionId,
+          attemptIndex: job.attemptIndex,
+          ...(job.expectedRouteFingerprint
+            ? { expectedRouteFingerprint: job.expectedRouteFingerprint }
+            : {}),
+          reason: "CLAIM_TRANSPORT_REJECTED",
+        },
       });
       return;
     }
-    const finalized = await submissions.finishDispatch(job.submissionId, prepared.token, "sending", {
-      outcome: "submitted", outcomeReason: null, generatedFileUri: uploaded.generatedFileUri,
-      submittedAt: now, workerCorrelationId: prepared.generated.correlationId,
-    });
+    const finalized = await submissions.finishDispatch(
+      job.submissionId,
+      prepared.token,
+      "sending",
+      {
+        outcome: "submitted",
+        outcomeReason: null,
+        generatedFileUri: uploaded.generatedFileUri,
+        submittedAt: now,
+        workerCorrelationId: prepared.generated.correlationId,
+      },
+    );
     if (!finalized) return;
     const current = await claims.findById(job.claimId);
     if (current && current.version === prepared.claim.version) {
@@ -1616,10 +1768,17 @@ export async function runClaimSubmit(
       }
     }
     await outbox.publish(tx as unknown as BillingDb, {
-      eventName: "m23.claim.submitted", organizationId: job.organizationId,
-      aggregateKind: "claim", aggregateId: job.claimId,
-      payload: { claimId: job.claimId, submissionId: job.submissionId, claimControlNumber: job.claimControlNumber,
-        macJurisdiction: prepared.claim.macJurisdiction, submittedAt: now.toISOString() },
+      eventName: "m23.claim.submitted",
+      organizationId: job.organizationId,
+      aggregateKind: "claim",
+      aggregateId: job.claimId,
+      payload: {
+        claimId: job.claimId,
+        submissionId: job.submissionId,
+        claimControlNumber: job.claimControlNumber,
+        macJurisdiction: prepared.claim.macJurisdiction,
+        submittedAt: now.toISOString(),
+      },
     });
   });
 }
@@ -1636,58 +1795,113 @@ export async function runClaimSubmitRetry(
     const submissions = new ClaimSubmissionRepository(tx as unknown as BillingDb);
     const claim = await claims.findById(job.claimId);
     const prior = await submissions.findById(job.submissionId);
-    if (!claim || !prior || prior.organizationId !== job.organizationId || prior.claimId !== job.claimId ||
+    if (
+      !claim ||
+      !prior ||
+      prior.organizationId !== job.organizationId ||
+      prior.claimId !== job.claimId ||
       prior.providerEntityId !== claim.providerEntityId ||
-      prior.attemptIndex !== job.attemptIndex) throw new Error("claim retry does not match its durable submission");
+      prior.attemptIndex !== job.attemptIndex
+    )
+      throw new Error("claim retry does not match its durable submission");
     // Queue redelivery after a terminal successful/held attempt must be a no-op. Only known retryable failures
     // may allocate the next immutable attempt; otherwise a late job could append a spurious failed attempt.
-    if (prior.dispatchState === "finished" && prior.outcome !== "failed_portal" && prior.outcome !== "failed_worker") return null;
+    if (
+      prior.dispatchState === "finished" &&
+      prior.outcome !== "failed_portal" &&
+      prior.outcome !== "failed_worker"
+    )
+      return null;
     if (prior.dispatchState === "sending" || prior.dispatchState === "in_doubt") {
       // The earlier request may have reached the payer. Reconcile through the clearinghouse attempt store;
       // otherwise leave it held for operator review. Never create a fresh control number in this state.
-      return { reconcile: true as const, claimControlNumber: prior.claimControlNumber,
-        attemptIndex: prior.attemptIndex, submissionId: prior.id,
-        reviewedSourceFingerprint: prior.reviewedSourceFingerprint };
+      return {
+        reconcile: true as const,
+        claimControlNumber: prior.claimControlNumber,
+        attemptIndex: prior.attemptIndex,
+        submissionId: prior.id,
+        reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
+      };
     }
     const nextIndex = prior.attemptIndex + 1;
     if (nextIndex >= M23_QUEUE_PARAMS.claimSubmitRetry.attempts) {
       await outboxOf(deps).publish(tx as unknown as BillingDb, {
-        eventName: "m23.claim.submission_stalled", organizationId: job.organizationId,
-        aggregateKind: "claim", aggregateId: job.claimId,
-        payload: { claimId: job.claimId, submissionId: prior.id, attemptIndex: nextIndex,
-          expectedRouteFingerprint: job.expectedRouteFingerprint, reason: "retry budget exhausted" },
+        eventName: "m23.claim.submission_stalled",
+        organizationId: job.organizationId,
+        aggregateKind: "claim",
+        aggregateId: job.claimId,
+        payload: {
+          claimId: job.claimId,
+          submissionId: prior.id,
+          attemptIndex: nextIndex,
+          expectedRouteFingerprint: job.expectedRouteFingerprint,
+          reason: "retry budget exhausted",
+        },
       });
-      await alertsOf(deps).dispatch({ alertCode: "m23.claim.submission_stalled", severity: "critical",
-        organizationId: job.organizationId, payload: { claimId: job.claimId, submissionId: prior.id, attemptIndex: nextIndex } });
+      await alertsOf(deps).dispatch({
+        alertCode: "m23.claim.submission_stalled",
+        severity: "critical",
+        organizationId: job.organizationId,
+        payload: { claimId: job.claimId, submissionId: prior.id, attemptIndex: nextIndex },
+      });
       return null;
     }
     const parsed = parseControlNumber(prior.claimControlNumber);
     if (!parsed) throw new Error("claim retry has an invalid original control number");
-    const claimControlNumber = deriveControlNumber({ ccn: parsed.ccn, serviceFrom: claim.serviceFrom,
-      claimId: claim.id, attemptIndex: nextIndex });
+    const claimControlNumber = deriveControlNumber({
+      ccn: parsed.ccn,
+      serviceFrom: claim.serviceFrom,
+      claimId: claim.id,
+      attemptIndex: nextIndex,
+    });
     const row = await submissions.append({
-      organizationId: job.organizationId, providerEntityId: claim.providerEntityId, kind: "claim_837i",
-      claimId: claim.id, claimControlNumber, attemptIndex: nextIndex, outcome: "queued",
-      reviewedSourceFingerprint: prior.reviewedSourceFingerprint, outcomeReason: null,
-      generatedFileUri: null, submittedAt: null, workerCorrelationId: null,
+      organizationId: job.organizationId,
+      providerEntityId: claim.providerEntityId,
+      kind: "claim_837i",
+      claimId: claim.id,
+      claimControlNumber,
+      attemptIndex: nextIndex,
+      outcome: "queued",
+      reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
+      outcomeReason: null,
+      generatedFileUri: null,
+      submittedAt: null,
+      workerCorrelationId: null,
     });
     if (row.dispatchState !== "pending" || row.outcome !== "queued") return null;
-    return { reconcile: false as const, claimControlNumber, attemptIndex: nextIndex, submissionId: row.id,
-      reviewedSourceFingerprint: prior.reviewedSourceFingerprint };
+    return {
+      reconcile: false as const,
+      claimControlNumber,
+      attemptIndex: nextIndex,
+      submissionId: row.id,
+      reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
+    };
   });
   if (!next) return;
   if (next.reconcile) {
-    await runClaimSubmit(deps.db, deps, { organizationId: job.organizationId, claimId: job.claimId,
-      claimControlNumber: next.claimControlNumber, attemptIndex: next.attemptIndex,
-      submissionId: next.submissionId, expectedRouteFingerprint: job.expectedRouteFingerprint,
-      ...(next.reviewedSourceFingerprint ? { reviewedSourceFingerprint: next.reviewedSourceFingerprint } : {}) });
+    await runClaimSubmit(deps.db, deps, {
+      organizationId: job.organizationId,
+      claimId: job.claimId,
+      claimControlNumber: next.claimControlNumber,
+      attemptIndex: next.attemptIndex,
+      submissionId: next.submissionId,
+      expectedRouteFingerprint: job.expectedRouteFingerprint,
+      ...(next.reviewedSourceFingerprint
+        ? { reviewedSourceFingerprint: next.reviewedSourceFingerprint }
+        : {}),
+    });
     return;
   }
   await runClaimSubmit(deps.db, deps, {
-    organizationId: job.organizationId, claimId: job.claimId, submissionId: next.submissionId,
-    claimControlNumber: next.claimControlNumber, attemptIndex: next.attemptIndex,
+    organizationId: job.organizationId,
+    claimId: job.claimId,
+    submissionId: next.submissionId,
+    claimControlNumber: next.claimControlNumber,
+    attemptIndex: next.attemptIndex,
     expectedRouteFingerprint: job.expectedRouteFingerprint,
-    ...(next.reviewedSourceFingerprint ? { reviewedSourceFingerprint: next.reviewedSourceFingerprint } : {}),
+    ...(next.reviewedSourceFingerprint
+      ? { reviewedSourceFingerprint: next.reviewedSourceFingerprint }
+      : {}),
   });
 }
 
@@ -3111,100 +3325,6 @@ export async function holdBeforeRun(
 }
 
 /**
- * Construct one BullMQ `Worker` per §4.8 WORK queue. Domain workers open the per-job `withOrgContext(orgId)` RLS
- * envelope here; claim submit/retry workers use their own short prepare/finalize scopes so no transaction spans
- * external transport. Returns the workers so the composition root can `close()` them
- * on shutdown — the caller owns the lifecycle; nothing here runs at import (constructing a Worker opens the
- * Valkey connection, which must happen only in production wiring, never in tests).
- */
-export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
-  const { connection } = deps;
-  const orgScoped = <D extends { organizationId: string }>(
-    queue: string,
-    concurrency: number,
-    run: (tx: BillingDb, deps: M23WorkerDeps, data: D) => Promise<void>,
-  ): Worker =>
-    new Worker(
-      queue,
-      async (job, token) => {
-        const data = job.data as D;
-        if (!data.organizationId) {
-          throw new Error(
-            `M23 worker ${queue}: job.data.organizationId missing (the JobEnqueuePort must enrich it)`,
-          );
-        }
-        // "parked": a NOE / NOTR of an org that bills outside ChartWarden was parked for the tenant; the job is done.
-        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
-        return withOrgContext(
-          deps.db,
-          {
-            organizationId: data.organizationId,
-            userId: M23_WORKER_SYSTEM_USER_ID,
-          },
-          (tx) => run(tx as unknown as BillingDb, deps, data),
-        );
-      },
-      { connection, concurrency },
-    );
-  const submissionScoped = <D extends { organizationId: string }>(
-    queue: string,
-    concurrency: number,
-    run: (tx: BillingDb, deps: M23WorkerDeps, data: D) => Promise<void>,
-  ): Worker => new Worker(queue, async (job, token) => {
-    const data = job.data as D;
-    if (!data.organizationId) throw new Error(`M23 worker ${queue}: organizationId missing`);
-    // Before any transport: the add-on gate (ADR-0110) and whether the org's clearinghouse is live hold the job here, outside any
-    // transaction. (Only a NOE / NOTR queue ever answers "parked"; the verdict is honoured all the same.)
-    if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
-    // Submission processors own short prepare/finalize tenant transactions. Never wrap transport in one.
-    return run(deps.db, deps, data);
-  }, { connection, concurrency });
-
-  return [
-    submissionScoped<ClaimSubmitJob>(
-      M23_QUEUES.claimSubmit,
-      M23_QUEUE_PARAMS.claimSubmit.concurrency,
-      runClaimSubmit,
-    ),
-    submissionScoped<ClaimSubmitRetryJob>(
-      M23_QUEUES.claimSubmitRetry,
-      M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
-      runClaimSubmitRetry,
-    ),
-    orgScoped<NoeSubmitJob>(
-      M23_QUEUES.noeSubmit,
-      M23_QUEUE_PARAMS.noeSubmit.concurrency,
-      runNoeSubmit,
-    ),
-    orgScoped<NotrSubmitJob>(
-      M23_QUEUES.notrSubmit,
-      M23_QUEUE_PARAMS.notrSubmit.concurrency,
-      runNotrSubmit,
-    ),
-    orgScoped<TransferNoticeSubmitJob>(
-      M23_QUEUES.transferNoticeSubmit,
-      M23_QUEUE_PARAMS.transferNoticeSubmit.concurrency,
-      runTransferNoticeSubmitJob,
-    ),
-    orgScoped<EligibilityRefreshJob>(
-      M23_QUEUES.eligibilityRefresh,
-      M23_QUEUE_PARAMS.eligibilityRefresh.concurrency,
-      runEligibilityRefresh,
-    ),
-    orgScoped<ValidationRunJob>(
-      M23_QUEUES.validationRun,
-      M23_QUEUE_PARAMS.validationRun.concurrency,
-      runValidationRun,
-    ),
-    orgScoped<RevalidateConsumerJob>(
-      M23_QUEUES.revalidateConsumer,
-      M23_QUEUE_PARAMS.revalidateConsumer.concurrency,
-      runRevalidateConsumer,
-    ),
-  ];
-}
-
-/**
  * The three §4.8 WORK queues that need no X12 / MAC-portal infrastructure: `eligibility.refresh`,
  * `validation-run` and `revalidate.consumer` (GAP-070). The composition root constructs them whenever a queue
  * connection exists — NOT behind the launch gateway, which only the submission workers need. Before this nothing
@@ -3320,10 +3440,14 @@ export function assertTransportInjected(
   // Other transports retain their legacy global X12 payer configuration semantics.
   if (vendor === "claimmd") {
     if (env[CLEARINGHOUSE_PAYER_ID_ENV]?.trim()) {
-      throw new Error(`M23LaunchCapabilityIncomplete: ${CLEARINGHOUSE_PAYER_ID_ENV} cannot authorize Claim.MD routing`);
+      throw new Error(
+        `M23LaunchCapabilityIncomplete: ${CLEARINGHOUSE_PAYER_ID_ENV} cannot authorize Claim.MD routing`,
+      );
     }
     if (!env[CLAIMMD_M23_PAYER_ROUTES_ENV]?.trim()) {
-      throw new Error(`M23LaunchCapabilityIncomplete: ${vendor} requires ${CLAIMMD_M23_PAYER_ROUTES_ENV}`);
+      throw new Error(
+        `M23LaunchCapabilityIncomplete: ${vendor} requires ${CLAIMMD_M23_PAYER_ROUTES_ENV}`,
+      );
     }
   } else if (!env[CLEARINGHOUSE_PAYER_ID_ENV]?.trim()) {
     throw new Error(
@@ -3374,13 +3498,18 @@ export function registerM23LaunchWorkers(
     queue: string,
     concurrency: number,
     run: (tx: BillingDb, workerDeps: M23WorkerDeps, data: D) => Promise<void>,
-  ) => new Worker(queue, async (job, token) => {
-    const data = job.data as D;
-    if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-    // Before any transport: the add-on gate (ADR-0110) and whether the org's clearinghouse is live hold the job here.
-    if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
-    return run(deps.db, deps, data);
-  }, { connection: deps.connection, concurrency });
+  ) =>
+    new Worker(
+      queue,
+      async (job, token) => {
+        const data = job.data as D;
+        if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        // Before any transport: the add-on gate (ADR-0110) and whether the org's clearinghouse is live hold the job here.
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
+        return run(deps.db, deps, data);
+      },
+      { connection: deps.connection, concurrency },
+    );
   const cron = (queue: string, run: () => Promise<void>) =>
     new Worker(queue, async () => run(), {
       connection: deps.connection,
@@ -3388,7 +3517,11 @@ export function registerM23LaunchWorkers(
       lockDuration: M23_CRON_LOCK_DURATION_MS,
     });
   return [
-    submissionWorker(M23_QUEUES.claimSubmit, M23_QUEUE_PARAMS.claimSubmit.concurrency, runClaimSubmit),
+    submissionWorker(
+      M23_QUEUES.claimSubmit,
+      M23_QUEUE_PARAMS.claimSubmit.concurrency,
+      runClaimSubmit,
+    ),
     submissionWorker(
       M23_QUEUES.claimSubmitRetry,
       M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
@@ -3405,7 +3538,7 @@ export function registerM23LaunchWorkers(
  * Construct the §4.8 CRON workers (the per-MAC-jurisdiction ack pulls + portal health, and the per-org window /
  * stale watchdogs). The cron tick carries no payload — each processor reads its own ports (the org / jurisdiction
  * enumerators) and opens `withOrgContext` INSIDE itself (it fans across orgs). Concurrency 1 — a cron tick is a
- * singleton. Returns the workers; the caller owns `close()`. Mirrors `registerM23Workers`; nothing runs at import.
+ * singleton. Returns the workers; the caller owns `close()`. Mirrors `registerM23DomainWorkers`; nothing runs at import.
  */
 export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
   const { connection } = deps;

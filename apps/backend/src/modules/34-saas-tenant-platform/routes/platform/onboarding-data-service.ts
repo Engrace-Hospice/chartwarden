@@ -570,21 +570,6 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       return settleStepAfter(organizationId, result);
     },
 
-    activateClearinghouse: async (op, orgSlug, reason) => {
-      let organizationId = "";
-      const view = await write(
-        op,
-        orgSlug,
-        { event: EVENTS.clearinghouseActivated, resourceKind: CLEARINGHOUSE_KIND, reason },
-        async (tx, t) => {
-          organizationId = t.organizationId;
-          const done = await clearinghousePort().activate(tx, scopeOf(op, t.organizationId));
-          return { value: done.view, resourceId: done.resourceId };
-        },
-      );
-      return settleStepAfter(organizationId, view);
-    },
-
     verifyClearinghouseBaa: (op, orgSlug, reason, expected) =>
       write(
         op,

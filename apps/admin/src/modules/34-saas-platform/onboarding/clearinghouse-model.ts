@@ -126,16 +126,18 @@ export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
 export interface ClearinghouseActions {
   readonly canVerifyBaa: boolean;
   readonly canVerifyConnection: boolean;
-  readonly canActivate: boolean;
-  /** Why activation is not offered although the connection is verified, or null. */
-  readonly activateBlockedReason: string | null;
+  /**
+   * What to say where an Activate button used to be: only the tenant's own billing administrator activates its clearinghouse
+   * (CW-AC-17: the platform lane has no activate route), so the operator is told who does, and what is still missing first. Null
+   * when there is nothing to say yet (the connection is not verified).
+   */
+  readonly tenantActivationNote: string | null;
 }
 
 const NO_ACTIONS: ClearinghouseActions = {
   canVerifyBaa: false,
   canVerifyConnection: false,
-  canActivate: false,
-  activateBlockedReason: null,
+  tenantActivationNote: null,
 };
 
 export function clearinghouseActions(view: ClearinghouseView): ClearinghouseActions {
@@ -145,10 +147,10 @@ export function clearinghouseActions(view: ClearinghouseView): ClearinghouseActi
   return {
     canVerifyBaa: view.baaRequired && view.baa !== null && !baaVerified,
     canVerifyConnection: view.status === "draft" && view.hasSecret,
-    canActivate: connectionVerified && (!view.baaRequired || baaVerified),
-    activateBlockedReason:
-      connectionVerified && view.baaRequired && !baaVerified
-        ? "Verify the vendor BAA first: the tenant records it, then an operator verifies it."
-        : null,
+    tenantActivationNote: !connectionVerified
+      ? null
+      : view.baaRequired && !baaVerified
+        ? "Verify the vendor BAA first: the tenant records it, then an operator verifies it. The tenant's own billing administrator then activates the clearinghouse."
+        : "The tenant's own billing administrator activates the clearinghouse from their own settings; this step settles when they do.",
   };
 }

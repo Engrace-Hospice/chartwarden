@@ -47,6 +47,7 @@ const ALL_CLAIM_EVENTS: readonly ClaimTransitionEvent[] = [
   "submit",
   "submission_failed",
   "ack_999_accepted",
+  "claimmd_receipt_accepted",
   "ack_999_rejected",
   "ack_277ca_accepted",
   "ack_277ca_rejected",

@@ -108,6 +108,9 @@ export interface VerifiedUploadService {
 
 function validateInput(input: InitiateVerifiedUploadInput): void {
   assertNotInternalOnlyForWrite(input.aggregateType);
+  // The tenant-facing presigned upload never files an operator-filed kind (the signed BAA), whatever the route schema allows: that door is
+  // the onboarding port's createDocumentOn. A new version is checked against the target's own kind below.
+  assertKindWritable(input.aggregateType);
   if ((input.mode === "new_version") !== Boolean(input.targetDocumentId)) {
     throw new ChartWardenError(
       "VALIDATION_FAILED",
