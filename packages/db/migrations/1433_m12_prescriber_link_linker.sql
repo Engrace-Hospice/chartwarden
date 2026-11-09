@@ -1,7 +1,7 @@
 -- compat: expand
 -- M12 - WHO linked a roster member to a physician record (review of slice 4, separation of duties on prescriber linking).
 --
--- The prescriber's own confirmation (migration 1399) was meant to be a second person's word: an administrator links a member to a physician record,
+-- The prescriber's own confirmation (migration 1430) was meant to be a second person's word: an administrator links a member to a physician record,
 -- the member confirms it is them. But an org administrator holds the roster key, `prescribing.sign` and the clinic key, so ONE person could link
 -- their OWN membership to any physician record, confirm it, and enrol at DoseSpot under that NPI. `linked_by_membership_id` records the membership
 -- that set (or changed) the link, and the application refuses a confirmation by that same member (409 DOSESPOT_LINK_SELF_CONFIRM); the enrolment

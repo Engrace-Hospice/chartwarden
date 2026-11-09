@@ -1,4 +1,4 @@
-// @chartwarden/db — `dosespot_clinic_registration` (M12 DoseSpot; tenant onboarding slice 4, ADR-0111; migration 1395).
+// @chartwarden/db — `dosespot_clinic_registration` (M12 DoseSpot; tenant onboarding slice 4, ADR-0111; migration 1426).
 // The DoseSpot clinic a tenant registered: its environment (sandbox | production, never a URL), clinic id, service clinician,
 // its sealed credential, and where the registration is in draft -> registered -> verified -> active. One row per organization.
 // The CHECKs in the migration are the authority on which column combinations are legal; this file mirrors the shape for Drizzle.

@@ -115,7 +115,7 @@ const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
 const RR = schema.refillRequests;
 const DP = schema.dosespotPrescribers;
-/** Clears the prescriber's own confirmation of the linked physician record (migration 1399): all four together. */
+/** Clears the prescriber's own confirmation of the linked physician record (migration 1430): all four together. */
 const NO_LINK_CONFIRMATION = {
   linkConfirmedMdmId: null,
   linkConfirmedNpi: null,
@@ -1623,7 +1623,7 @@ export function createDbDoseSpotBackend(
             Boolean(externalPhysicianMdmId) &&
             existing.mdmId !== externalPhysicianMdmId;
           if (relinking && existing?.vendorId != null) throw prescriberVendorLinked();
-          // WHO asserted the link (migration 1402): whoever sets or changes it, or reinstates a revoked row (the confirmation went with the
+          // WHO asserted the link (migration 1433): whoever sets or changes it, or reinstates a revoked row (the confirmation went with the
           // revocation, so the reinstatement is a fresh assertion). The prescriber cannot confirm a link they made themself.
           // A member who linked THEMSELF is fixed by another roster administrator re-saving the same link: that member becomes the
           // linker, and any confirmation the member wrote under their own link is cleared, so they confirm again under the new maker.

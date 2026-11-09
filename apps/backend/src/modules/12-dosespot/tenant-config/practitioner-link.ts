@@ -15,7 +15,7 @@
 //                      administrator's request or a worker cannot do it. It is not authentication: code that can set the GUC could
 //                      declare any user, so it relies on the application never declaring anyone but the session's user.
 //   the enrolment gate the confirmation must be by the row's own member, of the current link and NPI, at the claim and again at the record.
-//   linker != confirmer the member recorded as having MADE the link (`linked_by_membership_id`, migration 1402) cannot confirm it (409
+//   linker != confirmer the member recorded as having MADE the link (`linked_by_membership_id`, migration 1433) cannot confirm it (409
 //                      DOSESPOT_LINK_SELF_CONFIRM, and the confirm write re-checks it), and the enrolment gate refuses a link whose linker is its
 //                      confirmer. Application code: the roster route records the acting administrator's membership.
 // Audited with ids only (the roster row, the physician record, the actor) in a row the write-audit trigger of this table also takes;

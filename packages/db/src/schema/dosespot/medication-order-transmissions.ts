@@ -24,7 +24,7 @@ export const medicationOrderTransmissions = pgTable(
 
     queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
     transmissionStartedAt: timestamp("transmission_started_at", { withTimezone: true }),
-    // Migration 1401: the nonce the fence writes with the stamp. The worker owns its vendor call only while this is still its own; cleared with the stamp.
+    // Migration 1432: the nonce the fence writes with the stamp. The worker owns its vendor call only while this is still its own; cleared with the stamp.
     callToken: uuid("call_token"),
     transmissionSucceededAt: timestamp("transmission_succeeded_at", { withTimezone: true }),
     transmissionFailedAt: timestamp("transmission_failed_at", { withTimezone: true }),
@@ -45,7 +45,7 @@ export const medicationOrderTransmissions = pgTable(
     byInFlight: index("mot_in_flight_idx")
       .on(t.organizationId, t.transmissionSucceededAt, t.transmissionFailedAt)
       .where(sql`transmission_succeeded_at IS NULL AND transmission_failed_at IS NULL`),
-    // Migration 1400: the age alert's EXISTS probe (is there a transmission row for this order queued before
+    // Migration 1431: the age alert's EXISTS probe (is there a transmission row for this order queued before
     // the cutoff) and the by-order lookup of the settle/retry paths. No FK covers medication_order_id.
     byOrder: index("mot_order_idx").on(t.organizationId, t.medicationOrderId, t.queuedAt),
   }),

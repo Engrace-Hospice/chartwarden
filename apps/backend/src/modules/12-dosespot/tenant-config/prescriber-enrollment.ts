@@ -43,7 +43,7 @@ export interface RosterRow {
   readonly linkConfirmedNpi: string | null;
   /** WHO confirmed it: counts only when it is the row's own membership (the CHECK and the trigger say so too; the gate re-checks). */
   readonly linkConfirmedByMembershipId: string | null;
-  /** WHO asserted the link (migration 1402; null = before that, or outside the roster route). It must not be the confirmer. */
+  /** WHO asserted the link (migration 1433; null = before that, or outside the roster route). It must not be the confirmer. */
   readonly linkedByMembershipId: string | null;
 }
 

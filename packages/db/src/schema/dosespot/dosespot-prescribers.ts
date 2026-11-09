@@ -37,11 +37,11 @@ export const dosespotPrescribers = pgTable(
     // Migration 0412 — the last IAL2-expiry stage alerted ('warn' | 'critical'); NULL = none / reset on re-verify.
     ial2AlertStage: text("ial2_alert_stage"),
 
-    // Migration 1396 — committed BEFORE the DoseSpot vendor call (create-then-record); `dosespotPrescriberId` is the vendor link.
+    // Migration 1427 — committed BEFORE the DoseSpot vendor call (create-then-record); `dosespotPrescriberId` is the vendor link.
     vendorEnrollmentRequestedAt: timestamp("vendor_enrollment_requested_at", {
       withTimezone: true,
     }),
-    // Migration 1399 — the PRESCRIBER's own confirmation that `externalPhysicianMdmId` is them (all four set together, or none). The CHECK
+    // Migration 1430 — the PRESCRIBER's own confirmation that `externalPhysicianMdmId` is them (all four set together, or none). The CHECK
     // binds the record to the row's own member (by = membership_id, no NULL operand); a trigger additionally requires the transaction's
     // declared actor (`app.user_id`) to be that member's user when a confirmation is set. The application's route and enrolment gate do
     // the rest (own session, step-up, human actor). See the migration for exactly what is enforced where.
@@ -49,7 +49,7 @@ export const dosespotPrescribers = pgTable(
     linkConfirmedNpi: text("link_confirmed_npi"),
     linkConfirmedAt: timestamp("link_confirmed_at", { withTimezone: true }),
     linkConfirmedByMembershipId: uuid("link_confirmed_by_membership_id"),
-    // Migration 1402 — the membership that set (or last changed) `externalPhysicianMdmId`. A confirmation by that same member is refused (the
+    // Migration 1433 — the membership that set (or last changed) `externalPhysicianMdmId`. A confirmation by that same member is refused (the
     // confirm service) and so is the enrolment of such a link (the gate): one person cannot both link and confirm. NULL = a link that predates it.
     linkedByMembershipId: uuid("linked_by_membership_id"),
     enrolledAt: timestamp("enrolled_at", { withTimezone: true }),

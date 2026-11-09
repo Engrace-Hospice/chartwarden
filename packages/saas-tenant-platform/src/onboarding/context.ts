@@ -45,7 +45,7 @@ export interface OnboardingContext {
   readonly clearinghouseSettled: boolean;
   // ── dosespot_kickoff_initiated ───────────────────────────────────────────────────────────────
   /** DoseSpot clinic-registration row recorded (M12; Phase 1 attestation). Superseded for the step by `dosespotSettled`; kept so a
-   *  release that still reads it evaluates (migration 1397 moved the step's precondition to the new field). */
+   *  release that still reads it evaluates (migration 1428 moved the step's precondition to the new field). */
   readonly dosespotKickoffRecorded: boolean;
   /** The org's DoseSpot clinic registration is ACTIVE (registered, connection tested, activated): e-prescribing transmits for it
    *  (tenant onboarding slice 4, ADR-0111; M12 owns the registration, M34 reads it through a port). The prescriber count does not gate. */
