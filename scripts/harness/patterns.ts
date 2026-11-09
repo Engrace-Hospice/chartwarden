@@ -1007,31 +1007,25 @@ const SHELL = /^(bash|sh|zsh|dash|fish|ksh)$/;
 const LANGUAGE_REPL = /^(python[0-9.]*|node|ruby|irb|perl|lua|php)$/;
 const DATABASE_REPL = /^(psql|pgcli|sqlite3|mysql)$/;
 
-function shellCommandBody(args: readonly string[]): string | null {
-  for (let k = 0; k < args.length; k++) {
-    const arg = args[k] ?? "";
-    if (arg === "-c" || arg === "--command") return args[k + 1] ?? "";
-    if (arg.startsWith("--command=")) return arg.slice("--command=".length);
-    if (/^-c.+/.test(arg)) return arg.slice(2);
-    if (/^-[^-]+c[^-]*$/.test(arg)) return args[k + 1] ?? "";
-  }
-  return null;
-}
-
-function interactiveInvocation(p: Parsed, depth = 0): boolean {
+function interactiveInvocation(p: Parsed): boolean {
   const { prog, args, ins, docs } = p;
   const explicitInput = ins.length + docs.length > 0;
 
   if (SHELL.test(prog)) {
     if (args.some((a) => /^(-h|--help|--version)$/.test(a))) return false;
-    const body = shellCommandBody(args);
-    if (body !== null) {
-      if (depth >= 8) return true;
-      return (
-        body.length > 0 &&
-        segments(body).some((seg) => interactiveInvocation(parseSegment(seg), depth + 1))
-      );
-    }
+    // Shell command strings can eval, expand variables and run substitutions after inspection.
+    // Codex must invoke the command directly or use a reviewable script file instead.
+    if (
+      args.some(
+        (a) =>
+          a === "-c" ||
+          a === "--command" ||
+          a.startsWith("--command=") ||
+          /^-c.+/.test(a) ||
+          /^-[^-]+c[^-]*$/.test(a),
+      )
+    )
+      return true;
     if (explicitInput) return false;
     const delimiter = args.indexOf("--");
     if (delimiter >= 0) return delimiter + 1 >= args.length;
@@ -1075,7 +1069,7 @@ function interactiveInvocation(p: Parsed, depth = 0): boolean {
     if (args.some((a) => /^(--help|-\?|--version|-V)$/.test(a))) return false;
     if (explicitInput) return false;
     const shellEscape = args.some((a) => {
-      if (prog === "sqlite3") return /(?:^|[\r\n])\s*\.shell(?:\s|$)/i.test(a);
+      if (prog === "sqlite3") return /(?:^|[\r\n])\s*\.(?:shell|system)(?:\s|$)/i.test(a);
       if (/^(psql|pgcli)$/.test(prog)) return /(?:^|[\r\n])\s*\\!/.test(a);
       return /(?:^|[\r\n])\s*(?:system|\\!)(?:\s|$)/i.test(a);
     });
@@ -1097,7 +1091,7 @@ function interactiveInvocation(p: Parsed, depth = 0): boolean {
 }
 
 export const isInteractiveShell = (cmd: string): boolean =>
-  segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg), 0));
+  segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg)));
 
 // ---------------------------------------------------------------------------------------------------
 // Paths: where a write lands once `cd`, `..`, `~`, `$HOME` and `$PWD` are accounted for
