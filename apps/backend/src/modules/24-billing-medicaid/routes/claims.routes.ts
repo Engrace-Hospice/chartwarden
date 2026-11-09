@@ -116,7 +116,6 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       return reply.send(
         await writeService.updateDraftClaim(writeActorOf(request), pParam(request, "id"), {
           expectedVersion: vParam(request),
-          mcoId: body.mcoId,
         }),
       );
     },

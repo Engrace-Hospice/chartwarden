@@ -90,6 +90,7 @@ const DOCUMENT_AGGREGATE_TYPE = [
   "spiritual_plan",
   "volunteer_plan",
   "bereavement_letter",
+  "bereavement_library_item",
   "visit_confirmation",
   "evv_verification",
   "patient_amendment_statement_of_disagreement",
@@ -210,8 +211,10 @@ export const InitiateVerifiedUploadRequest = Type.Object({
   aggregateId: Type.Optional(Type.String({ format: "uuid" })),
   title: Type.String({ minLength: 1, maxLength: 500 }),
   patientFacing: Type.Optional(Type.Boolean()),
-  mimeType: lit(VERIFIED_UPLOAD_MIME_TYPE),
-  byteSize: Type.Integer({ minimum: 1, maximum: 25 * 1024 * 1024 }),
+  // ADR-0109 D10 (PR 3) — `video/mp4` and the 500 MB ceiling are admitted HERE so the service can decide them: it accepts video for an org-level
+  // grief-library document only and keeps every other upload at 25 MB (`verified-upload.ts`).
+  mimeType: Type.Union([lit(VERIFIED_UPLOAD_MIME_TYPE), Type.Literal("video/mp4")]),
+  byteSize: Type.Integer({ minimum: 1, maximum: 500 * 1024 * 1024 }),
   sha256Hex: Type.String({ pattern: "^[0-9a-f]{64}$" }),
   sourceMetadata: Type.Optional(DocumentSourceMetadataSchema),
 });

@@ -78,11 +78,12 @@ const PORTAL_SIGNATURE_KEYS = ["portal.signature.read", "portal.signature.sign"]
  */
 const PORTAL_PUSH_KEYS = ["notifications.endpoint.manage"] as const;
 
-/** The bereaved-family surface: the program, the resources, one's own opt-out, plus documents and messages. */
+/** The bereaved-family surface: the program, the resources, one's own opt-out and memorial RSVP, plus documents and messages. */
 const PORTAL_BEREAVED_KEYS = [
   "portal.bereavement.read_program",
   "portal.bereavement.read_resources",
   "portal.bereavement.opt_out_own",
+  "portal.bereavement.rsvp_own",
   "portal.documents.read_list",
   "portal.documents.download",
   "portal.messages.read_channel",

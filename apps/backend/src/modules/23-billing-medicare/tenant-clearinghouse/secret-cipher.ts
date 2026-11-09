@@ -28,13 +28,13 @@ const LABELS = {
   fingerprintInfo: "chartwarden-m23-clearinghouse-credential-fingerprint:v1",
   fingerprintKeyIdInfo: "chartwarden-m23-clearinghouse-credential-fingerprint-key-id:v1",
 } as const;
-/** Hex characters of a fingerprint key's public id (migration 1405's CHECK). */
+/** Hex characters of a fingerprint key's public id (migration 1436's CHECK). */
 const KEY_ID_HEX = 16;
 
 /**
  * The DERIVED fingerprint subkeys of previous credential KEKs, comma-separated padded base64 (32 bytes each): HKDF-SHA256(old KEK,
  * info = LABELS.fingerprintInfo), printed by `scripts/m23-derive-fingerprint-subkey.ts`. Never a KEK: a subkey only computes
- * fingerprints under the key an older reservation may have used (migration 1405); it cannot derive a DEK, so it opens nothing, and a
+ * fingerprints under the key an older reservation may have used (migration 1436); it cannot derive a DEK, so it opens nothing, and a
  * sealed credential still needs re-entry after a KEK change (ops runbook §8.3).
  */
 export const RETIRED_FINGERPRINT_KEYS_ENV = "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS";
@@ -63,7 +63,7 @@ export interface ClearinghouseSecretCipher {
     sealed: string,
   ): Promise<string>;
   /**
-   * The account's fingerprint (migration 1403): HMAC-SHA256, under a key derived from the KEK with this purpose's own label, of the
+   * The account's fingerprint (migration 1434): HMAC-SHA256, under a key derived from the KEK with this purpose's own label, of the
    * vendor and the trimmed account key, as 64 hex characters. The same for every organization (it names the CREDENTIAL, so a
    * second tenant sealing it is refused), never a plain hash (it cannot be checked against a guessed key without the KEK).
    */
@@ -74,7 +74,7 @@ export interface ClearinghouseSecretCipher {
   readonly fingerprintKeyIds: readonly string[];
   /**
    * The credential's fingerprint under every configured fingerprint key: the current one first, then each retired subkey's (migration
-   * 1405). A save reserves all of them, so a reservation recorded under a retired key still collides while that key is configured.
+   * 1436). A save reserves all of them, so a reservation recorded under a retired key still collides while that key is configured.
    */
   fingerprints(
     vendor: TransmittingClearinghouseVendor,

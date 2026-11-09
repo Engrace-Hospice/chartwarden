@@ -6,7 +6,7 @@
 //   • Nothing is invented. A field with no source is a typed gap; the loader returns ALL gaps it can find at once.
 //   • The MBI is read ONLY through M5's `MbiUnlockReader` seam (the M23-only unlock), held in the returned in-memory
 //     input (an opaque `SensitiveValue`) and never stored or logged here. The unlock is passed a `disclosure`
-//     (purpose `claim_837i_submission` + the claim id + the optional acting user) and the claim's own
+//     (the fixed submission or preview purpose + the claim id + the optional acting user) and the claim's own
 //     `patientPayerId`, so M5 reads exactly that coverage and writes the PHI-disclosure audit_event (ids and purpose,
 //     never the MBI) in the same transaction as the read. The detailed claim document carries no beneficiary identity.
 //   • The audit is written AT UNLOCK, before the mapper and builders run. A later mapper/builder gap therefore still
@@ -25,7 +25,7 @@ import {
   gap,
   repositories,
 } from "@chartwarden/billing";
-import type { MbiUnlockReader, PatientAddressReader, PatientReader } from "@chartwarden/types";
+import type { MbiDisclosurePurpose, MbiUnlockReader, PatientAddressReader, PatientReader } from "@chartwarden/types";
 import type { Claim837iInput, ClearinghouseContext } from "@chartwarden/x12-837-client";
 import {
   type Claim837iParties,
@@ -36,9 +36,12 @@ import {
 } from "./claim-837i-mapper";
 import type { AdmissionContextReader } from "./claim-assembly-types";
 import { SensitiveValue } from "./sensitive-value";
+import { fingerprintClaim837iBusinessInput, notApplicableClaimRouteFingerprint } from "./claim-preview-integrity";
 
 /** The disclosure purpose recorded on the MBI-unlock audit event. */
 export const CLAIM_837I_DISCLOSURE_PURPOSE = "claim_837i_submission" as const;
+/** Distinct audited purpose for an authorized, non-transmitting preview render. */
+export const CLAIM_837I_PREVIEW_DISCLOSURE_PURPOSE = "claim_837i_preview" as const;
 
 /** The party records. Each section is `null` when its source cannot supply it (a typed gap, never a default). */
 export interface Claim837iPartiesPort {
@@ -82,6 +85,10 @@ export interface Claim837iLoaderDeps {
   readonly patients: PatientReader;
   readonly addresses: PatientAddressReader;
   readonly parties: Claim837iPartiesPort;
+  /** Server-only key; unset disables preview confirmation and fails closed on confirmed submission. */
+  readonly previewIntegrityKey?: string;
+  /** Stable non-secret account identifier; never the Claim.MD AccountKey. */
+  readonly accountReference?: string;
 }
 
 export interface LoadClaim837iArgs {
@@ -97,6 +104,9 @@ export interface LoadClaim837iArgs {
   readonly claimControlNumber?: string;
   /** The user who triggered this load, when there is one; recorded on the MBI-disclosure audit (else system). */
   readonly actorUserId?: string;
+  /** Internal-only disclosure purpose; public routes must select from fixed server-owned operations. */
+  readonly disclosurePurpose?: MbiDisclosurePurpose;
+  readonly routeFingerprint?: string;
 }
 
 export type LoadClaim837iFailure =
@@ -153,6 +163,7 @@ async function loadSubscriber(
   deps: Claim837iLoaderDeps,
   claim: repositories.ClaimRecord,
   actorUserId: string | undefined,
+  disclosurePurpose: MbiDisclosurePurpose,
 ): Promise<{ ok: true; value: TransientSubscriber } | { ok: false; gaps: readonly ClaimGap[] }> {
   const patient = await deps.patients.findById({
     organizationId: claim.organizationId,
@@ -181,7 +192,7 @@ async function loadSubscriber(
     // Select the claim's own coverage (the post-check below stays as defense in depth).
     expectedPatientPayerId: claim.patientPayerId,
     disclosure: {
-      purpose: CLAIM_837I_DISCLOSURE_PURPOSE,
+      purpose: disclosurePurpose,
       subjectId: claim.id,
       ...(actorUserId === undefined ? {} : { actorUserId }),
     },
@@ -236,6 +247,7 @@ interface LoadedOnce {
   readonly document: ClaimDocument837iDetail;
   readonly input: Claim837iInput;
   readonly rendered: Rendered837i;
+  readonly sourceFingerprint: string | null;
 }
 
 /** Load, map and render ONCE (the builders run a single time per load). */
@@ -289,7 +301,12 @@ async function loadOnce(
     return fail(claimGaps);
   }
 
-  const subscriber = await loadSubscriber(deps, claim, args.actorUserId);
+  const subscriber = await loadSubscriber(
+    deps,
+    claim,
+    args.actorUserId,
+    args.disclosurePurpose ?? CLAIM_837I_DISCLOSURE_PURPOSE,
+  );
   if (!subscriber.ok) return fail(subscriber.gaps);
 
   const mapped = mapClaimTo837iInput({
@@ -311,11 +328,31 @@ async function loadOnce(
   // A builder refusal is a field-name-only gap, so the caller never holds an unsendable input.
   const rendered = render837i(mapped.value);
   if (!rendered.ok) return fail(rendered.gaps);
+  const sourceFingerprint = deps.previewIntegrityKey && deps.previewIntegrityKey.length >= 32 && deps.accountReference
+    ? fingerprintClaim837iBusinessInput(
+        mapped.value as unknown as Record<string, unknown>,
+        deps.previewIntegrityKey,
+        {
+          organizationId: claim.organizationId,
+          claimId: claim.id,
+          providerEntityId: claim.providerEntityId,
+          patientPayerId: claim.patientPayerId,
+          claimVersion: claim.version,
+          accountReference: deps.accountReference,
+          usage: context.usage,
+          payerId: context.payerId,
+          billingNpi: context.billingNpi ?? null,
+          routeFingerprint: args.routeFingerprint ?? context.claimMdRouteFingerprint ?? notApplicableClaimRouteFingerprint(claim.organizationId, claim.providerEntityId),
+          rendererVersion: "m23-837i-renderer-bil-2.1.2-v1",
+        },
+      )
+    : null;
   return {
     ok: true,
     document: documentResult.value,
     input: mapped.value,
     rendered: rendered.value,
+    sourceFingerprint,
   };
 }
 
@@ -339,11 +376,36 @@ export async function loadAndRender837i(
       readonly ok: true;
       readonly document: ClaimDocument837iDetail;
       readonly rendered: SensitiveValue<Rendered837i>;
+      readonly sourceFingerprint: string | null;
     }
   | LoadClaim837iFailure
 > {
   const loaded = await loadOnce(deps, args);
   return loaded.ok
-    ? { ok: true, document: loaded.document, rendered: new SensitiveValue(loaded.rendered) }
+    ? { ok: true, document: loaded.document, rendered: new SensitiveValue(loaded.rendered), sourceFingerprint: loaded.sourceFingerprint }
     : loaded;
+}
+
+/**
+ * Render through the exact production 837I mapping path for preview validation, but return only non-sensitive
+ * readiness metadata. The ephemeral X12 (which contains the MBI) is intentionally discarded here. The supplied
+ * envelope identifiers are preview-only and MUST NOT be used for transmission or represented as the final X12
+ * digest; the real submission worker owns final control numbers and immutable send-time evidence.
+ */
+export async function renderClaim837iPreview(
+  deps: Claim837iLoaderDeps,
+  args: LoadClaim837iArgs,
+): Promise<
+  | { readonly ok: true; readonly document: ClaimDocument837iDetail; readonly sourceFingerprint: string | null }
+  | LoadClaim837iFailure
+> {
+  const result = await loadAndRender837i(deps, {
+    ...args,
+    // Prevent callers from accidentally reusing the transmission disclosure purpose for a preview.
+    disclosurePurpose: CLAIM_837I_PREVIEW_DISCLOSURE_PURPOSE,
+  });
+  if (!result.ok) return result;
+  // Do not reveal the SensitiveValue, serialize it, hash it, or return it. Rendering itself is the validation
+  // that the authoritative X12 mapping can produce a claim; the structured projection comes from the document.
+  return { ok: true, document: result.document, sourceFingerprint: result.sourceFingerprint };
 }

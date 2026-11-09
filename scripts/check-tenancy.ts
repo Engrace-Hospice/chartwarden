@@ -99,7 +99,7 @@ const ACK_ACTOR_GUARD_HEAD =
 // ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
 // backstop, the same two functions, never a policy.
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);
-// M23 migration 1406 (security review of cfd943e82, L2): `app.clearinghouse_release` is the transaction-local marker the platform-ops
+// M23 migration 1437 (security review of cfd943e82, L2): `app.clearinghouse_release` is the transaction-local marker the platform-ops
 // credential release sets; the reservation release guard reads it. The same backstop rule: that one function head, never a policy.
 const RELEASE_GUARD_HEAD =
   /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?tenant_clearinghouse_credential_reservation_release_guard\s*\(/i;
@@ -346,10 +346,10 @@ const NON_ORG_SCOPED = new Set<string>([
   "addon",
   // Slice 2 (tenant pricing) — `plan_census_band`, the census bands of a census_banded plan: the same offer for every tenant, so no
   // organization_id by design (the `plan` / `plan_meter` shape: read-all USING (true) TO chartwarden_app, written only by the platform
-  // carrier / chartwarden_admin; migration 1380). Its tenant-scoped siblings (`subscription_contract`, `patient_census_daily`,
-  // `subscription_statement`, migration 1381) carry organization_id with app.org_id RLS, SELECT-only to the app role.
+  // carrier / chartwarden_admin; migration 1411). Its tenant-scoped siblings (`subscription_contract`, `patient_census_daily`,
+  // `subscription_statement`, migration 1412) carry organization_id with app.org_id RLS, SELECT-only to the app role.
   "plan_census_band",
-  // Slice 2 — `subscription_statement_review` (migration 1381): a subscription-month the statement run could not bill, recorded once. PLATFORM-ONLY
+  // Slice 2 — `subscription_statement_review` (migration 1412): a subscription-month the statement run could not bill, recorded once. PLATFORM-ONLY
   // (the claimmd_webhook_event shape): RLS enabled + FORCEd with no policy and no chartwarden_app grant; its tenant column is
   // `subject_organization_id`, so it is not an org-scoped row.
   "subscription_statement_review",

@@ -21,7 +21,11 @@ import type { DocumentAggregateType, OrgId } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { isDefiniteDatabaseRefusal } from "../../../bootstrap/redact-database-error";
-import { assertNotInternalOnlyForWrite } from "../internal-documents";
+import {
+  assertNotInternalOnlyForWrite,
+  assertNotOrgLibraryForEdit,
+  assertOrgLibraryIsOrgLevel,
+} from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
 import { assertKindWritable } from "./immutable-kinds";
@@ -330,6 +334,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     // A kind that a dedicated route files once (the signed BAA) takes no new version from this route, whoever holds documents.upload.
     assertKindWritable(doc.aggregateType);
     assertNotInternalOnlyForWrite(doc.aggregateType);
+    assertNotOrgLibraryForEdit(doc.aggregateType);
     const [hold] = await tx
       .select({ id: LH.id })
       .from(LH)
@@ -485,6 +490,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     options: { readonly heldTimeoutMs?: number } = {},
   ): Promise<CommittedUpload & VerifiedContent & { readonly objectKey: string }> {
     assertNotInternalOnlyForWrite(args.aggregateType);
+    assertOrgLibraryIsOrgLevel(args.aggregateType, args.patientId, args.admissionId);
     requireStore();
     const verified = verifyUploadContent(args.content);
     await assertReferralAccess(organizationId, actor.userId, args.aggregateType, args.aggregateId);

@@ -118,6 +118,51 @@ interface ClaimLine {
   icdPointerPositions: readonly number[];
 }
 
+interface PayerRoutePreview {
+  readonly status: "verified" | "not_configured" | "not_applicable";
+  readonly reasonCode?: string;
+  readonly previewVersion: number;
+  readonly previewExpiresAt: string | null;
+  readonly previewConfirmationToken: string | null;
+  readonly submissionEligible: boolean;
+  readonly stale: boolean;
+  readonly rendererStatus: "rendered" | "blocked";
+  readonly rendererGaps: readonly { readonly field: string; readonly reason: string }[];
+  readonly billingPreview?: {
+    readonly tob: string;
+    readonly serviceFrom: string;
+    readonly serviceTo: string;
+    readonly admissionDate: string;
+    readonly lines: readonly {
+      readonly lineNumber: number;
+      readonly revenueCode: string;
+      readonly hcpcs: string;
+      readonly modifiers: readonly string[];
+      readonly units: number;
+      readonly chargeCents: number;
+      readonly serviceDateFrom: string;
+      readonly serviceDateTo: string;
+    }[];
+    readonly diagnosisCodes: readonly string[];
+    readonly totalChargeCents: number;
+    readonly nonCoveredChargeCents: number;
+  };
+}
+
+interface ClaimPreparationResponse {
+  readonly route: { readonly status: "verified" | "not_configured" | "not_applicable"; readonly reasonCode?: string };
+  readonly previewVersion: number;
+  readonly previewGeneratedAt: string;
+  readonly previewExpiresAt: string | null;
+  readonly previewConfirmationToken: string | null;
+  readonly payloadDigest: null;
+  readonly payloadDigestStatus: "not_available_from_read_projection";
+  readonly submissionEligible: boolean;
+  readonly rendererStatus: "rendered" | "blocked";
+  readonly rendererGaps?: readonly { readonly field: string; readonly reason: string }[];
+  readonly billingPreview?: PayerRoutePreview["billingPreview"];
+}
+
 // :claimId is the last path segment of /billing/claims/:claimId (routing not yet wired; M33/M34 precedent).
 function claimIdFromPath(): string {
   const segs = window.location.pathname.split("/").filter(Boolean);
@@ -125,6 +170,7 @@ function claimIdFromPath(): string {
 }
 
 type CeremonyMode = "submit" | "replace" | "void" | null;
+const formatCents = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 
 // TASK-021 — the server's real minimum (packages/billing/src/schemas/{claim-replace,claim-void}.ts:
 // `reason: string(minLength 20)`); the previous 40-char client floor was stricter than the wire contract.
@@ -151,6 +197,7 @@ export function ClaimEditor(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [linesDegraded, setLinesDegraded] = useState(false);
+  const [routePreview, setRoutePreview] = useState<PayerRoutePreview | null>(null);
 
   // Active §10 ceremony + the inline write outcome (412/422/503 surface here, never a toast). The initial
   // ceremony resolves, in order: a resumed draft (a step-up round trip back to this exact page) > a
@@ -163,12 +210,18 @@ export function ClaimEditor(): JSX.Element {
   const [reason, setReason] = useState(initialCeremonyDraft?.reason ?? "");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now());
 
   // Keep the draft cache current as the ceremony opens/closes or the reason is typed.
   useEffect(() => {
     if (ceremony) saveDraft(ceremonyDraftKey(claimId), { ceremony, reason });
     else clearDraft(ceremonyDraftKey(claimId));
   }, [claimId, ceremony, reason]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // The `?ceremony=` deep link has done its job once read into state above — strip it so a reload or the
   // back button doesn't keep reopening it.
@@ -181,9 +234,15 @@ export function ClaimEditor(): JSX.Element {
     setLoading(true);
     setError(null);
     setLinesDegraded(false);
-    const [detailRes, linesRes] = await Promise.all([
+    const [detailRes, linesRes, preparationRes] = await Promise.all([
       client.GET("/api/v1/billing/claims/{id}", { params: { path: { id: claimId } } }),
       client.GET("/api/v1/billing/claims/{id}/lines", { params: { path: { id: claimId } } }),
+      client.GET(
+        // The generated OpenAPI path exists, but this generic client call currently hits TS's excessive-depth
+        // limit in the app-wide contract type. Keep the local response contract explicit below.
+        "/api/v1/billing/claims/{id}/preparation" as never,
+        { params: { path: { id: claimId } } } as never,
+      ) as unknown as Promise<{ data?: ClaimPreparationResponse; error?: unknown }>,
     ]);
     // The claim detail is the page anchor; a 404/503/403 here fails the whole surface.
     if (detailRes.error) {
@@ -191,7 +250,41 @@ export function ClaimEditor(): JSX.Element {
       setLoading(false);
       return;
     }
-    setClaim(detailRes.data as unknown as ClaimDetail);
+    const currentClaim = detailRes.data as unknown as ClaimDetail;
+    setClaim(currentClaim);
+    const preparation = preparationRes.data;
+    setRoutePreview(
+      preparation?.route?.status && preparation.previewVersion !== undefined
+        ? {
+            status:
+              preparation.route.status === "verified" ||
+              preparation.route.status === "not_applicable"
+                ? preparation.route.status
+                : "not_configured",
+            ...(preparation.route.reasonCode
+              ? { reasonCode: preparation.route.reasonCode }
+              : {}),
+            previewVersion: preparation.previewVersion,
+            previewExpiresAt: preparation.previewExpiresAt,
+            previewConfirmationToken: preparation.previewConfirmationToken,
+            submissionEligible: preparation.submissionEligible === true && preparation.rendererStatus === "rendered",
+            stale: preparation.previewVersion !== currentClaim.version,
+            rendererStatus: preparation.rendererStatus,
+            rendererGaps: preparation.rendererGaps ?? [],
+            ...(preparation.billingPreview ? { billingPreview: preparation.billingPreview } : {}),
+          }
+        : {
+            status: "not_configured",
+            reasonCode: "PREPARATION_CHECK_UNAVAILABLE",
+            previewVersion: currentClaim.version,
+            previewExpiresAt: null,
+            previewConfirmationToken: null,
+            submissionEligible: false,
+            stale: false,
+            rendererStatus: "blocked",
+            rendererGaps: [],
+          },
+    );
     // Lines are best-effort: an absent read leaves the table degraded, never throws.
     if (linesRes.error) setLinesDegraded(true);
     else setLines(((linesRes.data as unknown as ClaimLine[]) ?? []) as ClaimLine[]);
@@ -225,7 +318,9 @@ export function ClaimEditor(): JSX.Element {
         // §2.5 — replace/void must carry `ifVersion` (the row version the caller read) alongside the
         // If-Match header; the route's TypeBox body (ClaimReplaceRequest/ClaimVoidRequest) requires it and
         // previously never received it, so every replace/void 422'd before If-Match was even checked.
-        body: mode === "submit" ? {} : { reason: reason.trim(), ifVersion: claim.version },
+        body: mode === "submit"
+          ? { ifVersion: claim.version, acknowledgeAllOverrides: false, previewConfirmationToken: routePreview?.previewConfirmationToken ?? "" }
+          : { reason: reason.trim(), ifVersion: claim.version },
       };
       const path =
         mode === "submit"
@@ -253,6 +348,10 @@ export function ClaimEditor(): JSX.Element {
         setBusy(false);
         if (response?.status === 412)
           setActionError("This claim changed since you opened it — close and reopen to retry.");
+        else if (err?.error?.code === "CLAIM_PREVIEW_STALE") {
+          setActionError("Billing information changed after review. Refresh the preview and review it again before submitting.");
+          setRoutePreview((current) => current ? { ...current, submissionEligible: false, previewConfirmationToken: null } : null);
+        }
         else if (response?.status === 422)
           setActionError("Validation failed — resolve the claim's open findings first.");
         else if (response?.status === 503)
@@ -266,13 +365,15 @@ export function ClaimEditor(): JSX.Element {
       closeCeremony();
       void load();
     },
-    [claim, reason, client, navigate, closeCeremony, load],
+    [claim, reason, client, navigate, closeCeremony, load, routePreview],
   );
 
   if (loading) return <LoadingSpinner />;
   if (error || !claim) return <EmptyState title="Unavailable" description={error ?? "No claim."} />;
 
-  const canSubmit = claim.state === "ready";
+  const canSubmit = claim.state === "ready" && routePreview?.submissionEligible === true && !routePreview.stale &&
+    !!routePreview.previewConfirmationToken && !!routePreview.previewExpiresAt &&
+    Date.parse(routePreview.previewExpiresAt) > clockNow;
   // The server's REPLACEABLE_STATES (write-service-drizzle.ts): accepted, partially accepted, paid.
   const canReplaceVoid = REPLACEABLE.has(claim.state);
   const v = claim.latestValidation;
@@ -361,6 +462,59 @@ export function ClaimEditor(): JSX.Element {
     >
       <section style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
         <ClaimSummaryGrid claim={claim} />
+        <section aria-labelledby="claim-preparation-title" style={preparationStyle}>
+          <h2 id="claim-preparation-title" style={sectionTitleStyle}>Submission preparation</h2>
+          {!routePreview ? (
+            <p role="status">Checking payer route and current claim readiness…</p>
+          ) : routePreview.stale ? (
+            <p role="alert" aria-live="polite">Claim details changed while this preparation view was loading. Refresh before submitting.</p>
+          ) : routePreview.status === "not_configured" ? (
+            <p role="alert" aria-live="polite">
+              Claim.MD payer route is not verified for this provider and environment. The claim is held until the route is configured.
+              {routePreview.reasonCode ? ` (${routePreview.reasonCode})` : ""}
+            </p>
+          ) : (
+            <div>
+              <p role="status">
+                {routePreview.status === "verified"
+                  ? "Claim.MD payer route verified for this provider and environment."
+                  : "Legacy MAC route applies; Claim.MD payer routing is not selected."}
+              </p>
+              <p>Preparation check is based on claim version {routePreview.previewVersion}; the final X12 payload digest is recorded at send time.</p>
+              {routePreview.rendererStatus === "rendered" && routePreview.billingPreview ? (
+                <div aria-label="Rendered claim review">
+                  <h3>Billing information in the 837I</h3>
+                  <p>
+                    Type of bill {routePreview.billingPreview.tob}; service period {routePreview.billingPreview.serviceFrom} to {routePreview.billingPreview.serviceTo}; {routePreview.billingPreview.lines.length} rendered service lines; total {formatCents(routePreview.billingPreview.totalChargeCents)}.
+                  </p>
+                  <ul aria-label="Rendered billing lines">
+                    {routePreview.billingPreview.lines.map((line) => (
+                      <li key={line.lineNumber}>
+                        Line {line.lineNumber}: {line.serviceDateFrom} to {line.serviceDateTo}; revenue {line.revenueCode}, {line.hcpcs}
+                        {line.modifiers.length ? ` (${line.modifiers.join(", ")})` : ""}; {line.units} units, {formatCents(line.chargeCents)}
+                      </li>
+                    ))}
+                  </ul>
+                  <p>Diagnoses: {routePreview.billingPreview.diagnosisCodes.join(", ") || "None"}</p>
+                </div>
+              ) : (
+                <div>
+                  <p role="alert" aria-live="polite">The 837I renderer cannot produce this claim yet. Resolve these billing information gaps before submitting.</p>
+                  {routePreview.rendererGaps.length > 0 ? (
+                    <ul>{routePreview.rendererGaps.map((gap) => <li key={`${gap.field}:${gap.reason}`}>{gap.field}: {gap.reason}</li>)}</ul>
+                  ) : null}
+                </div>
+              )}
+              {!routePreview.submissionEligible ? (
+                <p role="note">Submission is unavailable until validation passes and the claim remains current.</p>
+              ) : null}
+              {routePreview.previewExpiresAt && Date.parse(routePreview.previewExpiresAt) <= clockNow ? (
+                <p role="alert" aria-live="polite">This preview has expired. Refresh it before submitting.</p>
+              ) : null}
+              <button type="button" onClick={() => void load()} disabled={loading || busy}>Refresh preview</button>
+            </div>
+          )}
+        </section>
         <PricingCards claim={claim} />
         <div>
           <h2 style={sectionTitleStyle}>Service lines</h2>
@@ -383,7 +537,7 @@ export function ClaimEditor(): JSX.Element {
           field — the modal has no step-up input because typing into one here never verified anything. */}
       <CeremonyModal
         open={ceremony === "submit"}
-        title="Submit claim to MAC"
+        title={routePreview?.status === "verified" ? "Submit claim through Claim.MD" : "Submit claim to MAC"}
         attestation={
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -768,6 +922,12 @@ const numTd = { ...tdStyle, textAlign: "right" as const, fontVariantNumeric: "ta
 const linkStyle = { fontSize: "0.8rem", color: "var(--color-primary)", textDecoration: "none" };
 const linkMonoStyle = { ...linkStyle, fontFamily: "var(--font-mono)" };
 const alertStyle = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };
+const preparationStyle = {
+  border: "1px solid var(--color-outline-variant)",
+  borderRadius: "0.75rem",
+  padding: "1rem",
+  background: "var(--color-surface-container-low, transparent)",
+};
 const textareaStyle = {
   width: "100%",
   padding: "0.5rem",

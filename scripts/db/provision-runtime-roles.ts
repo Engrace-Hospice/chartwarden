@@ -269,7 +269,7 @@ const SUBSCRIPTION_PLATFORM_UPDATE_COLUMNS = [
  * The `plan` columns the platform carrier may UPDATE (slice 2 plan editor + the legacy flat-tier editor). Deliberately NOT here: `id`,
  * `slug`, `tier`, `cadence`, `family_slug`, `version`, `supersedes_plan_id`, `created_at`. A published version's freeze keys on its
  * tier, so a carrier that could change `tier` could un-freeze a plan the database is meant to hold still; identity and lineage columns
- * are set at INSERT and never rewritten. The guard triggers (migration 1380) refuse the same changes even to a superuser.
+ * are set at INSERT and never rewritten. The guard triggers (migration 1411) refuse the same changes even to a superuser.
  */
 const PLAN_PLATFORM_UPDATE_COLUMNS = [
   "name",
@@ -400,7 +400,7 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
       );
-      // Migration 1394: platform ops add or re-edit a non-canonical onboarding step. INSERT is table-wide (Drizzle's insert
+      // Migration 1425: platform ops add or re-edit a non-canonical onboarding step. INSERT is table-wide (Drizzle's insert
       // names every column); UPDATE is COLUMN-level (the upsert's set), so a step's key, owner role and settings can never be
       // rewritten from the platform side. REVOKE first so a re-provision takes back an older table-wide UPDATE.
       await run('REVOKE UPDATE ON "onboarding_task_template" FROM chartwarden_platform;');
@@ -444,7 +444,7 @@ async function main(): Promise<void> {
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
       );
-      // M23 (migrations 1404/1405): the boot check that no tenant holds the platform's own vendor key reads the fingerprint, its
+      // M23 (migrations 1435/1436): the boot check that no tenant holds the platform's own vendor key reads the fingerprint, its
       // key and whether it is held; never the organization or the release reason. REVOKE first so a re-provision takes back the
       // table grant an older run gave.
       await run(

@@ -2236,6 +2236,7 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "bereavement_physician_letter", // the approved condolence letter to the internal attending clinician
   "bereavement_discharge_summary", // the internal discharge summary an auditor reads at closure
   "bereavement_mailing_batch", // ADR-0109 D10 (mig 1375) — the internal mailing batch PDF (every recipient's name and address)
+  "bereavement_library_item", // ADR-0109 D10 (mig 1392) — an org-level, patient-facing grief library item (portal-only)
   "visit_confirmation",
   "evv_verification",
   "patient_amendment_statement_of_disagreement",
@@ -2272,7 +2273,7 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   // FY2027 (mig 0380) — the 42 CFR 418.24(c) "Patient Notification of Hospice Non-Covered Items, Services,
   // and Drugs" (the election statement addendum), one document per addendum version.
   "election_addendum",
-  // Onboarding step 3 (mig 1392) — the signed BAA between ChartWarden and the tenant, uploaded by a platform operator (the one kind
+  // Onboarding step 3 (mig 1423) — the signed BAA between ChartWarden and the tenant, uploaded by a platform operator (the one kind
   // `tenant_baa_document.upload_platform` admits). No generic upload route accepts it.
   "tenant_baa",
   "other",
@@ -3616,7 +3617,7 @@ export const planTier = pgEnum("plan_tier", [
   "starter",
   "professional",
   "enterprise",
-  // Slice 2 pricing (migration 1379): the contracted census-banded model; the three above are retired.
+  // Slice 2 pricing (migration 1410): the contracted census-banded model; the three above are retired.
   "census_banded",
 ]);
 

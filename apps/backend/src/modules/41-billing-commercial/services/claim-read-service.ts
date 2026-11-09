@@ -130,6 +130,18 @@ export interface CommercialClaimReadService {
     claim: Record<string, string | number | null>;
     lines: readonly Record<string, string | number | null>[];
     validation: ValidationRunApiView | null;
+    correction: {
+      readonly correctionOfClaimId: string | null;
+      readonly correctionKind: string | null;
+      readonly correctionReasonCode: string | null;
+      readonly relatedClaims: readonly {
+        readonly id: string;
+        readonly claimControlNumber: string;
+        readonly state: string;
+        readonly relation: "original" | "correction";
+      }[];
+      readonly rejectedCorrection: { readonly eligible: boolean; readonly reasonCode: string };
+    };
   }>;
 }
 
@@ -348,6 +360,81 @@ export function buildCommercialClaimReadService(
             .from(schema.commercialClaimLines)
             .where(eq(schema.commercialClaimLines.claimId, c.id))
             .orderBy(asc(schema.commercialClaimLines.lineNumber));
+          const rootId = c.correctionRootClaimId ?? c.id;
+          const related = await tx
+            .select({
+              id: schema.commercialClaims.id,
+              claimControlNumber: schema.commercialClaims.claimControlNumber,
+              state: schema.commercialClaims.state,
+              correctionOfClaimId: schema.commercialClaims.correctionOfClaimId,
+            })
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.organizationId, actor.organizationId),
+                eq(schema.commercialClaims.providerEntityId, c.providerEntityId),
+                eq(schema.commercialClaims.patientId, c.patientId),
+                or(
+                  eq(schema.commercialClaims.id, rootId),
+                  eq(schema.commercialClaims.correctionRootClaimId, rootId),
+                ),
+              ),
+            )
+            .orderBy(asc(schema.commercialClaims.createdAt))
+            .limit(20);
+          const [existingCorrection] = await tx
+            .select({ id: schema.commercialClaims.id })
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.organizationId, c.organizationId),
+                eq(schema.commercialClaims.correctionOfClaimId, c.id),
+              ),
+            )
+            .limit(1);
+          let rejectedCorrectionReason = "CLAIM_NOT_REJECTED";
+          let rejectedCorrectionEligible = false;
+          if (existingCorrection) rejectedCorrectionReason = "CORRECTION_ALREADY_EXISTS";
+          else if (["accepted", "paid", "partially_paid", "denied"].includes(c.state))
+            rejectedCorrectionReason = "PAYER_REPLACEMENT_UNVERIFIED";
+          else if (c.state === "rejected") {
+            const [latestSubmission] = await tx
+              .select()
+              .from(schema.commercialSubmissions)
+              .where(
+                and(
+                  eq(schema.commercialSubmissions.organizationId, c.organizationId),
+                  eq(schema.commercialSubmissions.claimId, c.id),
+                  eq(schema.commercialSubmissions.status, "sent"),
+                ),
+              )
+              .orderBy(desc(schema.commercialSubmissions.requestedAt))
+              .limit(1);
+            if (!latestSubmission || latestSubmission.clearinghouseAcceptedAt !== null) {
+              rejectedCorrectionReason = "CLEARINGHOUSE_REJECTION_NOT_VERIFIED";
+            } else {
+              const acks = await tx
+                .select({
+                  stage: schema.commercialAcknowledgments.stage,
+                  disposition: schema.commercialAcknowledgments.disposition,
+                })
+                .from(schema.commercialAcknowledgments)
+                .where(
+                  and(
+                    eq(schema.commercialAcknowledgments.claimId, c.id),
+                    eq(schema.commercialAcknowledgments.submissionId, latestSubmission.id),
+                  ),
+                );
+              if (acks.some((ack) => ack.stage === "payer"))
+                rejectedCorrectionReason = "PAYER_RESPONSE_EXISTS";
+              else if (
+                acks.some((ack) => ack.stage === "clearinghouse" && ack.disposition === "rejected")
+              ) {
+                rejectedCorrectionEligible = true;
+                rejectedCorrectionReason = "VERIFIED_CLEARINGHOUSE_REJECTION";
+              } else rejectedCorrectionReason = "CLEARINGHOUSE_REJECTION_NOT_VERIFIED";
+            }
+          }
           let validation: ValidationRunApiView | null = null;
           if (c.latestValidationRunId) {
             const results = await tx
@@ -423,6 +510,22 @@ export function buildCommercialClaimReadService(
               totalChargeCents: c.totalChargeCents,
               expectedPaymentCents: c.expectedPaymentCents,
               readyAt: c.readyAt ? c.readyAt.toISOString() : null,
+            },
+            correction: {
+              correctionOfClaimId: c.correctionOfClaimId,
+              correctionKind: c.correctionKind,
+              correctionReasonCode: c.correctionReasonCode,
+              relatedClaims: related.map((r) => ({
+                id: r.id,
+                claimControlNumber: r.claimControlNumber,
+                state: r.state,
+                relation:
+                  r.correctionOfClaimId === null ? ("original" as const) : ("correction" as const),
+              })),
+              rejectedCorrection: {
+                eligible: rejectedCorrectionEligible,
+                reasonCode: rejectedCorrectionReason,
+              },
             },
             lines: lines.map((l) => ({
               lineNumber: l.lineNumber,

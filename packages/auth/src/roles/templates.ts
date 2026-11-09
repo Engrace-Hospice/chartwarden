@@ -157,7 +157,7 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
   "onboarding.manage_platform",
   "go_live.approve_platform",
   "platform_tenant_baa.write_platform",
-  // Migration 1407: the wizard's own read and its skip (both platform routes gate on tenant_lifecycle_platform_ops, so platform_ops
+  // Migration 1438: the wizard's own read and its skip (both platform routes gate on tenant_lifecycle_platform_ops, so platform_ops
   // alone can use them). Without the read key a template operator was refused the wizard itself; only the dev seed held both.
   "onboarding.read_platform",
   "onboarding.skip",
@@ -179,18 +179,18 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_clearinghouse.read_platform",
   "tenant_clearinghouse.write_platform",
   "tenant_clearinghouse.verify_baa_platform",
-  // Owner decision 2026-11-08: releasing a tenant's earlier clearinghouse credentials is its own platform duty (migration 1404).
+  // Owner decision 2026-11-08: releasing a tenant's earlier clearinghouse credentials is its own platform duty (migration 1435).
   "tenant_clearinghouse.release_credential_platform",
-  // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1391).
+  // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1422).
   "tenant_notice_filing.withdraw_platform",
-  // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1393). Scoped to the one document kind
+  // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1424). Scoped to the one document kind
   // `tenant_baa` and the tenant in the path; it is not `documents.upload` and reads no document.
   "tenant_baa_document.upload_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 
 /**
- * Slice 2 (tenant pricing, migration 1382). `subscription.onboard_platform` (sign a tenant onto a plan at onboarding step 2, change its
+ * Slice 2 (tenant pricing, migration 1413). `subscription.onboard_platform` (sign a tenant onto a plan at onboarding step 2, change its
  * billing service mode) binds to `platform_ops` ALONE: its route gates on `tenant_lifecycle_platform_ops`, which admits that exact role,
  * so a grant to admin/owner would be a control that exists on paper only. `subscription.pricing_read_platform` (offered plans, the price
  * preview, a tenant's contract and statements) is read-only behind `platform_billing_scope`, so the operator who prices a tenant and the

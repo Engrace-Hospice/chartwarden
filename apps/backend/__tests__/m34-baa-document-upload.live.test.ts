@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
  *
  * The route is mounted over the REAL data service and M22's REAL upload pipeline (an in-memory object store stands in for MinIO) on the
  * NOBYPASSRLS `chartwarden_app` tenant pool, behind the REAL guards. The operator's permissions come from the REAL DB grant (migration
- * 1393 bound `tenant_baa_document.upload_platform` to `platform_ops`), not from an in-memory list. What a unit test cannot prove, and this does:
+ * 1424 bound `tenant_baa_document.upload_platform` to `platform_ops`), not from an in-memory list. What a unit test cannot prove, and this does:
  *   - platform_ops files the BAA for an onboarding tenant: the document + version land in THAT org (visible to its RLS scope and to no other)
  *     under the one kind `tenant_baa`, the object is in the tenant's bucket, the audit row names the operator, tenant, reason, document id
  *     and digest, and the document's own write-audit trigger attributes the insert to the operator;
@@ -232,7 +232,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
         WHERE t.retired_at IS NULL AND ta.organization_id = $1`,
       [ORG_X],
     );
-    // A fresh database has no platform-owned role rows (`db:platform-role grant` creates them), so migration 1393 bound nothing.
+    // A fresh database has no platform-owned role rows (`db:platform-role grant` creates them), so migration 1424 bound nothing.
     // Create them and re-apply it, as a deploy does once they exist.
     for (const key of ["platform_ops", "platform_admin"]) {
       await admin.query(
@@ -242,7 +242,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       );
     }
     const grantMigration = migrations.find((f) =>
-      f.startsWith("1393_m34_tenant_baa_document_permission"),
+      f.startsWith("1424_m34_tenant_baa_document_permission"),
     ) as string;
     await admin.query(readFileSync(join(MIGRATIONS_DIR, grantMigration), "utf8"));
     for (const [membership, user, role] of [

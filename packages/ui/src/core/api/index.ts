@@ -5,3 +5,18 @@ export { BACKGROUND_REQUEST_HEADERS, createApiClient } from "./client";
 export type { ApiClient, ApiClientOptions } from "./client";
 export { ApiClientProvider, useApiClient } from "./provider";
 export type { ApiClientProviderProps } from "./provider";
+export {
+  abortUpload,
+  completeUpload,
+  initiateUpload,
+  putUploadBytes,
+  sha256Hex,
+  writeFailure,
+} from "./verified-upload";
+export type {
+  CompleteUploadResult,
+  InitiateUploadBody,
+  InitiateUploadResult,
+  UploadMimeType,
+  WriteResult,
+} from "./verified-upload";

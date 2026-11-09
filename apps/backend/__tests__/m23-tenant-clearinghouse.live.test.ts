@@ -150,8 +150,8 @@ const ORG_L = "ac000000-0000-4000-8000-0000000000ac"; // outside with a mode tha
 const ORG_N = "ad000000-0000-4000-8000-0000000000ad"; // outside with a PAUSED contract: the tenant's own switch is still refused, the operator's names the mode
 const ORG_O = "ae000000-0000-4000-8000-0000000000ae"; // the race: the system sets none between the operator's mode write and the vendor commit
 const ORG_P = "af000000-0000-4000-8000-0000000000af"; // two mode writers at once (the subscription row is the lock)
-const ORG_Q = "b0000000-0000-4000-8000-0000000000b0"; // tries to seal org A's Claim.MD account (migration 1403)
-const ORG_R = "b3000000-0000-4000-8000-0000000000b3"; // races ORG_S to seal one new key (migration 1404's index serialises them)
+const ORG_Q = "b0000000-0000-4000-8000-0000000000b0"; // tries to seal org A's Claim.MD account (migration 1434)
+const ORG_R = "b3000000-0000-4000-8000-0000000000b3"; // races ORG_S to seal one new key (migration 1435's index serialises them)
 const ORG_S = "b4000000-0000-4000-8000-0000000000b4";
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
@@ -326,7 +326,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_N, "onboarding"],
       [ORG_O, "onboarding"],
       [ORG_P, "onboarding"],
-      [ORG_Q, "active"], // the platform release of its earlier credentials (migration 1404) resolves its tenant account
+      [ORG_Q, "active"], // the platform release of its earlier credentials (migration 1435) resolves its tenant account
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -618,7 +618,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect((await tenantCall("GET", ORG_A, "")).body).not.toContain(KEY_A);
   });
 
-  // Migration 1403 (owner decision 2026-11-08): one vendor account belongs to ONE organization. Org Q (nothing chosen) saving org
+  // Migration 1434 (owner decision 2026-11-08): one vendor account belongs to ONE organization. Org Q (nothing chosen) saving org
   // A's Claim.MD key is refused by the cross-org unique index, under the real NOBYPASSRLS role that cannot even see A's row; the
   // refusal never names the holder, and nothing is written. A re-saving its own key succeeds.
   it("a second organization saving the same Claim.MD account key gets 409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder may re-save it", async () => {
@@ -666,7 +666,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_A],
     );
     expect(after?.credential_fingerprint).toBe(current?.credential_fingerprint);
-    // migration 1404: the credential is reserved to A (one held row), and the re-save did not add another
+    // migration 1435: the credential is reserved to A (one held row), and the re-save did not add another
     expect(
       await q(
         "SELECT organization_id FROM tenant_clearinghouse_credential_reservation WHERE credential_fingerprint=$1 AND released_at IS NULL",
@@ -681,7 +681,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(JSON.stringify(audits)).not.toContain(String(current?.credential_fingerprint));
   });
 
-  // Migration 1404 (owner decision 2026-11-08): a credential stays reserved to its tenant through a switch to `outside`; only the
+  // Migration 1435 (owner decision 2026-11-08): a credential stays reserved to its tenant through a switch to `outside`; only the
   // platform-ops release frees it, a released reservation is final, and a sealed credential always carries its fingerprint.
   it("keeps a credential reserved after its tenant switches to outside until a platform operator releases it", async () => {
     const KEY_Q = "fake-claimmd-key-Q#live-1";
@@ -724,7 +724,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(steal.statusCode, steal.body).toBe(409);
     expect(errorCode(steal)).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
 
-    // migration 1406: the app role's column grant alone cannot release it; only the platform release path's setting can
+    // migration 1437: the app role's column grant alone cannot release it; only the platform release path's setting can
     await expect(
       asTenant(
         ORG_Q,
@@ -759,7 +759,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       reason: "account moved to another organization, ticket OPS-77",
     });
     expect(JSON.stringify(audited)).not.toContain(String(held[0]?.credential_fingerprint));
-    // the reservation's own write-audit (tenant-visible) scrubs the release reason too (migration 1405)
+    // the reservation's own write-audit (tenant-visible) scrubs the release reason too (migration 1436)
     const trail = await q<{ before: unknown; after: unknown }>(
       "SELECT before, after FROM audit_event WHERE resource_kind='tenant_clearinghouse_credential_reservation' AND resource_id=$1",
       [held[0]?.id],
@@ -773,7 +773,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         [held[0]?.id],
       ),
     ).rejects.toThrow(/final/);
-    // a sealed credential without its fingerprint is refused by the CHECK (rows written from 1404 on)
+    // a sealed credential without its fingerprint is refused by the CHECK (rows written from 1435 on)
     await expect(
       q(
         "UPDATE tenant_clearinghouse_config SET credential_fingerprint=NULL WHERE organization_id=$1",
@@ -782,8 +782,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     ).rejects.toThrow(/tenant_clearinghouse_config_fingerprint_secret_ck/);
   });
 
-  // Two organizations saving the same new key at the same moment serialise on 1404's index entry: exactly one holds it, the other
-  // gets the refusal (audited), and nothing of the loser is written. Every reservation names its fingerprint key (migration 1405).
+  // Two organizations saving the same new key at the same moment serialise on 1435's index entry: exactly one holds it, the other
+  // gets the refusal (audited), and nothing of the loser is written. Every reservation names its fingerprint key (migration 1436).
   it("two organizations racing to seal the same key: one wins, the other is refused, one reservation is held", async () => {
     const KEY_RACE = "fake-claimmd-key-race#live-1";
     const [i, j] = await Promise.all(
@@ -813,7 +813,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     ).toHaveLength(1);
   });
 
-  // Security review MEDIUM-1/2: the boot check runs on the real platform carrier (migration 1405's column grant) through the audited
+  // Security review MEDIUM-1/2: the boot check runs on the real platform carrier (migration 1436's column grant) through the audited
   // withPlatformContext: it counts a platform key a tenant holds, and names the key ids held reservations were computed under, so a
   // KEK change made without listing the old KEK as retired is caught.
   it("the boot check reads only what the carrier is granted, audited at severity critical, and flags an unconfigured key id", async () => {
@@ -836,7 +836,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     );
     expect(audited.map((r) => r.severity)).toContain("critical");
 
-    // security review of cfd943e82, M1: a reservation with NULL key id (1404-backfilled) is counted as unverifiable, not dropped
+    // security review of cfd943e82, M1: a reservation with NULL key id (1435-backfilled) is counted as unverifiable, not dropped
     const before = await checkHeldCredentials(
       { platformDb: platformPool.db, auditBypass: m34PlatformBypassAuditor },
       [],
@@ -1090,7 +1090,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
 
   it("D2: the table refuses an ACTIVE transmitting config whose BAA is not verified, and a half-recorded BAA", async () => {
     const sealed = (await cipher.encrypt(ORG_D, KEY_G, { vendor: "stedi", mode: "test" })).cipher;
-    // migration 1404: a sealed credential carries its fingerprint (a synthetic 64-hex value here)
+    // migration 1435: a sealed credential carries its fingerprint (a synthetic 64-hex value here)
     const columns = `(credential_fingerprint, organization_id, vendor, mode, status, secret_cipher, secret_dek_version, verification_kind, verified_at,
        verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id`;
     // active with a verified connection but NO verified BAA
@@ -1171,7 +1171,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         ORG_G,
         (await cipher.encrypt(ORG_G, KEY_G, { vendor: "stedi", mode: "production" })).cipher,
         MEMBERSHIP,
-        cipher.fingerprint("stedi", KEY_G), // migration 1404: a sealed credential always carries its fingerprint
+        cipher.fingerprint("stedi", KEY_G), // migration 1435: a sealed credential always carries its fingerprint
       ],
     );
     const platformBinding = {
@@ -2132,7 +2132,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1 ORDER BY created_at`,
         [org],
       );
-    // One vendor account per organization (migration 1403): each org gets its own synthetic key.
+    // One vendor account per organization (migration 1434): each org gets its own synthetic key.
     const VENDOR_KEY = (slug: string) => `fake-claimmd-key-${slug}#live-1`;
     const inForce = (org: string) => modeInForce(tenantPool.db, org);
 

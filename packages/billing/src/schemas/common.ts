@@ -155,6 +155,7 @@ export const SubmissionOutcomeApi = Type.Union([
   Type.Literal("submitted"),
   Type.Literal("failed_worker"),
   Type.Literal("failed_portal"),
+  Type.Literal("held_stale_source"),
 ]);
 
 /** `m23_claim_submission_kind`. */

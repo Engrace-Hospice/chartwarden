@@ -27,9 +27,9 @@ const uniqueViolation = (constraint?: string): Error =>
 export function createInMemoryConfigStore(now: () => Date = () => new Date()): InMemoryConfigStore {
   const byOrg = new Map<string, ConfigRow>();
   const withAttempts = new Set<string>();
-  /** Mirrors migration 1404: one unreleased reservation per fingerprint across ALL organizations. */
+  /** Mirrors migration 1435: one unreleased reservation per fingerprint across ALL organizations. */
   const reservations: Reservation[] = [];
-  /** Mirrors migration 1403's partial unique index: one non-null fingerprint across ALL organizations. */
+  /** Mirrors migration 1434's partial unique index: one non-null fingerprint across ALL organizations. */
   const assertFingerprintFree = (
     organizationId: string,
     fingerprint: string | null | undefined,

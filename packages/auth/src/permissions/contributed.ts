@@ -3471,7 +3471,7 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
   // --- clearinghouse choice surface (ADR-0053 amendment 2026-11-06; owner decision D3) ---
   // ORG-LEVEL on purpose, unlike the provider-entity-scoped `billing.mac_credential.*` above: choosing the clearinghouse
   // re-routes EVERY provider entity's claims (PHI) to another vendor, so a billing manager scoped to one entity must not hold
-  // it. Granted to the org-wide admin roles only (`org_admin`, `administrator`; migration 1390 + the full-catalog template).
+  // it. Granted to the org-wide admin roles only (`org_admin`, `administrator`; migration 1421 + the full-catalog template).
   "billing.clearinghouse.read": {
     resource: "billing_clearinghouse",
     action: "read",
@@ -4459,8 +4459,8 @@ export const M15_CONTRIBUTED_PERMISSIONS = {
 export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
 
 /**
- * M16-T06 — the thirty-six §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
- * original spec, the two ADR-0109 D5 pre-death-draft keys, the two D6 physician-letter keys and the three D10 mailing keys).
+ * M16-T06 — the §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
+ * original spec, the two ADR-0109 D5 pre-death-draft keys, the two D6 physician-letter keys, the three D10 mailing keys and the PR 3 program keys).
  *
  * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
  * actually binds a guard, and it may bind a different (or no) predicate per route. Four of the five §4.8
@@ -4703,9 +4703,66 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "org_scope_bereavement_oversight",
   },
+  // ADR-0109 D10 (PR 3) — support groups. `read` lists groups and sessions (no roster) to bereavement-capable staff and oversight; `manage`
+  // creates (oversight) and edits / opens / closes a group and its sessions (oversight or the group's STAFF facilitator); `enroll` signs a
+  // family up (the contact's own counselor or oversight: the window); `run` reads the roster and records attendance (oversight, the staff
+  // facilitator, or a VOLUNTEER facilitator who passes the 418.78 gates). Migration 1390 mirrors them into the permission catalog.
+  "bereavement.group.read": {
+    resource: "bereavement_support_group",
+    action: "read",
+    category: "clinical",
+    abac: "discipline_can_provide_bereavement",
+  },
+  "bereavement.group.manage": {
+    resource: "bereavement_support_group",
+    action: "manage",
+    category: "clinical",
+    abac: "bereavement_group_scope",
+  },
+  "bereavement.group.enroll": {
+    resource: "bereavement_support_group",
+    action: "enroll",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.group.run": {
+    resource: "bereavement_support_group",
+    action: "run",
+    category: "clinical",
+    abac: "bereavement_group_scope",
+  },
+  // ADR-0109 D10 (PR 3) — memorial services. `manage` creates, edits, publishes (the set-based invitations and the invitation mailing run),
+  // closes a service and records attendance: oversight only (an invitation list names every recently bereaved family). `rsvp` records a family's
+  // answer taken by phone, on the family's window (their counselor or oversight); the service list it also reads names no family. Migration 1391.
+  "bereavement.memorial.manage": {
+    resource: "bereavement_memorial_service",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.memorial.rsvp": {
+    resource: "bereavement_memorial_service",
+    action: "rsvp",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  // ADR-0109 D10 (PR 3) — the grief library: oversight curates what the bereaved portal shows (`read` lists and previews, `manage` registers an
+  // uploaded M22 document, edits it, publishes / archives it). Families never hold these: they read published items through the portal. Migration 1393.
+  "bereavement.library.read": {
+    resource: "bereavement_library_item",
+    action: "read",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.library.manage": {
+    resource: "bereavement_library_item",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M16 contributed permission keys (thirty-six). */
+/** Union of the M16 contributed permission keys. */
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
 /**
@@ -6193,6 +6250,13 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
     category: "portal",
     abac: "bereaved_portal_window_open",
   },
+  // ADR-0109 D10 (PR 3) — the bereaved family's own memorial RSVP (M16 checks the invitation is the account's own contact's). Migration 1391.
+  "portal.bereavement.rsvp_own": {
+    resource: "portal_bereavement",
+    action: "rsvp_own",
+    category: "portal",
+    abac: "bereaved_portal_window_open",
+  },
   // ── notification preferences (§4.1) — the account's own settings ────────────────────────────────────
   "portal.preferences.read_own": {
     resource: "portal_preference",
@@ -6535,7 +6599,7 @@ export const M35_CONTRIBUTED_PERMISSIONS = {
   },
   // ── slice 2 (tenant pricing): the onboarding contract. `category: "platform"` (not `billing_admin`), like the M34 onboarding keys. ──
   // Create a tenant's subscription at onboarding step 2 and change its billing service mode. Only the `platform_ops` role carries it
-  // (migration 1382), because `tenant_lifecycle_platform_ops` admits that role alone.
+  // (migration 1413), because `tenant_lifecycle_platform_ops` admits that role alone.
   "subscription.onboard_platform": {
     resource: "subscription",
     action: "onboard_platform",

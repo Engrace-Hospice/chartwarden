@@ -1,8 +1,8 @@
 # deploy/production/postgres/Dockerfile — ChartWarden's Postgres: PostgreSQL 18 + pgvector on Wolfi (glibc).
 #
 # Replaces pgvector/pgvector:pg18 (Debian), whose OS layer carried dozens of HIGH/CRITICAL CVEs Debian will not fix.
-# Production will run the published, scanned, signed digest (.github/workflows/postgres-image.yml) once compose.yml
-# pins it; dev compose, CI and the restore drills build this file, so every Postgres the code meets is the same package set.
+# Production runs the published, scanned, signed digest (.github/workflows/postgres-image.yml) that compose.yml and
+# backup/Dockerfile pin; dev compose, CI and the restore drills build this file, so every Postgres the code meets is the same package set.
 #
 # Drop-in for a volume the Debian image created: postgres is uid/gid 999, PGDATA is the PG18 layout under the
 # /var/lib/postgresql volume, LANG is en_US.utf8, and entrypoint.sh adds Debian's socket directory (/var/run/postgresql,

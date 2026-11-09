@@ -49,7 +49,11 @@ import {
 } from "./extraction/writeback-commit-db";
 import { commitReviewDiagnosisWriteback } from "./extraction/writeback-commit-dx-db";
 import { isDiagnosisFieldPath } from "./extraction/writeback-plan-dx";
-import { assertNotInternalOnlyForPatientFacing } from "./internal-documents";
+import {
+  assertAdoptableByIntake,
+  assertNotInternalOnlyForPatientFacing,
+  assertNotOrgLibraryForEdit,
+} from "./internal-documents";
 import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
 import { type CursorPage, paginate } from "./routes/concurrency";
 import { assertKindWritable } from "./routes/immutable-kinds";
@@ -282,6 +286,8 @@ export function createDbDocumentRouteService(
   ): Promise<DocumentView> {
     await tx.execute(sql`select id from document where id = ${documentId} for update`);
     const doc = await loadDocRow(tx, organizationId, documentId); // 404
+    // ADR-0109 D10 (PR 3) — the DB layer refuses too (PATCH, link, tags all lock through here): a grief-library file is fixed whatever the route.
+    assertNotOrgLibraryForEdit(doc.aggregateType);
     if (basis?.expectedPatientId !== undefined && doc.patientId !== basis.expectedPatientId)
       throw new NotFoundError("document");
     if (basis?.expectedAdmissionId !== undefined && doc.admissionId !== basis.expectedAdmissionId)
@@ -871,11 +877,13 @@ export function createDbDocumentRouteService(
         // another org's id is simply not found → the non-leaking 404).
         if (args.documentId) {
           const [d] = await tx
-            .select({ id: DOC.id })
+            .select({ id: DOC.id, aggregateType: DOC.aggregateType })
             .from(DOC)
             .where(eq(DOC.id, args.documentId))
             .limit(1);
           if (!d) throw new NotFoundError("document");
+          // ADR-0109 D10 (PR 3) — a batch is later relinked onto a chart: it never adopts an internal or a grief-library document.
+          assertAdoptableByIntake(d.aggregateType);
         }
         const [b] = await tx
           .insert(BATCH)

@@ -11,14 +11,14 @@ const A = schema.clearinghouseSubmissionAttempts;
 const R = schema.tenantClearinghouseCredentialReservation;
 
 /**
- * The transaction-local setting migration 1406's trigger requires before `released_at` may be set: only `releaseCredentials` (the
+ * The transaction-local setting migration 1437's trigger requires before `released_at` may be set: only `releaseCredentials` (the
  * platform-ops release) sets it, so no other code path on the app role can release a reservation.
  */
 const RELEASE_GUC = "app.clearinghouse_release";
 
 export type ConfigRow = schema.TenantClearinghouseConfigRow;
 
-/** A fingerprint to reserve, with the public id of its key (null: recorded before migration 1405). */
+/** A fingerprint to reserve, with the public id of its key (null: recorded before migration 1436). */
 export interface HeldFingerprint {
   readonly keyId: string | null;
   readonly fingerprint: string;
@@ -51,7 +51,7 @@ export interface ConfigStore {
    * after `since` (a `sent` attempt is final, so its reservation time is the only clock the attempt row carries).
    */
   hasRecentProductionAttempts(organizationId: string, since: Date): Promise<boolean>;
-  /** True when THIS org already holds an unreleased reservation of the fingerprint (migration 1404). */
+  /** True when THIS org already holds an unreleased reservation of the fingerprint (migration 1435). */
   holdsCredential(organizationId: string, fingerprint: string): Promise<boolean>;
   /** How many unreleased reservations the org holds (each credential has one per fingerprint key it was saved under). */
   heldReservationCount(organizationId: string): Promise<number>;
@@ -82,7 +82,7 @@ export const isUniqueViolation = (err: unknown): boolean => {
 export const M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID = "m23.clearinghouse.platform-credential-check";
 
 /**
- * The boot check, on the platform carrier through the gated, audited `withPlatformContext` (migration 1405's column grant: id,
+ * The boot check, on the platform carrier through the gated, audited `withPlatformContext` (migration 1436's column grant: id,
  * fingerprint, key id, released_at), across every organization: see `CredentialCheckResult`. Every reservation under an unknown key
  * id (a KEK change made without listing the old subkey as retired; security review MEDIUM-1) is caught by `keyIds`; one with a NULL
  * key id cannot be checked, so it is counted on its own (`unverifiable`) rather than dropped.
