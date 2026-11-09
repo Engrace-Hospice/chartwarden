@@ -1541,6 +1541,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── feature-flag admin (§4.7 / D13 — delegates to M1's FeatureFlagAdmin seam) ──
     async listFeatureFlags(filter, cursor, limit): Promise<CursorPage<FeatureFlagView>> {
+      // judged before the platform-pool read: a bad cursor reaches no pool
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       const rows = await deps.featureFlags.list(filter.organizationId ?? null, filter.flagKind);
       const withCursor = rows.map((f) => ({ ...f, id: f.id, createdAt: f.updatedAt }));
       const sorted = [...withCursor].sort((a, b) =>

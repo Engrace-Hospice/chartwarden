@@ -600,6 +600,45 @@ describe.skipIf(!DB_URL)("M35 billing runtime - LIVE Postgres", () => {
       expect(rows[0].processing_attempt_count).toBe(1);
       expect(rows[0].error_text).toContain("no subscription");
     });
+
+    it("the recent-webhooks list pages REAL rows exactly once: same-millisecond events, exact timestamp ties and mixed-case Stripe ids, at every page size", async () => {
+      // five events inside one millisecond (distinct microseconds) and three that tie on the exact timestamp; ids are mixed case, so the
+      // database's collation and JavaScript's code-unit order disagree about them
+      const rowsToSeed: Array<[string, string]> = [
+        ["evt_page_zB", "2026-11-06 12:00:00.123100+00"],
+        ["evt_page_Za", "2026-11-06 12:00:00.123200+00"],
+        ["evt_page_yC", "2026-11-06 12:00:00.123300+00"],
+        ["evt_page_Xd", "2026-11-06 12:00:00.123400+00"],
+        ["evt_page_wE", "2026-11-06 12:00:00.123500+00"],
+        ["evt_page_tieA", "2026-11-06 12:00:01.000000+00"],
+        ["evt_page_tieb", "2026-11-06 12:00:01.000000+00"],
+        ["evt_page_TieC", "2026-11-06 12:00:01.000000+00"],
+      ];
+      for (const [id, receivedAt] of rowsToSeed) {
+        await admin.query(
+          `INSERT INTO stripe_webhook_event (id, event_type, payload_ciphertext, payload_dek_ref, received_at, signature_verified_at)
+           VALUES ($1, 'invoice.paid', 'x', 'k', $2::timestamptz, $2::timestamptz)`,
+          [id, receivedAt],
+        );
+      }
+      const expected = (
+        await admin.query<{ id: string }>(
+          "SELECT id FROM stripe_webhook_event ORDER BY received_at DESC, id DESC",
+        )
+      ).rows.map((r) => r.id);
+      const svc = buildDrizzleM35RouteService(tenant.db, { platformRunner });
+      for (const size of [1, 2, 3, 5]) {
+        const seen: string[] = [];
+        let cursor: string | undefined;
+        for (let guard = 0; guard < 40; guard += 1) {
+          const page = await svc.listRecentWebhooks(cursor, size);
+          seen.push(...page.items.map((i) => i.stripeEventId));
+          if (!page.hasMore || page.nextCursor === null) break;
+          cursor = page.nextCursor;
+        }
+        expect(seen, `page size ${size}`).toEqual(expected);
+      }
+    });
   });
 
   describe("GAP-059 the remaining workers", () => {
