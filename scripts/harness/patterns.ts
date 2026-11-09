@@ -1006,10 +1006,33 @@ export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel
 const SHELL = /^(bash|sh|zsh|dash|fish|ksh)$/;
 const LANGUAGE_REPL = /^(python[0-9.]*|node|ruby|irb|perl|lua|php)$/;
 const DATABASE_REPL = /^(psql|pgcli|sqlite3|mysql)$/;
+const TERMINAL_INPUT =
+  /^\/(?:dev\/(?:tty(?:[0-9A-Za-z._-]*)?|console|stdin|fd\/0)|proc\/(?:self|[0-9]+)\/fd\/0)$/i;
+
+function interactiveFlag(args: readonly string[]): boolean {
+  return args.some(
+    (a) =>
+      /^(?:--interactive|--tty|--stdin)$/.test(a) ||
+      (/^-[^-]+$/.test(a) && (a.slice(1).includes("i") || a.slice(1).includes("t"))),
+  );
+}
 
 function interactiveInvocation(p: Parsed): boolean {
   const { prog, args, ins, docs } = p;
-  const explicitInput = ins.length + docs.length > 0;
+  const terminalInput = ins.some((path) => TERMINAL_INPUT.test(path));
+  const explicitInput = !terminalInput && ins.length + docs.length > 0;
+
+  if (prog === "rlwrap") return true;
+  if (/^(docker|podman)$/.test(prog)) {
+    if (args[0] === "compose" && args[1] === "exec") {
+      return (
+        interactiveFlag(args.slice(2)) || !args.slice(2).some((a) => /^(?:-T|--no-TTY)$/.test(a))
+      );
+    }
+    if (args[0] === "compose" && args[1] === "run") return interactiveFlag(args.slice(2));
+    if (/^(exec|run)$/.test(args[0] ?? "")) return interactiveFlag(args.slice(1));
+  }
+  if (prog === "kubectl" && args[0] === "exec") return interactiveFlag(args.slice(1));
 
   if (SHELL.test(prog)) {
     if (args.length === 1 && /^(-h|--help|--version)$/.test(args[0] ?? "")) return false;
@@ -1068,13 +1091,13 @@ function interactiveInvocation(p: Parsed): boolean {
 
   if (DATABASE_REPL.test(prog)) {
     if (args.length === 1 && /^(--help|-\?|--version|-V)$/.test(args[0] ?? "")) return false;
-    if (explicitInput) return false;
     const shellEscape = args.some((a) => {
       if (prog === "sqlite3") return /(?:^|[\r\n])\s*\.(?:shell|system)(?:\s|$)/i.test(a);
       if (/^(psql|pgcli)$/.test(prog)) return /(?:^|[\r\n])\s*\\!/.test(a);
       return /(?:^|[\r\n])\s*(?:system|\\!)(?:\s|$)/i.test(a);
     });
     if (shellEscape) return true;
+    if (explicitInput) return false;
     if (/^(psql|pgcli)$/.test(prog)) {
       return !args.some((a) => /^(?:-c.+|-c|-f.+|-f|--(?:command|file)(?:=.+)?)$/.test(a));
     }
