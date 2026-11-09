@@ -53,43 +53,22 @@ export async function readM41HistoricalEraCandidates(input: {
 }): Promise<readonly M41HistoricalEraAttemptCandidate[]> {
   const S = schema.commercialSubmissions;
   const C = schema.commercialClaims;
-  const evidenceRows = input.evidenceRows.filter(
-    (r) =>
-      r.organizationId === input.organizationId &&
-      r.providerEntityId === input.providerEntityId &&
-      r.accountReference === input.accountReference &&
-      r.usage === input.usage &&
-      r.pcn === input.pcn,
-  );
+  const evidenceRows = input.evidenceRows.filter((r) => r.organizationId === input.organizationId &&
+    r.providerEntityId === input.providerEntityId && r.accountReference === input.accountReference &&
+    r.usage === input.usage && r.pcn === input.pcn);
   if (!evidenceRows.length) return [];
   const submissionIds = [...new Set(evidenceRows.map((r) => r.submissionId))];
-  const rows = await input.tx
-    .select({
-      sourceId: S.id,
-      sourceClaimId: S.claimId,
-      sourceOrg: S.organizationId,
-      sourceProvider: S.providerEntityId,
-      sourcePayer: S.clearinghousePayerId,
-      sourceVendor: S.clearinghouseKey,
-      sourceControl: S.controlNumber,
-      sourceState: S.status,
-      correctionOf: C.correctionOfClaimId,
-      frequency: C.frequencyCode,
-      claimCharge: C.totalChargeCents,
-      sourceTime: S.sentAt,
-    })
-    .from(S)
-    .innerJoin(C, eq(C.id, S.claimId))
-    .where(
-      and(
-        inArray(S.id, submissionIds),
-        eq(S.organizationId, input.organizationId),
-        eq(S.providerEntityId, input.providerEntityId),
-        eq(S.clearinghouseKey, "claimmd"),
-        eq(S.controlNumber, input.pcn),
-      ),
-    )
-    .limit(101);
+  const rows = await input.tx.select({
+    sourceId: S.id, sourceClaimId: S.claimId, sourceOrg: S.organizationId,
+    sourceProvider: S.providerEntityId, sourcePayer: S.clearinghousePayerId,
+    sourceVendor: S.clearinghouseKey, sourceControl: S.controlNumber, sourceState: S.status,
+    correctionOf: C.correctionOfClaimId, frequency: C.frequencyCode,
+    claimCharge: C.totalChargeCents, sourceTime: S.sentAt,
+  }).from(S).innerJoin(C, eq(C.id, S.claimId)).where(and(
+    inArray(S.id, submissionIds), eq(S.organizationId, input.organizationId),
+    eq(S.providerEntityId, input.providerEntityId), eq(S.clearinghouseKey, "claimmd"),
+    eq(S.controlNumber, input.pcn),
+  )).limit(101);
   const bySubmission = new Map(rows.map((r) => [r.sourceId, r]));
   return evidenceRows.flatMap((e) => {
     const r = bySubmission.get(e.submissionId);
@@ -97,47 +76,20 @@ export async function readM41HistoricalEraCandidates(input: {
     const attemptOrdinal = e.attemptKey.startsWith(attemptPrefix)
       ? e.attemptKey.slice(attemptPrefix.length)
       : "";
-    if (
-      !r ||
-      r.sourceId !== e.submissionId ||
-      r.sourceClaimId !== e.claimId ||
-      r.sourceOrg !== input.organizationId ||
-      r.sourceProvider !== input.providerEntityId ||
-      r.sourcePayer !== e.payerId ||
-      r.sourceVendor !== "claimmd" ||
-      r.sourceControl !== e.pcn ||
-      !/^[0-9a-f-]{36}$/i.test(e.submissionId) ||
-      !/^\d{1,8}$/.test(attemptOrdinal) ||
-      !r.sourceTime
-    )
+    if (!r || r.sourceId !== e.submissionId || r.sourceClaimId !== e.claimId ||
+      r.sourceOrg !== input.organizationId || r.sourceProvider !== input.providerEntityId ||
+      r.sourcePayer !== e.payerId || r.sourceVendor !== "claimmd" || r.sourceControl !== e.pcn ||
+      !/^[0-9a-f-]{36}$/i.test(e.submissionId) || !/^\d{1,8}$/.test(attemptOrdinal) || !r.sourceTime)
       return [];
-    return [
-      {
-        module: "M41" as const,
-        evidenceId: e.evidenceId,
-        claimId: e.claimId,
-        submissionId: e.submissionId,
-        attemptKey: e.attemptKey,
-        organizationId: e.organizationId,
-        providerEntityId: e.providerEntityId,
-        accountReference: e.accountReference,
-        usage: e.usage,
-        payerId: e.payerId,
-        pcn: e.pcn,
-        claimType: e.claimType,
-        serviceFrom: e.serviceFrom,
-        serviceTo: e.serviceTo,
-        chargeCents: r.claimCharge,
-        lineage:
-          r.frequency === "8"
-            ? ("void" as const)
-            : r.correctionOf
-              ? ("correction" as const)
-              : ("original" as const),
-        attemptState: r.sourceState,
-        submittedAt: r.sourceTime.toISOString(),
-        submittedLines: "unavailable" as const,
-      },
-    ];
+    return [{
+      module: "M41" as const, evidenceId: e.evidenceId, claimId: e.claimId,
+      submissionId: e.submissionId, attemptKey: e.attemptKey,
+      organizationId: e.organizationId, providerEntityId: e.providerEntityId,
+      accountReference: e.accountReference, usage: e.usage, payerId: e.payerId,
+      pcn: e.pcn, claimType: e.claimType, serviceFrom: e.serviceFrom, serviceTo: e.serviceTo,
+      chargeCents: r.claimCharge,
+      lineage: r.frequency === "8" ? "void" as const : r.correctionOf ? "correction" as const : "original" as const,
+      attemptState: r.sourceState, submittedAt: r.sourceTime.toISOString(), submittedLines: "unavailable" as const,
+    }];
   });
 }
