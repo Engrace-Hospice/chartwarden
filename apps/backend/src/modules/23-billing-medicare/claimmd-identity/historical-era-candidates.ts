@@ -8,7 +8,7 @@ import { and, eq, inArray } from "drizzle-orm";
 const E = schema.claimmdSubmissionEvidence;
 const C = schema.claimSubmission;
 const A = schema.clearinghouseSubmissionAttempts;
-const L = schema.claimmdSubmissionLineEvidence;
+const CLAIM = schema.claim;
 
 export interface ClaimMdEraCandidateEvidence {
   readonly evidenceId: string;
@@ -50,7 +50,6 @@ export async function readClaimMdEraCandidateEvidence(input: {
       claimType: E.claimType,
       serviceFrom: E.serviceFrom,
       serviceTo: E.serviceTo,
-      payloadSha256: E.payloadSha256,
     })
     .from(E)
     .where(
@@ -86,7 +85,7 @@ export interface HistoricalEraAttemptCandidate {
   readonly attemptState: string;
   readonly submittedAt: string;
   /** No original line snapshot currently exists in the immutable evidence contract. */
-  readonly submittedLines: "available" | "unavailable";
+  readonly submittedLines: "unavailable";
 }
 
 /** Owner-exported exact-scope reader. PCN narrows candidates; it is never treated as unique proof. */
@@ -120,7 +119,9 @@ export async function readM23HistoricalEraCandidates(input: {
       attemptIndex: C.attemptIndex,
       state: C.outcome,
       submittedAt: C.submittedAt,
-      payloadSha256: E.payloadSha256,
+      replacementOf: CLAIM.replacesClaimId,
+      tob: CLAIM.tob,
+      totalCents: CLAIM.totalChargeCents,
       transportOrg: A.organizationId,
       transportProvider: A.providerEntityId,
       transportUsage: A.usage,
@@ -130,6 +131,7 @@ export async function readM23HistoricalEraCandidates(input: {
     })
     .from(E)
     .innerJoin(C, and(eq(C.id, E.submissionId), eq(E.billingModule, "M23")))
+    .innerJoin(CLAIM, eq(CLAIM.id, E.claimId))
     .innerJoin(
       A,
       and(
@@ -153,81 +155,23 @@ export async function readM23HistoricalEraCandidates(input: {
     )
     .limit(101);
 
-  const scopedRows = rows.filter(
-    (r) =>
-      r.organizationId === r.transportOrg &&
-      r.providerEntityId === r.transportProvider &&
-      r.usage === r.transportUsage &&
-      r.pcn === r.transportControl &&
-      r.transportKind === "claim" &&
-      (r.transportStatus === "reserved" || r.transportStatus === "sent") &&
-      r.claimSubmissionId === r.submissionId &&
-      r.sourceClaimId === r.claimId &&
-      r.sourceKind === "claim_837i" &&
-      r.sourceControl === r.pcn &&
-      r.attemptKey === `${r.submissionId}:${r.attemptIndex}` &&
-      r.submittedAt !== null,
-  );
-  if (!scopedRows.length) return [];
-
-  // Charge comes from immutable line facts bound to this exact submitted payload. Current
-  // M23 claim totals can change after correction and are not historical send evidence.
-  const lineRows = await input.tx
-    .select({
-      evidenceId: L.evidenceId,
-      organizationId: L.organizationId,
-      providerEntityId: L.providerEntityId,
-      claimId: L.claimId,
-      submissionId: L.submissionId,
-      attemptKey: L.attemptKey,
-      linePosition: L.linePosition,
-      chargeCents: L.chargeCents,
-      payloadSha256: L.payloadSha256,
-      accountReference: L.accountReference,
-      usage: L.usage,
-    })
-    .from(L)
-    .where(
-      inArray(
-        L.evidenceId,
-        scopedRows.map((r) => r.evidenceId),
-      ),
+  return rows
+    .filter(
+      (r) =>
+        r.organizationId === r.transportOrg &&
+        r.providerEntityId === r.transportProvider &&
+        r.usage === r.transportUsage &&
+        r.pcn === r.transportControl &&
+        r.transportKind === "claim" &&
+        (r.transportStatus === "reserved" || r.transportStatus === "sent") &&
+        r.claimSubmissionId === r.submissionId &&
+        r.sourceClaimId === r.claimId &&
+        r.sourceKind === "claim_837i" &&
+        r.sourceControl === r.pcn &&
+        r.attemptKey === `${r.submissionId}:${r.attemptIndex}` &&
+        r.submittedAt !== null,
     )
-    .orderBy(L.linePosition);
-  const linesByEvidence = new Map<string, typeof lineRows>();
-  for (const line of lineRows) {
-    const current = linesByEvidence.get(line.evidenceId) ?? [];
-    current.push(line);
-    linesByEvidence.set(line.evidenceId, current);
-  }
-
-  return scopedRows.map((r) => {
-    const lines = linesByEvidence.get(r.evidenceId) ?? [];
-    const completeLineScope =
-      lines.length > 0 &&
-      lines.every(
-        (line) =>
-          line.organizationId === r.organizationId &&
-          line.providerEntityId === r.providerEntityId &&
-          line.claimId === r.claimId &&
-          line.submissionId === r.submissionId &&
-          line.attemptKey === r.attemptKey &&
-          line.payloadSha256 === r.payloadSha256 &&
-          line.accountReference === r.accountReference &&
-          line.usage === r.usage &&
-          Number.isSafeInteger(line.chargeCents),
-      );
-    const total = completeLineScope
-      ? lines.reduce((sum, line) => sum + BigInt(line.chargeCents!), 0n)
-      : null;
-    const chargeCents =
-      total !== null &&
-      total <= BigInt(Number.MAX_SAFE_INTEGER) &&
-      total >= BigInt(Number.MIN_SAFE_INTEGER)
-        ? Number(total)
-        : null;
-    const frequency = r.claimType.split(":").at(-1);
-    return {
+    .map((r) => ({
       module: "M23",
       evidenceId: r.evidenceId,
       claimId: r.claimId,
@@ -242,18 +186,10 @@ export async function readM23HistoricalEraCandidates(input: {
       claimType: r.claimType,
       serviceFrom: r.serviceFrom,
       serviceTo: r.serviceTo,
-      chargeCents,
-      lineage:
-        frequency === "8"
-          ? ("void" as const)
-          : frequency === "7"
-            ? ("replacement" as const)
-            : frequency
-              ? ("original" as const)
-              : ("unknown" as const),
+      chargeCents: r.totalCents,
+      lineage: r.tob === "818" ? "void" : r.replacementOf ? "replacement" : "original",
       attemptState: r.state,
       submittedAt: (r.submittedAt ?? new Date(0)).toISOString(),
-      submittedLines: completeLineScope ? ("available" as const) : ("unavailable" as const),
-    };
-  });
+      submittedLines: "unavailable",
+    }));
 }
