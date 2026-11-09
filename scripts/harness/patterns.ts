@@ -1024,15 +1024,17 @@ function interactiveInvocation(p: Parsed): boolean {
 
   if (prog === "rlwrap") return true;
   if (/^(docker|podman)$/.test(prog)) {
-    if (args[0] === "compose" && args[1] === "exec") {
-      return (
-        interactiveFlag(args.slice(2)) || !args.slice(2).some((a) => /^(?:-T|--no-TTY)$/.test(a))
-      );
+    const compose = args.indexOf("compose");
+    if (compose >= 0) {
+      const composeArgs = args.slice(compose + 1);
+      if (composeArgs.includes("exec")) {
+        return interactiveFlag(args) || !args.some((a) => /^(?:-T|--no-TTY)$/.test(a));
+      }
+      if (composeArgs.includes("run")) return interactiveFlag(args);
     }
-    if (args[0] === "compose" && args[1] === "run") return interactiveFlag(args.slice(2));
-    if (/^(exec|run)$/.test(args[0] ?? "")) return interactiveFlag(args.slice(1));
+    if (args.some((a) => /^(?:exec|run)$/.test(a))) return interactiveFlag(args);
   }
-  if (prog === "kubectl" && args[0] === "exec") return interactiveFlag(args.slice(1));
+  if (prog === "kubectl" && args.includes("exec")) return interactiveFlag(args);
 
   if (SHELL.test(prog)) {
     if (args.length === 1 && /^(-h|--help|--version)$/.test(args[0] ?? "")) return false;

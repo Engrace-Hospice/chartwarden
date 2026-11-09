@@ -175,12 +175,17 @@ describe("isInteractiveShell — a shell the guard cannot follow (Codex's write_
     "screen bash",
     "tmux new-session bash",
     "docker exec -it app bash",
+    "docker --context prod exec -it app bash",
+    "docker --host tcp://docker.internal run --tty image bash",
     "docker run --interactive --tty image bash",
     "podman exec -i app sh",
+    "podman --connection prod exec --interactive app sh",
     "podman run -t image sh",
     "docker compose exec app bash",
+    "docker --context prod compose --project-name cw exec app bash",
     "docker compose run --interactive app bash",
     "kubectl exec -it pod -- bash",
+    "kubectl --context prod exec pod --tty --stdin -- bash",
     "rlwrap bash",
   ])("refuses the bare %j", (cmd) => expect(isInteractiveShell(cmd)).toBe(true));
   it.each([
@@ -204,10 +209,14 @@ describe("isInteractiveShell — a shell the guard cannot follow (Codex's write_
     "mysql -h localhost -e 'select 1'",
     "sqlite3 data.db 'select 1'",
     "docker exec app ls",
+    "docker --context prod exec app ls",
     "docker run image true",
     "podman exec app ls",
+    "podman --connection prod run image true",
     "docker compose exec -T app ls",
+    "docker --context prod compose --project-name cw exec -T app ls",
     "kubectl exec pod -- ls",
+    "kubectl --context prod exec pod -- ls",
     "ls",
   ])("allows %j", (cmd) => expect(isInteractiveShell(cmd)).toBe(false));
 });
