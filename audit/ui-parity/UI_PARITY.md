@@ -5,8 +5,8 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 394 screens wired across web/portal/admin.
-- **admin**: 40 screen(s)
+**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 396 screens wired across web/portal/admin.
+- **admin**: 42 screen(s)
 - **portal**: 19 screen(s)
 - **web**: 335 screen(s)
 
@@ -379,6 +379,7 @@
 | admin | 34-saas-platform | `saas.tenants` | `/tenants` | `tenant.list_platform` | ✅ |
 | admin | 34-saas-platform | `saas.tenant-overview` | `/tenants/:orgSlug` | `tenant.read_platform` | ✅ |
 | admin | 34-saas-platform | `saas.tenant-onboarding` | `/tenants/:orgSlug/onboarding` | `onboarding.read_platform` | ✅ |
+| admin | 34-saas-platform | `saas.tenant-onboarding-step` | `/tenants/:orgSlug/onboarding/:stepKey` | `onboarding.read_platform` | ✅ |
 | admin | 34-saas-platform | `saas.support-sessions` | `/support/sessions` | `support_session.list_platform` | ✅ |
 | admin | 34-saas-platform | `saas.dsar-queue` | `/exports/dsar` | `dsar_export.list_own` | ✅ |
 | admin | 34-saas-platform | `saas.tenant-export-queue` | `/exports/tenant` | `tenant_export.list_own` | ✅ |
@@ -389,6 +390,7 @@
 | admin | 34-saas-platform | `saas.key-rings` | `/key-rings` | `tenant.read_platform` | ✅ |
 | admin | 35-subscription-billing | `admin.plans` | `/admin/plans` | `plan.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.plan-edit` | `/admin/plans/:id/edit` | `plan.admin.write` | ✅ |
+| admin | 35-subscription-billing | `admin.pricing-plans` | `/admin/pricing-plans` | `plan.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.promos` | `/admin/promos` | `promo.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.subscriptions` | `/admin/subscriptions` | `subscription.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.subscription-detail` | `/admin/subscriptions/:id` | `subscription.admin.read` | ✅ |

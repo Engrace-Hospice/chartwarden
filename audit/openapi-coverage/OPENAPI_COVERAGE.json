@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 2016,
-    "enriched": 2016,
+    "routes": 2033,
+    "enriched": 2033,
     "deficit": 0,
-    "mutating": 1154,
+    "mutating": 1167,
     "mutatingNoBody": 1,
-    "gets": 809,
+    "gets": 813,
     "getsNoResponse": 9
   },
   "modules": [
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 102,
-      "enriched": 102,
+      "routes": 109,
+      "enriched": 109,
       "deficit": 0,
-      "mutating": 53,
+      "mutating": 59,
       "mutatingNoBody": 0,
-      "gets": 47,
+      "gets": 48,
       "getsNoResponse": 0
     },
     {
@@ -331,12 +331,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 80,
-      "enriched": 80,
+      "routes": 90,
+      "enriched": 90,
       "deficit": 0,
-      "mutating": 51,
+      "mutating": 58,
       "mutatingNoBody": 0,
-      "gets": 28,
+      "gets": 31,
       "getsNoResponse": 0
     },
     {
