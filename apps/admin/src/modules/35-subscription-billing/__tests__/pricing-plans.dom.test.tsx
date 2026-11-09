@@ -148,7 +148,11 @@ function returnedTo(path: string): Entry {
 }
 
 /** `withPrevious` seeds one earlier history entry (a different page), so a test can count how many Backs leave the screen. */
-function mount(entry: Entry = "/admin/pricing-plans", as: Actor = WRITER, withPrevious = false): void {
+function mount(
+  entry: Entry = "/admin/pricing-plans",
+  as: Actor = WRITER,
+  withPrevious = false,
+): void {
   actor = as;
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>

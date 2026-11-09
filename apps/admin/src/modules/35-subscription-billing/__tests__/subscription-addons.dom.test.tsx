@@ -156,7 +156,9 @@ describe("Add-ons panel cancel in flight", () => {
       <ApiClientProvider
         client={createApiClient({ baseUrl: "http://localhost", fetch: fetchStub })}
       >
-        <AddonsPanel subscriptionId={SUB} usage={null} />
+        <MemoryRouter>
+          <AddonsPanel subscriptionId={SUB} usage={null} />
+        </MemoryRouter>
       </ApiClientProvider>,
     );
     const buttons = await screen.findAllByRole("button", { name: "Cancel add-on" });
