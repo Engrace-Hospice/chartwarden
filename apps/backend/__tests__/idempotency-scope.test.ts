@@ -3,7 +3,9 @@
  * and body sent to a different tenant slug / resource id / method / route is a different request, so it is a 409
  * IDEMPOTENCY_CONFLICT and never a replay of the first request's cached response (which for the platform onboarding
  * routes would hand tenant B's response back to a call aimed at tenant D). The `If-Match` version is part of the
- * request too: a retry that adds it must not replay the cached 428 that said it was missing.
+ * request too: a retry that adds it must not replay the cached 428 that said it was missing. So are the QUERY STRING (it
+ * selects what a handler does) and the ACTOR KIND: replay is answered before the route guards, so an `ai_*` principal that
+ * shares a user id with a human must not be handed the human's cached success body.
  */
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,7 +34,12 @@ describe("applyIdempotency fingerprint scope", () => {
     app = Fastify();
     app.decorateRequest("context", undefined as never);
     app.addHook("onRequest", async (request) => {
-      (request as unknown as { context: unknown }).context = { organizationId: ORG, userId: USER };
+      const actorKind = request.headers["x-test-actor-kind"];
+      (request as unknown as { context: unknown }).context = {
+        organizationId: ORG,
+        userId: USER,
+        attributes: typeof actorKind === "string" ? { actorKind } : {},
+      };
     });
     applyErrorHandler(app);
     applyIdempotency(app, createInMemoryIdempotencyStore());
@@ -50,6 +57,11 @@ describe("applyIdempotency fingerprint scope", () => {
     );
     app.post("/tenants/:slug/other", async (_request, reply) =>
       reply.code(201).send({ via: "other", run: count("other") }),
+    );
+    app.post("/queried", async (request, reply) =>
+      reply
+        .code(200)
+        .send({ mode: (request.query as { mode?: string }).mode, run: count("queried") }),
     );
     app.post("/versioned", async (request, reply) => {
       count("versioned");
@@ -111,6 +123,36 @@ describe("applyIdempotency fingerprint scope", () => {
     expect(other.statusCode).toBe(409);
     expect(conflictCode(other)).toBe("IDEMPOTENCY_CONFLICT");
     expect(runs.other).toBeUndefined();
+  });
+
+  it("the same key and body under a different QUERY STRING is a 409, never the first response", async () => {
+    await build();
+    const first = await send("POST", "/queried?mode=dry-run");
+    expect(first.json()).toMatchObject({ mode: "dry-run" });
+    const live = await send("POST", "/queried?mode=live");
+    expect(live.statusCode).toBe(409);
+    expect(conflictCode(live)).toBe("IDEMPOTENCY_CONFLICT");
+    expect(live.body).not.toContain("dry-run");
+    expect(runs.queried).toBe(1);
+    // ...while a retry of the SAME query replays
+    const same = await send("POST", "/queried?mode=dry-run");
+    expect(same.json()).toEqual(first.json());
+    expect(runs.queried).toBe(1);
+  });
+
+  it("the same key and body under another ACTOR KIND is a 409: an ai_* principal never gets a cached human success", async () => {
+    await build();
+    const human = await send("POST", "/tenants/b/items");
+    expect(human.statusCode).toBe(201);
+    const ai = await send("POST", "/tenants/b/items", { "x-test-actor-kind": "ai_scribe" });
+    expect(ai.statusCode).toBe(409);
+    expect(conflictCode(ai)).toBe("IDEMPOTENCY_CONFLICT");
+    expect(ai.body).not.toContain('"slug":"b"');
+    expect(runs.post).toBe(1);
+    // an explicit `user` kind is the same actor as an absent one
+    const explicit = await send("POST", "/tenants/b/items", { "x-test-actor-kind": "user" });
+    expect(explicit.statusCode).toBe(201);
+    expect(runs.post).toBe(1);
   });
 
   it("an If-Match retry does not replay the cached 428; a different If-Match is a different request", async () => {
