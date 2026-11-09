@@ -134,6 +134,7 @@ export const M31_REQUIRED_SEAMS = [
   // M16 — bereaved-family session scope + plan
   "BereavedPortalScopeProvider",
   "BereavementPlanProvider",
+  "BereavementPortalContentProvider",
   // M17 — upcoming visits + telehealth room back-ref
   "PortalVisitReader",
   "VisitReader",

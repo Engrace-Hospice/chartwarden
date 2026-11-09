@@ -87,7 +87,7 @@ export {
   createM16AlertPort,
 } from "./alert-port";
 
-// §4.7 — the thirty-six permission keys M16 contributes to M3's catalog.
+// §4.7 — the permission keys M16 contributes to M3's catalog.
 export {
   type M16ContributedPermissionKey,
   type M16PermissionKey,
@@ -133,6 +133,16 @@ export {
   type M16MailingDeps,
   type M16MailingService,
   buildDrizzleM16MailingService,
+  type M16LibraryDeps,
+  type M16LibraryService,
+  buildDrizzleM16LibraryService,
+  type M16MemorialDeps,
+  type M16MemorialService,
+  buildDrizzleM16MemorialService,
+  type M16GroupDeps,
+  type M16GroupService,
+  buildDrizzleM16GroupService,
+  withdrawLapsedGroupEnrollments,
   type M16ReadDeps,
   type M16ReadService,
   type M16RouteServices,
@@ -215,3 +225,9 @@ export {
   scheduleM16Jobs,
 } from "./jobs/cron-workers";
 export { M16_PLATFORM_JOB_ID, wireM16Tenancy } from "./wiring";
+
+// ADR-0109 D10 (PR 3) — the bereaved family's memorial invitations / RSVP for M31 (`BereavementPortalContentProvider`).
+export {
+  type BereavementPortalContentDeps,
+  createBereavementPortalContentProvider,
+} from "./seams/portal-content";

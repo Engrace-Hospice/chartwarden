@@ -500,6 +500,8 @@ controls:
     status: partial
     evidence:
       - script: backup:restore-drill
+      - script: backup:coordinated-drill
+      - file: audit/restore-drill/2026-11-08-wolfi-migration-rehearsal.md
       - script: m36:restore-drill
       - file: audit/restore-drill/m36-restore-drill.md
       - file: ops/pgbackrest/pgbackrest.conf.template
@@ -509,7 +511,7 @@ controls:
       - file: deploy/production/compose.object-copy.yml
       - file: scripts/object-store-copy.ts
     gap:
-      reason: DR_BCP records that no streaming replica or WAL archiving is running yet; restore drills exist for M36 but not as a scheduled whole-database drill with recorded RTO/RPO.
+      reason: DR_BCP records that no streaming replica or WAL archiving is running yet; restore drills exist for M36 but not as a scheduled whole-database drill with recorded RTO/RPO. The coordinated drill and the Debian to Wolfi migration rehearsal (audit/restore-drill/2026-11-08-*) ran at synthetic scale on a developer machine, outside CI and unscheduled; reindex time on production data is unmeasured. A host or DR rebuild of the backup image fetches the pgBackRest and minio/mc sources from GitHub and mc's Go modules from proxy.golang.org, and the built image is kept in no registry.
       owner: platform
       review_by: 2027-01-31
 
@@ -535,7 +537,7 @@ controls:
       - script: arch:audit-exceptions
       - ci: "syft "
     gap:
-      reason: No static analysis (SAST) runs on the TypeScript source. Add pinned Semgrep rule packs with a findings ratchet before the first SOC 2 observation window.
+      reason: No static analysis (SAST) runs on the TypeScript source. Add pinned Semgrep rule packs with a findings ratchet before the first SOC 2 observation window. The backup image (self-built pgBackRest and mc, pinned apk packages) is scanned only by the path-filtered PR image gate; nothing rescans it on a schedule, so a new CVE in its pins surfaces at the next deploy/production PR.
       owner: engineering
       review_by: 2027-01-31
 
@@ -548,9 +550,11 @@ controls:
       - script: arch:fitness
       - file: .githooks/pre-push
       - ci: "cosign sign"
+      - file: .github/workflows/postgres-image.yml
+      - file: deploy/production/backup/mc/go.sum
       - script: arch:merge-artifacts
     gap:
-      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented. Also open — the CW-RUST-M02 Rust image (ghcr chartwarden-rust, built in that repo) is outside cosign verification; it cannot start today (compose profile + unpullable digest placeholder, arch:compose-policy) and must be signed and verified by deploy.sh before P2 (see CW-AC-07).
+      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented. Also open — the CW-RUST-M02 Rust image (ghcr chartwarden-rust, built in that repo) is outside cosign verification; it cannot start today (compose profile + unpullable digest placeholder, arch:compose-policy) and must be signed and verified by deploy.sh before P2 (see CW-AC-07). Also open — the Postgres image (ghcr chartwarden-postgres) is scanned, signed and SBOM-attested by .github/workflows/postgres-image.yml, but deploy.sh never touches postgres, so no automated step verifies it on the host; the operator runs cosign verify and verify-attestation per deploy/production/README.md (Postgres image, migration runbook step 1) and keeps the output as the change record. Under the backup overlay the running container is chartwarden-backup:local, built on the host from that digest plus pgBackRest and the MinIO client mc compiled from source at asserted commits (mc from the archived minio/mc release 7394ce0d, its whole Go module graph committed in backup/mc/go.mod + go.sum and built -mod=readonly, so its dependency CVEs are ours to bump) with pinned apk packages; pr-image-gate.yml builds and scans it on every PR, but the host-built image itself is not signed or attested.
       owner: engineering
       review_by: 2026-12-15
 
@@ -749,7 +753,7 @@ controls:
 
   # ---------------------------------------------------------------- M16 bereavement program (ADR-0109, PR 2: mailings)
   - id: CW-BR-07
-    title: The bereavement mailing batch PDF holds the name and mailing address of every recipient across the WHOLE TENANT (one batch spans every provider entity) and is therefore an INTERNAL and SEAM-ONLY M22 document (aggregate type bereavement_mailing_batch, a member of SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES, so no generic M22 read (by-id, list, content mint, ABAC predicate) admits it for ANY role, org_admin included, and neither M16 render event may name its template) — the whole mailing surface (config, runs, items, generate, download, confirm-mailed) is bereavement oversight only (keys bereavement.mailing.read|manage|dispatch plus org_scope_bereavement_oversight; holding the keys outside the oversight roles is a 403); the download additionally needs a FRESH step-up; addresses are decrypted in-process in the generate worker and handed to DocumentRenderer in memory, so they appear on no outbox event, job payload, log line, audit row, run column or item; the batch leaves only through the M22 org-level OrgDocumentAccessProvider seam, which intersects the caller's types with the seam-only set, refuses a patient's document, derives the accessor membership from the request context (never a caller-supplied id), writes the document_access_log row before the URL and signs the URL as an attachment, with a read audit that names the run
+    title: The bereavement mailing batch PDF holds the name and mailing address of every recipient across the WHOLE TENANT (one batch spans every provider entity) and is therefore an INTERNAL and SEAM-ONLY M22 document (aggregate type bereavement_mailing_batch, a member of SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES, so no generic M22 read (by-id, list, content mint, ABAC predicate) admits it for ANY role, org_admin included, and neither M16 render event may name its template) — the whole mailing surface (config, runs, items, generate, download, confirm-mailed) is bereavement oversight only (keys bereavement.mailing.read|manage|dispatch plus org_scope_bereavement_oversight; holding the keys outside the oversight roles is a 403); the download additionally needs a FRESH step-up; addresses are decrypted in-process in the generate worker and handed to DocumentRenderer in memory, so they appear on no outbox event, job payload, log line, audit row, run column or item; the batch leaves only through the M22 org-level OrgDocumentAccessProvider seam, whose staff door intersects the caller's types with the seam-only set plus the org-level grief-library types (and whose portal door serves the library type alone, see CW-BR-13), refuses a patient's document, derives the accessor membership from the request context (never a caller-supplied id), writes the document_access_log row before the URL and signs the URL as an attachment, with a read audit that names the run
     hipaa: ["164.312(a)(1)", "164.312(b)", "164.312(a)(2)(iv)", "164.312(d)"]
     soc2: ["CC6.1", "CC6.3", "C1.1"]
     status: implemented
@@ -810,6 +814,90 @@ controls:
       reason: "Purge or redaction of org-level bereavement_mailing_batch documents and their versions is deferred (ADR-0109 deferred list: compliance decides the retention period); until it ships, a destruction certificate for a decedent leaves that family's name and address inside the batch PDF, readable only through the oversight-only, step-up download seam."
       owner: compliance
       review_by: 2027-03-31
+
+  - id: CW-BR-11
+    title: Support groups are for program families only and their rosters and meeting links are least-privilege — enrollment and attendance require an active contact on an active plan with no open full or pause opt-out (program/program-contacts.ts); enrollment is the family's own window (bereavement_window on the contact — their counselor or oversight); bereavement_group_scope lets oversight and the group's STAFF facilitator manage and run a group, a VOLUNTEER facilitator only run it (roster, attendance) and only while M15's 418.78 gates pass (also checked when a volunteer-led group opens; an M15 outage denies); creating a group is oversight only and a non-facilitator gets 404; a drop-in walk-in who is not enrolled is recorded by oversight only; a volunteer's roster is the reduced projection (display name, enrollment status, attended count; no relationship or plan); the virtual meeting link is sealed with the tenant DEK and decrypted only for oversight and the group's facilitators on a READ (others see hasJoinUrl) and never returned by a write (create, edit, open, close), so no plaintext link is kept in the idempotency store; the roster lists live program families only, the nightly m16-close-13mo pass (isolated per org) withdraws enrollments of families who opted out or whose plan closed, and the roster read is audited with the group id; attendance writes one idempotent contact-log activity row per contact (no outreach row, no cadence item) and emits ids and counts only
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(3)(ii)(A)", "164.502(b)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      - file: apps/backend/__tests__/m16-program-activities.live.test.ts
+      - script: test:m16:program-activities:live
+      - script: test:rls:live:m16
+      - script: arch:abac-predicates
+      - script: arch:abac-composed
+      - file: apps/backend/src/modules/16-bereavement/abac-predicates.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/group.routes.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/group-service-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/groups/roster-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/groups/attendance-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/groups/enrollment-sweep.ts
+      - file: apps/backend/__tests__/bereavement-program-rules.test.ts
+      - file: apps/backend/__tests__/bereavement-inject.test.ts
+      - file: packages/db/migrations/1390_m16_support_groups.sql
+
+  - id: CW-BR-12
+    title: Memorial invitations name every recently bereaved family, so the invitation list, publish and attendance are bereavement oversight only (bereavement.memorial.manage plus org_scope_bereavement_oversight) and the list read is audited with the service id; invitations are selected set-based from program families of deaths within the service's window (default 12 months) and a family's letter goes out only through the mailing program's eligibility rule (CW-BR-08; a no-mailings or address-less family is invited portal-only, never mailed); a staff phone RSVP is the family's window; the portal RSVP and list (portal.bereavement.rsvp_own / read_program, session class bereaved_portal, window-gated) reach only invitations of a contact on the session's own portal account whose OWN plan is still open (any other is 404), the portal answer stops at the RSVP-by date, and every yes is capacity-checked under a row lock on the service (a published service's capacity cannot be lowered below its confirmed yes count); the nightly pass withdraws open invitations of a closed plan or a deceased / ineligible contact (an opted-out family keeps the invitation it holds, owner decision); the virtual memorial link is sealed with the tenant DEK, decrypted for staff only for oversight, and shown to a family only after it answered yes, on a READ of its invitations (no write response, staff or portal RSVP included, carries the plaintext link, so none is kept in the idempotency store); the portal also refuses a deceased or ineligible contact; the RSVP event carries ids, tokens and a guest count only
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.502(b)", "164.522(b)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      - file: apps/backend/__tests__/m16-program-activities.live.test.ts
+      - file: apps/backend/__tests__/bereavement-program-rules.test.ts
+      - file: apps/backend/src/modules/16-bereavement/groups/enrollment-sweep.ts
+      - script: test:m16:program-activities:live
+      - script: test:rls:live:m16
+      - file: apps/backend/src/modules/16-bereavement/routes/memorial.routes.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/memorial-service-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/memorials/publish-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/memorials/rsvp-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/seams/portal-content.ts
+      - file: apps/backend/src/modules/31-portal/routes/write.routes.ts
+      - file: packages/auth/src/rbac/session-class-permissions.ts
+      - file: packages/db/migrations/1391_m16_memorial_services.sql
+
+  - id: CW-BR-13
+    title: The grief library is org-level agency content that can never carry a patient's document to a family, and a published file cannot be swapped — M22's verified upload accepts video/mp4 only for the org-level aggregate type bereavement_library_item, only on the presigned path, up to 500 MB with the declared size signed into the PUT, and refuses at complete any file whose first bytes lack an ISO-BMFF ftyp box with an MP4 major brand (isom, iso2, iso5, iso6, mp41, mp42, avc1, dash, M4V); a library document never names a patient or admission (one shared assertion on the verified and the server upload paths); a new_version upload must declare its target's own aggregate type and patient (so the target's real MIME, size and org-level rules apply), and no M22 write may change a library document (422 DOCUMENT_LIBRARY_IMMUTABLE) — enforced at the route before the patientless-document scope shortcut (so an org-wide actor and /links are refused too) AND in the DB layer (lockDocForWrite, through which PATCH, link and tags go; the server-upload version path; upsertRenderedDocument), and an intake batch never adopts an internal-only or library document as its source (uploadBatch and the review relink refuse it; the records-request match, a background job, leaves such a document where it is and logs the skip), so the file oversight published is the file families get and never moves onto a chart; M16 registers a document only after the M22 seam confirms it is an active org-level library document, re-checks it at publish (kind and MIME refreshed) and refuses to publish a video without a PDF transcript (a published video cannot drop it); families reach PUBLISHED items only, through OrgDocumentAccessProvider.mintPortalLibraryUrl, which serves the library type alone (never the seam-only mailing batch, an internal letter or a patient-linked document) and writes the document_access_log row naming the portal account and session before the short-lived attachment URL is returned (no ledger, no URL), with a read audit naming the item; the staff preview writes the staff ledger row and a read audit naming the item
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.312(c)(1)"]
+    soc2: ["CC6.1", "CC6.7", "C1.1"]
+    status: implemented
+    evidence:
+      - file: apps/backend/src/modules/22-documents/routes/server-upload.test.ts
+      - file: apps/backend/__tests__/m22-internal-documents.test.ts
+      - file: apps/backend/src/modules/22-documents/documents-route-service-db.ts
+      - file: apps/backend/src/modules/22-documents/extraction/review-workspace.ts
+      - file: apps/backend/src/modules/22-documents/records-request/inbound-match.ts
+      - file: apps/backend/src/modules/22-documents/seams/drizzle-seam-store.ts
+      - script: test:f238:records-request:live
+      - file: apps/backend/__tests__/bereavement-program-rules.test.ts
+      - file: apps/backend/__tests__/m22-documents-write.live.test.ts
+      - file: apps/backend/__tests__/m16-program-activities.live.test.ts
+      - file: apps/backend/src/modules/22-documents/internal-documents.ts
+      - file: apps/backend/src/modules/22-documents/routes/documents-routes.ts
+      - script: test:m16:program-activities:live
+      - script: test:m22:write:live
+      - script: test:f225:m22-portal-access-log:live
+      - file: apps/backend/src/modules/22-documents/routes/verified-upload.ts
+      - file: apps/backend/src/modules/22-documents/seams/org-document-access.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/library-service-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/seams/portal-content.ts
+      - file: apps/backend/src/modules/31-portal/routes/read.routes.ts
+      - file: apps/backend/__tests__/bereavement-mailing-batch.test.ts
+      - file: packages/db/migrations/1392_m22_document_aggregate_type_bereavement_library_item.sql
+      - file: packages/db/migrations/1393_m16_grief_library.sql
+
+  - id: CW-BR-14
+    title: A decedent's support-group enrollments and attendance and memorial invitations (the three program tables that name a plan and a contact) are deleted by the bereavement eraser on the destruction role — migrations 1390 and 1391 grant chartwarden_destruction SELECT and DELETE on exactly those three tables with org-pinned policies and nothing on the org-level group, session, service and library tables; the app role holds no DELETE on any of them; the activity rows those writes produced are deleted with the decedent's contact log
+    hipaa: ["164.310(d)(2)(i)", "164.312(a)(1)"]
+    soc2: ["CC6.5", "C1.2"]
+    status: implemented
+    evidence:
+      - file: apps/backend/__tests__/m16-program-activities.live.test.ts
+      - script: test:m16:program-activities:live
+      - script: test:rls:live:m16
+      - file: apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts
+      - file: packages/db/migrations/1390_m16_support_groups.sql
+      - file: packages/db/migrations/1391_m16_memorial_services.sql
 
 # Every one of these must be cited by at least one row (the gate enforces it), so a row cannot be
 # deleted to make a gap disappear.

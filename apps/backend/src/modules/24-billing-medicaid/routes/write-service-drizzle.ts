@@ -20,6 +20,7 @@ import {
   buildHospiceLines,
   deriveMedicaidControlNumber,
   electronicSubmissionRefusal,
+  medicaidClaimRouteReadiness,
   medicaidClaimMachine,
   parseMedicaidControlNumber,
   rbArrangementMachine,
@@ -375,8 +376,13 @@ export function buildDrizzleM24WriteService(
       validationRunIdLatest: r.validationRunIdLatest ?? null,
       eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
       electronicSubmissionRefusal:
-        electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ??
-        null,
+        electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState), r.mcoId ?? null)
+          ?.message ?? null,
+      routeReadiness: medicaidClaimRouteReadiness(
+        r.serviceState,
+        r.mcoId ?? null,
+        isGatewayBound(r.serviceState),
+      ),
       createdAt: iso(r.createdAt),
       updatedAt: iso(r.updatedAt),
     };
@@ -496,12 +502,13 @@ export function buildDrizzleM24WriteService(
 
   return {
     // ── route 1 — assemble. The claim row needs three externally-owned values: `patient_payer_id` (M5),
-    // `service_state` (the state whose Medicaid program is billed) and `state_plan_code_id` (WX-PR-011:
+    // `service_state` (the state-level service/credential scope; it does not classify FFS vs MCO) and
+    // `state_plan_code_id` (WX-PR-011:
     // resolved from the M24-owned `medicaid_state_plan_code` platform catalog — see the schema file's
     // deviation note on why this is self-owned rather than routed through M40's entity-merge engine).
     // M5's §3.4 PatientCoverageReader gives the coverage; the service state is read from the provider
-    // entity's own active trading-partner credential (an M24-owned row: you cannot bill a state you hold
-    // no credential for, which makes it the authoritative source, not a guess).
+    // entity's own active trading-partner credential (an M24-owned row). This identifies the provider's
+    // configured state scope, not a verified coverage program or permission to transmit.
     //
     // PER-LINE ASSEMBLY (WX-PR-011 follow-up, closed): walks M6 LOC periods into hospice-LOC lines
     // (RHC/CHC/IRC/GIP, one line per contiguous same-LOC segment clipped to the claim window, rate from
@@ -845,7 +852,6 @@ export function buildDrizzleM24WriteService(
         const updated = await tx
           .update(C)
           .set({
-            mcoId: input.mcoId === undefined ? claim.mcoId : input.mcoId,
             version: claim.version + 1,
             updatedAt: new Date(),
             updatedByMembershipId: actor.userId,
@@ -1062,11 +1068,14 @@ export function buildDrizzleM24WriteService(
         const refusal = electronicSubmissionRefusal(
           claim.serviceState,
           isGatewayBound(claim.serviceState),
+          claim.mcoId ?? null,
         );
         if (refusal) throw new ChartWardenError(refusal.code, refusal.message, 422);
         const submissionId = randomUUID();
         const submittedAt = new Date();
-        const channel = input.channelHint ?? "direct_mmis";
+        // Client hints cannot select or authorize a destination. This is reached only if the readiness
+        // gate can prove a sendable route; all routes in the current registry are blocked above.
+        const channel = claim.mcoId ? "cco_clearinghouse" : "direct_mmis";
         // Adapter wire I/O is DEFERRED — the submission row is created in `pending` and the per-state submit
         // worker drives the real envelope when the adapter binds (§4.5/§4.9). The state advances to SUBMITTED.
         await tx.insert(SUB).values({

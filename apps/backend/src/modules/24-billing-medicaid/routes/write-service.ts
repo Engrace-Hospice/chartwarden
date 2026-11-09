@@ -43,7 +43,6 @@ export interface AssembleClaimInput {
 }
 export interface UpdateDraftClaimInput {
   expectedVersion: number | null;
-  mcoId?: string | null;
 }
 export interface SubmitClaimInput {
   expectedVersion: number | null;

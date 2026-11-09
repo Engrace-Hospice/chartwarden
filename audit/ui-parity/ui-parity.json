@@ -1040,6 +1040,46 @@
       "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
+      "id": "bereavement.groups",
+      "path": "/bereavement/groups",
+      "permission": "bereavement.group.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.groups.detail",
+      "path": "/bereavement/groups/:groupId",
+      "permission": "bereavement.group.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.memorials",
+      "path": "/bereavement/memorials",
+      "permission": "bereavement.memorial.rsvp"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.memorials.detail",
+      "path": "/bereavement/memorials/:serviceId",
+      "permission": "bereavement.memorial.rsvp"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.library",
+      "path": "/bereavement/library",
+      "permission": "bereavement.library.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
       "id": "bereavement.plan.outreach",
       "path": "/bereavement/plans/:planId/outreach",
       "permission": "bereavement.outreach.read"

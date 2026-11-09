@@ -314,6 +314,56 @@ describe.skipIf(!DB_URL)(
       expect(flipped.provider_entity_id).toBe(peA);
     });
 
+    it("two contacts confirmed on ONE plan, each with their own consent, BOTH flip (the evaluation is pinned to each contact's own record)", async () => {
+      const patientId = crypto.randomUUID();
+      const planId = await seedBereavementPlan({
+        organizationId: ORG_A,
+        providerEntityId: peA,
+        patientId,
+        assignedCounselorUserId: crypto.randomUUID(),
+      });
+      const people: { accountId: string; contactId: string; consentRecordId: string }[] = [];
+      for (const n of [1, 2]) {
+        const userId = await seedUser(`two-${n}-${crypto.randomUUID()}@example.test`);
+        const accountId = await seedPortalAccount(ORG_A, userId);
+        const consentRecordId = await seedActiveConsentRecord({
+          organizationId: ORG_A,
+          providerEntityId: peA,
+          patientId,
+          version: n + 4,
+        });
+        const contactId = await seedContact({
+          organizationId: ORG_A,
+          providerEntityId: peA,
+          planId,
+          status: "active",
+          portalAccountId: accountId,
+          consentRecordId,
+        });
+        await seedGrant({
+          organizationId: ORG_A,
+          providerEntityId: peA,
+          portalAccountId: accountId,
+          patientId,
+          grantKind: "family_caregiver",
+        });
+        people.push({ accountId, contactId, consentRecordId });
+      }
+      for (const p of people) {
+        await runWithRequestContext({ organizationId: ORG_A, userId: "" }, () =>
+          consumer.handle({
+            organizationId: ORG_A,
+            payload: { planId, contactId: p.contactId, portalAccountId: p.accountId },
+          }),
+        );
+      }
+      for (const p of people) {
+        const flipped = await grantRowForPatient(ORG_A, p.accountId, patientId);
+        expect(flipped?.grant_kind).toBe("bereaved_family");
+        expect(flipped?.source_consent_record_id).toBe(p.consentRecordId);
+      }
+    });
+
     it("a contact that has since left active (redelivered against stale payload state) is a true no-op", async () => {
       const patientId = crypto.randomUUID();
       const userId = await seedUser(`u2-${crypto.randomUUID()}@example.test`);

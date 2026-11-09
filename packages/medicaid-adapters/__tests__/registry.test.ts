@@ -7,6 +7,7 @@ import {
   MEDICAID_NO_ELECTRONIC_GATEWAY_CODE,
   MedicaidAdapterRegistry,
   electronicSubmissionRefusal,
+  medicaidClaimRouteReadiness,
 } from "../src/registry";
 
 describe("MedicaidAdapterRegistry", () => {
@@ -117,28 +118,58 @@ describe("isValidOhpMemberId (Oregon mod-10)", () => {
 });
 
 describe("electronicSubmissionRefusal (S11)", () => {
-  it("allows Oregon, the only live gateway", () => {
-    expect(electronicSubmissionRefusal("OR")).toBeNull();
+  it("keeps the Oregon reference route blocked even when a gateway is configured", () => {
+    expect(electronicSubmissionRefusal("OR")?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
+    expect(electronicSubmissionRefusal("OR")?.message).toContain("cannot verify");
   });
 
   it.each(["WA", "ID", "CA", "NV", "TX"])(
-    "refuses %s with the stable code and a manual/paper alternative",
+    "does not infer a program or destination for %s when its MCO mapping is absent",
     (state) => {
       const r = electronicSubmissionRefusal(state);
       expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
       expect(r?.message).toContain(state);
-      expect(r?.message).toMatch(/manually/);
-      expect(r?.message).toMatch(/paper/);
+      expect(r?.message).toContain("cannot verify");
+      expect(r?.message).not.toMatch(/paper|portal|manually/i);
+    },
+  );
+
+  it.each(["WA", "ID", "CA", "NV", "TX"])(
+    "keeps an explicitly recorded %s managed-care assignment blocked",
+    (state) => {
+      const r = electronicSubmissionRefusal(state, false, "synthetic-mco-id");
+      expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
+      expect(r?.message).toContain(state === "TX" ? "No verified Medicaid state/program route" : "not implemented");
     },
   );
 });
 
 describe("electronicSubmissionRefusal follow-ups (S11)", () => {
-  it("refuses Oregon with the same code when its gateway is not bound in the deployment", () => {
-    const r = electronicSubmissionRefusal("OR", false);
+  it("does not infer an Oregon FFS destination from a missing MCO mapping", () => {
+    const r = electronicSubmissionRefusal("OR", false, null);
     expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
-    expect(r?.message).toMatch(/not configured/);
-    expect(r?.message).toMatch(/paper/);
+    expect(r?.message).toMatch(/cannot verify whether this OR coverage is fee-for-service/);
+  });
+
+  it("does not infer FFS from a missing MCO mapping and never treats a gateway as certification", () => {
+    expect(medicaidClaimRouteReadiness("OR", null, true)).toMatchObject({
+      programKind: "unresolved",
+      programAssignmentVerified: false,
+      requestedChannel: null,
+      transportConfigured: true,
+      submissionAvailable: false,
+      status: "unsupported_program_route",
+    });
+    expect(medicaidClaimRouteReadiness("OR", "mco-id", true)).toMatchObject({
+      programKind: "managed_care",
+      requestedChannel: "cco_clearinghouse",
+      programAssignmentVerified: false,
+      submissionAvailable: false,
+      status: "unsupported_program_route",
+    });
+    expect(medicaidClaimRouteReadiness("WA", "mco-id", true).status).toBe(
+      "unsupported_state_program",
+    );
   });
 
   it("the web claim editor uses the same code string as the backend", () => {

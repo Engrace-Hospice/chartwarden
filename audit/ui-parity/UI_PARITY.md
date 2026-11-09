@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 388 screens wired across web/portal/admin.
+**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 393 screens wired across web/portal/admin.
 - **admin**: 40 screen(s)
 - **portal**: 19 screen(s)
-- **web**: 329 screen(s)
+- **web**: 334 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -151,6 +151,11 @@
 | web | 16-bereavement | `bereavement.mailings` | `/bereavement/mailings` | `bereavement.mailing.read` | ✅ |
 | web | 16-bereavement | `bereavement.mailings.settings` | `/bereavement/mailings/settings` | `bereavement.mailing.manage` | ✅ |
 | web | 16-bereavement | `bereavement.mailings.run` | `/bereavement/mailings/runs/:runId` | `bereavement.mailing.read` | ✅ |
+| web | 16-bereavement | `bereavement.groups` | `/bereavement/groups` | `bereavement.group.read` | ✅ |
+| web | 16-bereavement | `bereavement.groups.detail` | `/bereavement/groups/:groupId` | `bereavement.group.read` | ✅ |
+| web | 16-bereavement | `bereavement.memorials` | `/bereavement/memorials` | `bereavement.memorial.rsvp` | ✅ |
+| web | 16-bereavement | `bereavement.memorials.detail` | `/bereavement/memorials/:serviceId` | `bereavement.memorial.rsvp` | ✅ |
+| web | 16-bereavement | `bereavement.library` | `/bereavement/library` | `bereavement.library.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | `bereavement.outreach.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | `bereavement.risk.read` | ✅ |
 | web | 16-bereavement | `bereavement.predeath` | `/bereavement/pre-death/:admissionId` | `bereavement.assessment_draft.read` | ✅ |

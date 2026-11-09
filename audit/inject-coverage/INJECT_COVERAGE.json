@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1962,
-    "coveredRoutes": 1962,
-    "directRoutesReferenced": 1787
+    "routes": 1997,
+    "coveredRoutes": 1997,
+    "directRoutesReferenced": 1811
   },
   "modules": [
     {
@@ -297,16 +297,17 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 53,
+      "routes": 82,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/bereavement-inject.test.ts",
         "apps/backend/__tests__/m16-mailings.live.test.ts",
+        "apps/backend/__tests__/m16-program-activities.live.test.ts",
         "apps/backend/__tests__/m16-routes.live.test.ts",
         "apps/backend/__tests__/m22-internal-documents.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 53
+      "directRoutesReferenced": 71
     },
     {
       "module": "17-scheduling",
@@ -377,6 +378,7 @@
         "apps/backend/__tests__/f238-records-request-expiry.test.ts",
         "apps/backend/__tests__/f238-records-request.test.ts",
         "apps/backend/__tests__/m16-mailings.live.test.ts",
+        "apps/backend/__tests__/m16-program-activities.live.test.ts",
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
         "apps/backend/__tests__/m22-internal-documents.live.test.ts",
         "apps/backend/__tests__/m22-internal-documents.test.ts",
@@ -392,7 +394,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 108,
+      "routes": 109,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
@@ -430,7 +432,7 @@
         "apps/backend/__tests__/m41-enrollment-reports.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 75
+      "directRoutesReferenced": 76
     },
     {
       "module": "24-billing-medicaid",
@@ -521,17 +523,18 @@
     },
     {
       "module": "31-portal",
-      "routes": 68,
+      "routes": 72,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
+        "apps/backend/__tests__/m16-program-activities.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin-decision.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 63
+      "directRoutesReferenced": 67
     },
     {
       "module": "32-ai-platform",
@@ -734,7 +737,7 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 28,
+      "routes": 29,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
@@ -745,7 +748,7 @@
         "apps/backend/__tests__/m41-commercial-submission-routes.test.ts",
         "apps/backend/__tests__/m41-enrollment-reports.live.test.ts"
       ],
-      "directRoutesReferenced": 19
+      "directRoutesReferenced": 20
     }
   ]
 }

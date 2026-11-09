@@ -19,6 +19,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropLiveRoles } from "./_live-roles";
@@ -372,11 +373,24 @@ describe.skipIf(!DB_URL)(
       expect(guarded.rows.map((x) => x.relname)).toEqual(DRAFT_SUBTREE);
     });
 
-    it("terminalizes a queued claim submission exactly once and rejects deletion", async () => {
+    it("reserves and terminalizes a queued claim submission exactly once and rejects deletion", async () => {
+      const dispatchToken = randomUUID();
+      const reserved = await withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE claim_submission
+              SET dispatch_state = 'sending', dispatch_token = $2, dispatch_started_at = now()
+            WHERE id = $1
+        RETURNING dispatch_state`,
+          [a.submission, dispatchToken],
+        ),
+      );
+      expect(reserved.rows[0]?.dispatch_state).toBe("sending");
+
       const updated = await withOrg(ORG_A, () =>
         db.query(
           `UPDATE claim_submission
-              SET outcome = 'submitted', generated_file_uri = 's3://claims/submitted.x12',
+              SET outcome = 'submitted', dispatch_state = 'finished',
+                  generated_file_uri = 's3://claims/submitted.x12',
                   submitted_at = now(), worker_correlation_id = 'corr-1'
             WHERE id = $1
         RETURNING outcome`,
@@ -388,12 +402,13 @@ describe.skipIf(!DB_URL)(
       await expect(
         withOrg(ORG_A, () =>
           db.query(
-            `UPDATE claim_submission SET outcome = 'failed_portal', outcome_reason = 'late rewrite'
+            `UPDATE claim_submission SET outcome = 'failed_portal', dispatch_state = 'finished',
+                outcome_reason = 'late rewrite'
               WHERE id = $1`,
             [a.submission],
           ),
         ),
-      ).rejects.toThrow(/immutable except for one queued-to-terminal transition/);
+      ).rejects.toThrow(/authorized dispatch lifecycle transition/);
 
       await expect(
         db.query("DELETE FROM claim_submission WHERE id = $1", [a.submission]),

@@ -254,6 +254,12 @@ same key, is reconciled against Claim.MD's upload list by our own Filename befor
 `production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`), and
 `CLAIMMD_ACCOUNT_REFERENCE` (stable, non-secret internal account identity; it is not the AccountKey). The envelope ids
 (ISA06/GS02 = account number, ISA08/GS03 = `CLAIMMD`) are `billing_edi_profile` rows under `route_key = 'claimmd'`.
+For M23 claims, the payer 2010BB identifier is resolved from platform-owned, effective-dated
+`CLAIMMD_M23_PAYER_ROUTES` records keyed by organization, provider entity, MAC jurisdiction, account reference and
+`CLAIMMD_ACCOUNT_USAGE`. A MAC jurisdiction or global `CLEARINGHOUSE_PAYER_ID` cannot authorize a Claim.MD route; the
+resolved identifier must also exist as an active M40 X12 payer. The route fingerprint is stamped into the durable submit
+outbox/job and checked again immediately before upload so a changed route holds the queued attempt. This configuration
+has not been externally route-certified; no IDs are backfilled from MAC values.
 Production account settings: 837I on, Transmit Approval off, automatic corrected claims off, SFTP off.
 Claim.MD's limit (100 requests a minute per account, then an HTTP 403 block) is spent from one counter per usage mode,
 injected by the backend from the shared Valkey rate-limit store so every process draws on one budget; a request with no

@@ -1,8 +1,8 @@
 // apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-submission.ts — the M23 workers' use of the bound
 // ClearinghouseTransport (ADR-0053, issue #707). ONE env switch decides the path: `CLEARINGHOUSE_VENDOR` unset keeps the
 // legacy launch-gateway ports; set, the claim/NOE/NOTR submit + retry workers and the 999/277CA ack crons go through
-// the transport and NEVER fall back to the legacy MAC portal (a degraded transport answer fails the job so BullMQ
-// retries it).
+// the transport and NEVER fall back to the legacy MAC portal. Claim workers distinguish a known pre-send refusal
+// from a transport result explicitly marked ambiguous; only the latter remains in doubt.
 import type {
   AckEvent,
   ClearinghouseBinding,
@@ -137,8 +137,21 @@ const UPLOAD_TO_SUBMISSION_KIND: Record<TransportUploadKind, SubmissionKind> = {
   transfer_notice: "transfer_notice",
 };
 
-function failure(what: string, code: string, reason: string): Error {
-  return new Error(`clearinghouse ${what} failed (${code}): ${reason}`);
+export class ClearinghouseTransportError extends Error {
+  constructor(
+    readonly operation: string,
+    readonly code: string,
+    readonly ambiguous = false,
+    message = `clearinghouse ${operation} failed (${code})`,
+  ) {
+    super(message);
+    this.name = "ClearinghouseTransportError";
+  }
+}
+
+function failure(what: string, code: string, reason: string, ambiguous = false): ClearinghouseTransportError {
+  // `reason` is useful to the caller but must never be persisted or logged; it may contain vendor details.
+  return new ClearinghouseTransportError(what, code, ambiguous, `clearinghouse ${what} failed (${code}): ${reason}`);
 }
 
 type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
@@ -157,6 +170,8 @@ export type TransportUpload = (input: {
   readonly attemptIndex?: number;
   readonly locationId?: string | null;
   readonly noticeId?: string;
+  /** Server-stamped route snapshot carried by the durable submit request; never accepted from user input. */
+  readonly expectedRouteFingerprint?: string;
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
 
 /**
@@ -204,8 +219,8 @@ export function transportUploadPerOrg(deps: {
 }
 
 /**
- * `MacPortalPort.upload` over the transport. The legacy return shape is kept so the workers' success/failure handling
- * is unchanged: a vendor answer is `accepted`, anything degraded THROWS (the claim worker records `failed_portal`).
+ * `MacPortalPort.upload` over the transport. The legacy return shape is kept; typed errors preserve whether a degraded
+ * answer proves a pre-send refusal or whether the external outcome is ambiguous.
  */
 export function transportUpload(transport: M23TransportDeps): TransportUpload {
   return async (input) => {
@@ -224,6 +239,9 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
     let evidenceId: string | null = null;
     let noticeEvidenceId: string | null = null;
     if (transport.binding.vendor === "claimmd") {
+      if (kind === "claim" && (!input.expectedRouteFingerprint || input.expectedRouteFingerprint !== ctx.claimMdRouteFingerprint)) {
+        throw failure(kind, CH.INVALID_REQUEST, "the Claim.MD payer route changed after submission was authorized");
+      }
       const exact = payloadFor(transport.binding.vendor, kind, input);
       if (exact.format !== "x12")
         throw failure(kind, CH.INVALID_REQUEST, "Claim.MD evidence requires the final X12 payload");
@@ -373,7 +391,12 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         ? transport.binding.transport.submitClaim(ctx, submission)
         : transport.binding.transport.submitNotice(ctx, submission),
     );
-    if (!result.ok) throw failure(kind, result.degraded.code, result.degraded.reason);
+    if (!result.ok) throw failure(
+      kind,
+      result.degraded.code,
+      result.degraded.reason,
+      result.degraded.ambiguous === true || result.degraded.code === CH.IN_DOUBT,
+    );
     if ((evidenceId && evidence.submission) || (noticeEvidenceId && evidence.notice)) {
       const value = result.data.clearinghouseSubmissionId;
       const fieldNamespace: Record<
@@ -427,6 +450,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
           kind,
           CH.IN_DOUBT,
           "Claim.MD accepted the upload but receipt evidence could not be recorded",
+          true,
         );
       }
     }
