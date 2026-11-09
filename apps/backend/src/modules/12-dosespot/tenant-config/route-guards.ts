@@ -2,7 +2,12 @@
 // routes share: the server-assembled write actor, the `Idempotency-Key` presence guard and the optional `If-Match` version.
 // M12 has no `routes/concurrency.ts` of its own; these are the same few lines M23 and M34 carry (a third copy: extract when a
 // fourth appears).
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  ForbiddenError,
+  UnauthorizedError,
+  ValidationError,
+} from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ClinicActor } from "./service";
 
@@ -10,7 +15,10 @@ export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promi
 
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
-/** The acting tenant admin, assembled server-side from the session (never the body); 401 without an active membership. */
+/**
+ * The acting tenant admin, assembled server-side from the session (never the body). 401 without a session; 403 for a signed-in
+ * session with no active membership (the web shell maps any 401 to /expired, so that case must not be one).
+ */
 export interface ClinicRequestActor extends ClinicActor {
   readonly request: {
     readonly correlationId?: string;
@@ -22,16 +30,10 @@ export interface ClinicRequestActor extends ClinicActor {
 
 export function clinicActorOf(request: FastifyRequest): ClinicRequestActor {
   const ctx = request.context;
-  const membershipId = ctx?.attributes?.membershipId;
-  if (
-    !ctx?.organizationId ||
-    !ctx.userId ||
-    typeof membershipId !== "string" ||
-    membershipId === ""
-  ) {
-    throw new UnauthorizedError(
-      "an active membership is required to change the DoseSpot registration",
-    );
+  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  const membershipId = ctx.attributes?.membershipId;
+  if (typeof membershipId !== "string" || membershipId === "") {
+    throw new ForbiddenError("A session without an organization membership cannot act");
   }
   return {
     organizationId: ctx.organizationId,
