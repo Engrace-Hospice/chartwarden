@@ -235,7 +235,7 @@ function RegisterTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, r.id)}
               >
                 <td>
                   <span className="wx-row-title wx-data-md">{r.tenantAccountId}</span>

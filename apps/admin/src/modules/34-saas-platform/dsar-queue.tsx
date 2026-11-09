@@ -254,7 +254,7 @@ function DsarTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, j.id)}
               >
                 <td>
                   <span className="wx-row-title">

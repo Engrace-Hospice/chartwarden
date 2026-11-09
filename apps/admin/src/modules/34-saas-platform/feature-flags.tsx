@@ -13,6 +13,7 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useRestoreFocus,
   useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
@@ -88,6 +89,13 @@ export function FeatureFlags(): JSX.Element {
   // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
   // catches up to the same text — without this the effect would fetch the identical query a second time.
   const loadedKey = useRef<string | null>(null);
+  // A kill-switch commit closes the drawer and reloads, which unmounts the row it opened from: focus the
+  // row again once the reload lands, instead of leaving keyboard focus on the page body.
+  const reopenedRowId = useRef<string | null>(null);
+  const captureFocus = useRestoreFocus(loading, () => {
+    const id = reopenedRowId.current;
+    return id ? document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"]`) : null;
+  });
 
   const load = useCallback(
     async (org: string = debouncedOrg) => {
@@ -144,11 +152,13 @@ export function FeatureFlags(): JSX.Element {
       setCommitting(false);
       setCeremony(null);
       if (!err) {
+        reopenedRowId.current = flag.id;
+        captureFocus();
         close();
         void load();
       }
     },
-    [ceremony, client, load, close],
+    [ceremony, client, load, close, captureFocus],
   );
 
   // A failed load empties the list, so no drawer shows a flag that was last read before the failure (and a retry cannot re-mount it from stale data).
@@ -364,7 +374,7 @@ function FlagsTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, f.id)}
               >
                 <td>
                   <span className="wx-row-title wx-data-md">{f.flagKey}</span>

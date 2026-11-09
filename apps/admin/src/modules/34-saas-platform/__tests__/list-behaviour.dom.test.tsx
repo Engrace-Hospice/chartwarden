@@ -710,3 +710,23 @@ describe("debounced text filters", () => {
     expect(listCalls(path)).toHaveLength(3);
   });
 });
+
+describe("FeatureFlags kill-switch commit", () => {
+  it("returns focus to the flag's row after the drawer closes and the list reloads", async () => {
+    mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      "/api/v1/platform/feature-flags/beta.thing/kill-switch": json({}, 202),
+    });
+    await waitFor(rowShown);
+    fireEvent.keyDown(firstRow(), { key: "Enter" });
+    await screen.findByRole("complementary", { name: "Feature flag" });
+    fireEvent.click(screen.getByRole("button", { name: "Arm kill switch…" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText(/Type the flag key to confirm/), {
+      target: { value: "beta.thing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm & toggle" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(firstRow()));
+  });
+});
