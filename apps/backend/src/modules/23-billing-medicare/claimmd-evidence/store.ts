@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { X12ClaimEvidence } from "@chartwarden/x12-837-client";
+import type {
+  X12ClaimEvidence,
+  X12SubmittedServiceLineEvidence,
+} from "@chartwarden/x12-837-client";
 import { and, eq } from "drizzle-orm";
 import type { createClaimMdEvidenceCipher } from "./cipher";
 
 const E = schema.claimmdSubmissionEvidence;
+const L = schema.claimmdSubmissionLineEvidence;
 const R = schema.claimmdSubmissionReceiptObservations;
 type Cipher = ReturnType<typeof createClaimMdEvidenceCipher>;
 
@@ -20,6 +24,15 @@ export interface ClaimMdEvidenceInput {
   readonly accountReference: string;
   readonly usage: "test" | "production";
   readonly x12Claim: X12ClaimEvidence;
+  readonly submittedLines?: readonly {
+    readonly internalClaimLineId: string;
+    readonly revenueCode: string | null;
+    readonly procedureCode: string | null;
+    readonly serviceFrom: string | null;
+    readonly serviceTo: string | null;
+    readonly units: string | null;
+    readonly chargeCents: number | null;
+  }[];
   readonly payloadSha256: string;
   readonly outboundReference: string;
   readonly reservedAt: Date;
@@ -89,6 +102,67 @@ export function createClaimMdSubmissionEvidenceStore(input: {
         input.db,
         { organizationId: evidence.organizationId, userId: "" },
         async (tx) => {
+          const persistSubmittedLines = async (evidenceId: string) => {
+            if (evidence.submittedLines === undefined) return;
+            if (evidence.submittedLines.length !== evidence.x12Claim.serviceLines.length)
+              throw new Error("CLAIMMD_LINE_EVIDENCE_COUNT_CONFLICT");
+            const values = evidence.submittedLines.map((line, index) => {
+              const sent: X12SubmittedServiceLineEvidence | undefined =
+                evidence.x12Claim.serviceLines[index];
+              if (
+                !sent ||
+                sent.position !== index + 1 ||
+                sent.revenueCode !== line.revenueCode ||
+                sent.procedureCode !== line.procedureCode ||
+                sent.serviceFrom !== line.serviceFrom ||
+                sent.serviceTo !== line.serviceTo ||
+                sent.units !== line.units ||
+                sent.chargeCents !== line.chargeCents
+              )
+                throw new Error("CLAIMMD_LINE_EVIDENCE_PAYLOAD_CONFLICT");
+              return {
+                evidenceId,
+                organizationId: evidence.organizationId,
+                providerEntityId: evidence.providerEntityId,
+                claimId: evidence.claimId,
+                submissionId: evidence.submissionId,
+                attemptKey: evidence.attemptKey,
+                internalClaimLineId: line.internalClaimLineId,
+                linePosition: sent.position,
+                lineItemControlNumber: sent.lineItemControlNumber,
+                revenueCode: sent.revenueCode,
+                procedureCode: sent.procedureCode,
+                serviceFrom: sent.serviceFrom,
+                serviceTo: sent.serviceTo,
+                units: sent.units,
+                chargeCents: sent.chargeCents,
+                payloadSha256: evidence.payloadSha256,
+                accountReference: evidence.accountReference,
+                usage: evidence.usage,
+              };
+            });
+            if (values.length) await tx.insert(L).values(values).onConflictDoNothing();
+            const stored = await tx
+              .select()
+              .from(L)
+              .where(eq(L.evidenceId, evidenceId))
+              .orderBy(L.linePosition);
+            if (
+              stored.length !== values.length ||
+              stored.some((row, index) => {
+                const expected = values[index];
+                return (
+                  !expected ||
+                  row.internalClaimLineId !== expected.internalClaimLineId ||
+                  row.linePosition !== expected.linePosition ||
+                  row.lineItemControlNumber !== expected.lineItemControlNumber ||
+                  row.payloadSha256 !== expected.payloadSha256 ||
+                  row.chargeCents !== expected.chargeCents
+                );
+              })
+            )
+              throw new Error("CLAIMMD_LINE_EVIDENCE_IMMUTABILITY_CONFLICT");
+          };
           const inserted = await tx
             .insert(E)
             .values({
@@ -120,7 +194,10 @@ export function createClaimMdSubmissionEvidenceStore(input: {
             })
             .onConflictDoNothing()
             .returning({ id: E.id });
-          if (inserted[0]) return id;
+          if (inserted[0]) {
+            await persistSubmittedLines(id);
+            return id;
+          }
           const [existing] = await tx
             .select()
             .from(E)
@@ -152,6 +229,7 @@ export function createClaimMdSubmissionEvidenceStore(input: {
             oldTin !== evidence.x12Claim.billingTin
           )
             throw new Error("CLAIMMD_EVIDENCE_CONFLICT");
+          await persistSubmittedLines(existing.id);
           return existing.id;
         },
       );

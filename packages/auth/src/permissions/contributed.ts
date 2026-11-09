@@ -3533,6 +3533,30 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "claim_assigned_to_actor",
   },
+  "remittance.match_review": {
+    resource: "claimmd_era_match_decision",
+    action: "resolve",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.financial_review": {
+    resource: "claimmd_era_financial_review_decision",
+    action: "review",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.posting.approve": {
+    resource: "claimmd_era_posting_plan",
+    action: "approve",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.posting.execute": {
+    resource: "claimmd_era_posting_plan",
+    action: "execute",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
   "remittance.adjustment.override": {
     resource: "remittance_adjustment",
     action: "override",

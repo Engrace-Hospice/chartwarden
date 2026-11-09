@@ -1,0 +1,5 @@
+# Historical attempt and line contracts
+
+M23 exports an exact-scope Claim.MD evidence projection and validates each candidate against its own `claim_submission`, claim, and clearinghouse attempt records. M41 receives only the evidence projection through the composition root and validates its own `commercial_submission`, claim, payer route and correction lineage. Both readers require organization, provider, account reference, environment and PCN scope; they return attempt-specific evidence identity and never read current mutable line data as historical evidence.
+
+Attempts remain distinct by immutable evidence ID and attempt key; M41 correction lineage and M23 replacement/void identity are represented separately. Dates and cents are returned only when their send-time/source contracts establish them. Submitted lines are explicitly `unavailable` because neither current 837 path emits a line-control reference mapped to internal line IDs and the immutable evidence table stores no line snapshot.

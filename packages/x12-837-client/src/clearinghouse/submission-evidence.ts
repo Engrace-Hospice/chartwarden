@@ -11,7 +11,30 @@ export interface X12ClaimEvidence {
   readonly isa13: string;
   readonly gs06: string;
   readonly st02: string;
+  /** Service-line facts extracted from the exact outbound 837 bytes. References are absent unless REF*6R was sent. */
+  readonly serviceLines: readonly X12SubmittedServiceLineEvidence[];
 }
+
+export interface X12SubmittedServiceLineEvidence {
+  readonly position: number;
+  readonly lineItemControlNumber: string | null;
+  readonly revenueCode: string | null;
+  readonly procedureCode: string | null;
+  readonly serviceFrom: string | null;
+  readonly serviceTo: string | null;
+  readonly units: string | null;
+  readonly chargeCents: number | null;
+}
+
+type PendingSubmittedServiceLine = {
+  lineItemControlNumber: string | null;
+  revenueCode: string | null;
+  procedureCode: string | null;
+  serviceFrom: string | null;
+  serviceTo: string | null;
+  units: string | null;
+  chargeCents: number | null;
+};
 
 export interface X12SubmissionEvidence {
   readonly payloadSha256: string;
@@ -61,13 +84,26 @@ export function extractX12SubmissionEvidence(
   let billNpi: string | null = null;
   let billTin: string | null = null;
   let payerId: string | null = null;
-  let currentClaim: X12ClaimEvidence | null = null;
+  let currentClaim: Omit<X12ClaimEvidence, "serviceLines"> | null = null;
   const claims: X12ClaimEvidence[] = [];
   let serviceFrom: string | null = null;
   let serviceTo: string | null = null;
+  let serviceLines: X12SubmittedServiceLineEvidence[] = [];
+  let currentServiceLine: PendingSubmittedServiceLine | null = null;
+  let nextLinePosition = 0;
+
+  const finishServiceLine = () => {
+    if (!currentServiceLine) return;
+    serviceLines.push({ ...currentServiceLine, position: ++nextLinePosition });
+    currentServiceLine = null;
+  };
+  const updateServiceLine = (patch: Partial<PendingSubmittedServiceLine>) => {
+    if (currentServiceLine) currentServiceLine = { ...currentServiceLine, ...patch };
+  };
 
   const finishClaim = () => {
     if (!currentClaim) return;
+    finishServiceLine();
     if (!billNpi || !billTin || !payerId) throw new X12EvidenceError("INCOMPLETE_IDENTITY");
     claims.push({
       ...currentClaim,
@@ -76,6 +112,7 @@ export function extractX12SubmissionEvidence(
       payerId,
       serviceFrom,
       serviceTo,
+      serviceLines,
     });
     currentClaim = null;
   };
@@ -93,6 +130,9 @@ export function extractX12SubmissionEvidence(
       billNpi = null;
       billTin = null;
       payerId = null;
+      serviceLines = [];
+      currentServiceLine = null;
+      nextLinePosition = 0;
     }
     if (tag === "GS" && s[1]?.trim() === "HC") {
       gsImplementation = s[8]?.trim() ?? "";
@@ -141,6 +181,46 @@ export function extractX12SubmissionEvidence(
       };
       serviceFrom = null;
       serviceTo = null;
+      serviceLines = [];
+      currentServiceLine = null;
+      nextLinePosition = 0;
+    } else if (tag === "LX" && currentClaim) {
+      finishServiceLine();
+      currentServiceLine = {
+        lineItemControlNumber: null,
+        revenueCode: null,
+        procedureCode: null,
+        serviceFrom: null,
+        serviceTo: null,
+        units: null,
+        chargeCents: null,
+      };
+    } else if (tag === "SV2" && currentClaim && currentServiceLine !== null) {
+      const procedure = s[2]?.split(":") ?? [];
+      updateServiceLine({
+        revenueCode: s[1]?.trim() || null,
+        procedureCode: procedure[1]?.trim() || null,
+        chargeCents: decimalX12Cents(s[3]),
+        units: s[5]?.trim() || null,
+      });
+    } else if (tag === "SV1" && currentClaim && currentServiceLine !== null) {
+      const procedure = s[1]?.split(":") ?? [];
+      updateServiceLine({
+        procedureCode: procedure[1]?.trim() || null,
+        chargeCents: decimalX12Cents(s[2]),
+        units: s[4]?.trim() || null,
+      });
+    } else if (tag === "REF" && s[1]?.trim() === "6R" && currentServiceLine) {
+      updateServiceLine({ lineItemControlNumber: s[2]?.trim() || null });
+    } else if (tag === "DTP" && currentServiceLine && s[1]?.trim() === "472") {
+      const value = s[3]?.trim() ?? "";
+      updateServiceLine(
+        s[2] === "D8" && /^\d{8}$/.test(value)
+          ? { serviceFrom: value, serviceTo: value }
+          : s[2] === "RD8" && /^\d{8}-\d{8}$/.test(value)
+            ? { serviceFrom: value.slice(0, 8), serviceTo: value.slice(9) }
+            : {},
+      );
     } else if (tag === "DTP" && currentClaim && s[1] === "434") {
       const value = s[3]?.trim();
       if (s[2] === "D8" && value && /^\d{8}$/.test(value)) serviceFrom = value;
@@ -150,6 +230,7 @@ export function extractX12SubmissionEvidence(
     }
     if (tag === "SE") {
       if (!st02 || s[2]?.trim() !== st02) throw new X12EvidenceError("CONTROL_MISMATCH");
+      finishServiceLine();
       finishClaim();
     }
     if (tag === "IEA" && s[2]?.trim() !== isa13) throw new X12EvidenceError("CONTROL_MISMATCH");
@@ -168,4 +249,13 @@ export function extractX12SubmissionEvidence(
     transactionSet,
     claims,
   };
+}
+
+function decimalX12Cents(raw: string | undefined): number | null {
+  const value = raw?.trim() ?? "";
+  const match = /^(-?)(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.exec(value);
+  if (!match) return null;
+  const amount = Number(match[2]) * 100 + Number((match[3] ?? "").padEnd(2, "0") || "0");
+  if (!Number.isSafeInteger(amount)) return null;
+  return match[1] ? -amount : amount;
 }

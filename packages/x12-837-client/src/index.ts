@@ -64,6 +64,8 @@ export type {
   X12WorkerHttpResponse,
 } from "./client";
 
+export type { X12SubmittedServiceLineEvidence } from "./clearinghouse/submission-evidence";
+
 // ─── MAC portal clients — launch case + six deny-stubs (from ./mac-portal/*) ─────────────────────
 export { createNgsJ6PortalClient, NgsJ6PortalClient } from "./mac-portal/ngs-j6";
 export {

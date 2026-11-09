@@ -25186,7 +25186,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Claim.MD ERAs staged for M25 posting, filterable by provider entity and stage state, cursor-paginated */
+        /** Tenant- and provider-scoped aggregate list of Claim.MD ERA stages for nonposting review */
         get: operations["getApiV1RemittanceClaimmdera"];
         put?: never;
         post?: never;
@@ -25203,10 +25203,146 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One Claim.MD ERA staged for M25 posting */
+        /** Authorized nonposting detail for one tenant-owned Claim.MD ERA stage */
         get: operations["getApiV1RemittanceClaimmderaById"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/financial-review/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a nonposting financial-review decision; does not allocate, reconcile, or post funds */
+        post: operations["postApiV1RemittanceClaimmderaByIdFinancialreviewDecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/matching": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Nonposting matching review based only on verified original submission evidence */
+        get: operations["getApiV1RemittanceClaimmderaByIdMatching"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/matching/claims/{claimIndex}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bounded tenant/provider-scoped historical submission candidates for nonposting reviewer matching */
+        get: operations["getApiV1RemittanceClaimmderaByIdMatchingClaimsByClaimIndexCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/matching/claims/{claimIndex}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a reviewer confirmation for an already verified source claim identity; no financial effects */
+        post: operations["postApiV1RemittanceClaimmderaByIdMatchingClaimsByClaimIndexDecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/posting-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant- and provider-scoped immutable Claim.MD posting approval and execution history */
+        get: operations["getApiV1RemittanceClaimmderaByIdPostinghistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/posting-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate or retrieve the current server-calculated, nonposting Claim.MD financial plan */
+        post: operations["postApiV1RemittanceClaimmderaByIdPostingplan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a separate approval for one exact eligible Claim.MD posting plan */
+        post: operations["postApiV1RemittanceClaimmderaByIdPostingplansByPlanIdApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/execution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute one current approved Claim.MD plan through the controlled M25 transaction core */
+        post: operations["postApiV1RemittanceClaimmderaByIdPostingplansByPlanIdExecution"];
         delete?: never;
         options?: never;
         head?: never;
@@ -105012,6 +105148,9 @@ export interface operations {
             query?: {
                 providerEntityId?: string;
                 state?: string;
+                payer?: string;
+                fromDate?: string;
+                toDate?: string;
                 cursor?: string;
                 limit?: string;
             };
@@ -105026,7 +105165,42 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            locationId: string | null;
+                            state: string;
+                            holdReason: string | null;
+                            possibleDuplicate: boolean;
+                            duplicateClassification: "none" | "possible" | "exact";
+                            existingAdviceId: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                            detailsAvailable: boolean;
+                            payer: {
+                                name: string | null;
+                                identifier: string | null;
+                            };
+                            payee: {
+                                name: string | null;
+                            };
+                            payment: {
+                                method: string | null;
+                                amount: number | null;
+                                date: string | null;
+                            };
+                            claimCount: number;
+                            identityExceptionCount: number;
+                            reconciliationEligible: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        searchWindowLimited: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -105048,7 +105222,548 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        locationId: string | null;
+                        eraId: string;
+                        fileIndex: number;
+                        transactionSetControlNumber: string;
+                        state: string;
+                        holdReason: string | null;
+                        possibleDuplicate: boolean;
+                        duplicateClassification: "none" | "possible" | "exact";
+                        existingAdviceId: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        detailsAvailable: boolean;
+                        payer: {
+                            name: string | null;
+                            identifier: string | null;
+                        };
+                        payee: {
+                            name: string | null;
+                            npi: string | null;
+                        };
+                        payment: {
+                            trace: string | null;
+                            method: string | null;
+                            amount: number | null;
+                            date: string | null;
+                        };
+                        claims: {
+                            patientControlNumber: string | null;
+                            payerIcn: string | null;
+                            statusCode: number | null;
+                            totalCharge: number | null;
+                            totalPayment: number | null;
+                            patientResponsibility: number | null;
+                            serviceFrom: string | null;
+                            serviceTo: string | null;
+                            adjustments: {
+                                groupCode: string | null;
+                                reasonCode: string | null;
+                                amount: number | null;
+                                quantity: number | null;
+                            }[];
+                            serviceLines: {
+                                procedureCode: string | null;
+                                revenueCode: string | null;
+                                chargeAmount: number | null;
+                                paidAmount: number | null;
+                                paidUnits: number | null;
+                                submittedUnits: number | null;
+                                payerLineReference: string | null;
+                                adjustments: {
+                                    groupCode: string | null;
+                                    reasonCode: string | null;
+                                    amount: number | null;
+                                    quantity: number | null;
+                                }[];
+                                remarks: {
+                                    kind: string | null;
+                                    code: string | null;
+                                }[];
+                            }[];
+                            remarks: {
+                                kind: string | null;
+                                code: string | null;
+                            }[];
+                        }[];
+                        providerAdjustments: {
+                            reason: string | null;
+                            reference: string | null;
+                            amount: number | null;
+                        }[];
+                        claimOutcomes: {
+                            claimId: string | null;
+                            patientControlNumber: string | null;
+                            outcome: string | null;
+                            module: string | null;
+                            fileIndex: number | null;
+                            transactionSetControlNumber: string | null;
+                        }[];
+                        reconciliationEligible: boolean;
+                        history: {
+                            availability: "available" | "partial" | "unavailable";
+                            events: {
+                                eventType: string;
+                                description: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                /** Format: uuid */
+                                stageId: string;
+                                fromState: string | null;
+                                toState: string | null;
+                                reasonCode: string | null;
+                                origin: "ingestion" | "ownership" | "delivery" | "recovery" | "system";
+                                actorClassification: "platform_operator" | "system" | null;
+                                attemptCount: number | null;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceClaimmderaByIdFinancialreviewDecision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    itemType: "era" | "claim";
+                    itemIndex: number;
+                    disposition: "note" | "follow_up" | "reviewed" | "reopened" | "completed";
+                    expectedVersion: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        itemType: "era" | "claim";
+                        itemIndex: number;
+                        decisionVersion: number;
+                        disposition: "note" | "follow_up" | "reviewed" | "reopened" | "completed";
+                        /** @constant */
+                        financialPostingAuthorized: false;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmderaByIdMatching: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        stageId: string;
+                        totalClaims: number;
+                        verifiedSourceIdentities: number;
+                        unresolvedSourceIdentities: number;
+                        claims: {
+                            claimIndex: number;
+                            patientControlNumber: string | null;
+                            payerIcn: string | null;
+                            serviceLines: {
+                                lineIndex: number;
+                                payerLineReference: string | null;
+                                outcome: "original_line_evidence_unavailable" | "payer_line_reference_missing";
+                            }[];
+                            outcome: "verified" | "ambiguous" | "conflict" | "unmatched" | "unsupported";
+                            linkedClaimId: string | null;
+                            linkedModule: string | null;
+                            decision: "unreviewed" | "confirmed_identity" | "human_confirmed_candidate" | "cleared";
+                            decisionVersion: number;
+                            reason: string | null;
+                            decisionAt: string | null;
+                        }[];
+                        decisionHistory: {
+                            claimIndex: number;
+                            decisionVersion: number;
+                            decision: "confirmed_identity" | "human_confirmed_candidate" | "cleared";
+                            reason: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** @constant */
+                            actorClassification: "authorized_reviewer";
+                        }[];
+                        /** @constant */
+                        serviceLineMatching: "not_available_without_original_line_reference";
+                        financialReview: {
+                            reportedPaymentCents: number | null;
+                            claimCount: number;
+                            chargeCents: number | null;
+                            claimPaymentCents: number | null;
+                            patientResponsibilityCents: number | null;
+                            claimAdjustmentCents: number | null;
+                            serviceLineAdjustmentCents: number | null;
+                            providerAdjustmentCents: number | null;
+                            balance: {
+                                /** @constant */
+                                status: "unavailable";
+                                /** @constant */
+                                reason: "invalid_money_value";
+                            } | {
+                                status: "balanced" | "discrepancy";
+                                claimPaymentsCents: number;
+                                providerAdjustmentsCents: number;
+                                reportedPaymentCents: number;
+                                expectedPaymentCents: number;
+                                differenceCents: number;
+                            };
+                            claims: {
+                                claimIndex: number;
+                                status: "payer_denied" | "reversal" | "zero_payment" | "partial_payment" | "payment_reported" | "insufficient_data";
+                                chargeCents: number | null;
+                                paymentCents: number | null;
+                                patientResponsibilityCents: number | null;
+                                adjustments: {
+                                    scope: "claim" | "service_line";
+                                    groupCode: string | null;
+                                    category: "contractual_obligation" | "patient_responsibility" | "other_adjustment" | "payer_initiated_reduction" | "correction_or_reversal" | "unsupported";
+                                    reasonCode: string | null;
+                                    amountCents: number | null;
+                                    /** @constant */
+                                    description: "Description unavailable";
+                                }[];
+                                lineEvidence: "original_line_evidence_unavailable" | "payer_line_reference_missing";
+                            }[];
+                            adjustments: {
+                                scope: "claim" | "service_line";
+                                groupCode: string | null;
+                                category: "contractual_obligation" | "patient_responsibility" | "other_adjustment" | "payer_initiated_reduction" | "correction_or_reversal" | "unsupported";
+                                reasonCode: string | null;
+                                amountCents: number | null;
+                                /** @constant */
+                                description: "Description unavailable";
+                            }[];
+                            providerAdjustments: {
+                                reason: string | null;
+                                reference: string | null;
+                                amountCents: number | null;
+                            }[];
+                            exceptions: {
+                                code: string;
+                                severity: "blocking" | "follow_up" | "informational";
+                                blocksReviewCompletion: boolean;
+                                blocksFuturePosting: boolean;
+                            }[];
+                            canCompleteNonpostingReview: boolean;
+                            /** @constant */
+                            financialPostingAuthorized: false;
+                        };
+                        financialReviewHistory: {
+                            itemType: "era" | "claim";
+                            itemIndex: number;
+                            decisionVersion: number;
+                            disposition: "note" | "follow_up" | "reviewed" | "reopened" | "completed";
+                            reason: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** Format: uuid */
+                            reviewerMembershipId: string;
+                            currentSource: boolean;
+                        }[];
+                        readOnlyBalance: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reason: "invalid_money_value";
+                        } | {
+                            status: "balanced" | "discrepancy";
+                            claimPaymentsCents: number;
+                            providerAdjustmentsCents: number;
+                            reportedPaymentCents: number;
+                            expectedPaymentCents: number;
+                            differenceCents: number;
+                        };
+                        /** @constant */
+                        postingAuthorized: false;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmderaByIdMatchingClaimsByClaimIndexCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                claimIndex: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        complete: boolean;
+                        candidates: {
+                            module: "M23" | "M41";
+                            /** Format: uuid */
+                            evidenceId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            /** Format: uuid */
+                            submissionId: string;
+                            attemptKey: string;
+                            claimType: string;
+                            payerId: string;
+                            usage: "test" | "production";
+                            serviceFrom: string | null;
+                            serviceTo: string | null;
+                            chargeCents: number | null;
+                            lineage: "original" | "correction" | "replacement" | "void" | "unknown";
+                            attemptState: string;
+                            /** Format: date-time */
+                            submittedAt: string;
+                            supportingEvidence: string[];
+                            selectable: boolean;
+                            /** @constant */
+                            submittedLines: "unavailable";
+                        }[];
+                        /** @constant */
+                        postingAuthorized: false;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceClaimmderaByIdMatchingClaimsByClaimIndexDecision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                claimIndex: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    action: "confirm_identity" | "confirm_candidate" | "clear";
+                    expectedVersion: number;
+                    reason: string;
+                    /** Format: uuid */
+                    evidenceId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        claimIndex: number;
+                        decisionVersion: number;
+                        decision: "confirmed_identity" | "human_confirmed_candidate" | "cleared";
+                        /** @constant */
+                        postingAuthorized: false;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmderaByIdPostinghistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        eventType: "approved" | "posted";
+                        /** Format: uuid */
+                        planId: string;
+                        /** Format: date-time */
+                        occurredAt: string;
+                        reason: string;
+                        adviceId: string | null;
+                        remittanceLineId: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceClaimmderaByIdPostingplan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        planId: string;
+                        planDigest: string;
+                        /** Format: uuid */
+                        stageId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        payer: string | null;
+                        paymentCents: number | null;
+                        claimId: string | null;
+                        eligible: boolean;
+                        status: "eligible" | "blocked" | "already_posted";
+                        blockers: string[];
+                        featureEnabled: boolean;
+                        approval: "not_approved" | "approved" | "posted";
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceClaimmderaByIdPostingplansByPlanIdApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    planDigest: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        planId: string;
+                        outcome: "approved" | "already_approved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceClaimmderaByIdPostingplansByPlanIdExecution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    planDigest: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        planId: string;
+                        outcome: "approved" | "already_approved" | "posted" | "already_posted";
+                        adviceId: string | null;
+                        remittanceLineId: string | null;
+                        paymentCents: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

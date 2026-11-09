@@ -689,6 +689,22 @@ import {
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import { DenialCaseViewSchema as M25DenialCaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
+  ClaimMdEraFinancialReviewDecisionRequestSchema as M25ClaimMdEraFinancialReviewDecisionRequestSchema,
+  ClaimMdEraFinancialReviewDecisionResultSchema as M25ClaimMdEraFinancialReviewDecisionResultSchema,
+  ClaimMdEraHistoricalCandidatesSchema as M25ClaimMdEraHistoricalCandidatesSchema,
+  ClaimMdEraMatchDecisionRequestSchema as M25ClaimMdEraMatchDecisionRequestSchema,
+  ClaimMdEraMatchDecisionResultSchema as M25ClaimMdEraMatchDecisionResultSchema,
+  ClaimMdEraMatchReviewSchema as M25ClaimMdEraMatchReviewSchema,
+  ClaimMdEraPostingActionRequestSchema as M25ClaimMdEraPostingActionRequestSchema,
+  ClaimMdEraPostingActionResultSchema as M25ClaimMdEraPostingActionResultSchema,
+  ClaimMdEraPostingApprovalResultSchema as M25ClaimMdEraPostingApprovalResultSchema,
+  ClaimMdEraPostingHistorySchema as M25ClaimMdEraPostingHistorySchema,
+  ClaimMdEraPostingPlanSchema as M25ClaimMdEraPostingPlanSchema,
+  ClaimMdEraReviewDetailSchema as M25ClaimMdEraReviewDetailSchema,
+  ClaimMdEraReviewPageSchema as M25ClaimMdEraReviewPageSchema,
+  ClaimMdEraReviewQuerySchema as M25ClaimMdEraReviewQuerySchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/claimmd-era-review.schemas";
+import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
   RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
@@ -9195,6 +9211,58 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // M25 Remittance & Denials — FULL enrichment (all 31 routes). Later Object.assign wins, so this
 // supersedes the earlier partial M25 block and drives the module's unenriched deficit to 0.
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/remittance/claimmd-era": {
+    summary:
+      "Tenant- and provider-scoped aggregate list of Claim.MD ERA stages for nonposting review",
+    query: M25ClaimMdEraReviewQuerySchema,
+    response: M25ClaimMdEraReviewPageSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id": {
+    summary: "Authorized nonposting detail for one tenant-owned Claim.MD ERA stage",
+    response: M25ClaimMdEraReviewDetailSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id/matching": {
+    summary: "Nonposting matching review based only on verified original submission evidence",
+    response: M25ClaimMdEraMatchReviewSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id/matching/claims/:claimIndex/candidates": {
+    summary:
+      "Bounded tenant/provider-scoped historical submission candidates for nonposting reviewer matching",
+    response: M25ClaimMdEraHistoricalCandidatesSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/matching/claims/:claimIndex/decision": {
+    summary:
+      "Append a reviewer confirmation for an already verified source claim identity; no financial effects",
+    body: M25ClaimMdEraMatchDecisionRequestSchema,
+    response: M25ClaimMdEraMatchDecisionResultSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/financial-review/decision": {
+    summary:
+      "Append a nonposting financial-review decision; does not allocate, reconcile, or post funds",
+    body: M25ClaimMdEraFinancialReviewDecisionRequestSchema,
+    response: M25ClaimMdEraFinancialReviewDecisionResultSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id/posting-history": {
+    summary:
+      "Tenant- and provider-scoped immutable Claim.MD posting approval and execution history",
+    response: M25ClaimMdEraPostingHistorySchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/posting-plan": {
+    summary:
+      "Generate or retrieve the current server-calculated, nonposting Claim.MD financial plan",
+    response: M25ClaimMdEraPostingPlanSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/posting-plans/:planId/approval": {
+    summary: "Record a separate approval for one exact eligible Claim.MD posting plan",
+    body: M25ClaimMdEraPostingActionRequestSchema,
+    response: M25ClaimMdEraPostingApprovalResultSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/posting-plans/:planId/execution": {
+    summary:
+      "Execute one current approved Claim.MD plan through the controlled M25 transaction core",
+    body: M25ClaimMdEraPostingActionRequestSchema,
+    response: M25ClaimMdEraPostingActionResultSchema,
+  },
   // ── remittance.routes.ts (§4.1 routes 1-8) ────────────────────────────────────────────────────
   "GET /api/v1/remittance/advices": {
     summary: "Remittance advices (835 headers, cursor-paginated, §4.12)",
@@ -15904,19 +15972,5 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",
     body: M25ClaimMdEraRecoveryBodySchema,
-  },
-});
-
-// ── Claim.MD ERA review (M25 staged remittances) ──────────────────────────────────────────────────────────
-import { ClaimMdEraReviewQuerySchema as M25ClaimMdEraReviewQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/claimmd-era-review.routes";
-
-Object.assign(ROUTE_ENRICHMENTS, {
-  "GET /api/v1/remittance/claimmd-era": {
-    summary:
-      "Claim.MD ERAs staged for M25 posting, filterable by provider entity and stage state, cursor-paginated",
-    query: M25ClaimMdEraReviewQuerySchema,
-  },
-  "GET /api/v1/remittance/claimmd-era/:id": {
-    summary: "One Claim.MD ERA staged for M25 posting",
   },
 });
