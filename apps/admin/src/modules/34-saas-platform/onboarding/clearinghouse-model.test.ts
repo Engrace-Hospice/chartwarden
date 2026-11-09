@@ -156,8 +156,7 @@ describe("clearinghouseActions", () => {
   const none = {
     canVerifyBaa: false,
     canVerifyConnection: false,
-    canActivate: false,
-    activateBlockedReason: null,
+    tenantActivationNote: null,
   };
 
   it("offers only the choice before one is made", () => {
@@ -187,22 +186,22 @@ describe("clearinghouseActions", () => {
     ).toBe(false);
   });
 
-  it("offers activation only once the connection is verified AND the BAA is, and says what is missing otherwise", () => {
+  it("never offers an operator activation: it says the tenant's own billing administrator activates, and what is missing before that", async () => {
     const verifiedConnection = view({ status: "verified" });
     const blocked = clearinghouseActions(verifiedConnection);
-    expect(blocked.canActivate).toBe(false);
-    expect(blocked.activateBlockedReason).toMatch(/BAA/);
+    expect(blocked).not.toHaveProperty("canActivate");
+    expect(blocked.tenantActivationNote).toMatch(/BAA/);
+    expect(blocked.tenantActivationNote).toMatch(/tenant's own billing administrator/);
 
     const ready = clearinghouseActions(
       view({ status: "verified", baa: { ...BAA, verified: { at: "2026-11-03T10:00:00.000Z" } } }),
     );
-    expect(ready.canActivate).toBe(true);
-    expect(ready.activateBlockedReason).toBeNull();
+    expect(ready).not.toHaveProperty("canActivate");
+    expect(ready.tenantActivationNote).toMatch(/tenant's own billing administrator activates/);
+    expect(ready.tenantActivationNote).not.toMatch(/Verify the vendor BAA/);
 
-    // nothing to activate while the connection is still unverified, and no blocked-reason noise about the BAA either
-    const draft = clearinghouseActions(view());
-    expect(draft.canActivate).toBe(false);
-    expect(draft.activateBlockedReason).toBeNull();
+    // nothing to say while the connection is still unverified
+    expect(clearinghouseActions(view()).tenantActivationNote).toBeNull();
   });
 
   it("offers nothing more on an active clearinghouse", () => {
