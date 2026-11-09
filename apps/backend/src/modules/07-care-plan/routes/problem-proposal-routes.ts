@@ -90,7 +90,8 @@ export function registerProblemProposalRoutes(
       const { planId, proposalId } = parse(ProblemProposalParamsSchema, request.params);
       const body = parse(AcceptProblemProposalSchema, request.body);
       const caller = await callerOf(request, planId);
-      if (!caller.membershipId) throw new UnauthorizedError();
+      if (!caller.membershipId)
+        throw new ForbiddenError("A session without an organization membership cannot act");
       return service.accept(
         caller.organizationId,
         planId,
@@ -116,7 +117,8 @@ export function registerProblemProposalRoutes(
       const { planId, proposalId } = parse(ProblemProposalParamsSchema, request.params);
       const body = parse(DismissProblemProposalSchema, request.body);
       const caller = await callerOf(request, planId);
-      if (!caller.membershipId) throw new UnauthorizedError();
+      if (!caller.membershipId)
+        throw new ForbiddenError("A session without an organization membership cannot act");
       return service.dismiss(
         caller.organizationId,
         planId,
