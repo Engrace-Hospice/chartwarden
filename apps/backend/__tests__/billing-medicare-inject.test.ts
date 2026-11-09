@@ -913,7 +913,9 @@ const SYSTEM_HEADERS = { ...SUPER_HEADERS, "x-test-actor-kind": "system" };
 const NONE_HEADERS = { "x-test-user": "none_1", "x-test-org": ORG, "x-test-roles": "" };
 
 function makeServer(
-  payerRouteStatus: NonNullable<Parameters<typeof mountM23Routes>[1]>["payerRouteStatus"] = async () => ({
+  payerRouteStatus: NonNullable<
+    Parameters<typeof mountM23Routes>[1]
+  >["payerRouteStatus"] = async () => ({
     status: "not_applicable",
   }),
   renderClaimPreview?: NonNullable<Parameters<typeof mountM23Routes>[1]>["renderClaimPreview"],
@@ -960,14 +962,30 @@ function makeServer(
   const readService = options.readyClaim
     ? {
         ...backend.readService,
-        async getClaim(actor: Parameters<M23ReadRouteService["getClaim"]>[0], id: string): Promise<ClaimDetailView> {
+        async getClaim(
+          actor: Parameters<M23ReadRouteService["getClaim"]>[0],
+          id: string,
+        ): Promise<ClaimDetailView> {
           const current = await backend.readService.getClaim(actor, id);
-          return { ...current, state: "ready", latestValidation: {
-            validationRunId: VALIDATION_RUN, claimId: id, trigger: "pre_submission" as const,
-            outcome: "all_pass" as const, rulesExecuted: 1, rulesPassed: 1,
-            rulesFailed: 0, rulesWarn: 0, rulesInfo: 0, startedAt: NOW, completedAt: NOW,
-            durationMs: 0, initiatedByMembershipId: null,
-          } };
+          return {
+            ...current,
+            state: "ready",
+            latestValidation: {
+              validationRunId: VALIDATION_RUN,
+              claimId: id,
+              trigger: "pre_submission" as const,
+              outcome: "all_pass" as const,
+              rulesExecuted: 1,
+              rulesPassed: 1,
+              rulesFailed: 0,
+              rulesWarn: 0,
+              rulesInfo: 0,
+              startedAt: NOW,
+              completedAt: NOW,
+              durationMs: 0,
+              initiatedByMembershipId: null,
+            },
+          };
         },
       }
     : backend.readService;
@@ -1057,12 +1075,14 @@ describe("M23 route smoke — the M1 boundary", () => {
       headers: SUPER_HEADERS,
     });
     expect(res.statusCode).toBe(200);
-    expect(renderer).toHaveBeenCalledWith(expect.objectContaining({
-      organizationId: ORG,
-      actorUserId: "super_1",
-      claimId: CLAIM,
-      providerEntityId: PROVIDER_ENTITY,
-    }));
+    expect(renderer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: ORG,
+        actorUserId: "super_1",
+        claimId: CLAIM,
+        providerEntityId: PROVIDER_ENTITY,
+      }),
+    );
     expect(res.json()).toMatchObject({
       rendererStatus: "blocked",
       rendererGaps: [{ field: "subscriber.mbi", reason: "missing" }],
@@ -1099,7 +1119,11 @@ describe("M23 route smoke — the M1 boundary", () => {
       usage: "test" as const,
     }));
     const { app } = makeServer(undefined, renderer, { previewIntegrityKey: key, readyClaim: true });
-    const preview = await app.inject({ method: "GET", url: `/api/v1/billing/claims/${CLAIM}/preparation`, headers: SUPER_HEADERS });
+    const preview = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/claims/${CLAIM}/preparation`,
+      headers: SUPER_HEADERS,
+    });
     expect(preview.statusCode).toBe(200);
     const token = preview.json().previewConfirmationToken as string;
     expect(token).toBeTruthy();
@@ -1227,7 +1251,11 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/billing/claims/${CLAIM}/submit`,
     headers: { ...SUPER_HEADERS, ...IDEMP("r07"), ...IFM },
-    payload: { ifVersion: 1, acknowledgeAllOverrides: false, previewConfirmationToken: "x".repeat(32) },
+    payload: {
+      ifVersion: 1,
+      acknowledgeAllOverrides: false,
+      previewConfirmationToken: "x".repeat(32),
+    },
     expectStatus: 503,
   },
   {

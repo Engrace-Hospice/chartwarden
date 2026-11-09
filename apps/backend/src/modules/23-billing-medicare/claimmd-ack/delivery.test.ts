@@ -18,7 +18,7 @@ describe("Claim.MD acknowledgment delivery failures", () => {
       db: {} as never,
       mode: "shadow",
       evidenceCipher: {} as never,
-      commercialOutbox: {} as never,
+      applyCommercialReceipt: {} as never,
       source: {
         claim: async () => [first, second],
         load: async (lease) => {

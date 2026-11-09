@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M23 Billing — Medicare — RLS cross-tenant denial — LIVE Postgres (§3.5 / §9.3).
  *
@@ -19,7 +20,6 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropLiveRoles } from "./_live-roles";

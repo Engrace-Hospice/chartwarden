@@ -516,13 +516,15 @@ describe("loadClaim837iInput gaps", () => {
       actorUserId: "00000000-0000-4000-8000-0000000000bb",
     });
     expect(result.ok).toBe(true);
-    expect(d.unlock).toHaveBeenCalledWith(expect.objectContaining({
-      disclosure: {
-        purpose: "claim_837i_preview",
-        subjectId: CLAIM_ID,
-        actorUserId: "00000000-0000-4000-8000-0000000000bb",
-      },
-    }));
+    expect(d.unlock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disclosure: {
+          purpose: "claim_837i_preview",
+          subjectId: CLAIM_ID,
+          actorUserId: "00000000-0000-4000-8000-0000000000bb",
+        },
+      }),
+    );
     expect(JSON.stringify(result)).not.toContain(MBI);
     expect(JSON.stringify(result)).not.toContain("ISA*");
   });

@@ -39,11 +39,11 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { medicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { medicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 import {
   M24_PERMISSION_KEY_LIST,
   type ReadingM24AbacResolver,

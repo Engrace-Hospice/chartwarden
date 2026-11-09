@@ -80,11 +80,9 @@ export function buildDrizzleM24ReadService(
     version: r.version,
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
-    electronicSubmissionRefusal: electronicSubmissionRefusal(
-      r.serviceState,
-      isGatewayBound(r.serviceState),
-      r.mcoId ?? null,
-    )?.message ?? null,
+    electronicSubmissionRefusal:
+      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState), r.mcoId ?? null)
+        ?.message ?? null,
     routeReadiness: medicaidClaimRouteReadiness(
       r.serviceState,
       r.mcoId ?? null,

@@ -236018,6 +236018,7 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",
         "parameters": [
           {
             "name": "inboxId",
@@ -236037,6 +236038,78 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "actionId",
+                  "accountReference",
+                  "usage",
+                  "stage",
+                  "reasonCode",
+                  "expectedState",
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "actionId": {
+                    "format": "uuid",
+                    "description": "Client-generated id; a replay with the same id is idempotent",
+                    "type": "string"
+                  },
+                  "accountReference": {
+                    "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                    "description": "Must equal this runtime's configured Claim.MD account",
+                    "type": "string"
+                  },
+                  "usage": {
+                    "anyOf": [
+                      {
+                        "const": "test",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "stage": {
+                    "anyOf": [
+                      {
+                        "const": "capture",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ownership_resolution",
+                        "type": "string"
+                      },
+                      {
+                        "const": "m25_delivery",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reasonCode": {
+                    "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+                    "type": "string"
+                  },
+                  "expectedState": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -289423,7 +289496,48 @@
         "tags": [
           "25-remittance"
         ],
-        "parameters": [],
+        "summary": "Claim.MD ERAs staged for M25 posting, filterable by provider entity and stage state, cursor-paginated",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z_]+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9]{1,3}$",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -289443,6 +289557,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "One Claim.MD ERA staged for M25 posting",
         "parameters": [
           {
             "name": "id",
