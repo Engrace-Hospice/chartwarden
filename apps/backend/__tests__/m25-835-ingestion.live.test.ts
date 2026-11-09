@@ -25,7 +25,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
  * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { repositories } from "@chartwarden/billing";
@@ -41,15 +41,19 @@ import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createClaimMdProtectedPayloadCipher } from "../src/bootstrap/claimmd-payload-cipher";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { registerSeam } from "../src/bootstrap/index";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createTaxIdCipher } from "../src/modules/02-identity/tax-id-cipher";
 import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
 import type { MatchCandidate } from "../src/modules/25-remittance/domain/match";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/events-by-m25";
 import {
   buildDrizzleM25ReadService,
   buildM23BackedClaimMatchCandidateProvider,
 } from "../src/modules/25-remittance/index";
+import { buildDrizzleClaimMdEraReviewService } from "../src/modules/25-remittance/ingest/claimmd-era-review";
 import {
   MAX_REFUSALS_PER_REMITTANCE,
   pullRemittances,
@@ -66,7 +70,10 @@ import type {
 import {
   PAYEE_UNCHECKED,
   buildDrizzleM25IngestService,
+  getM25TransactionPostingPort,
+  m25ContentDigestOf,
 } from "../src/modules/25-remittance/ingest/service-drizzle";
+import type { WriteOutboxPort } from "../src/modules/25-remittance/routes/write-service";
 import { buildFullEdi, buildRawEdi, sha256Hex } from "./_edi835-fixture";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
@@ -195,6 +202,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     readonly patientId: string;
     readonly claimControlNumber: string;
     readonly payerClaimControlNumber?: string;
+    readonly serviceFrom?: string;
+    readonly serviceTo?: string;
   }): Promise<string> {
     const claim = await withOrgContext(
       handle.db,
@@ -209,8 +218,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           electionPeriodIdTo: crypto.randomUUID(),
           patientPayerId: crypto.randomUUID(),
           tob: "812",
-          serviceFrom: "2026-03-01",
-          serviceTo: "2026-03-31",
+          serviceFrom: input.serviceFrom ?? "2026-03-01",
+          serviceTo: input.serviceTo ?? "2026-03-31",
           claimControlNumber: input.claimControlNumber,
           payerClaimControlNumber: input.payerClaimControlNumber ?? null,
           macJurisdiction: "ngs_j6",
@@ -287,6 +296,643 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       received.adviceId,
     ]);
     expect(status.rows[0].parse_status).toBe("partial_posted");
+  });
+
+  describe("transaction-scoped explicit-association posting core", () => {
+    const outboxPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M25_OUTBOX_EVENTS]));
+    const outbox: WriteOutboxPort = {
+      publish: (tx, emission) =>
+        outboxPublisher.publish(tx as never, { ...emission, callerModule: "m25" }),
+    };
+
+    async function queuedSupportedAdvice(suffix: string) {
+      const actor = { organizationId: ORG_A };
+      const key = `minio/explicit-core-${suffix}.835`;
+      const raw = buildRawEdi(`000001${suffix.padStart(3, "0")}`, suffix.padStart(4, "0"));
+      const claim: ParsedRemittanceAdvice["claims"][number] = {
+        patientControlNumber: `SYNTHETIC-PCN-${suffix}`,
+        payerIcn: `SYNTHETIC-ICN-${suffix}`,
+        statusCode: 1,
+        totalCharge: 42,
+        totalPayment: 42,
+        patientResponsibility: 0,
+        adjustments: [],
+        remarks: [],
+        serviceLines: [],
+      };
+      const parsed: ParsedRemittanceAdvice = {
+        payerProgram: "medicare",
+        interchangeControlNumber: `000001${suffix.padStart(3, "0")}`,
+        transactionSetControlNumber: suffix.padStart(4, "0"),
+        checkOrEftTraceNumber: `SYNTHETIC-CORE-TRACE-${suffix}`,
+        paymentMethod: "eft",
+        totalPaymentAmount: 42,
+        productionDate: "2026-03-01",
+        claims: [claim],
+      };
+      const claimId = await seedClaim({
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        patientId: PATIENT_1,
+        claimControlNumber: claim.patientControlNumber!,
+        payerClaimControlNumber: claim.payerIcn,
+        serviceFrom: `2026-03-${String((Number(suffix) % 28) + 1).padStart(2, "0")}`,
+        serviceTo: `2026-03-${String((Number(suffix) % 28) + 1).padStart(2, "0")}`,
+      });
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: fakeClient(new Map([[key, parsed]])),
+        payeeNpi: PAYEE_UNCHECKED,
+        // The candidate set is read through the actual M23 source-owned seam and restricted app role;
+        // the explicit path must accept this exact selected claim without invoking autoMatch.
+        claims: { medicare: buildM23BackedClaimMatchCandidateProvider() },
+        outbox,
+      });
+      const received = await service.receiveAdvice(actor, {
+        providerEntityId: PE_A,
+        payerId: PAYER,
+        payerKind: "medicare",
+        minioObjectKey: key,
+        fileSha256: sha256Hex(raw),
+        rawEdi: raw,
+      });
+      if (received.outcome !== "queued") throw new Error("expected queued synthetic advice");
+      return {
+        actor,
+        parsed,
+        claimId,
+        adviceId: received.adviceId,
+        sourceFileSha256: sha256Hex(raw),
+        service,
+        postingPort: getM25TransactionPostingPort(service),
+        association: {
+          organizationId: ORG_A,
+          providerEntityId: PE_A,
+          claimId,
+          evidenceId: `synthetic-review-${suffix}`,
+          evidenceVersion: 1,
+        },
+      };
+    }
+
+    async function postExplicit(fx: Awaited<ReturnType<typeof queuedSupportedAdvice>>) {
+      return withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        fx.postingPort.postValidatedClaimInTransaction(tx, fx.actor, {
+          adviceId: fx.adviceId,
+          sourceFileSha256: fx.sourceFileSha256,
+          parsed: fx.parsed,
+          association: fx.association,
+        }),
+      );
+    }
+
+    it("persists the explicit claim association and transactional posting events without running legacy auto-match", async () => {
+      const fx = await queuedSupportedAdvice("941");
+      const posted = await postExplicit(fx);
+      expect(posted).toMatchObject({ outcome: "posted" });
+      const lines = await admin.query(
+        "SELECT organization_id, claim_id, clp04_total_payment_amount, match_strategy, match_state FROM remittance_line WHERE remittance_advice_id=$1",
+        [fx.adviceId],
+      );
+      expect(lines.rows).toEqual([
+        expect.objectContaining({
+          organization_id: ORG_A,
+          claim_id: fx.claimId,
+          clp04_total_payment_amount: "42.00",
+          match_strategy: "manual",
+          match_state: "posted",
+        }),
+      ]);
+      const adviceRow = await admin.query(
+        "SELECT parse_status, parse_summary FROM remittance_advice WHERE id=$1",
+        [fx.adviceId],
+      );
+      expect(adviceRow.rows[0]).toMatchObject({
+        parse_status: "posted",
+        parse_summary: {
+          associationEvidence: [
+            { claimId: fx.claimId, evidenceId: fx.association.evidenceId, evidenceVersion: 1 },
+          ],
+        },
+      });
+      const events = await admin.query(
+        "SELECT event_type FROM outbox_event WHERE organization_id=$1 AND event_type='m25.remittance.claim_paid' AND aggregate_kind='remittance_line' AND aggregate_id=$2",
+        [ORG_A, posted.remittanceLineId],
+      );
+      expect(events.rowCount).toBe(1);
+      const adviceEvents = await admin.query(
+        "SELECT event_type FROM outbox_event WHERE organization_id=$1 AND event_type='m25.remittance.advice_posted' AND aggregate_id=$2",
+        [ORG_A, fx.adviceId],
+      );
+      expect(adviceEvents.rowCount).toBe(1);
+      expect(await fx.service.postAdvice(fx.actor, fx.adviceId)).toMatchObject({
+        outcome: "already_posted",
+      });
+      expect(await lineCount(fx.adviceId)).toBe(1);
+    });
+
+    it("rolls back remittance records and outbox rows when the caller aborts its transaction", async () => {
+      const fx = await queuedSupportedAdvice("942");
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) => {
+          await fx.postingPort.postValidatedClaimInTransaction(tx, fx.actor, {
+            adviceId: fx.adviceId,
+            sourceFileSha256: fx.sourceFileSha256,
+            parsed: fx.parsed,
+            association: fx.association,
+          });
+          throw new Error("forced caller rollback");
+        }),
+      ).rejects.toThrow("forced caller rollback");
+      expect(await lineCount(fx.adviceId)).toBe(0);
+      const state = await admin.query("SELECT parse_status FROM remittance_advice WHERE id=$1", [
+        fx.adviceId,
+      ]);
+      expect(state.rows[0].parse_status).toBe("queued");
+      const postedEvents = await admin.query(
+        "SELECT count(*)::int AS n FROM outbox_event WHERE organization_id=$1 AND aggregate_id=$2 AND event_type IN ('m25.remittance.claim_paid','m25.remittance.advice_posted')",
+        [ORG_A, fx.adviceId],
+      );
+      expect(postedEvents.rows[0].n).toBe(0);
+    });
+
+    it("rejects source-scope conflicts and unsupported adjustment facts without writes", async () => {
+      const fx = await queuedSupportedAdvice("943");
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          fx.postingPort.postValidatedClaimInTransaction(tx, fx.actor, {
+            adviceId: fx.adviceId,
+            sourceFileSha256: fx.sourceFileSha256,
+            parsed: fx.parsed,
+            association: { ...fx.association, providerEntityId: PE_B },
+          }),
+        ),
+      ).rejects.toThrow("M25_EXPLICIT_ASSOCIATION_SCOPE_MISMATCH");
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          fx.postingPort.postValidatedClaimInTransaction(tx, fx.actor, {
+            adviceId: fx.adviceId,
+            sourceFileSha256: fx.sourceFileSha256,
+            parsed: fx.parsed,
+            association: { ...fx.association, claimId: CLAIM_DENIED },
+          }),
+        ),
+      ).rejects.toThrow("M25_EXPLICIT_ASSOCIATION_NOT_AUTHORIZED_BY_SOURCE_OWNER");
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          fx.postingPort.postValidatedClaimInTransaction(tx, fx.actor, {
+            adviceId: fx.adviceId,
+            sourceFileSha256: "0".repeat(64),
+            parsed: fx.parsed,
+            association: fx.association,
+          }),
+        ),
+      ).rejects.toThrow("M25_POSTING_SOURCE_STALE");
+      const unsupported = {
+        ...fx.parsed,
+        claims: [
+          {
+            ...fx.parsed.claims[0]!,
+            adjustments: [{ groupCode: "CO" as const, reasonCode: "45", amount: 1 }],
+          },
+        ],
+      };
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          fx.postingPort.postValidatedClaimInTransaction(tx, fx.actor, {
+            adviceId: fx.adviceId,
+            sourceFileSha256: fx.sourceFileSha256,
+            parsed: unsupported,
+            association: fx.association,
+          }),
+        ),
+      ).rejects.toThrow("M25_POSTING_FACTS_UNSUPPORTED");
+      expect(await lineCount(fx.adviceId)).toBe(0);
+    });
+
+    it("serializes concurrent explicit execution and returns an idempotent result", async () => {
+      const fx = await queuedSupportedAdvice("944");
+      const results = await Promise.all([postExplicit(fx), postExplicit(fx)]);
+      expect(results.map((result) => result.outcome).sort()).toEqual(["already_posted", "posted"]);
+      expect(await lineCount(fx.adviceId)).toBe(1);
+    });
+
+    it("executes a staged Claim.MD ERA through source validation, financial review, approval and the M25 core", async () => {
+      const stageId = crypto.randomUUID();
+      const sourceInboxId = crypto.randomUUID();
+      const resolutionId = crypto.randomUUID();
+      const claimId = crypto.randomUUID();
+      const payerId = "f0000000-0000-4000-8000-00000000fee1";
+      const pcn = `SYNTHETIC-CLAIMMD-PCN-${stageId.slice(0, 8)}`;
+      const trace = `SYNTHETIC-CLAIMMD-TRACE-${stageId.slice(0, 8)}`;
+      const transactionSetControlNumber = String(Date.now() % 100_000_000).padStart(8, "0");
+      const parsed: ParsedRemittanceAdvice = {
+        payerProgram: "commercial",
+        payer: { name: "Synthetic Payer", id: payerId },
+        payee: { name: "Synthetic Hospice", idQualifier: "XX", id: "1999999999" },
+        interchangeControlNumber: transactionSetControlNumber.padStart(9, "0"),
+        transactionSetControlNumber,
+        checkOrEftTraceNumber: trace,
+        paymentMethod: "eft",
+        totalPaymentAmount: 42,
+        productionDate: "2026-03-01",
+        claims: [
+          {
+            patientControlNumber: pcn,
+            payerIcn: "SYNTHETIC-CLAIMMD-ICN",
+            statusCode: 1,
+            totalCharge: 42,
+            totalPayment: 42,
+            patientResponsibility: 0,
+            serviceFrom: "2026-03-01",
+            serviceTo: "2026-03-31",
+            adjustments: [],
+            remarks: [],
+            serviceLines: [],
+          },
+        ],
+      };
+      const key = randomBytes(32);
+      const cipher = createClaimMdProtectedPayloadCipher(
+        { activeId: "m25-private-test", byId: new Map([["m25-private-test", key]]) },
+        "claimmd-era-stage:v1",
+      );
+      const idempotencyKey = createHash("sha256").update(stageId).digest("hex");
+      const original835Digest = createHash("sha256")
+        .update(`synthetic-original:${stageId}`)
+        .digest("hex");
+      const sourceFileDigest = createHash("sha256")
+        .update(`synthetic-file:${stageId}`)
+        .digest("hex");
+      const contentDigest = m25ContentDigestOf(parsed);
+      const paymentTraceDigest = createHash("sha256").update(trace).digest("hex");
+      const protectedDetailsCipher = cipher
+        .seal(
+          sourceInboxId,
+          idempotencyKey,
+          JSON.stringify({
+            transactionSet: parsed,
+            claimOutcomes: [
+              {
+                claimId,
+                pcn,
+                outcome: "verified",
+                billingModule: "M41",
+                fileIndex: 0,
+                transactionSetControlNumber,
+              },
+            ],
+          }),
+        )
+        .toString("base64");
+      await admin.query(
+        `INSERT INTO claimmd_era_m25_stage
+          (id, organization_id, provider_entity_id, source_inbox_id, account_reference, usage,
+           era_id, file_index, interchange_control_number, transaction_set_control_number,
+           original_835_digest, source_file_digest, resolution_id, resolution_version,
+           idempotency_key, source_evidence, protected_details_cipher, content_digest,
+           payment_trace_digest, state)
+         VALUES ($1,$2,$3,$4,'synthetic-account','test','9999',0,$5,$6,$7,$8,$9,1,
+           $10,$11::jsonb,$12,$13,$14,'staged')`,
+        [
+          stageId,
+          ORG_A,
+          PE_A,
+          sourceInboxId,
+          parsed.interchangeControlNumber,
+          transactionSetControlNumber,
+          original835Digest,
+          sourceFileDigest,
+          resolutionId,
+          idempotencyKey,
+          JSON.stringify({ evidenceCodes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"] }),
+          protectedDetailsCipher,
+          contentDigest,
+          paymentTraceDigest,
+        ],
+      );
+
+      const sourceCandidate = {
+        module: "M41" as const,
+        evidenceId: `attempt-evidence-${stageId}`,
+        claimId,
+        submissionId: `submission-${stageId}`,
+        attemptKey: `attempt-${stageId}`,
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        accountReference: "synthetic-account",
+        usage: "test" as const,
+        payerId,
+        pcn,
+        claimType: "institutional",
+        serviceFrom: "2026-03-01",
+        serviceTo: "2026-03-31",
+        chargeCents: 4200,
+        lineage: "original" as const,
+        attemptState: "accepted_by_clearinghouse",
+        submittedAt: "2026-03-01T00:00:00.000Z",
+        submittedLines: "unavailable" as const,
+      };
+      const historicalReader = async (input: {
+        organizationId: string;
+        providerEntityId: string;
+        accountReference: string;
+        usage: "test" | "production";
+        pcn: string;
+      }) =>
+        input.organizationId === ORG_A &&
+        input.providerEntityId === PE_A &&
+        input.accountReference === "synthetic-account" &&
+        input.usage === "test" &&
+        input.pcn === pcn
+          ? [sourceCandidate]
+          : [];
+      const outboxPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M25_OUTBOX_EVENTS]));
+      const outbox: WriteOutboxPort = {
+        publish: (tx, emission) =>
+          outboxPublisher.publish(tx as never, { ...emission, callerModule: "m25" }),
+      };
+      const m25Claims = {
+        async candidatesForLine() {
+          return [
+            {
+              claimId,
+              payerIcn: "SYNTHETIC-CLAIMMD-ICN",
+              claimControlNumber: pcn,
+            },
+          ];
+        },
+        async patientIdForClaim() {
+          return null;
+        },
+      };
+      const ingestService = buildDrizzleM25IngestService(handle.db, {
+        client: fakeClient(new Map()),
+        payeeNpi: PAYEE_UNCHECKED,
+        claims: { commercial: m25Claims },
+        outbox,
+      });
+      const review = buildDrizzleClaimMdEraReviewService(
+        handle.db,
+        cipher,
+        undefined,
+        [historicalReader],
+        { ingestService, enabled: true },
+      );
+      const reviewActor = {
+        organizationId: ORG_A,
+        userId: "60000000-0000-4000-8000-000000000001",
+        roles: ["billing_specialist"],
+        providerEntityScope: [PE_A],
+        membershipId: crypto.randomUUID(),
+      };
+      const approverActor = { ...reviewActor, membershipId: crypto.randomUUID() };
+      const executorActor = { ...reviewActor, membershipId: crypto.randomUUID() };
+      await admin.query(
+        `INSERT INTO "user" (id,email,email_verified,name) VALUES ($1,$2,true,'Synthetic M25 Reviewer')
+         ON CONFLICT (id) DO NOTHING`,
+        [reviewActor.userId, `m25-review-${stageId}@synthetic.invalid`],
+      );
+
+      await review.recordFinancialReviewDecision(reviewActor, stageId, {
+        itemType: "era",
+        itemIndex: -1,
+        disposition: "completed",
+        expectedVersion: 0,
+        reason: "Synthetic source and claim facts reviewed",
+        idempotencyKey: `review-${stageId}`,
+      });
+      let plan = await review.postingPlan(reviewActor, stageId);
+      expect(plan).toMatchObject({
+        eligible: true,
+        paymentCents: 4200,
+        claimId,
+        status: "eligible",
+      });
+      const foreignActor = {
+        ...reviewActor,
+        organizationId: ORG_B,
+        providerEntityScope: [PE_B],
+        membershipId: crypto.randomUUID(),
+      };
+      const outOfProviderActor = {
+        ...reviewActor,
+        providerEntityScope: [PE_B],
+        membershipId: crypto.randomUUID(),
+      };
+      await expect(review.postingPlan(foreignActor, stageId)).rejects.toThrow();
+      await expect(review.postingPlan(outOfProviderActor, stageId)).rejects.toThrow();
+      await expect(
+        review.approvePostingPlan(foreignActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Cross-tenant authorization refusal",
+          idempotencyKey: `approve-foreign-${stageId}`,
+        }),
+      ).rejects.toThrow();
+      await expect(
+        review.executePostingPlan(foreignActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Cross-tenant execution refusal",
+          idempotencyKey: `execute-foreign-${stageId}`,
+        }),
+      ).rejects.toThrow();
+      const preApprovalAdvice = await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE parse_summary->>'stageId'=$1",
+        [stageId],
+      );
+      expect(preApprovalAdvice.rows[0].n).toBe(0);
+      expect(
+        await admin.query("SELECT count(*)::int AS n FROM outbox_event WHERE aggregate_id=$1", [
+          stageId,
+        ]),
+      ).toMatchObject({ rows: [{ n: 0 }] });
+
+      await review.approvePostingPlan(approverActor, stageId, {
+        planId: plan.planId,
+        planDigest: plan.planDigest,
+        reason: "Approved synthetic fully paid claim",
+        idempotencyKey: `approve-first-${stageId}`,
+      });
+      await review.recordFinancialReviewDecision(reviewActor, stageId, {
+        itemType: "era",
+        itemIndex: -1,
+        disposition: "reopened",
+        expectedVersion: 1,
+        reason: "Synthetic test invalidates the approved review revision",
+        idempotencyKey: `reopen-${stageId}`,
+      });
+      await expect(
+        review.executePostingPlan(executorActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Stale approved plan must be refused",
+          idempotencyKey: `execute-stale-${stageId}`,
+        }),
+      ).rejects.toThrow("source, matching or financial review changed after approval");
+      await review.recordFinancialReviewDecision(reviewActor, stageId, {
+        itemType: "era",
+        itemIndex: -1,
+        disposition: "completed",
+        expectedVersion: 2,
+        reason: "Re-reviewed unchanged synthetic source",
+        idempotencyKey: `recomplete-${stageId}`,
+      });
+      const stalePlanId = plan.planId;
+      plan = await review.postingPlan(reviewActor, stageId);
+      expect(plan.planId).not.toBe(stalePlanId);
+      await review.approvePostingPlan(approverActor, stageId, {
+        planId: plan.planId,
+        planDigest: plan.planDigest,
+        reason: "Approved current synthetic plan after re-review",
+        idempotencyKey: `approve-${stageId}`,
+      });
+      const postApprovalAdvice = await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE parse_summary->>'stageId'=$1",
+        [stageId],
+      );
+      expect(postApprovalAdvice.rows[0].n).toBe(0);
+      const disabledReview = buildDrizzleClaimMdEraReviewService(
+        handle.db,
+        cipher,
+        undefined,
+        [historicalReader],
+        { ingestService, enabled: false },
+      );
+      await expect(
+        disabledReview.executePostingPlan(executorActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Capability gate remains disabled",
+          idempotencyKey: `execute-disabled-${stageId}`,
+        }),
+      ).rejects.toThrow("controlled Claim.MD ERA posting is disabled");
+      const disabledAdvice = await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE parse_summary->>'stageId'=$1",
+        [stageId],
+      );
+      expect(disabledAdvice.rows[0].n).toBe(0);
+      const financialEventBaseline = await admin.query(
+        `SELECT count(*)::int AS n FROM outbox_event
+         WHERE event_type IN ('m25.remittance.claim_paid','m25.remittance.advice_posted')
+           AND organization_id=$1`,
+        [ORG_A],
+      );
+
+      await admin.query(`
+        CREATE OR REPLACE FUNCTION test_fail_claimmd_posting_event() RETURNS trigger
+        LANGUAGE plpgsql AS $$ BEGIN
+          IF NEW.event_type = 'posted' THEN RAISE EXCEPTION 'forced posting evidence failure'; END IF;
+          RETURN NEW;
+        END $$;
+        CREATE TRIGGER test_fail_claimmd_posting_event
+          BEFORE INSERT ON claimmd_era_posting_event
+          FOR EACH ROW EXECUTE FUNCTION test_fail_claimmd_posting_event();
+      `);
+      try {
+        await expect(
+          review.executePostingPlan(executorActor, stageId, {
+            planId: plan.planId,
+            planDigest: plan.planDigest,
+            reason: "Force rollback after M25 persistence",
+            idempotencyKey: `execute-rollback-${stageId}`,
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await admin.query(
+          "DROP TRIGGER IF EXISTS test_fail_claimmd_posting_event ON claimmd_era_posting_event",
+        );
+        await admin.query("DROP FUNCTION IF EXISTS test_fail_claimmd_posting_event()");
+      }
+      const rolledBackAdvice = await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE parse_summary->>'stageId'=$1",
+        [stageId],
+      );
+      expect(rolledBackAdvice.rows[0].n).toBe(0);
+      const rolledBackFinancialEvents = await admin.query(
+        `SELECT count(*)::int AS n FROM outbox_event
+         WHERE event_type IN ('m25.remittance.claim_paid','m25.remittance.advice_posted')
+           AND organization_id=$1`,
+        [ORG_A],
+      );
+      expect(rolledBackFinancialEvents.rows[0].n).toBe(financialEventBaseline.rows[0].n);
+
+      const concurrentResults = await Promise.all([
+        review.executePostingPlan(executorActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Execute approved synthetic claim payment",
+          idempotencyKey: `execute-a-${stageId}`,
+        }),
+        review.executePostingPlan(executorActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Concurrent approved synthetic claim execution",
+          idempotencyKey: `execute-b-${stageId}`,
+        }),
+      ]);
+      expect(concurrentResults.map((result) => result.outcome).sort()).toEqual([
+        "already_posted",
+        "posted",
+      ]);
+      const posted = concurrentResults.find((result) => result.outcome === "posted")!;
+      expect(posted).toMatchObject({ outcome: "posted", paymentCents: 4200 });
+      const lines = await admin.query(
+        `SELECT organization_id, claim_id, clp04_total_payment_amount, match_state
+         FROM remittance_line WHERE id=$1`,
+        [posted.remittanceLineId],
+      );
+      expect(lines.rows).toEqual([
+        expect.objectContaining({
+          organization_id: ORG_A,
+          claim_id: claimId,
+          clp04_total_payment_amount: "42.00",
+          match_state: "posted",
+        }),
+      ]);
+      const advice = await admin.query(
+        "SELECT organization_id, provider_entity_id, parse_status, parse_summary FROM remittance_advice WHERE id=$1",
+        [posted.adviceId],
+      );
+      expect(advice.rows[0]).toMatchObject({
+        organization_id: ORG_A,
+        provider_entity_id: PE_A,
+        parse_status: "posted",
+        parse_summary: {
+          source: "claimmd_stage",
+          stageId,
+          planId: plan.planId,
+          associationEvidence: [{ claimId, evidenceId: expect.any(String), evidenceVersion: 1 }],
+        },
+      });
+      const postingEvents = await review.postingHistory(reviewActor, stageId);
+      expect(postingEvents.map((event) => event.eventType)).toEqual(
+        expect.arrayContaining(["posted", "approved"]),
+      );
+      const paid = await admin.query(
+        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m25.remittance.claim_paid' AND aggregate_id=$1",
+        [posted.remittanceLineId],
+      );
+      const advicePosted = await admin.query(
+        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m25.remittance.advice_posted' AND aggregate_id=$1",
+        [posted.adviceId],
+      );
+      expect(paid.rows[0].n).toBe(1);
+      expect(advicePosted.rows[0].n).toBe(1);
+      expect(
+        await review.executePostingPlan(executorActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Idempotent execution retry",
+          idempotencyKey: `execute-retry-${stageId}`,
+        }),
+      ).toMatchObject({ outcome: "already_posted", remittanceLineId: posted.remittanceLineId });
+      expect(
+        await admin.query("SELECT count(*)::int AS n FROM remittance_line WHERE id=$1", [
+          posted.remittanceLineId,
+        ]),
+      ).toMatchObject({ rows: [{ n: 1 }] });
+    });
   });
 
   it("holds an 835 with no trace instead of allowing an unverifiable financial identity to post", async () => {

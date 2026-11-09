@@ -80,6 +80,16 @@ export type Render837iResult =
       readonly x12: string;
       /** Stedi's JSON for the same claim; `null` when it cannot carry it (other payer, or a line without a procedure code). */
       readonly stediJson: StediClaimJson | null;
+      /** Internal identities and source facts in the same order as the rendered outbound service lines. */
+      readonly submittedLines?: readonly {
+        readonly internalClaimLineId: string;
+        readonly revenueCode: string;
+        readonly procedureCode: string | null;
+        readonly serviceFrom: string;
+        readonly serviceTo: string;
+        readonly units: string;
+        readonly chargeCents: number;
+      }[];
     }
   | { readonly ok: false; readonly gaps: readonly string[] };
 
@@ -243,7 +253,20 @@ export function buildCommercial837iRenderer(db: CommercialDb, ports: CommercialR
         } catch (e) {
           if (!(e instanceof X12BuildError)) throw e; // unsupported shape for the JSON route: the raw X12 still stands
         }
-        return { ok: true, x12, stediJson };
+        return {
+          ok: true,
+          x12,
+          stediJson,
+          submittedLines: lines.map((line) => ({
+            internalClaimLineId: line.id,
+            revenueCode: line.revenueCode,
+            procedureCode: line.hcpcsCode,
+            serviceFrom: line.serviceFrom.replaceAll("-", ""),
+            serviceTo: line.serviceTo.replaceAll("-", ""),
+            units: String(line.units),
+            chargeCents: line.lineChargeCents,
+          })),
+        };
       } catch (e) {
         if (e instanceof X12BuildError) return gap(e.field);
         throw e;

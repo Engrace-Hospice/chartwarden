@@ -508,6 +508,9 @@ describe.skipIf(!DB_URL)(
                 transactionSetControlNumber: input.minioObjectKey.endsWith("medicare")
                   ? "0001"
                   : "0002",
+                checkOrEftTraceNumber: input.minioObjectKey.endsWith("medicare")
+                  ? "SYNTHETIC-F171-MEDICARE-TRACE"
+                  : "SYNTHETIC-F171-MEDICAID-TRACE",
                 paymentMethod: "eft",
                 totalPaymentAmount: 500,
                 productionDate: "2026-02-10",
