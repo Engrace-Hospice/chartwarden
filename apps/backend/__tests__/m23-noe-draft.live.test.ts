@@ -1087,7 +1087,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect(await noesFor(admissionId)).toHaveLength(1);
     expect(await eventRows("m23.noe.correction_created", "correctsNoeId", noeId)).toHaveLength(0);
   }, 120_000);
-  // ── an organization that bills outside ChartWarden files its NOE itself (owner decision D4; migration 1389) ───────
+  // ── an organization that bills outside ChartWarden files its NOE itself (owner decision D4; migration 1420) ───────
   // ChartWarden transmits NOTHING for it: submit parks the notice, the tenant records the date it filed, and the deadline
   // tracker keeps counting until then. The pure rules are unit-tested (`m23-notice-external-filing.test.ts`); this proves the
   // SQL: the CHECKs, the same-state patch under RLS as `chartwarden_app`, the audit trigger, and the two tracker scans.
@@ -1159,7 +1159,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     return { service, enqueued };
   }
 
-  it("migration 1389: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
+  it("migration 1420: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
     const id = await seedNoe(ORG_A);
     expect(await noeRow(id)).toMatchObject({ external_filing_status: null, filed_on: null });
     const set = (sql: string) => admin.query(`UPDATE noe_record SET ${sql} WHERE id=$1`, [id]);
@@ -1182,7 +1182,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     );
   });
 
-  it("migration 1389: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
+  it("migration 1420: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
     const id = await seedNoe(ORG_A);
     expect(await noeRow(id)).toMatchObject({ set_breach: false });
     const set = (sql: string) => admin.query(`UPDATE noe_record SET ${sql} WHERE id=$1`, [id]);

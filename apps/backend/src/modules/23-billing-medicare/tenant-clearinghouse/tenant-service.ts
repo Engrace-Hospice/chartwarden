@@ -137,7 +137,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
     }
   }
 
-  /** A credential refusal (on any write: a pre-1403 row is fingerprinted on its next one) is audited, then rethrown. */
+  /** A credential refusal (on any write: a pre-1434 row is fingerprinted on its next one) is audited, then rethrown. */
   async function refused(actor: M23WriteActor, err: unknown, vendor?: string): Promise<unknown> {
     if (err instanceof ChartWardenError && CREDENTIAL_REFUSAL_CODES.has(err.code)) {
       await recordRefusal(actor, vendor, err.code);

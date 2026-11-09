@@ -1,19 +1,19 @@
 -- compat: contract
--- M23 tenant clearinghouse (owner decision 2026-11-08, security review of 1403): a credential a tenant sealed STAYS reserved to
--- that tenant until a platform operator releases it. 1403's unique index sits on the config row, so the slot freed the moment the
+-- M23 tenant clearinghouse (owner decision 2026-11-08, security review of 1434): a credential a tenant sealed STAYS reserved to
+-- that tenant until a platform operator releases it. 1434's unique index sits on the config row, so the slot freed the moment the
 -- tenant switched to `outside` or rotated to a new key: a sister organization could then seal the old key and pull the first
 -- tenant's late acknowledgments and remittances. This table is the slot instead:
 --
 --   one row per (organization, credential) ever sealed: the vendor and the keyed fingerprint (HMAC-SHA256 under a key derived from
---   the credential KEK, never a plain hash; 1403). The partial unique index below spans organizations and holds every UNRELEASED
+--   the credential KEK, never a plain hash; 1434). The partial unique index below spans organizations and holds every UNRELEASED
 --   row, so a second organization's save fails with a unique violation the service maps to 409 CLEARINGHOUSE_ACCOUNT_IN_USE. RLS
 --   hides the other organization's row; the index is checked regardless.
 --   released_*  set only by the platform-ops release action (tenant_clearinghouse.release_credential_platform: a fresh step-up, a
 --   human actor, a reason, an audit row), which never releases the tenant's CURRENT credential. A released row is final.
 --
 -- Only the credential is reserved, not the vendor account: a vendor that issues several keys for one account is not caught here.
--- tenant_clearinghouse_config.credential_fingerprint (1403) stays the fingerprint of the CURRENT sealed credential; the NOT VALID
--- CHECK below couples it to secret_cipher for every row written from now on (the service backfills a pre-1403 row on its next
+-- tenant_clearinghouse_config.credential_fingerprint (1434) stays the fingerprint of the CURRENT sealed credential; the NOT VALID
+-- CHECK below couples it to secret_cipher for every row written from now on (the service backfills a pre-1434 row on its next
 -- write). The backfill INSERT copies the current fingerprints already on config rows. Declared `contract`: a new unique index and
 -- CHECKs (arch:migration-compat), so deploy.sh halts for an operator rather than auto-rolling back over it.
 CREATE TABLE IF NOT EXISTS "tenant_clearinghouse_credential_reservation" (
@@ -72,7 +72,7 @@ DROP TRIGGER IF EXISTS "trg_tenant_clearinghouse_credential_reservation_final" O
 CREATE TRIGGER "trg_tenant_clearinghouse_credential_reservation_final" BEFORE UPDATE ON tenant_clearinghouse_credential_reservation
   FOR EACH ROW EXECUTE FUNCTION tenant_clearinghouse_credential_reservation_final();--> statement-breakpoint
 
--- M04 write-audit: every reservation and release is compliance-retained; the fingerprint is scrubbed like the config's (1403).
+-- M04 write-audit: every reservation and release is compliance-retained; the fingerprint is scrubbed like the config's (1434).
 CREATE OR REPLACE FUNCTION audit_phi_write_tenant_clearinghouse_credential_reservation() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['credential_fingerprint']::text[];
@@ -95,13 +95,13 @@ SELECT "organization_id", "vendor", "credential_fingerprint", "updated_at"
  WHERE "credential_fingerprint" IS NOT NULL AND "vendor" IN ('stedi', 'claimmd')
 ON CONFLICT DO NOTHING;--> statement-breakpoint
 
--- From now on a config row carries a fingerprint exactly when it carries a sealed credential. NOT VALID: a row sealed before 1403
+-- From now on a config row carries a fingerprint exactly when it carries a sealed credential. NOT VALID: a row sealed before 1434
 -- keeps its NULL fingerprint until its next write, which the service backfills (it unseals the credential to compute it).
 ALTER TABLE "tenant_clearinghouse_config" DROP CONSTRAINT IF EXISTS "tenant_clearinghouse_config_fingerprint_secret_ck";--> statement-breakpoint
 ALTER TABLE "tenant_clearinghouse_config" ADD CONSTRAINT "tenant_clearinghouse_config_fingerprint_secret_ck"
   CHECK (("secret_cipher" IS NULL) = ("credential_fingerprint" IS NULL)) NOT VALID;--> statement-breakpoint
 
--- The release is its own platform duty (the 1388 shape): platform_ops only, where that role row already exists.
+-- The release is its own platform duty (the 1419 shape): platform_ops only, where that role row already exists.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('tenant_clearinghouse.release_credential_platform', 'tenant_clearinghouse', 'release_credential_platform', 'platform', 'tenant_lifecycle_platform_ops', '')
 ON CONFLICT ("key") DO NOTHING;--> statement-breakpoint

@@ -99,7 +99,7 @@ const ACK_ACTOR_GUARD_HEAD =
 // ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
 // backstop, the same two functions, never a policy.
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);
-// M23 migration 1406 (security review of cfd943e82, L2): `app.clearinghouse_release` is the transaction-local marker the platform-ops
+// M23 migration 1437 (security review of cfd943e82, L2): `app.clearinghouse_release` is the transaction-local marker the platform-ops
 // credential release sets; the reservation release guard reads it. The same backstop rule: that one function head, never a policy.
 const RELEASE_GUARD_HEAD =
   /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?tenant_clearinghouse_credential_reservation_release_guard\s*\(/i;

@@ -229,7 +229,7 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
-    // M23 (migration 1405) — optional: the DERIVED fingerprint subkeys of earlier M24_CREDENTIAL_ENCRYPTION_KEY values (never a
+    // M23 (migration 1436) — optional: the DERIVED fingerprint subkeys of earlier M24_CREDENTIAL_ENCRYPTION_KEY values (never a
     // KEK; scripts/m23-derive-fingerprint-subkey.ts), read only to fingerprint clearinghouse credentials under the keys older
     // reservations used. Set, every entry must be a strict 32-byte key (the cipher's own reader), and none the current KEK itself.
     key: "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS",

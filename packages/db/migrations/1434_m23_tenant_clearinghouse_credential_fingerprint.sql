@@ -17,11 +17,11 @@ ALTER TABLE "tenant_clearinghouse_config" ADD CONSTRAINT "tenant_clearinghouse_c
   "credential_fingerprint" IS NULL OR "credential_fingerprint" ~ '^[0-9a-f]{64}$');--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "tenant_clearinghouse_config_fingerprint_uq" ON "tenant_clearinghouse_config" ("credential_fingerprint")
   WHERE "credential_fingerprint" IS NOT NULL;--> statement-breakpoint
--- UPDATE stays column-level (1386); INSERT is table-wide already.
+-- UPDATE stays column-level (1417); INSERT is table-wide already.
 GRANT UPDATE ("credential_fingerprint") ON "tenant_clearinghouse_config" TO chartwarden_app;--> statement-breakpoint
 
 -- The write-audit row scrubs the fingerprint as it scrubs the sealed secret (a keyed digest of a credential stays out of the
--- audit store); `secret_changed` already tells a reader the credential moved. Same body as 1386 otherwise.
+-- audit store); `secret_changed` already tells a reader the credential moved. Same body as 1417 otherwise.
 CREATE OR REPLACE FUNCTION audit_phi_write_tenant_clearinghouse_config() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['secret_cipher', 'credential_fingerprint']::text[]; v_secret_changed boolean;

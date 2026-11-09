@@ -1,7 +1,7 @@
 -- compat: contract
 -- M34 - wizard step 7 `clearinghouse_selected` is settled from a fact, not only attested (ADR-0053 amendment 2026-11-06).
 -- Migration 1327 seeded it as `attestation`; now that each tenant's clearinghouse choice is real data (M23
--- `tenant_clearinghouse_config`, 1386), the advance sweep settles the step when the choice is settled (`outside`, or stedi /
+-- `tenant_clearinghouse_config`, 1417), the advance sweep settles the step when the choice is settled (`outside`, or stedi /
 -- claimmd in `active` status), and a human may still attest it where the fact cannot be read (`either`, the mac_configured
 -- shape). Choosing a vendor in the platform or tenant routes runs the advance pass at once, so the step settles without waiting
 -- for the 06:00 sweep.

@@ -256,7 +256,7 @@ describe("collectEnvProblems", () => {
     ]);
   });
 
-  it("checks the retired clearinghouse fingerprint subkeys only when set, with the cipher's own strict reader (migration 1405)", () => {
+  it("checks the retired clearinghouse fingerprint subkeys only when set, with the cipher's own strict reader (migration 1436)", () => {
     const KEY = "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS";
     const retired = Buffer.alloc(32, 7).toString("base64");
     const problem = "must be comma-separated 32-byte keys, each padded standard base64 (44 chars)";

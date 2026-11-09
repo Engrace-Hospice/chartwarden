@@ -876,9 +876,9 @@ exports.MODULES = [
       "claimmd_webhook_event",
       // ADR-0053 amendment precondition 2 (migration 1326): platform-verified NPI ownership the Claim.MD sweep routes on.
       "provider_npi_verification",
-      // ADR-0053 amendment 2026-11-06 (migration 1386): the clearinghouse each tenant chose, with its sealed credential.
+      // ADR-0053 amendment 2026-11-06 (migration 1417): the clearinghouse each tenant chose, with its sealed credential.
       "tenant_clearinghouse_config",
-      // Migration 1404: every credential a tenant sealed, held to it until a platform operator releases it.
+      // Migration 1435: every credential a tenant sealed, held to it until a platform operator releases it.
       "tenant_clearinghouse_credential_reservation",
       "claim",
       "claim_acknowledgment",
