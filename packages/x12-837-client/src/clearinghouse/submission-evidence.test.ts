@@ -62,9 +62,36 @@ describe("extractX12SubmissionEvidence", () => {
     );
     const lines = extractX12SubmissionEvidence(withReference).claims[0]?.serviceLines;
     expect(lines).toEqual([
-      { position: 1, lineItemControlNumber: "L1", revenueCode: "0651", procedureCode: "Q5001", serviceFrom: "20260101", serviceTo: "20260101", units: "1", chargeCents: 20000 },
-      { position: 2, lineItemControlNumber: null, revenueCode: "0652", procedureCode: "Q5001", serviceFrom: "20260102", serviceTo: "20260102", units: "32", chargeCents: 80000 },
-      { position: 3, lineItemControlNumber: null, revenueCode: "0655", procedureCode: "Q5006", serviceFrom: "20260110", serviceTo: "20260110", units: "1", chargeCents: 50000 },
+      {
+        position: 1,
+        lineItemControlNumber: "L1",
+        revenueCode: "0651",
+        procedureCode: "Q5001",
+        serviceFrom: "20260101",
+        serviceTo: "20260101",
+        units: "1",
+        chargeCents: 20000,
+      },
+      {
+        position: 2,
+        lineItemControlNumber: null,
+        revenueCode: "0652",
+        procedureCode: "Q5001",
+        serviceFrom: "20260102",
+        serviceTo: "20260102",
+        units: "32",
+        chargeCents: 80000,
+      },
+      {
+        position: 3,
+        lineItemControlNumber: null,
+        revenueCode: "0655",
+        procedureCode: "Q5006",
+        serviceFrom: "20260110",
+        serviceTo: "20260110",
+        units: "1",
+        chargeCents: 50000,
+      },
     ]);
   });
 

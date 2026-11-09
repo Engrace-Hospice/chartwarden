@@ -214,11 +214,13 @@ export function extractX12SubmissionEvidence(
       updateServiceLine({ lineItemControlNumber: s[2]?.trim() || null });
     } else if (tag === "DTP" && currentServiceLine && s[1]?.trim() === "472") {
       const value = s[3]?.trim() ?? "";
-      updateServiceLine(s[2] === "D8" && /^\d{8}$/.test(value)
-        ? { serviceFrom: value, serviceTo: value }
-        : s[2] === "RD8" && /^\d{8}-\d{8}$/.test(value)
-          ? { serviceFrom: value.slice(0, 8), serviceTo: value.slice(9) }
-          : {});
+      updateServiceLine(
+        s[2] === "D8" && /^\d{8}$/.test(value)
+          ? { serviceFrom: value, serviceTo: value }
+          : s[2] === "RD8" && /^\d{8}-\d{8}$/.test(value)
+            ? { serviceFrom: value.slice(0, 8), serviceTo: value.slice(9) }
+            : {},
+      );
     } else if (tag === "DTP" && currentClaim && s[1] === "434") {
       const value = s[3]?.trim();
       if (s[2] === "D8" && value && /^\d{8}$/.test(value)) serviceFrom = value;
