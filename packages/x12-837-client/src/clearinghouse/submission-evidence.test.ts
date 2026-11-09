@@ -55,6 +55,46 @@ describe("extractX12SubmissionEvidence", () => {
     });
   });
 
+  it("extracts exact service-line facts and only treats an outbound REF*6R as a line control reference", () => {
+    const withReference = institutional.replace(
+      "SV2*0651*HC:Q5001*200.00*UN*1~",
+      "SV2*0651*HC:Q5001*200.00*UN*1~REF*6R*L1~",
+    );
+    const lines = extractX12SubmissionEvidence(withReference).claims[0]?.serviceLines;
+    expect(lines).toEqual([
+      {
+        position: 1,
+        lineItemControlNumber: "L1",
+        revenueCode: "0651",
+        procedureCode: "Q5001",
+        serviceFrom: "20260101",
+        serviceTo: "20260101",
+        units: "1",
+        chargeCents: 20000,
+      },
+      {
+        position: 2,
+        lineItemControlNumber: null,
+        revenueCode: "0652",
+        procedureCode: "Q5001",
+        serviceFrom: "20260102",
+        serviceTo: "20260102",
+        units: "32",
+        chargeCents: 80000,
+      },
+      {
+        position: 3,
+        lineItemControlNumber: null,
+        revenueCode: "0655",
+        procedureCode: "Q5006",
+        serviceFrom: "20260110",
+        serviceTo: "20260110",
+        units: "1",
+        chargeCents: 50000,
+      },
+    ]);
+  });
+
   it("distinguishes an 837P from the functional-group implementation identifier", () => {
     const professional = institutional
       .replaceAll("005010X223A2", "005010X222A1")

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1996,
-    "coveredRoutes": 1996,
-    "directRoutesReferenced": 1810
+    "routes": 1990,
+    "coveredRoutes": 1990,
+    "directRoutesReferenced": 1809
   },
   "modules": [
     {
@@ -36,6 +36,7 @@
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
         "apps/backend/__tests__/m2-screen-unlock.live.test.ts",
         "apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
+        "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
@@ -394,13 +395,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 109,
+      "routes": 102,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
-        "apps/backend/__tests__/claims-billing-gate-clearinghouse.test.ts",
         "apps/backend/__tests__/m23-claimmd-webhook-route.test.ts",
         "apps/backend/__tests__/m23-claimmd-webhook.live.test.ts",
         "apps/backend/__tests__/m23-clearinghouse-attempt-routes.test.ts",
@@ -412,15 +412,13 @@
         "apps/backend/__tests__/m23-dde-queue.live.test.ts",
         "apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",
         "apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
-        "apps/backend/__tests__/m23-notice-external-filing-routes.test.ts",
         "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
-        "apps/backend/__tests__/m23-tenant-clearinghouse-routes.test.ts",
-        "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m23-validation-override.live.test.ts",
         "apps/backend/__tests__/m23-visit-charge-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
+        "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
@@ -432,7 +430,7 @@
         "apps/backend/__tests__/m41-enrollment-reports.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 76
+      "directRoutesReferenced": 72
     },
     {
       "module": "24-billing-medicaid",
@@ -448,9 +446,10 @@
     },
     {
       "module": "25-remittance",
-      "routes": 160,
+      "routes": 168,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
@@ -467,7 +466,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 138
+      "directRoutesReferenced": 148
     },
     {
       "module": "26-cap",
@@ -561,11 +560,10 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 87,
+      "routes": 80,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
-        "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
@@ -573,7 +571,7 @@
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 86
+      "directRoutesReferenced": 79
     },
     {
       "module": "35-subscription",
@@ -581,7 +579,6 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
-        "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
@@ -740,7 +737,7 @@
       "routes": 29,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
+        "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m41-ack-quarantine-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-eligibility-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-queue-routes.test.ts",
