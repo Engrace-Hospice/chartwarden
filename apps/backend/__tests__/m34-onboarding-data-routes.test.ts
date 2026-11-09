@@ -41,7 +41,8 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = String(request.headers["x-test-org"] ?? "");
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
-  request.context.attributes.membershipId = MEMBERSHIP;
+  request.context.attributes.membershipId =
+    request.headers["x-test-no-membership"] === "1" ? undefined : MEMBERSHIP;
   if (request.headers["x-step-up"] === "fresh") request.context.attributes.stepUpRecent = true;
   const kind = request.headers["x-actor-kind"];
   if (typeof kind === "string") request.context.attributes.actorKind = kind;
@@ -476,7 +477,7 @@ describe("mac credential version header", () => {
     reason: "ticket CHG-1",
   };
 
-  it("answers 201 on a first create and 200 on a version-checked update; a malformed version is a 422", async () => {
+  it("answers 201 on a first create and 200 on a version-checked update; a malformed version is a 400 (the route kit's If-Match contract)", async () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
     const post = (headers: Record<string, string>) =>
@@ -484,7 +485,9 @@ describe("mac credential version header", () => {
     expect((await post(fresh())).statusCode).toBe(201);
     expect((await post({ ...fresh(), "if-match": '"3"' })).statusCode).toBe(200);
     expect(calls.map((c) => c.expectedVersion)).toEqual([undefined, 3]);
-    expect((await post({ ...fresh(), "if-match": "three" })).statusCode).toBe(422);
+    const malformed = await post({ ...fresh(), "if-match": "three" });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json().error.code).toBe("VALIDATION_FAILED");
     await app.close();
   });
 });
@@ -507,7 +510,8 @@ describe("clearinghouse routes", () => {
     const app = makeServer(calls);
     expect((await put(app, fresh(), BODY)).statusCode).toBe(201);
     expect((await put(app, { ...fresh(), "if-match": '"2"' }, BODY)).statusCode).toBe(200);
-    expect((await put(app, { ...fresh(), "if-match": "two" }, BODY)).statusCode).toBe(422);
+    // a malformed version is the route kit's 400 VALIDATION_FAILED (it was a 422 from a local copy of the helper)
+    expect((await put(app, { ...fresh(), "if-match": "two" }, BODY)).statusCode).toBe(400);
     expect(calls.map((c) => c.expectedVersion)).toEqual([undefined, 2]);
     expect(calls[0]?.fields).toEqual({
       vendor: "claimmd",
@@ -1357,5 +1361,29 @@ describe("service: the clearinghouse choice", () => {
         recordedAt: BAA_PIN,
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe("a live session with no membership (the route kit's 403 contract, never a 401 sign-out)", () => {
+  it("is 403 on a read and on a write, and the service is never reached", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const read = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/provider-entities`,
+      headers: { ...OPS, "x-test-no-membership": "1" },
+    });
+    expect(read.statusCode).toBe(403);
+    expect(read.json().error.message).toMatch(/active membership is required/i);
+    const write = await app.inject({
+      method: "POST",
+      url: `${URL_BASE}/provider-entities`,
+      headers: { ...fresh(), "x-test-no-membership": "1" },
+      payload: NEW_PE,
+    });
+    expect(write.statusCode).toBe(403);
+    expect(write.json().error.message).toMatch(/active membership is required/i);
+    expect(calls).toEqual([]);
+    await app.close();
   });
 });

@@ -22,8 +22,8 @@ const ORG = "00000000-0000-4000-8000-000000000001";
 const USER = "00000000-0000-4000-8000-0000000000aa";
 const SERVER_KEY = "server-side-fingerprint-key-for-tests-0001";
 const SECRET_BODY = { clinicKey: "a-guessable-clinic-key-1234" };
-/** The scope the middleware binds (org, user, method, route template, params, If-Match): the legacy hash was taken over it. */
-const SCOPE = JSON.stringify([ORG, USER, "POST", "/secrets", {}, null]);
+/** The scope the middleware binds (org, user, actor kind, method, route template, params, query, If-Match): the legacy hash was taken over it. */
+const SCOPE = JSON.stringify([ORG, USER, "user", "POST", "/secrets", {}, {}, null]);
 
 describe("the Idempotency-Key fingerprint is keyed", () => {
   let app: FastifyInstance;

@@ -8,7 +8,13 @@
 // (onboarding/wizard-service.ts), not here; these routes compose the §4.5 keys, the §4.6 ABAC predicates, step-up where a
 // decision is security-relevant, and the human-actor (no AI) block.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { type PreHandler, actorOf, rejectAiActor } from "@chartwarden/shared/route-kit";
+import {
+  type PreHandler,
+  type WriteActor,
+  actorOf,
+  rejectAiActor,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import type { OnboardingWizard } from "../../onboarding/wizard-service";
 import {
@@ -78,7 +84,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/onboarding/:taskId/start",
     { preHandler: [UPDATE, ABAC_UPDATE, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
       parse(OnboardingStartRequest, request.body);
       return wizard.startTask(tenantActor(actor), actor.organizationId, taskId);
@@ -90,7 +96,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/onboarding/:taskId/attest",
     { preHandler: [UPDATE, ABAC_UPDATE, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
       const body = parse(TenantAttestStepRequest, request.body);
       return wizard.attestTask(tenantActor(actor), actor.organizationId, taskId, body);
@@ -103,7 +109,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/onboarding/:taskId/complete",
     { preHandler: [UPDATE, ABAC_UPDATE, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
       const body = parse(TenantCompleteStepRequest, request.body);
       return wizard.attestTask(tenantActor(actor), actor.organizationId, taskId, body);
@@ -115,7 +121,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/onboarding/:taskId/reopen",
     { preHandler: [UPDATE, ABAC_UPDATE, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
       const body = parse(TenantReopenStepRequest, request.body);
       return wizard.reopenTask(tenantActor(actor), actor.organizationId, taskId, body.reason);
@@ -127,7 +133,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/onboarding/:taskId/block",
     { preHandler: [UPDATE, ABAC_UPDATE, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
       const body = parse(OnboardingBlockRequest, request.body);
       return wizard.blockTask(tenantActor(actor), actor.organizationId, taskId, body.blockerReason);
@@ -139,7 +145,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/org-profile",
     { preHandler: [MANAGE_OWN, ABAC_ORG_ADMIN, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       return wizard.setOrgProfile(
         tenantActor(actor),
         actor.organizationId,
@@ -153,7 +159,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/compliance-officer",
     { preHandler: [MANAGE_OWN, ABAC_ORG_ADMIN, STEP_UP_OFFICER, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const body = parse(SetComplianceOfficerRequest, request.body);
       return wizard.setComplianceOfficer(
         tenantActor(actor),
@@ -168,18 +174,17 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/go-live/attest",
     { preHandler: [GO_LIVE_ATTEST, ABAC_OFFICER, STEP_UP_GO_LIVE, NO_AI] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const body = parse(GoLiveAttestRequest, request.body);
       return wizard.attestGoLive(tenantActor(actor), actor.organizationId, body.note);
     },
   );
 }
 
-function tenantActor(actor: ReturnType<typeof actorOf>) {
+function tenantActor(actor: WriteActor) {
   return {
     kind: "tenant" as const,
-    // The wizard service reads "no membership" as "" (the tenant route actor's contract before the kit).
-    membershipId: actor.membershipId ?? "",
+    membershipId: actor.membershipId,
     userId: actor.userId,
     roles: actor.roles,
   };

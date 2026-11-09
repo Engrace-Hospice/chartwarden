@@ -8,17 +8,14 @@
 // one write a live tenant also needs, so it is not status-gated. A first PUT omits `If-Match`; a change carries the version last
 // read (428 / 412). Credentials are write-only and never returned.
 import { requireStepUp } from "@chartwarden/auth";
-import { rejectAiActor } from "@chartwarden/shared/route-kit";
-import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
-  OPS,
-  P,
   type PreHandler,
-  operatorOf,
-  optionalIfMatch,
+  optionalIfMatchVersionOf,
+  rejectAiActor,
   requireIdempotencyKey,
-  splitReason,
-} from "./onboarding-data-routes";
+} from "@chartwarden/shared/route-kit";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { OPS, P, operatorOf, splitReason } from "./onboarding-data-routes";
 import type { OnboardingDataService } from "./onboarding-data-service";
 import { OnboardingReasonSchema } from "./onboarding-data-typebox";
 import {
@@ -43,7 +40,7 @@ const WRITE: readonly PreHandler[] = [
   OPS(WRITE_KEY),
   requireStepUp(WRITE_KEY) as PreHandler,
   rejectAiActor("AI principals cannot change a tenant's DoseSpot registration"),
-  requireIdempotencyKey,
+  requireIdempotencyKey(),
 ];
 
 export function registerOnboardingDoseSpotRoutes(
@@ -77,7 +74,7 @@ export function registerOnboardingDoseSpotRoutes(
         slugOf(request),
         fields,
         reason,
-        optionalIfMatch(request),
+        optionalIfMatchVersionOf(request),
       );
       return reply.code(created ? 201 : 200).send(view);
     },

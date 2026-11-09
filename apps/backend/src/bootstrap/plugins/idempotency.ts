@@ -3,8 +3,8 @@
 //
 // This is the HTTP wrapper the `@chartwarden/shared` idempotency helper's docstring promised
 // "is wired in M1-T10": it reuses that leaf's request fingerprint (computeIdempotencyHash
-// = HMAC-SHA-256 over scope + key + body under a server key, the scope being org, user, method,
-// route template, path params and `If-Match`) and its injected IdempotencyStore port (Valkey /
+// = HMAC-SHA-256 over scope + key + body under a server key, the scope being org, user, actor kind, method,
+// route template, path params, query string and `If-Match`) and its injected IdempotencyStore port (Valkey /
 // Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write. The fingerprint is
 // KEYED because a body can be a credential and the table must not hold something a reader can test
 // guesses against; the key is derived from BETTER_AUTH_SECRET (see `idempotencyHmacKey`).
@@ -93,18 +93,23 @@ export function applyIdempotency(
     const orgId = request.context?.organizationId;
     if (!orgId) return; // unauthenticated route — nothing to scope the key by
 
-    // The fingerprint binds WHO asks (org + user) and WHAT is asked (method, the matched route template, its path
-    // parameters, the `If-Match` version) as well as the key and body. A key reused by a different user in the same org,
-    // or aimed at a different tenant slug / resource id / method / route, or retried with another version, is a conflict
-    // (409), never a replay of the first request's cached response (which for e.g. a billing override echoes the typed
-    // rationale, and for a 428 would keep answering "version missing" to a retry that now sends it). It is answered
-    // before any route-level permission guard runs. JSON-encoded, so no field can bleed into its neighbour.
+    // The fingerprint binds WHO asks (org + user + actor kind) and WHAT is asked (method, the matched route template, its
+    // path parameters, the query string, the `If-Match` version) as well as the key and body. A key reused by a different
+    // user in the same org, by an `ai_*` principal that shares a user id with a human, or aimed at a different tenant slug /
+    // resource id / method / route, or with another query string (it selects what a handler does), or retried with another
+    // version, is a conflict (409), never a replay of the first request's cached response (which for e.g. a billing override
+    // echoes the typed rationale, and for a 428 would keep answering "version missing" to a retry that now sends it). It is
+    // answered before any route-level permission guard runs, so the actor kind must be in the fingerprint: a guard that
+    // refuses an AI principal never gets to run on a replay. JSON-encoded, so no field can bleed into its neighbour.
+    const actorKind = request.context?.attributes?.actorKind;
     const scope = JSON.stringify([
       orgId,
       request.context?.userId ?? "",
+      typeof actorKind === "string" && actorKind.length > 0 ? actorKind : "user",
       request.method,
       request.routeOptions?.url ?? "",
       request.params ?? null,
+      request.query ?? null,
       request.headers["if-match"] ?? null,
     ]);
     const requestHash = computeIdempotencyHash(scope, key, request.body ?? null, hmacKey);
