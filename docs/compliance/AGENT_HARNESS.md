@@ -17,8 +17,45 @@ management, and how that stays cheap.
 | HIPAA/SOC 2 claim → evidence register | `compliance/controls.yaml` + `arch:compliance` (in `arch:fitness`) |
 | Regulatory review of a diff | `.claude/agents/compliance-reviewer.md` |
 | Domain rules, loaded only for matching paths | `.claude/rules/*.md` |
+| Codex's twin of the shared harness text (same rules, agent and skills, so a second agent works from the same words) | `.agents/{rules,agents,skills}` + `AGENTS.md`, held identical to `.claude/` + `CLAUDE.md` by `arch:compliance` |
 
 The project's `CLAUDE.md` and gates still win over ECC's generic guidance.
+
+## The Codex twin (`.agents/`, `AGENTS.md`)
+
+Codex reads `AGENTS.md` and `.agents/skills/`; the rest of `.agents/` is a reference copy it follows when
+pointed at it. Change `CLAUDE.md` or the shared `.claude/` pieces and make the same change in `AGENTS.md` /
+`.agents/` in the same commit: `arch:compliance` fails on any difference, missing file or orphan. It is
+the same allow-list in `.gitignore` (plans, prds and local state stay out of git), the same CODEOWNERS
+owner, and the same guard coverage (`scripts/harness/patterns.ts` asks before a shell write to
+`.agents/{rules,agents,skills}`; `.claude/settings.json` asks before an Edit of `.agents/rules/**`).
+
+`settings.json` is deliberately not mirrored: it is Claude Code's format and Codex does not read it (checked
+against Codex 0.162.1: its own config is `.codex/config.toml` and `.codex/hooks.json`).
+
+### The Codex guard (`.codex/hooks.json`)
+
+`.codex/hooks.json` runs the same `scripts/harness/pre-tool-guard.ts` for Codex, with `--codex`. It matches
+`Bash` and `apply_patch`. Three things differ from Claude Code, all from Codex's hook protocol:
+
+- **Codex cannot ask.** `permissionDecision: "ask"` is "parsed but not supported yet": the hook run is
+  marked failed and the tool call proceeds. So under `--codex` every `ask` is answered `deny`, including a
+  push, a non-local `ssh` and any write to a protected path. A human runs those, or Claude Code asks.
+- **Edits arrive as `apply_patch`**, with the patch text in `tool_input.command`.
+  `scripts/harness/codex-patch.ts` takes it apart (also when applied through the shell as
+  `apply_patch <<'EOF'`); every path, rename target and added line is judged as Edit/Write are. A patch the
+  parser cannot read is denied. Codex has no Read/Grep/Glob tools; its reads are shell commands.
+- **The hook layer is a guardrail.** Each developer must trust the hook once (`/hooks`, tied to its hash, so
+  a changed hook is skipped until re-trusted) and the project `.codex/` layer must be trusted. It can be
+  switched off (`[features] hooks = false`) or bypassed (`--dangerously-bypass-hook-trust`), and OpenAI calls
+  hooks "a useful guardrail, not a complete enforcement boundary". A guard process that cannot start lets
+  the call run. MCP tools are not matched. Codex has no ledger or Stop gate yet; only the guard's own deny
+  entries reach `.claude/audit/`, tagged `codex/<tool>`.
+
+`.codex/config.toml` stays local and git-ignored (it can disable hooks) and is on the guard's protected
+list. `arch:compliance` fails if `.codex/hooks.json` is missing, stops running the guard with `--codex`,
+stops covering `Bash` and `apply_patch`, goes async or loses its timeout, or if `.gitignore` or CODEOWNERS
+stop covering it.
 
 ## ECC settings applied by the project (`.claude/settings.json` → `env`)
 
@@ -112,7 +149,7 @@ line somewhere the agent cannot write (a PR comment, a CI artifact).
 
 ## Who must review changes to the harness
 
-`.github/CODEOWNERS` names an owner for `.claude/settings.json`, rules, agents, skills,
+`.github/CODEOWNERS` names an owner for `.claude/settings.json`, rules, agents, skills, the `.agents/` twins, `.codex/hooks.json`,
 `scripts/harness/`, `compliance/`, `.githooks/`, `.gitleaks.toml` and the workflows. It only forces a
 review once `main` requires code-owner review (branch protection, open in #16). The CI job runs the PR's
 own `phi-scan.ts` and `.gitleaks.toml`, which is why those paths need that review.

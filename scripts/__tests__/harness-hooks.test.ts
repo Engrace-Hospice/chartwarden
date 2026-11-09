@@ -30,6 +30,117 @@ function guard(
   return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
 }
 
+/** The guard as `.codex/hooks.json` runs it: `--codex`, Codex's payload (cwd, tool_name, tool_input). */
+function codexGuard(input: Record<string, unknown>, cwd: string = tmp) {
+  const r = spawnSync("bun", [join(ROOT, "scripts/harness/pre-tool-guard.ts"), "--codex"], {
+    input: JSON.stringify({ hook_event_name: "PreToolUse", session_id: "c1", cwd, ...input }),
+    encoding: "utf8",
+    env: { ...process.env, CLAUDE_PROJECT_DIR: tmp },
+  });
+  return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
+}
+const patchOf = (...body: string[]): string =>
+  ["*** Begin Patch", ...body, "*** End Patch"].join("\n");
+const applyPatch = (...body: string[]) => ({
+  tool_name: "apply_patch",
+  tool_input: { command: patchOf(...body) },
+});
+
+describe("pre-tool-guard --codex (Codex has no `ask`: an ask would let the call run)", () => {
+  const decision = (r: { out: Record<string, any> | null }) =>
+    r.out?.hookSpecificOutput?.permissionDecision;
+
+  it("answers deny where Claude Code would ask, and says why", () => {
+    const r = codexGuard({ tool_name: "Bash", tool_input: { command: "git push origin main" } });
+    expect(decision(r)).toBe("deny");
+    expect(r.out?.hookSpecificOutput.permissionDecisionReason).toMatch(/Codex cannot ask a human/);
+  });
+  it("denies a shell read of .env and stays silent on an ordinary command", () => {
+    expect(decision(codexGuard({ tool_name: "Bash", tool_input: { command: "cat .env" } }))).toBe(
+      "deny",
+    );
+    expect(codexGuard({ tool_name: "Bash", tool_input: { command: "ls -la" } }).out).toBeNull();
+  });
+  it("is silent on tools it has no opinion about", () => {
+    expect(codexGuard({ tool_name: "update_plan", tool_input: { plan: [] } }).out).toBeNull();
+  });
+
+  it("is silent on an ordinary apply_patch", () => {
+    expect(codexGuard(applyPatch("*** Add File: src/x.ts", "+export const a = 1;")).out).toBeNull();
+    expect(
+      codexGuard(applyPatch("*** Update File: src/x.ts", "@@", "-a", "+export const b = 2;")).out,
+    ).toBeNull();
+  });
+  it("denies an apply_patch that adds an issued-looking SSN, and never echoes the value", () => {
+    const r = codexGuard(applyPatch("*** Add File: a.test.ts", `+ssn: "${ISSUED_SSN}"`));
+    expect(decision(r)).toBe("deny");
+    expect(JSON.stringify(r.out)).not.toContain(ISSUED_SSN);
+  });
+  it("denies an apply_patch that touches a secret file", () => {
+    expect(decision(codexGuard(applyPatch("*** Add File: .env", "+A=1")))).toBe("deny");
+  });
+  it.each([
+    "scripts/harness/patterns.ts",
+    "compliance/controls.yaml",
+    ".claude/rules/phi-and-secrets.md",
+    ".agents/rules/phi-and-secrets.md",
+    ".codex/hooks.json",
+    ".github/CODEOWNERS",
+  ])("denies an apply_patch edit of the protected file %s", (path) => {
+    const r = codexGuard(applyPatch(`*** Update File: ${path}`, "@@", "+x"));
+    expect(decision(r)).toBe("deny");
+    expect(r.out?.hookSpecificOutput.permissionDecisionReason).toMatch(/harness or the compliance/);
+  });
+  it("denies a delete, and a rename INTO or OUT OF a protected path", () => {
+    expect(decision(codexGuard(applyPatch("*** Delete File: compliance/controls.yaml")))).toBe(
+      "deny",
+    );
+    expect(
+      decision(
+        codexGuard(
+          applyPatch("*** Update File: a.ts", "*** Move to: .claude/rules/x.md", "@@", "+x"),
+        ),
+      ),
+    ).toBe("deny");
+    expect(
+      decision(
+        codexGuard(
+          applyPatch("*** Update File: .codex/hooks.json", "*** Move to: a.json", "@@", "+x"),
+        ),
+      ),
+    ).toBe("deny");
+  });
+  it("resolves a patch path against the session cwd, not the repo root", () => {
+    const r = codexGuard(
+      applyPatch("*** Update File: patterns.ts", "@@", "+x"),
+      join(tmp, "scripts/harness"),
+    );
+    expect(decision(r)).toBe("deny");
+    expect(r.out?.hookSpecificOutput.permissionDecisionReason).toMatch(
+      /scripts\/harness\/patterns/,
+    );
+  });
+  it("denies a patch it cannot read: it cannot be judged", () => {
+    const r = codexGuard({ tool_name: "apply_patch", tool_input: { command: "not a patch" } });
+    expect(decision(r)).toBe("deny");
+    expect(r.out?.hookSpecificOutput.permissionDecisionReason).toMatch(/could not read/);
+    expect(decision(codexGuard({ tool_name: "apply_patch", tool_input: {} }))).toBe("deny");
+  });
+  it("judges a patch applied through the shell (`apply_patch <<'EOF'`) too", () => {
+    const heredoc = (...body: string[]) => `apply_patch <<'EOF'\n${patchOf(...body)}\nEOF`;
+    const bad = codexGuard({
+      tool_name: "Bash",
+      tool_input: { command: heredoc("*** Update File: compliance/controls.yaml", "@@", "+x") },
+    });
+    expect(decision(bad)).toBe("deny");
+    const ok = codexGuard({
+      tool_name: "Bash",
+      tool_input: { command: heredoc("*** Add File: src/x.ts", "+export const a = 1;") },
+    });
+    expect(ok.out).toBeNull();
+  });
+});
+
 describe("pre-tool-guard entry point", () => {
   it("denies Read of .env with the PreToolUse decision shape", () => {
     const { status, out } = guard({
@@ -98,6 +209,8 @@ describe("stop-gate scoping", () => {
       expect.arrayContaining(["arch:tenancy", "arch:ddl", "arch:migration-numbering"]),
     );
     expect(gatesFor([".claude/settings.json"])).toContain("arch:compliance");
+    expect(gatesFor([".agents/rules/phi-and-secrets.md"])).toContain("arch:compliance");
+    expect(gatesFor([".codex/hooks.json"])).toContain("arch:compliance");
   });
   it("never schedules the slow gates (tables, boundaries, gaps) at Stop", () => {
     const all = gatesFor([

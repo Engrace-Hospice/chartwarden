@@ -632,7 +632,9 @@ const SECRET_MENTION =
 
 /** The agent's own guard, ledger, approved lists and the compliance record. */
 const PROTECTED_PATH =
-  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.claude\/settings(\.local)?\.json$|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.gitleaks\.toml$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)/;
+  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.claude\/settings(\.local)?\.json$|\.agents\/(rules|agents|skills)(\/|$)|\.codex\/(hooks\.json|config\.toml)$|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.gitleaks\.toml$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)/;
+/** A repo-relative path the harness protects: guard, ledger, rules, compliance record, Codex hook config. */
+export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel);
 const WRITER =
   /^(rm|mv|cp|tee|truncate|dd|ln|install|chmod|chown|touch|sed|perl|awk|gawk|ed|ex|vi|vim|nano|patch|rsync|unlink|shred|mkdir)$/;
 

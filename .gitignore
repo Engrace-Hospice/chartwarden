@@ -5,7 +5,12 @@ node_modules/
 .vscode/
 
 # AI coding-agent tool config/state — personal/local, not part of the ChartWarden corpus.
-.agents/
+# `.agents/` is Codex's twin of `.claude/`: the same allow-list, the same shared pieces, kept identical by
+# `arch:compliance` (it fails on drift). Plans, prds and any other local state stay out of git.
+.agents/*
+!.agents/rules/
+!.agents/agents/
+!.agents/skills/
 # `.claude/` is the exception: its settings, rules, skills and agents are the SHARED compliance harness
 # (docs/compliance/AGENT_HARNESS.md; `arch:compliance` fails if this goes back to ignoring the whole
 # directory). Only the per-developer pieces stay local — the ledger can name files and sessions.
@@ -22,7 +27,11 @@ node_modules/
 .claude/sessions/
 .claude/hookify.*.local.md
 .claude/worktrees/
-.codex/
+# `.codex/` is Codex's local config and state (config.toml can switch hooks off), except the shared hook
+# layer: `.codex/hooks.json` keeps Codex behind the same PreToolUse guard as Claude Code. Allow-list, like
+# `.claude/` — `arch:compliance` fails if it goes back to ignoring the whole directory.
+.codex/*
+!.codex/hooks.json
 .cursor/
 
 # Terminology release files fetched for the M38 admin load (X12 lists, LOINC, SNOMED, RxNorm): copyrighted or

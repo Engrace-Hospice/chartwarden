@@ -9,8 +9,11 @@ import { describe, expect, it } from "vitest";
 import {
   type Register,
   type RepoView,
+  checkCodexHooks,
   checkHarness,
+  checkMirror,
   checkRegister,
+  readMirrorTree,
   registryFingerprint,
 } from "../check-compliance-controls";
 
@@ -151,6 +154,7 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
   const gitignore = readFileSync(join(ROOT, ".gitignore"), "utf8");
   const codeowners = readFileSync(join(ROOT, ".github/CODEOWNERS"), "utf8");
   const registry = readFileSync(join(ROOT, "compliance/synthetic-identifiers.json"), "utf8");
+  const codexHooks = readFileSync(join(ROOT, ".codex/hooks.json"), "utf8");
   const run = (over: Record<string, string | undefined> = {}) =>
     checkHarness({
       settings,
@@ -159,8 +163,14 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
       agentsMd: "x",
       codeowners,
       registry,
+      codexHooks,
       ...over,
     });
+  const withCodexHooks = (mutate: (h: any) => void) => {
+    const parsed = JSON.parse(codexHooks);
+    mutate(parsed);
+    return JSON.stringify(parsed);
+  };
   const withSettings = (mutate: (s: any) => void) => {
     const parsed = JSON.parse(settings);
     mutate(parsed);
@@ -209,6 +219,123 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
     const v = run({ gitignore: legacy }).join("\n");
     expect(v).toMatch(/allow-list/);
     expect(v).toMatch(/re-include/);
+  });
+  it("fails when .gitignore swallows .agents/ again or drops its allow-list", () => {
+    const wholesale = run({ gitignore: `${gitignore}\n.agents/\n` }).join("\n");
+    expect(wholesale).toMatch(/ignores the whole \.agents\/ directory/);
+    const noAllowList = gitignore
+      .split("\n")
+      .filter((l) => l !== ".agents/*" && !l.startsWith("!.agents/"))
+      .join("\n");
+    const v = run({ gitignore: noAllowList }).join("\n");
+    expect(v).toMatch(/must ignore `\.agents\/\*`/);
+    expect(v).toMatch(/must re-include `!\.agents\/rules\/`/);
+  });
+  it("fails when .agents/ drifts from .claude/: edited, missing or orphaned file", () => {
+    const claude = { "rules/a.md": "same", "settings.json": "{}" };
+    expect(checkMirror(claude, claude)).toEqual([]);
+    expect(checkMirror(claude, { ...claude, "rules/a.md": "edited" }).join()).toMatch(
+      /\.agents\/rules\/a\.md differs from \.claude\/rules\/a\.md/,
+    );
+    expect(checkMirror(claude, { "settings.json": "{}" }).join()).toMatch(
+      /\.agents\/rules\/a\.md is missing/,
+    );
+    expect(checkMirror(claude, { ...claude, "skills/x/SKILL.md": "x" }).join()).toMatch(
+      /\.agents\/skills\/x\/SKILL\.md has no \.claude\/skills\/x\/SKILL\.md twin/,
+    );
+    expect(run({ mirror: { claude, agents: {} } }).join()).toMatch(/is missing/);
+  });
+  it("reads a real mirror from disk: a vacuous empty comparison would pass silently", () => {
+    for (const base of [".claude", ".agents"]) {
+      const tree = readMirrorTree(ROOT, base);
+      expect(Object.keys(tree)).toEqual(
+        expect.arrayContaining([
+          "rules/phi-and-secrets.md",
+          "agents/compliance-reviewer.md",
+          "skills/synthetic-phi/SKILL.md",
+        ]),
+      );
+    }
+  });
+  it("accepts the committed .codex/hooks.json", () => {
+    expect(checkCodexHooks(codexHooks)).toEqual([]);
+  });
+  it("fails when .codex/hooks.json is missing, unparsable or does not run the guard", () => {
+    expect(run({ codexHooks: undefined }).join()).toMatch(/hooks\.json is missing/);
+    expect(run({ codexHooks: "{" }).join()).toMatch(/does not parse/);
+    const none = withCodexHooks((h) => {
+      h.hooks.PreToolUse = [];
+    });
+    expect(run({ codexHooks: none }).join()).toMatch(
+      /does not run scripts\/harness\/pre-tool-guard/,
+    );
+  });
+  it("fails when the Codex guard loses --codex (an ask would let the call run)", () => {
+    const v = run({
+      codexHooks: withCodexHooks((h) => {
+        h.hooks.PreToolUse[0].hooks[0].command = "bun scripts/harness/pre-tool-guard.ts";
+      }),
+    }).join("\n");
+    expect(v).toMatch(/must run with `--codex`/);
+  });
+  it("fails when the Codex matcher stops covering apply_patch or Bash", () => {
+    const patchless = run({
+      codexHooks: withCodexHooks((h) => {
+        h.hooks.PreToolUse[0].matcher = "Bash";
+      }),
+    }).join("\n");
+    expect(patchless).toMatch(/does not cover `apply_patch`/);
+    const bashless = run({
+      codexHooks: withCodexHooks((h) => {
+        h.hooks.PreToolUse[0].matcher = "^apply_patch$";
+      }),
+    }).join("\n");
+    expect(bashless).toMatch(/does not cover `Bash`/);
+    // An empty, `*` or absent matcher matches every tool; a broken regex covers nothing.
+    for (const m of ["", "*", undefined]) {
+      const v = run({
+        codexHooks: withCodexHooks((h) => {
+          h.hooks.PreToolUse[0].matcher = m;
+        }),
+      });
+      expect(v).toEqual([]);
+    }
+    const broken = run({
+      codexHooks: withCodexHooks((h) => {
+        h.hooks.PreToolUse[0].matcher = "(";
+      }),
+    }).join("\n");
+    expect(broken).toMatch(/does not cover/);
+  });
+  it("fails when the Codex guard is made async or loses its timeout", () => {
+    const v = run({
+      codexHooks: withCodexHooks((h) => {
+        h.hooks.PreToolUse[0].hooks[0].async = true;
+        h.hooks.PreToolUse[0].hooks[0].timeout = undefined;
+      }),
+    }).join("\n");
+    expect(v).toMatch(/must not be async/);
+    expect(v).toMatch(/needs an explicit timeout/);
+  });
+  it("fails when .gitignore swallows .codex/ again or drops its allow-list", () => {
+    expect(run({ gitignore: `${gitignore}\n.codex/\n` }).join()).toMatch(
+      /ignores the whole \.codex\/ directory/,
+    );
+    const noAllowList = gitignore
+      .split("\n")
+      .filter((l) => l !== ".codex/*" && l !== "!.codex/hooks.json")
+      .join("\n");
+    const v = run({ gitignore: noAllowList }).join("\n");
+    expect(v).toMatch(/must ignore `\.codex\/\*`/);
+    expect(v).toMatch(/must re-include `!\.codex\/hooks\.json`/);
+  });
+  it("fails when CODEOWNERS leaves .codex/hooks.json unowned", () => {
+    const v = run({ codeowners: codeowners.replace(/^\/\.codex\/hooks\.json.*$/m, "") }).join("\n");
+    expect(v).toMatch(/no owner for `\/\.codex\/hooks\.json`/);
+  });
+  it("fails when CODEOWNERS leaves .agents/rules/ unowned", () => {
+    const v = run({ codeowners: codeowners.replace(/^\/\.agents\/rules\/.*$/m, "") }).join("\n");
+    expect(v).toMatch(/no owner for `\/\.agents\/rules\/`/);
   });
   it("fails when .env is no longer ignored", () => {
     const v = run({

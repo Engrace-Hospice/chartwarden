@@ -1,0 +1,18 @@
+{
+  "description": "ChartWarden PreToolUse guard for Codex: the same checks as .claude/settings.json. Codex cannot ask, so every ask is a deny. Trust it once with /hooks; a changed hook is skipped until re-trusted.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts\" --codex",
+            "timeout": 10,
+            "statusMessage": "ChartWarden guard"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -54,7 +54,7 @@ export const GATE_MAP: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/\.test\.tsx?$|^tsconfig|\/tsconfig/, ["arch:test-typecheck"]],
   [/^package\.json$|\.github\/workflows\/ci\.yml$/, ["arch:live-suites"]],
   [
-    /^(compliance\/|\.claude\/|scripts\/harness\/|\.githooks\/|\.gitleaks\.toml$|\.gitignore$|CLAUDE\.md$|AGENTS\.md$)/,
+    /^(compliance\/|\.claude\/|\.agents\/|\.codex\/|scripts\/harness\/|\.githooks\/|\.gitleaks\.toml$|\.gitignore$|CLAUDE\.md$|AGENTS\.md$)/,
     ["arch:compliance"],
   ],
 ];

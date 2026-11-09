@@ -14,10 +14,18 @@
  * switch off. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for that one session.
  * (A guard process that never starts, e.g. `bun` missing, is non-blocking in Claude Code itself; the
  * Stop gate, the pre-commit scan and CI are the lines behind it.)
+ *
+ * `--codex` (run from `.codex/hooks.json`) is the same guard for Codex. Codex cannot prompt: `ask` is
+ * "parsed but not supported yet" there, the hook run is marked failed and the tool call PROCEEDS. So every
+ * `ask` is answered `deny`. File edits arrive as `apply_patch` (the patch text is `tool_input.command`) and
+ * are judged file by file; Codex has no Read/Grep/Glob tools, its reads are shell commands (`Bash`).
+ * Hooks there are trust-gated per developer (`/hooks`) and OpenAI calls them a guardrail, not an
+ * enforcement boundary.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { parseApplyPatch } from "./codex-patch";
 import { appendLedger, loadRegistry, projectDir, readHookInput, relPath, sha256 } from "./io";
 import {
   type Decision,
@@ -25,21 +33,94 @@ import {
   classifyBash,
   describeFindings,
   globReachesSecret,
+  isProtectedPath,
   scanContent,
   secretPathReason,
 } from "./patterns";
 
+/** `--codex`: the hook is driven by Codex (`.codex/hooks.json`), not by Claude Code. */
+const CODEX = process.argv.includes("--codex");
+const CODEX_NO_ASK =
+  "Codex cannot ask a human, so what Claude Code would have asked about is refused here: ";
+/** What is actually answered: Codex has no `ask`, and an `ask` it cannot honour lets the call run. */
+const effective = (d: Decision): Decision => (CODEX && d === "ask" ? "deny" : d);
+
+type Log = (decision: Decision, reason: string, target?: string, cmd?: string) => void;
+
 function respond(decision: Exclude<Decision, "allow">, reason: string): never {
+  const final = effective(decision);
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
-        permissionDecision: decision,
-        permissionDecisionReason: `[chartwarden-harness] ${reason}`,
+        permissionDecision: final,
+        permissionDecisionReason: `[chartwarden-harness] ${final === decision ? "" : CODEX_NO_ASK}${reason}`,
       },
     }),
   );
   process.exit(0);
+}
+
+/** Codex gives the session cwd, which may be a subdirectory; the rules are relative to the repo root. */
+function codexRoot(cwd: string | undefined): string {
+  const from = cwd || process.cwd();
+  try {
+    return (
+      execFileSync("git", ["rev-parse", "--show-toplevel"], {
+        cwd: from,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim() || from
+    );
+  } catch {
+    return from;
+  }
+}
+
+/**
+ * Codex `apply_patch`: every path it names (and a rename's target), then the text it adds, judged exactly
+ * as Claude's Edit/Write are. A patch the parser cannot read is refused: it cannot be judged.
+ */
+function checkPatch(text: string, root: string, cwd: string, log: Log): void {
+  function deny(reason: string, target?: string): never {
+    log("deny", reason, target);
+    return respond("deny", reason);
+  }
+  const parsed = parseApplyPatch(text);
+  if (!parsed.ok) {
+    if (process.env.CW_HARNESS_FAIL_OPEN === "1") return;
+    deny(
+      `The guard could not read this apply_patch (${parsed.reason}), so it cannot judge it. (CW_HARNESS_FAIL_OPEN=1 lets a human bypass for a session.)`,
+    );
+  }
+  const rel = (p: string): string => relPath(root, isAbsolute(p) ? p : join(cwd, p));
+  const registry = loadRegistry(root);
+  for (const f of parsed.files) {
+    for (const target of (f.moveTo ? [f.path, f.moveTo] : [f.path]).map(rel)) {
+      const why = secretPathReason(target);
+      if (why) {
+        deny(
+          `\`${target}\` is ${why}. Agents never read or write it; use the committed .example template for its shape.`,
+          target,
+        );
+      }
+      if (isProtectedPath(target)) {
+        deny(
+          `\`${target}\` is part of the agent harness or the compliance record. Codex cannot ask a human, so a human edits it (or Claude Code, with approval).`,
+          target,
+        );
+      }
+    }
+    const target = rel(f.path);
+    if (f.added.length > MAX_SCAN_CHARS) {
+      deny(
+        `This patch adds ${Math.round(f.added.length / 1_000_000)} MB to one file, past the ${MAX_SCAN_CHARS / 1_000_000} MB the PHI/credential scan can vouch for. Add it in smaller pieces.`,
+        target,
+      );
+    }
+    const findings = scanContent(f.added, registry, target);
+    if (findings.length > 0) deny(describeFindings(target, findings), target);
+  }
 }
 
 function currentBranch(root: string): string | undefined {
@@ -78,20 +159,25 @@ async function main(): Promise<void> {
   }
   const tool = hook.tool_name ?? "";
   const input = hook.tool_input ?? {};
-  const root = projectDir(hook);
-  const log = (decision: string, reason: string, target?: string, cmd?: string) =>
+  const root = CODEX ? process.env.CLAUDE_PROJECT_DIR || codexRoot(hook.cwd) : projectDir(hook);
+  const cwd = hook.cwd || root;
+  const log: Log = (decision, reason, target, cmd) =>
     appendLedger(root, hook.session_id, {
       event: "pre_tool",
-      tool,
+      tool: CODEX ? `codex/${tool}` : tool,
       target,
       cmd_sha256: cmd ? sha256(cmd) : undefined,
-      decision,
+      decision: effective(decision),
       reason,
     });
 
+  if (CODEX && tool === "apply_patch") {
+    checkPatch(String(input.command ?? ""), root, cwd, log);
+    return;
+  }
+
   if (tool === "Bash") {
     const cmd = String(input.command ?? "");
-    const cwd = hook.cwd || root;
     const v = classifyBash(cmd, {
       branch: currentBranch(root),
       root,
@@ -109,6 +195,8 @@ async function main(): Promise<void> {
       );
       respond(v.decision, v.reason);
     }
+    // Codex often applies a patch as `apply_patch <<'EOF' ...` through the shell; judge that text too.
+    if (CODEX && cmd.includes("*** Begin Patch")) checkPatch(cmd, root, cwd, log);
     return;
   }
 
