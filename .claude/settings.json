@@ -32,6 +32,7 @@
       "Edit(/.claude/rules/**)",
       "Edit(/.agents/rules/**)",
       "Edit(/.codex/hooks.json)",
+      "Edit(/bunfig.toml)",
       "Edit(/scripts/harness/**)",
       "Edit(/scripts/check-compliance-controls.ts)",
       "Edit(/.githooks/**)",

@@ -178,6 +178,7 @@ export const REQUIRED_CODEOWNED = [
   "/.claude/settings.json",
   "/.agents/rules/",
   "/.codex/hooks.json",
+  "/bunfig.toml",
   "/scripts/harness/",
   "/compliance/",
   "/.githooks/",
@@ -189,7 +190,7 @@ const LOOSE_ALLOW = /^Bash\(git (status|diff|log|show|branch)\*\)$/;
 
 interface HookEntry {
   matcher?: string;
-  hooks?: Array<{ command?: string; async?: boolean; timeout?: number }>;
+  hooks?: Array<{ type?: string; command?: string; async?: boolean; timeout?: number }>;
 }
 interface Settings {
   permissions?: { deny?: string[]; allow?: string[] };
@@ -200,20 +201,23 @@ interface Settings {
 const commandsFor = (s: Settings, event: string): string[] =>
   (s.hooks?.[event] ?? []).flatMap((h) => (h.hooks ?? []).map((x) => x.command ?? ""));
 
-/** Tools Codex's guard must see: shell commands, and file edits (which arrive there as `apply_patch`). */
-export const REQUIRED_CODEX_TOOLS = ["Bash", "apply_patch"];
+/** The one matcher Codex's guard runs under: shell commands, and file edits (which arrive as `apply_patch`). */
+export const CODEX_GUARD_MATCHER = "Bash|apply_patch";
 
-/** Does a hook `matcher` (a regex over the tool name; empty, `*` or absent matches all) cover `tool`? */
-const matcherCovers = (matcher: string | undefined, tool: string): boolean => {
-  if (matcher === undefined || matcher === "" || matcher === "*") return true;
-  try {
-    return new RegExp(matcher).test(tool);
-  } catch {
-    return false;
-  }
-};
+/**
+ * The one hook command that keeps Codex behind the guard, pinned byte for byte (a loose "contains the script
+ * name" check passes `exit 0; bun ...guard`, a no-op `echo`, or `... || true`). Each part is load-bearing:
+ * - `--config=/dev/null --no-env-file`: a `bunfig.toml` `preload` in the session directory would otherwise
+ *   run before the guard and could silence it (one patch adds both, and neither file is guarded by a hook);
+ * - `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs the call when a hook times out (its limit here
+ *   is 10 s), so the guard is killed first; and a failed `exec` (no `bun` on the hook's PATH) would
+ *   otherwise fall off the end of the script and exit 0, which is an ALLOW;
+ * - `|| { ...; exit 2; }`: exit 2 with a message BLOCKS in Codex; any other failure (bun not on the hook's
+ *   PATH, a crash, the alarm) is "failed, and the call proceeds".
+ */
+export const CODEX_GUARD_COMMAND = `perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
 
-/** PURE — `.codex/hooks.json` must keep Codex behind the same PreToolUse guard, run in `--codex` mode. */
+/** PURE — `.codex/hooks.json` must hold exactly the one guard hook, and nothing that could shadow it. */
 export function checkCodexHooks(text: string | undefined): string[] {
   if (text === undefined) return [".codex/hooks.json is missing — Codex would run with no guard"];
   let parsed: { hooks?: Record<string, HookEntry[]> };
@@ -222,27 +226,23 @@ export function checkCodexHooks(text: string | undefined): string[] {
   } catch (e) {
     return [`.codex/hooks.json does not parse: ${String(e)}`];
   }
-  const guards = (parsed.hooks?.PreToolUse ?? []).flatMap((g) =>
-    (g.hooks ?? [])
-      .filter((h) => (h.command ?? "").includes("scripts/harness/pre-tool-guard.ts"))
-      .map((h) => ({ matcher: g.matcher, ...h })),
-  );
-  if (guards.length === 0)
-    return [".codex/hooks.json: PreToolUse does not run scripts/harness/pre-tool-guard.ts"];
+  const groups = parsed.hooks?.PreToolUse ?? [];
+  const group = groups[0];
+  const hook = group?.hooks?.[0];
   const v: string[] = [];
-  const codexMode = guards.filter((g) => /\s--codex(\s|$)/.test(g.command ?? ""));
-  if (codexMode.length === 0)
+  if (groups.length !== 1 || group?.hooks?.length !== 1)
+    v.push(".codex/hooks.json: PreToolUse must be exactly one group holding exactly one hook");
+  if (group?.matcher !== CODEX_GUARD_MATCHER)
+    v.push(`.codex/hooks.json: the PreToolUse matcher must be exactly \`${CODEX_GUARD_MATCHER}\``);
+  if (hook?.type !== "command")
+    v.push('.codex/hooks.json: the guard hook must have type "command"');
+  if (hook?.command !== CODEX_GUARD_COMMAND)
     v.push(
-      ".codex/hooks.json: the guard must run with `--codex` (Codex has no `ask`, so an ask would let the call run)",
+      ".codex/hooks.json: the guard command must be exactly CODEX_GUARD_COMMAND from scripts/check-compliance-controls.ts (pinned bun config, 8 s alarm, exit 2 on failure)",
     );
-  for (const t of REQUIRED_CODEX_TOOLS)
-    if (!codexMode.some((g) => matcherCovers(g.matcher, t)))
-      v.push(`.codex/hooks.json: the guard matcher does not cover \`${t}\``);
-  for (const g of codexMode) {
-    if (g.async === true) v.push(".codex/hooks.json: the guard must not be async");
-    if (typeof g.timeout !== "number")
-      v.push(".codex/hooks.json: the guard needs an explicit timeout (seconds)");
-  }
+  if (typeof hook?.timeout !== "number" || hook.timeout < 1 || hook.timeout > 30)
+    v.push(".codex/hooks.json: the guard needs a timeout of 1 to 30 seconds");
+  if (hook?.async === true) v.push(".codex/hooks.json: the guard must not be async");
   return v;
 }
 

@@ -9,6 +9,7 @@
 /.agents/agents/           @fabwebdev
 /.agents/skills/           @fabwebdev
 /.codex/hooks.json         @fabwebdev
+/bunfig.toml               @fabwebdev
 /scripts/harness/          @fabwebdev
 /scripts/check-compliance-controls.ts @fabwebdev
 /compliance/               @fabwebdev

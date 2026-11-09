@@ -4,7 +4,7 @@
  * guard fails closed on invalid), because a header the parser misses but Codex applies bypasses the guard.
  */
 import { describe, expect, it } from "vitest";
-import { parseApplyPatch } from "../harness/codex-patch";
+import { parseApplyPatch, shellPatch } from "../harness/codex-patch";
 
 const patch = (...body: string[]): string =>
   ["*** Begin Patch", ...body, "*** End Patch"].join("\n");
@@ -116,5 +116,87 @@ describe("parseApplyPatch — anything else is invalid (the guard denies it)", (
     const r = parseApplyPatch(text);
     expect(r.ok).toBe(false);
     expect(!r.ok && r.reason).toMatch(reason);
+  });
+});
+
+describe("parseApplyPatch — characters Codex's Rust trim and JS trim treat differently", () => {
+  it.each([
+    ["a trailing NEL (U+0085): Codex trims it, JS trim keeps it", ".codex/hooks.json\u0085"],
+    ["a trailing no-break space", "a.ts "],
+    ["a zero-width space", "a​.ts"],
+    ["a byte-order mark", "a.ts﻿"],
+    ["a control character", "a\u0001.ts"],
+    ["a tab inside the path", "a\t.ts"],
+  ])("rejects %s, in a header and in a Move to", (_name, path) => {
+    for (const text of [
+      patch(`*** Add File: ${path}`, "+x"),
+      patch("*** Update File: a.ts", `*** Move to: ${path}`, "@@", "+x"),
+    ]) {
+      const r = parseApplyPatch(text);
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.reason).toMatch(/unreadable path/);
+    }
+  });
+
+  it("rejects exotic whitespace around a marker line instead of guessing what Codex does with it", () => {
+    for (const text of [
+      `*** Begin Patch\n*** Add File: a.ts\n+x\n*** End Patch\u0085`,
+      `*** Begin Patch\u0085\n*** Add File: a.ts\n+x\n*** End Patch`,
+    ]) {
+      expect(parseApplyPatch(text).ok).toBe(false);
+    }
+  });
+
+  it("keeps ordinary spaces inside a path", () => {
+    const r = parseApplyPatch(patch("*** Add File: my notes/a b.md", "+x"));
+    expect(r.ok && r.files[0]?.path).toBe("my notes/a b.md");
+  });
+});
+
+describe("shellPatch — a patch applied through the shell must be one plain heredoc", () => {
+  const heredoc = (body: string, opener = "<<'EOF'", delimiter = "EOF") =>
+    `apply_patch ${opener}\n${body}\n${delimiter}`;
+  const body = patch("*** Add File: a.ts", "+x");
+
+  it("has no opinion on a command that does not mention apply_patch, even if it holds the marker", () => {
+    for (const cmd of [
+      "ls -la",
+      "git commit -m 'fix the parser'",
+      "grep -n '*** Begin Patch' codex-patch.ts",
+    ]) {
+      expect(shellPatch(cmd)).toEqual({ kind: "none" });
+    }
+  });
+
+  it.each([
+    ["quoted", "<<'EOF'", "EOF"],
+    ["double-quoted", '<<"EOF"', "EOF"],
+    ["bare", "<<EOF", "EOF"],
+    ["<<-", "<<-EOF", "EOF"],
+    ["another delimiter", "<<'PATCH'", "PATCH"],
+  ])("reads a %s heredoc", (_name, opener, delimiter) => {
+    expect(shellPatch(heredoc(body, opener, delimiter))).toEqual({ kind: "patch", text: body });
+    expect(shellPatch(`${heredoc(body, opener, delimiter)}\n`)).toEqual({
+      kind: "patch",
+      text: body,
+    });
+    expect(
+      shellPatch(heredoc(body, opener, delimiter).replace("apply_patch", "applypatch")).kind,
+    ).toBe("patch");
+  });
+
+  it.each([
+    ["a cd before it", `cd .claude/rules && ${heredoc(body)}`],
+    ["a redirect from a file", "apply_patch < /tmp/p.txt"],
+    ["a pipe into it", "printf x | apply_patch"],
+    ["the patch as an argument", `apply_patch '${body}'`],
+    ["a second command after it", `${heredoc(body)}\ncat notes.txt`],
+    [
+      "a heredoc that holds its own delimiter (the shell would end it early)",
+      heredoc(`${body}\nEOF\nrm x`),
+    ],
+    ["text that only mentions it", "git commit -m 'document apply_patch'"],
+  ])("refuses %s", (_name, cmd) => {
+    expect(shellPatch(cmd).kind).toBe("refuse");
   });
 });

@@ -56,9 +56,14 @@ const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\.(pem|key|p12|pfx|jks|keystore)$/i, "a private key or keystore"],
   [/(^|\/)id_(rsa|ecdsa|ed25519|dsa)(\.pub)?$/i, "an SSH key"],
   [/(^|\/)\.(pgpass|netrc|npmrc|pypirc)$/i, "a credentials file"],
-  [/(^|\/)\.ssh\//, "the SSH configuration directory"],
-  [/(^|\/)\.aws\/credentials$/, "cloud credentials"],
-  [/(^|\/)\.docker\/config\.json$/, "registry credentials"],
+  // `/i`: macOS and Windows resolve `.SSH/config` and `.AWS/credentials` to the same files.
+  [/(^|\/)\.ssh\//i, "the SSH configuration directory"],
+  [/(^|\/)\.aws\/credentials$/i, "cloud credentials"],
+  [/(^|\/)\.docker\/config\.json$/i, "registry credentials"],
+  [
+    /(^|\/)(\.codex\/auth\.json|\.claude\/\.credentials\.json|\.config\/gh\/hosts\.yml|\.git-credentials|\.kube\/config)$/i,
+    "a coding-agent, GitHub, git or cluster credentials file",
+  ],
   // A secrets/ directory — but source files that merely live under a `secrets/` module are code.
   [/(^|\/)\.?secrets?\/(?!.*\.(ts|tsx|js|mjs|cjs|md)$)/i, "a secrets directory"],
   [/\.(dump|sql\.gz|sql\.zst|backup|bak)$/i, "a database dump or backup (may hold PHI)"],
@@ -134,7 +139,9 @@ const CREDENTIAL_RULES: ReadonlyArray<readonly [RegExp, FindingKind]> = [
 ];
 
 /** A postgres URL carrying an inline password for a host that is not local/compose-internal. */
-const DB_URL = /\bpostgres(?:ql)?:\/\/[^:\s/@]+:([^@\s]+)@([^/:\s?#'"`]+)/g;
+// Every quantifier is bounded: an unbounded `[^@\s]+` backtracks to the end of the text from each
+// `postgres://x:` start (quadratic), and the guard fails OPEN on a timeout.
+const DB_URL = /\bpostgres(?:ql)?:\/\/[^:\s/@]{1,64}:([^@\s]{1,256})@([^/:\s?#'"`]{1,255})/g;
 // Local means loopback, the Docker host alias, or a service this repo's docker-compose.yml names. A bare
 // single-label name or a `*.internal` suffix is NOT local: production hosts look exactly like that.
 const LOCAL_HOST_RE =
@@ -182,10 +189,24 @@ export function isScannable(path: string): boolean {
   return !UNSCANNED.test(path.replace(/\\/g, "/"));
 }
 
+// ponytail: one memo for the text being scanned; the hook is a one-shot process. Counting newlines from the
+// start for every finding made a 1 MB patch of findings take 14 s, and the guard fails OPEN past Codex's timeout.
+let lineStarts: { readonly text: string; readonly starts: readonly number[] } | undefined;
 function lineOf(text: string, index: number): number {
-  let n = 1;
-  for (let i = 0; i < index && i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
-  return n;
+  if (lineStarts?.text !== text) {
+    const starts = [0];
+    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
+    lineStarts = { text, starts };
+  }
+  const { starts } = lineStarts;
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if ((starts[mid] ?? 0) <= index) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo + 1;
 }
 
 /**
@@ -631,10 +652,20 @@ const SECRET_MENTION =
   /(?:^|[^A-Za-z0-9_$)\]])\.(?:env(?!\.example)(?:\.[A-Za-z]+)?|pgpass|netrc)(?![A-Za-z0-9_])|['"/][\w-]+\.env(?:\.(?:local|development|staging|production|tenant))?['"]|id_(?:rsa|ed25519|ecdsa)|\.ssh\/|\.aws\/credentials|['"/][\w.-]*\.(?:pem|key|p12|pfx)['"]/;
 
 /** The agent's own guard, ledger, approved lists and the compliance record. */
+// `/i`: macOS and Windows resolve `.CLAUDE/`, `Compliance/` and `.CODEX/HOOKS.JSON` to the real files, so a
+// case-sensitive match is a bypass. The repo-root-anchored directories come first; the settings, hook and
+// instruction files that an agent (or `bun`) loads from ANY directory — nested, or under `~` — are matched
+// at any depth. `bunfig.toml` is one: a `preload` line in it runs before the guard itself does.
 const PROTECTED_PATH =
-  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.claude\/settings(\.local)?\.json$|\.agents\/(rules|agents|skills)(\/|$)|\.codex\/(hooks\.json|config\.toml)$|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.gitleaks\.toml$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)/;
+  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.agents\/(rules|agents|skills|plugins)(\/|$)|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.gitleaks\.toml$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)|(^|\/)(\.claude\/settings(\.local)?\.json|\.codex\/(hooks\.json|config\.toml)|\.?bunfig\.toml|AGENTS\.override\.md)$|(^|\/)\.codex\/(hooks|rules)\//i;
 /** A repo-relative path the harness protects: guard, ledger, rules, compliance record, Codex hook config. */
 export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel);
+
+// A bare interactive shell or REPL. What is typed into it later reaches it through Codex's `write_stdin`,
+// which does NOT fire PreToolUse, so the guard would never see it. Only the obvious bare form is caught.
+const INTERACTIVE =
+  /^\s*(?:(?:env|exec|sudo)\s+)*(?:bash|sh|zsh|dash|fish|ksh|python[0-9.]*|node|bun|deno|ruby|irb|perl|lua|php|psql|sqlite3|mysql|script|screen|tmux)(?:\s+(?:repl|-[a-z]*[is][a-z]*))?\s*$/i;
+export const isInteractiveShell = (cmd: string): boolean => INTERACTIVE.test(cmd);
 const WRITER =
   /^(rm|mv|cp|tee|truncate|dd|ln|install|chmod|chown|touch|sed|perl|awk|gawk|ed|ex|vi|vim|nano|patch|rsync|unlink|shred|mkdir)$/;
 

@@ -23,9 +23,9 @@
  * enforcement boundary.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
-import { parseApplyPatch } from "./codex-patch";
+import { existsSync, realpathSync, writeSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { MAX_PATCH_CHARS, parseApplyPatch, shellPatch } from "./codex-patch";
 import { appendLedger, loadRegistry, projectDir, readHookInput, relPath, sha256 } from "./io";
 import {
   type Decision,
@@ -33,6 +33,7 @@ import {
   classifyBash,
   describeFindings,
   globReachesSecret,
+  isInteractiveShell,
   isProtectedPath,
   scanContent,
   secretPathReason,
@@ -47,18 +48,43 @@ const effective = (d: Decision): Decision => (CODEX && d === "ask" ? "deny" : d)
 
 type Log = (decision: Decision, reason: string, target?: string, cmd?: string) => void;
 
+const MAX_REASON_CHARS = 600;
+
 function respond(decision: Exclude<Decision, "allow">, reason: string): never {
   const final = effective(decision);
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: final,
-        permissionDecisionReason: `[chartwarden-harness] ${final === decision ? "" : CODEX_NO_ASK}${reason}`,
-      },
-    }),
-  );
+  const text = `[chartwarden-harness] ${final === decision ? "" : CODEX_NO_ASK}${reason}`;
+  const json = JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: final,
+      // A reason can echo command text (a 400 KB URL host); a long one must not grow the output.
+      permissionDecisionReason:
+        text.length > MAX_REASON_CHARS ? `${text.slice(0, MAX_REASON_CHARS)}…` : text,
+    },
+  });
+  // Synchronous: `process.stdout.write` then `exit` cut a large write to a pipe off at 64 KB, and Codex runs a
+  // call whose hook output is not valid JSON.
+  try {
+    writeSync(1, json);
+  } catch {
+    process.stdout.write(json);
+  }
   process.exit(0);
+}
+
+function refuse(log: Log, reason: string, target?: string, cmd?: string): never {
+  log("deny", reason, target, cmd);
+  return respond("deny", reason);
+}
+
+/** The real path, or for a path that does not exist yet its nearest existing parent's real path plus the rest. */
+function canon(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    const parent = dirname(p);
+    return parent === p ? p : join(canon(parent), basename(p));
+  }
 }
 
 /** Codex gives the session cwd, which may be a subdirectory; the rules are relative to the repo root. */
@@ -81,45 +107,77 @@ function codexRoot(cwd: string | undefined): string {
  * Codex `apply_patch`: every path it names (and a rename's target), then the text it adds, judged exactly
  * as Claude's Edit/Write are. A patch the parser cannot read is refused: it cannot be judged.
  */
-function checkPatch(text: string, root: string, cwd: string, log: Log): void {
-  function deny(reason: string, target?: string): never {
-    log("deny", reason, target);
-    return respond("deny", reason);
+function checkPatch(text: string, root: string, base: string, log: Log): void {
+  if (text.length > MAX_PATCH_CHARS) {
+    refuse(
+      log,
+      `This patch is ${Math.round(text.length / 1024)} KB, past the ${MAX_PATCH_CHARS / 1024} KB the guard can scan inside Codex's hook timeout (a hook that times out lets the call run). Split it.`,
+    );
   }
   const parsed = parseApplyPatch(text);
   if (!parsed.ok) {
     if (process.env.CW_HARNESS_FAIL_OPEN === "1") return;
-    deny(
+    refuse(
+      log,
       `The guard could not read this apply_patch (${parsed.reason}), so it cannot judge it. (CW_HARNESS_FAIL_OPEN=1 lets a human bypass for a session.)`,
     );
   }
-  const rel = (p: string): string => relPath(root, isAbsolute(p) ? p : join(cwd, p));
+  // Real paths on both sides, resolved from the directory the patch runs in: a symlinked cwd or root would
+  // otherwise turn `.codex/hooks.json` into `../../..`, and a symlink into a protected directory would pass.
+  const realRoot = canon(root);
+  const rel = (p: string): string => relPath(realRoot, canon(isAbsolute(p) ? p : join(base, p)));
   const registry = loadRegistry(root);
   for (const f of parsed.files) {
     for (const target of (f.moveTo ? [f.path, f.moveTo] : [f.path]).map(rel)) {
       const why = secretPathReason(target);
       if (why) {
-        deny(
+        refuse(
+          log,
           `\`${target}\` is ${why}. Agents never read or write it; use the committed .example template for its shape.`,
           target,
         );
       }
       if (isProtectedPath(target)) {
-        deny(
+        refuse(
+          log,
           `\`${target}\` is part of the agent harness or the compliance record. Codex cannot ask a human, so a human edits it (or Claude Code, with approval).`,
           target,
         );
       }
     }
+    // A rename's destination is where the text lands: scan it with no source-path exemptions, or a lockfile
+    // or test fixture renamed INTO source would skip the content rules.
     const target = rel(f.path);
-    if (f.added.length > MAX_SCAN_CHARS) {
-      deny(
-        `This patch adds ${Math.round(f.added.length / 1_000_000)} MB to one file, past the ${MAX_SCAN_CHARS / 1_000_000} MB the PHI/credential scan can vouch for. Add it in smaller pieces.`,
-        target,
-      );
-    }
-    const findings = scanContent(f.added, registry, target);
-    if (findings.length > 0) deny(describeFindings(target, findings), target);
+    const findings = scanContent(f.added, registry, f.moveTo ? "" : target);
+    if (findings.length > 0) refuse(log, describeFindings(target, findings), target);
+  }
+}
+
+/** Codex shell commands: no bare interactive shell, and a patch applied through the shell is one plain heredoc. */
+function checkCodexShell(
+  input: Record<string, unknown>,
+  root: string,
+  cwd: string,
+  log: Log,
+): void {
+  const cmd = input.command;
+  if (typeof cmd !== "string") {
+    refuse(log, "The command was not text, so the guard cannot judge it.");
+  }
+  if (isInteractiveShell(cmd)) {
+    refuse(
+      log,
+      "A bare interactive shell or REPL is refused: what is typed into it later reaches it through Codex's write_stdin, which does not fire the PreToolUse hook, so the guard would never see it. Run the command you need directly.",
+      undefined,
+      cmd,
+    );
+  }
+  const shell = shellPatch(cmd);
+  if (shell.kind === "refuse") refuse(log, shell.reason, undefined, cmd);
+  if (shell.kind === "patch") {
+    const workdir =
+      typeof input.workdir === "string" && input.workdir ? resolve(cwd, input.workdir) : cwd;
+    checkPatch(shell.text, root, workdir, log);
   }
 }
 
@@ -172,7 +230,11 @@ async function main(): Promise<void> {
     });
 
   if (CODEX && tool === "apply_patch") {
-    checkPatch(String(input.command ?? ""), root, cwd, log);
+    const patch = input.command;
+    if (typeof patch !== "string") {
+      refuse(log, "The apply_patch input was not text, so the guard cannot judge it.");
+    }
+    checkPatch(patch, root, cwd, log);
     return;
   }
 
@@ -195,8 +257,7 @@ async function main(): Promise<void> {
       );
       respond(v.decision, v.reason);
     }
-    // Codex often applies a patch as `apply_patch <<'EOF' ...` through the shell; judge that text too.
-    if (CODEX && cmd.includes("*** Begin Patch")) checkPatch(cmd, root, cwd, log);
+    if (CODEX) checkCodexShell(input, root, cwd, log);
     return;
   }
 

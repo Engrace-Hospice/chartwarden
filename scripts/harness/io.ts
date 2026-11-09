@@ -147,6 +147,10 @@ export function lineDigest(entry: Record<string, unknown>): string {
 }
 
 /** Best-effort: a ledger failure must never block the developer's work. */
+const MAX_LEDGER_FIELD_CHARS = 1000;
+const capLedgerField = (s: string): string =>
+  s.length > MAX_LEDGER_FIELD_CHARS ? `${s.slice(0, MAX_LEDGER_FIELD_CHARS)}…` : s;
+
 export function appendLedger(root: string, sessionId: string | undefined, e: LedgerEvent): void {
   if (process.env.CW_AGENT_LEDGER === "off") return;
   try {
@@ -176,7 +180,13 @@ export function appendLedger(root: string, sessionId: string | undefined, e: Led
         ts: now.toISOString(),
         session: sessionId ?? "",
         actor: process.env.GIT_AUTHOR_EMAIL || process.env.USER || "",
-        ...Object.fromEntries(Object.entries(e).filter(([, v]) => v !== undefined && v !== "")),
+        // Metadata only, and bounded: a reason that echoes a 400 KB command would write a line `lastHash`
+        // cannot read back, and the NEXT entry would chain to the wrong hash.
+        ...Object.fromEntries(
+          Object.entries(e)
+            .filter(([, v]) => v !== undefined && v !== "")
+            .map(([k, v]) => [k, typeof v === "string" ? capLedgerField(v) : v]),
+        ),
         prev: existsSync(file) ? lastHash(file) : chainStart(file),
       };
       entry.hash = sha256(String(entry.prev) + lineDigest(entry));

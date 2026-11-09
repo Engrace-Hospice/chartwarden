@@ -1,0 +1,121 @@
+/**
+ * Path rules the Codex guard leans on (2026-11-09 adversarial review): macOS and Windows resolve a
+ * differently-cased name to the real file, `bunfig.toml` runs code before the guard does, and settings or
+ * hook files are loaded from any directory. A case-sensitive or root-anchored match is a bypass.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  EMPTY_REGISTRY,
+  isInteractiveShell,
+  isProtectedPath,
+  scanContent,
+  secretPathReason,
+} from "../harness/patterns";
+
+describe("isProtectedPath", () => {
+  it.each([
+    ".claude/settings.json",
+    ".claude/rules/phi-and-secrets.md",
+    ".agents/rules/x.md",
+    ".agents/plugins/p.json",
+    ".codex/hooks.json",
+    ".codex/config.toml",
+    ".codex/rules/x.rules",
+    ".codex/hooks/x.sh",
+    "scripts/harness/patterns.ts",
+    "compliance/controls.yaml",
+    "bunfig.toml",
+    "AGENTS.override.md",
+  ])("protects %s", (p) => expect(isProtectedPath(p)).toBe(true));
+
+  it.each([
+    ".Claude/rules/phi-and-secrets.md",
+    ".CLAUDE/AUDIT/agent-ledger-2026-11.jsonl",
+    ".CODEX/HOOKS.JSON",
+    "Scripts/Harness/pre-tool-guard.ts",
+    "COMPLIANCE/controls.yaml",
+    "BunFig.toml",
+    "AGENTS.OVERRIDE.MD",
+  ])("protects the case variant %s", (p) => expect(isProtectedPath(p)).toBe(true));
+
+  it.each([
+    "apps/web/.codex/config.toml",
+    "apps/web/.codex/hooks.json",
+    "packages/x/bunfig.toml",
+    "packages/x/.bunfig.toml",
+    "sub/AGENTS.override.md",
+    "sub/.claude/settings.local.json",
+    "/Users/dev/.codex/config.toml",
+    "../../home/.codex/hooks.json",
+  ])("protects %s at any depth, nested or outside the repo", (p) =>
+    expect(isProtectedPath(p)).toBe(true),
+  );
+
+  it.each([
+    "docs/compliance/AGENT_HARNESS.md",
+    "docs/scripts/harness-notes.md",
+    "src/bunfig.ts",
+    "apps/backend/src/index.ts",
+    "AGENTS.md",
+    ".codex/sessions/x.jsonl",
+  ])("leaves %s alone", (p) => expect(isProtectedPath(p)).toBe(false));
+});
+
+describe("secretPathReason — credentials a coding agent holds", () => {
+  it.each([
+    ".codex/auth.json",
+    "/Users/dev/.codex/auth.json",
+    ".claude/.credentials.json",
+    ".config/gh/hosts.yml",
+    ".git-credentials",
+    ".kube/config",
+    ".SSH/config",
+    ".AWS/credentials",
+    ".DOCKER/config.json",
+  ])("refuses %s", (p) => expect(secretPathReason(p)).not.toBeNull());
+
+  it.each(["src/ssh.ts", ".codex/hooks.json", "docs/aws-credentials.md", ".env.example"])(
+    "allows %s",
+    (p) => expect(secretPathReason(p)).toBeNull(),
+  );
+});
+
+describe("isInteractiveShell — a shell the guard cannot follow (Codex's write_stdin is not hooked)", () => {
+  it.each([
+    "bash",
+    "sh -i",
+    "zsh",
+    "python3",
+    "python",
+    "node",
+    "env bash",
+    "psql",
+    "bun repl",
+    "  tmux ",
+  ])("refuses the bare %j", (cmd) => expect(isInteractiveShell(cmd)).toBe(true));
+  it.each([
+    "python3 scripts/x.py",
+    "bash scripts/deploy.sh",
+    "node -v",
+    "python3 -V",
+    "bun run test",
+    "sh -c 'ls'",
+    "ls",
+  ])("allows %j", (cmd) => expect(isInteractiveShell(cmd)).toBe(false));
+});
+
+describe("scanContent — the line number of every finding, found without rescanning from the top", () => {
+  it("reports each finding on its own line", () => {
+    // Assembled at runtime so this file does not trip the scanner it tests.
+    const key = ["AKIA", "Z".repeat(16)].join("");
+    const text = [
+      "const a = 1;",
+      `const k1 = "${key}";`,
+      "",
+      "// more",
+      `const k2 = "${key}";`,
+    ].join("\n");
+    const lines = scanContent(text, EMPTY_REGISTRY, "src/a.ts").map((f) => f.line);
+    expect(lines).toEqual([2, 5]);
+  });
+});

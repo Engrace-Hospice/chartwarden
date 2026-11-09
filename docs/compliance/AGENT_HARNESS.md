@@ -42,20 +42,40 @@ against Codex 0.162.1: its own config is `.codex/config.toml` and `.codex/hooks.
   marked failed and the tool call proceeds. So under `--codex` every `ask` is answered `deny`, including a
   push, a non-local `ssh` and any write to a protected path. A human runs those, or Claude Code asks.
 - **Edits arrive as `apply_patch`**, with the patch text in `tool_input.command`.
-  `scripts/harness/codex-patch.ts` takes it apart (also when applied through the shell as
-  `apply_patch <<'EOF'`); every path, rename target and added line is judged as Edit/Write are. A patch the
-  parser cannot read is denied. Codex has no Read/Grep/Glob tools; its reads are shell commands.
-- **The hook layer is a guardrail.** Each developer must trust the hook once (`/hooks`, tied to its hash, so
-  a changed hook is skipped until re-trusted) and the project `.codex/` layer must be trusted. It can be
-  switched off (`[features] hooks = false`) or bypassed (`--dangerously-bypass-hook-trust`), and OpenAI calls
-  hooks "a useful guardrail, not a complete enforcement boundary". A guard process that cannot start lets
-  the call run. MCP tools are not matched. Codex has no ledger or Stop gate yet; only the guard's own deny
-  entries reach `.claude/audit/`, tagged `codex/<tool>`.
+  `scripts/harness/codex-patch.ts` takes it apart; every path, rename target and added line is judged as
+  Edit/Write are (a rename's destination is scanned without the source file's exemptions). Paths resolve
+  from the session directory with symlinks followed, and match case-insensitively (macOS and Windows resolve
+  `.Claude/` to `.claude/`). A path with a control or exotic-space character is refused (Codex's Rust trim
+  drops U+0085 where JS's does not, so `hooks.json<U+0085>` would otherwise read as another file), as is a
+  patch the parser cannot read or one over 256 KB (the scan must finish inside Codex's timeout). Through
+  the shell only exactly one `apply_patch <<'EOF' … EOF` is accepted, run in the session directory or the
+  call's `workdir`; `cd`, a pipe, a redirect or a second command is refused, because `apply_patch` is on
+  PATH and each of those applies a patch the guard cannot place. Codex has no Read/Grep/Glob tools; its reads
+  are shell commands. A bare interactive shell or REPL is refused: what is typed into it later reaches it
+  through `write_stdin`, which Codex does not hook.
+- **The hook command is pinned byte for byte** (`CODEX_GUARD_COMMAND` in
+  `scripts/check-compliance-controls.ts`), and each part matters. `bun --config=/dev/null --no-env-file`:
+  a `bunfig.toml` `preload` in the session directory would otherwise run before the guard and could silence
+  it (`bunfig.toml` is protected for that reason). `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs
+  the call when a hook times out (10 s here) and when `exec` fails perl would exit 0, an allow. `|| exit 2`:
+  exit 2 with a message blocks in Codex, so a guard that cannot start, crashes or times out blocks the call.
+  `perl` and `bun` must be on the hook's PATH; without them every shell call and patch is refused, loudly.
+- **The hook layer is a guardrail, not a boundary.** Each developer must trust the hook once (`/hooks`, tied
+  to its hash, so a changed hook is skipped until re-trusted) and the project `.codex/` layer must be
+  trusted. It can be switched off (`[features] hooks = false`, or a fresh `CODEX_HOME`) or bypassed
+  (`--dangerously-bypass-hook-trust`), and OpenAI calls hooks "a useful guardrail, not a complete
+  enforcement boundary". The shell layer is text heuristics, the same as Claude's: it does not understand an
+  interpreter script (`python - <<EOF`), `git apply`, `git checkout <rev> -- <protected path>`, a directory
+  move or copy, or an obfuscated command name. `write_stdin` and MCP tools are not hooked. **Run Codex in its
+  `workspace-write` sandbox: that, not this hook, is the boundary.** Codex has no ledger or Stop gate yet;
+  only the guard's own deny entries reach `.claude/audit/`, tagged `codex/<tool>` and capped at 1000
+  characters a field.
 
-`.codex/config.toml` stays local and git-ignored (it can disable hooks) and is on the guard's protected
-list. `arch:compliance` fails if `.codex/hooks.json` is missing, stops running the guard with `--codex`,
-stops covering `Bash` and `apply_patch`, goes async or loses its timeout, or if `.gitignore` or CODEOWNERS
-stop covering it.
+`.codex/config.toml`, `bunfig.toml`, `AGENTS.override.md` and `.codex/{hooks,rules}/` are on the guard's
+protected list at any depth (they are loaded from any directory, and `~/.codex/config.toml` can disable the
+hook for a user); `.codex/config.toml` itself stays local and git-ignored. `arch:compliance` fails if
+`.codex/hooks.json` is missing or differs from the pinned command, matcher (`Bash|apply_patch`), type or
+timeout (1 to 30 s), or if `.gitignore` or CODEOWNERS stop covering it or `bunfig.toml`.
 
 ## ECC settings applied by the project (`.claude/settings.json` → `env`)
 

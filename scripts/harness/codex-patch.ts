@@ -39,6 +39,10 @@ interface Draft {
   added: string[];
 }
 
+/** A path with a control, format or non-ASCII-space character (U+0085, NBSP, zero-width, BOM ...) is refused. */
+const oddPath = (p: string): boolean =>
+  p === "" || /[\p{Cc}\p{Cf}\p{Z}]/u.test(p.replaceAll(" ", ""));
+
 const finish = (d: Draft): PatchFile => ({
   path: d.path,
   op: d.op,
@@ -58,7 +62,10 @@ export function parseApplyPatch(text: string): PatchParse {
 
   const lines = text.split("\n").map((l) => l.replace(/\r$/, ""));
   for (const [i, line] of lines.entries()) {
-    const t = line.trim();
+    // ASCII-only trim. Codex's Rust `trim` also strips U+0085 and Unicode spaces that JS `trim` keeps (and
+    // keeps U+FEFF that JS strips); any such character left on a header line lands in the path, where
+    // `oddPath` refuses it, instead of being silently dropped to a path Codex does not edit.
+    const t = line.replace(/^[ \t]+|[ \t]+$/g, "");
     if (!inPatch) {
       if (t === BEGIN) {
         inPatch = true;
@@ -89,13 +96,17 @@ export function parseApplyPatch(text: string): PatchParse {
     if (t === END_OF_FILE && cur?.op === "update") continue;
     const header = HEADER.exec(t);
     if (header) {
+      const path = header[2] ?? "";
+      if (oddPath(path)) return { ok: false, reason: `unreadable path on patch line ${i + 1}` };
       flush();
-      cur = { path: (header[2] ?? "").trim(), op: OPS[header[1] ?? ""] ?? "update", added: [] };
+      cur = { path, op: OPS[header[1] ?? ""] ?? "update", added: [] };
       continue;
     }
     const move = MOVE.exec(t);
     if (move && cur?.op === "update" && cur.moveTo === undefined) {
-      cur.moveTo = (move[1] ?? "").trim();
+      const path = move[1] ?? "";
+      if (oddPath(path)) return { ok: false, reason: `unreadable path on patch line ${i + 1}` };
+      cur.moveTo = path;
       continue;
     }
     return { ok: false, reason: `unrecognised patch line ${i + 1}` };
@@ -105,4 +116,39 @@ export function parseApplyPatch(text: string): PatchParse {
   if (!sawPatch) return { ok: false, reason: "no `*** Begin Patch`" };
   if (files.length === 0) return { ok: false, reason: "the patch names no file" };
   return { ok: true, files };
+}
+
+/** Past this many characters a patch is refused: the content scan must finish inside Codex's hook timeout. */
+export const MAX_PATCH_CHARS = 262_144;
+
+export type ShellPatch =
+  | { readonly kind: "none" }
+  | { readonly kind: "patch"; readonly text: string }
+  | { readonly kind: "refuse"; readonly reason: string };
+
+const MENTIONS_APPLY_PATCH = /\bapply_?patch\b/;
+const HEREDOC_FORM =
+  /^\s*apply_?patch\s+<<-?[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[ \t]*\n([\s\S]*)\n[ \t]*\2[ \t]*\n?\s*$/;
+const SHELL_FORM_REASON =
+  "A shell command that mentions apply_patch must be exactly `apply_patch <<'EOF'`, the patch, then the closing `EOF`, run in the session directory: no cd, pipe, redirect, variable or second command. The guard cannot tell where any other form writes. Use the apply_patch tool directly.";
+
+/**
+ * Codex applies a patch through the shell as `apply_patch <<'EOF' ... EOF`, and `apply_patch` is also on
+ * PATH, so `cd x && apply_patch <<EOF`, `apply_patch < file` and `printf ... | apply_patch` all apply one
+ * without the marker text appearing in the command. Anything that names `apply_patch` and is not exactly one
+ * heredoc is refused; a heredoc whose body holds its own delimiter line is refused too (the shell would end
+ * it there and run the rest as commands). Obfuscated names (`${a}_patch`) are beyond a text heuristic: the
+ * real boundary there is Codex's sandbox.
+ */
+export function shellPatch(cmd: string): ShellPatch {
+  if (!MENTIONS_APPLY_PATCH.test(cmd)) return { kind: "none" };
+  const m = HEREDOC_FORM.exec(cmd);
+  const delimiter = m?.[2];
+  const body = m?.[3];
+  if (delimiter === undefined || body === undefined)
+    return { kind: "refuse", reason: SHELL_FORM_REASON };
+  if (body.split("\n").some((l) => l.trim() === delimiter)) {
+    return { kind: "refuse", reason: SHELL_FORM_REASON };
+  }
+  return { kind: "patch", text: body };
 }

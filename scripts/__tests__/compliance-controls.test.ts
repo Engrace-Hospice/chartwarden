@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CODEX_GUARD_COMMAND,
   type Register,
   type RepoView,
   checkCodexHooks,
@@ -260,62 +261,58 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
   it("accepts the committed .codex/hooks.json", () => {
     expect(checkCodexHooks(codexHooks)).toEqual([]);
   });
-  it("fails when .codex/hooks.json is missing, unparsable or does not run the guard", () => {
+  it("fails when .codex/hooks.json is missing or unparsable", () => {
     expect(run({ codexHooks: undefined }).join()).toMatch(/hooks\.json is missing/);
     expect(run({ codexHooks: "{" }).join()).toMatch(/does not parse/);
-    const none = withCodexHooks((h) => {
-      h.hooks.PreToolUse = [];
-    });
-    expect(run({ codexHooks: none }).join()).toMatch(
-      /does not run scripts\/harness\/pre-tool-guard/,
-    );
   });
-  it("fails when the Codex guard loses --codex (an ask would let the call run)", () => {
-    const v = run({
-      codexHooks: withCodexHooks((h) => {
-        h.hooks.PreToolUse[0].hooks[0].command = "bun scripts/harness/pre-tool-guard.ts";
-      }),
-    }).join("\n");
-    expect(v).toMatch(/must run with `--codex`/);
-  });
-  it("fails when the Codex matcher stops covering apply_patch or Bash", () => {
-    const patchless = run({
-      codexHooks: withCodexHooks((h) => {
-        h.hooks.PreToolUse[0].matcher = "Bash";
-      }),
-    }).join("\n");
-    expect(patchless).toMatch(/does not cover `apply_patch`/);
-    const bashless = run({
-      codexHooks: withCodexHooks((h) => {
-        h.hooks.PreToolUse[0].matcher = "^apply_patch$";
-      }),
-    }).join("\n");
-    expect(bashless).toMatch(/does not cover `Bash`/);
-    // An empty, `*` or absent matcher matches every tool; a broken regex covers nothing.
-    for (const m of ["", "*", undefined]) {
-      const v = run({
-        codexHooks: withCodexHooks((h) => {
-          h.hooks.PreToolUse[0].matcher = m;
-        }),
+  it("pins the guard command: variants that mention the script but never run it fail", () => {
+    const withCommand = (command: string) =>
+      withCodexHooks((h) => {
+        h.hooks.PreToolUse[0].hooks[0].command = command;
       });
-      expect(v).toEqual([]);
+    for (const command of [
+      "exit 0; bun scripts/harness/pre-tool-guard.ts --codex",
+      "echo scripts/harness/pre-tool-guard.ts --codex",
+      `${CODEX_GUARD_COMMAND} || true`,
+      "bun scripts/harness/pre-tool-guard.ts",
+      CODEX_GUARD_COMMAND.replace("--config=/dev/null ", ""),
+      CODEX_GUARD_COMMAND.replace("alarm 8; ", ""),
+      CODEX_GUARD_COMMAND.replace(" or exit 127", ""),
+      CODEX_GUARD_COMMAND.replace("exit 2", "exit 0"),
+      CODEX_GUARD_COMMAND.replace("--codex", ""),
+    ]) {
+      expect(run({ codexHooks: withCommand(command) }).join(), command).toMatch(
+        /must be exactly CODEX_GUARD_COMMAND/,
+      );
     }
-    const broken = run({
-      codexHooks: withCodexHooks((h) => {
-        h.hooks.PreToolUse[0].matcher = "(";
-      }),
-    }).join("\n");
-    expect(broken).toMatch(/does not cover/);
   });
-  it("fails when the Codex guard is made async or loses its timeout", () => {
-    const v = run({
-      codexHooks: withCodexHooks((h) => {
-        h.hooks.PreToolUse[0].hooks[0].async = true;
-        h.hooks.PreToolUse[0].hooks[0].timeout = undefined;
-      }),
-    }).join("\n");
-    expect(v).toMatch(/must not be async/);
-    expect(v).toMatch(/needs an explicit timeout/);
+  it("fails when the matcher, hook type, group count, async flag or timeout drift", () => {
+    const fails = (mutate: (h: any) => void, re: RegExp) =>
+      expect(run({ codexHooks: withCodexHooks(mutate) }).join("\n")).toMatch(re);
+    // Anything but the exact matcher fails: `Bas|apply_patc` never fires in Codex, `*` is not the guard's.
+    for (const m of ["Bash", "^apply_patch$", "Bas|apply_patc", "*", "", undefined]) {
+      fails((h) => {
+        h.hooks.PreToolUse[0].matcher = m;
+      }, /matcher must be exactly `Bash\|apply_patch`/);
+    }
+    fails((h) => {
+      h.hooks.PreToolUse[0].hooks[0].type = "prompt";
+    }, /type "command"/);
+    fails((h) => {
+      h.hooks.PreToolUse.push({ matcher: "x", hooks: [] });
+    }, /exactly one group/);
+    fails((h) => {
+      h.hooks.PreToolUse[0].hooks[0].async = true;
+    }, /must not be async/);
+    for (const t of [undefined, 0, 99, "10"]) {
+      fails((h) => {
+        h.hooks.PreToolUse[0].hooks[0].timeout = t;
+      }, /timeout of 1 to 30 seconds/);
+    }
+  });
+  it("fails when CODEOWNERS leaves bunfig.toml unowned (a preload runs before the guard)", () => {
+    const v = run({ codeowners: codeowners.replace(/^\/bunfig\.toml.*$/m, "") }).join("\n");
+    expect(v).toMatch(/no owner for `\/bunfig\.toml`/);
   });
   it("fails when .gitignore swallows .codex/ again or drops its allow-list", () => {
     expect(run({ gitignore: `${gitignore}\n.codex/\n` }).join()).toMatch(
