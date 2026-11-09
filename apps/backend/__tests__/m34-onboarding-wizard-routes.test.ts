@@ -64,6 +64,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   request.context.attributes.membershipId =
     request.headers["x-test-membership"] ?? "30000000-0000-4000-8000-000000000001";
+  // A live session that carries no membership (a portal / auditor shape): the user is signed in, nothing to author as.
+  if (request.headers["x-test-no-membership"] === "1")
+    request.context.attributes.membershipId = undefined;
   if (request.headers["x-step-up"] === "fresh") request.context.attributes.stepUpRecent = true;
   if (request.headers["x-actor-kind"])
     request.context.attributes.actorKind = request.headers["x-actor-kind"];
@@ -730,6 +733,53 @@ describe("tenant onboarding routes", () => {
       state: "awaiting_approval",
       attestation: { status: "pending", attestationNote: "reviewed" },
     });
+    await app.close();
+  });
+});
+
+describe("a live session with no membership (the route kit's 403 contract, never a 401 sign-out)", () => {
+  const NO_MEMBERSHIP = { "x-test-no-membership": "1" };
+  const NEEDS_MEMBERSHIP = /active membership is required/i;
+
+  it("is 403 on a platform onboarding write, not a 401 the web shell turns into a sign-out", async () => {
+    const { app, id } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/platform/tenants/acme/onboarding/${id("organisation")}/skip`,
+      headers: { ...OPS, ...FRESH, ...NO_MEMBERSHIP },
+      payload: { skipRationale: "customer migrating" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(NEEDS_MEMBERSHIP);
+    await app.close();
+  });
+
+  it("is 403 on a tenant onboarding write, and the wizard service is never handed an empty membership", async () => {
+    const { app, id } = makeServer();
+    for (const [action, payload] of [
+      ["start", {}],
+      ["attest", { evidenceNote: "done" }],
+    ] as const) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/tenant/onboarding/${id("organisation")}/${action}`,
+        headers: { ...ADMIN, ...NO_MEMBERSHIP },
+        payload,
+      });
+      expect(res.statusCode, action).toBe(403);
+      expect(res.json().error.message, action).toMatch(NEEDS_MEMBERSHIP);
+    }
+    await app.close();
+  });
+
+  it("still reads the tenant wizard: a read needs no membership", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/tenant/onboarding",
+      headers: { ...ADMIN, ...NO_MEMBERSHIP },
+    });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 });
