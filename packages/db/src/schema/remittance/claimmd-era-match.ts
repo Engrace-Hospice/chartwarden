@@ -20,6 +20,7 @@ export const claimMdEraMatchDecision = pgTable("claimmd_era_match_decision", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byStageClaim: index("claimmd_era_match_decision_stage_claim_ix").on(t.stageId, t.transactionSetControlNumber, t.claimIndex, t.decisionVersion),
+  byOrg: index("claimmd_era_match_decision_org_ix").on(t.organizationId, t.createdAt),
 }));
 
 export type ClaimMdEraMatchDecision = typeof claimMdEraMatchDecision.$inferSelect;
