@@ -103,6 +103,25 @@ const collect = () => {
   };
 };
 
+describe("pullTransportAcks and the payer route", () => {
+  it("asks for a context without the payer route (an ack pull is not addressed to a payer)", async () => {
+    const { t } = setup();
+    const asked: unknown[] = [];
+    const spying: M23TransportDeps = {
+      ...t,
+      contexts: {
+        ...t.contexts,
+        contextFor: async (_o, pe, options) => {
+          asked.push(options);
+          return ctxFor(pe);
+        },
+      },
+    };
+    await pullTransportAcks(spying, ORG, "ack_999", async () => {});
+    expect(asked).toEqual([{ payerRoute: "skip" }]);
+  });
+});
+
 describe("pullTransportAcks with a persisted cursor (#749)", () => {
   it("reads past the old 100-page cap and resumes from the stored cursor on the next tick", async () => {
     const { inMemory, t, rows } = setup();
