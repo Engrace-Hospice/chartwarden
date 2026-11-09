@@ -56,7 +56,9 @@ from Codex's hook protocol:
   login, quiet or connection flags. The hook also matches `write_stdin` and permits empty polling only;
   refusing the interactive process at creation remains defence in depth. A reviewed script, finite input
   file, or standalone help/version invocation remains available. A command or workdir that is present and not text is refused, never coerced with
-  `String()` and judged.
+  `String()` and judged. The call's `workdir` is where a shell command runs, so every relative target in
+  it (a redirect, `tee`, `sed -i`, a `cat` of a key file that exists there) is judged from the session
+  directory joined with the `workdir`, not from the session directory itself.
 - **MCP tools** arrive as `mcp__<server>__<tool>` with arbitrary JSON, and nothing says which field is a path
   or text. The guard therefore judges EVERY string in `tool_input`, object keys included, at any depth: each
   line as a secret path and as a protected path (as written, and resolved from the session directory with
@@ -94,6 +96,14 @@ from Codex's hook protocol:
   sandbox: that, not this hook, is the boundary.** Codex has no ledger or Stop gate yet; only the guard's own
   deny entries reach `.claude/audit/`, tagged `codex/<tool>`, capped at 1000 characters a field, and carrying
   the decision actually answered (`deny`, never the `ask` Codex cannot honour).
+
+**Real paths, not text** (both agents). A cwd and a repo root that name one directory with different text (macOS's
+`/tmp` against `/private/tmp`, a symlinked checkout) used to compare as unequal, so a relative write to
+`scripts/harness/` from the symlinked spelling answered allow. The guard judges a shell command twice, with
+the paths as written and with the real path of the root and of the directory the command runs in, and the
+stricter answer wins (real paths alone would lose the match for an absolute path spelled with the root's
+own symlinked text). Read/Write/Edit paths are checked as written and as the real file they name, so a
+symlink to a secret file is refused under an innocent name.
 
 `.codex/config.toml`, `bunfig.toml`, `AGENTS.override.md` and `.codex/{hooks,rules}/` are on the guard's
 protected list at any depth (they are loaded from any directory, and `~/.codex/config.toml` can disable the

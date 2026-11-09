@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { MAX_PATCH_CHARS, mcpStrings, parseApplyPatch, shellPatch } from "./codex-patch";
 import { appendLedger, loadRegistry, projectDir, readHookInput, relPath, sha256 } from "./io";
 import {
+  type BashVerdict,
   type Decision,
   MAX_SCAN_CHARS,
   classifyBash,
@@ -216,13 +217,7 @@ function checkMcp(raw: unknown, root: string, base: string, log: Log): void {
 }
 
 /** Codex shell commands: no bare interactive shell, and a patch applied through the shell is one plain heredoc. */
-function checkCodexShell(
-  cmd: string,
-  workdirInput: unknown,
-  root: string,
-  cwd: string,
-  log: Log,
-): void {
+function checkCodexShell(cmd: string, root: string, workdir: string, log: Log): void {
   if (isInteractiveShell(cmd)) {
     refuse(
       log,
@@ -233,16 +228,47 @@ function checkCodexShell(
   }
   const shell = shellPatch(cmd);
   if (shell.kind === "refuse") refuse(log, shell.reason, undefined, cmd);
-  if (shell.kind === "patch") {
-    // A workdir that is present and not text must not silently fall back to the session cwd: the patch's
-    // relative paths would be judged against a directory it is not applied in.
-    if (workdirInput !== undefined && workdirInput !== null && typeof workdirInput !== "string") {
-      refuse(log, `The command's workdir ${NOT_TEXT}.`, undefined, cmd);
-    }
-    const workdir =
-      typeof workdirInput === "string" && workdirInput ? resolve(cwd, workdirInput) : cwd;
-    checkPatch(shell.text, root, workdir, log);
-  }
+  if (shell.kind === "patch") checkPatch(shell.text, root, workdir, log);
+}
+
+/**
+ * Codex's exec tool takes a `workdir`, relative to the session cwd, and every relative target in the command
+ * resolves from it: it is where a relative write lands. Claude's Bash tool has none. `""` is no workdir;
+ * `undefined` is one that is present and not text, which must not silently fall back to the session cwd, for
+ * every command and not only a patch.
+ */
+function workdirOf(input: Record<string, unknown>): string | undefined {
+  const workdir = input.workdir;
+  if (!CODEX || workdir === undefined || workdir === null) return "";
+  return typeof workdir === "string" ? workdir : undefined;
+}
+
+const VERDICT_RANK: Readonly<Record<Decision, number>> = { allow: 0, ask: 1, deny: 2 };
+
+/**
+ * `classifyBash` compares paths as text, so a cwd and a root that name one directory through different text (a
+ * symlinked `/tmp` against `/private/tmp`) would not match. Judged twice, as written and with the real path of
+ * the root and the directory the command runs in, and the stricter answer wins: real paths alone would lose
+ * the match for a command that spells an absolute path with the root's own, symlinked, text.
+ */
+function judgeBash(cmd: string, root: string, cwd: string, workdir: string): BashVerdict {
+  const branch = currentBranch(root);
+  const judge = (r: string, base: string): BashVerdict => {
+    // A persisted `cd apps/backend` from an earlier call leaves the shell there: judge relative writes from it.
+    const dir = workdir ? resolve(base, workdir) : base;
+    return classifyBash(cmd, {
+      branch,
+      root: r,
+      cwd: dir,
+      exists: (p) => existsSync(isAbsolute(p) ? p : join(dir, p)),
+    });
+  };
+  const written = judge(root, cwd);
+  const realRoot = canon(root);
+  const realCwd = canon(cwd);
+  if (realRoot === root && realCwd === cwd) return written;
+  const real = judge(realRoot, realCwd);
+  return VERDICT_RANK[real.decision] > VERDICT_RANK[written.decision] ? real : written;
 }
 
 function currentBranch(root: string): string | undefined {
@@ -338,13 +364,9 @@ async function main(): Promise<void> {
         cmd,
       );
     }
-    const v = classifyBash(cmd, {
-      branch: currentBranch(root),
-      root,
-      // A persisted `cd apps/backend` from an earlier call leaves the shell there: judge relative writes from it.
-      cwd,
-      exists: (p) => existsSync(isAbsolute(p) ? p : join(cwd, p)),
-    });
+    const workdir = workdirOf(input);
+    if (workdir === undefined) refuse(log, `The command's workdir ${NOT_TEXT}.`, undefined, cmd);
+    const v = judgeBash(cmd, root, cwd, workdir);
     if (v.decision !== "allow") {
       log(
         v.decision,
@@ -357,17 +379,20 @@ async function main(): Promise<void> {
       );
       respond(v.decision, v.reason);
     }
-    if (CODEX) checkCodexShell(cmd, input.workdir, root, cwd, log);
+    if (CODEX) checkCodexShell(cmd, root, workdir ? resolve(cwd, workdir) : cwd, log);
     return;
   }
 
   const rawPath = input.file_path ?? input.notebook_path ?? input.path;
   const target = relPath(root, rawPath);
-  if (target) {
-    const why = secretPathReason(target);
+  // As written, and as the real file it names (a symlink, or a root written through a symlinked prefix).
+  const realTarget =
+    typeof rawPath === "string" && rawPath ? pathResolver(root, cwd)(rawPath) : target;
+  for (const name of new Set([target, realTarget])) {
+    const why = name ? secretPathReason(name) : null;
     if (why) {
-      const reason = `\`${target}\` is ${why}. Agents never read or write it; use the committed .example template for its shape.`;
-      log("deny", reason, target);
+      const reason = `\`${name}\` is ${why}. Agents never read or write it; use the committed .example template for its shape.`;
+      log("deny", reason, name);
       respond("deny", reason);
     }
   }
