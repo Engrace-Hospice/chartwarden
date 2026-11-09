@@ -86,6 +86,10 @@ export {
   countQueuedCommercialSubmissions,
   countQueuedCommercialSubmissionsOn,
 } from "./services/queued-count";
+export {
+  readM41HistoricalEraCandidates,
+  type M41HistoricalEraAttemptCandidate,
+} from "./services/historical-era-candidates";
 export { buildCommercial837iRenderer } from "./services/render-837i";
 export type {
   CommercialRenderParties,
