@@ -5,6 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { and, eq } from "drizzle-orm";
 import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
@@ -99,25 +100,34 @@ export function resolveClaimMdM23PayerRoute(input: {
   readonly at?: Date;
 }): { readonly payerId: string; readonly routeFingerprint: string } {
   const now = input.at ?? new Date();
-  const scoped = input.routes.filter((r) =>
-    r.organizationId === input.organizationId &&
-    r.providerEntityId === input.providerEntityId &&
-    r.macJurisdiction === input.macJurisdiction &&
-    r.accountReference === input.accountReference &&
-    r.usage === input.usage
+  const scoped = input.routes.filter(
+    (r) =>
+      r.organizationId === input.organizationId &&
+      r.providerEntityId === input.providerEntityId &&
+      r.macJurisdiction === input.macJurisdiction &&
+      r.accountReference === input.accountReference &&
+      r.usage === input.usage,
   );
   const validDate = (value: string): boolean => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const parsed = new Date(`${value}T00:00:00.000Z`);
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
   };
-  if (scoped.some((r) => !validDate(r.effectiveFrom) ||
-    (r.effectiveTo !== undefined && (!validDate(r.effectiveTo) || r.effectiveTo < r.effectiveFrom)))) {
+  if (
+    scoped.some(
+      (r) =>
+        !validDate(r.effectiveFrom) ||
+        (r.effectiveTo !== undefined &&
+          (!validDate(r.effectiveTo) || r.effectiveTo < r.effectiveFrom)),
+    )
+  ) {
     throw new Error("CLAIMMD_PAYER_ROUTE_INVALID_DATES");
   }
-  const matches = scoped.filter((r) =>
-    Date.parse(`${r.effectiveFrom}T00:00:00.000Z`) <= now.getTime() &&
-    (r.effectiveTo === undefined || Date.parse(`${r.effectiveTo}T23:59:59.999Z`) >= now.getTime())
+  const matches = scoped.filter(
+    (r) =>
+      Date.parse(`${r.effectiveFrom}T00:00:00.000Z`) <= now.getTime() &&
+      (r.effectiveTo === undefined ||
+        Date.parse(`${r.effectiveTo}T23:59:59.999Z`) >= now.getTime()),
   );
   if (matches.length === 0) throw new Error("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
   if (matches.length !== 1) throw new Error("CLAIMMD_PAYER_ROUTE_AMBIGUOUS");
@@ -139,14 +149,25 @@ function readClaimMdM23PayerRoutes(env: EnvMap): readonly ClaimMdM23PayerRoute[]
     return parsed.map((item) => {
       if (!item || typeof item !== "object") throw new Error();
       const r = item as Record<string, unknown>;
-      const required = ["organizationId", "providerEntityId", "macJurisdiction", "accountReference", "usage", "payerId", "effectiveFrom"];
-      if (required.some((k) => typeof r[k] !== "string" || !(r[k] as string).trim())) throw new Error();
+      const required = [
+        "organizationId",
+        "providerEntityId",
+        "macJurisdiction",
+        "accountReference",
+        "usage",
+        "payerId",
+        "effectiveFrom",
+      ];
+      if (required.some((k) => typeof r[k] !== "string" || !(r[k] as string).trim()))
+        throw new Error();
       if (r.usage !== "test" && r.usage !== "production") throw new Error();
       if (r.effectiveTo !== undefined && typeof r.effectiveTo !== "string") throw new Error();
       return r as unknown as ClaimMdM23PayerRoute;
     });
   } catch {
-    throw new Error(`${CLAIMMD_M23_PAYER_ROUTES_ENV} must be a valid array of scoped, effective-dated route records`);
+    throw new Error(
+      `${CLAIMMD_M23_PAYER_ROUTES_ENV} must be a valid array of scoped, effective-dated route records`,
+    );
   }
 }
 
@@ -172,6 +193,26 @@ async function claimMdAccountOf(
   return { accountReference: platformReference };
 }
 
+/** What a claim fingerprint is bound to when no Claim.MD account reference is configured (the pre-tenant-account placeholder). */
+const LEGACY_CLAIM_ACCOUNT_REFERENCE = "legacy-mac";
+
+/**
+ * The account reference a claim's preview fingerprint and its submit-time fingerprint are both bound to, for one organization: a
+ * tenant's OWN Claim.MD account is `tenant:<org>` (the reference its evidence uses), otherwise the platform's
+ * CLAIMMD_ACCOUNT_REFERENCE, else a fixed placeholder. The preview route and the submit worker call this one function, so a
+ * preview confirmed for one account can never be sent under another and the two fingerprints keep matching.
+ */
+export async function claimAccountReferenceFor(
+  deps: Pick<ClearinghouseContextDeps, "binding" | "env">,
+  organizationId: string,
+): Promise<string> {
+  const resolved = deps.binding?.forOrg ? await deps.binding.forOrg(organizationId) : deps.binding;
+  if (resolved?.vendor === "claimmd" && resolved.account === "tenant") {
+    return tenantClaimMdAccountReference(organizationId);
+  }
+  return deps.env[CLAIMMD_ACCOUNT_REFERENCE_ENV]?.trim() || LEGACY_CLAIM_ACCOUNT_REFERENCE;
+}
+
 export function buildClearinghouseContextPort(
   deps: ClearinghouseContextDeps,
 ): ClearinghouseContextPort {
@@ -180,7 +221,9 @@ export function buildClearinghouseContextPort(
   const platformVendor = deps.env.CLEARINGHOUSE_VENDOR?.trim();
   const claimMdRoutes = readClaimMdM23PayerRoutes(deps.env);
   if (platformVendor === "claimmd" && payerOverride) {
-    throw new Error(`${CLEARINGHOUSE_PAYER_ID_ENV} cannot authorize Claim.MD payer routing; configure ${CLAIMMD_M23_PAYER_ROUTES_ENV}`);
+    throw new Error(
+      `${CLEARINGHOUSE_PAYER_ID_ENV} cannot authorize Claim.MD payer routing; configure ${CLAIMMD_M23_PAYER_ROUTES_ENV}`,
+    );
   }
   return {
     async contextFor(organizationId, providerEntityId, options) {
@@ -263,6 +306,8 @@ export function buildClaimPayerRouteStatus(
   deps: ClearinghouseContextDeps & {
     /** True when the resolved payer id is an active X12 payer (M40 owns the directory). */
     readonly payerIsActive: (payerId: string) => Promise<boolean>;
+    /** Structured logger for a readiness check that failed to resolve (ids and a code only, never the error's message). */
+    readonly log?: (fields: Record<string, unknown>, message: string) => void;
   },
 ): (organizationId: string, providerEntityId: string) => Promise<ClaimPayerRouteStatus> {
   return async (organizationId, providerEntityId) => {
@@ -280,10 +325,17 @@ export function buildClaimPayerRouteStatus(
       }
       return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
     } catch (error) {
+      // A typed refusal keeps its own code (an unreadable credential is not "not verified"); only an untyped throw is generic.
       const code =
-        error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
-          ? error.message
-          : "PAYER_ROUTE_NOT_VERIFIED";
+        error instanceof ChartWardenError
+          ? error.code
+          : error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
+            ? error.message
+            : "PAYER_ROUTE_NOT_VERIFIED";
+      deps.log?.(
+        { organizationId, providerEntityId, code },
+        "claim payer-route readiness could not be resolved",
+      );
       return { status: "not_configured", reasonCode: code };
     }
   };

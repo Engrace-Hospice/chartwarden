@@ -1388,7 +1388,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect((await tenantCall("PUT", ORG_D, "", { vendor: "outside" })).statusCode).toBe(403);
   });
 
-  it("a platform operator sets a tenant's clearinghouse while it is onboarding: audited, sealed, and step 7 settles after activation", async () => {
+  it("a platform operator sets and verifies a tenant's clearinghouse while it is onboarding (audited, sealed) but cannot activate it: step 7 settles when the TENANT's admin activates", async () => {
     const put = await platformCall("PUT", "ch-b", "", {
       vendor: "claimmd",
       mode: "test",
@@ -1401,8 +1401,12 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     const verify = await platformCall("POST", "ch-b", "/verify", { reason: REASON });
     expect(verify.json()).toMatchObject({ test: { outcome: "ok" } });
     expect((await step7(ORG_B))[0]?.status).toBe("pending"); // verified is not active
-    // D2: the tenant's BAA must be recorded (by the tenant) and verified (by an operator) first
-    const early = await platformCall("POST", "ch-b", "/activate", { reason: REASON });
+    // CW-AC-17: activation is the tenant billing admin's. There is no platform route for it (an operator's attempt is a 404) ...
+    expect((await platformCall("POST", "ch-b", "/activate", { reason: REASON })).statusCode).toBe(
+      404,
+    );
+    // ... and D2: the tenant's BAA must be recorded (by the tenant) and verified (by an operator) before the tenant can activate
+    const early = await tenantCall("POST", ORG_B, "/activate", {});
     expect(early.statusCode).toBe(409);
     expect(errorCode(early)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
     expect((await tenantCall("POST", ORG_B, "/baa", BAA)).statusCode).toBe(200);
@@ -1420,9 +1424,14 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         )
       ).statusCode,
     ).toBe(200);
-    const activate = await platformCall("POST", "ch-b", "/activate", { reason: REASON });
+    expect((await step7(ORG_B))[0]?.status).toBe("pending"); // BAA verified, still not active: the operator cannot take the last step
+    expect((await platformCall("POST", "ch-b", "/activate", { reason: REASON })).statusCode).toBe(
+      404,
+    );
+    const activate = await tenantCall("POST", ORG_B, "/activate", {});
     expect(activate.statusCode, activate.body).toBe(200);
-    expect((await step7(ORG_B))[0]?.status).toBe("done"); // the real advance pass settled it
+    expect(activate.json()).toMatchObject({ status: "active" });
+    expect((await step7(ORG_B))[0]?.status).toBe("done"); // the real advance pass settled it, off the tenant's own activation
 
     const [audit] = await q<{
       actor_user_id: string;

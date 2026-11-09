@@ -82,7 +82,6 @@ export interface OnboardingDataService {
     fields: OnboardingFields,
     reason: string,
   ): Promise<{ readonly config: unknown; readonly test: unknown }>;
-  activateClearinghouse(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
   /**
    * The operator verifies the vendor BAA the tenant recorded. NOT gated on the tenant's onboarding status: a live tenant that
    * changed vendor or re-recorded its BAA needs this too.

@@ -57,7 +57,6 @@ export interface OnboardingClearinghousePort {
     plan: VerifyPlan,
     outcome: unknown,
   ): Promise<OnboardingClearinghouseResult>;
-  activate(tx: DbClient, scope: OnboardingWriteScope): Promise<OnboardingClearinghouseResult>;
   /**
    * The operator verifies the vendor BAA the tenant recorded (activation refuses until then). `expected.recordedAt` names the record
    * the operator read; it is compared under the row lock, and a record that changed since is a 409.

@@ -1,10 +1,22 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  hkdfSync,
+  randomBytes,
+} from "node:crypto";
 
 export const CLAIM_PREVIEW_TOKEN_TTL_MS = 10 * 60 * 1000;
 const TOKEN_VERSION = 1 as const;
 
-export function notApplicableClaimRouteFingerprint(organizationId: string, providerEntityId: string): string {
-  return createHash("sha256").update(`m23-route:not-applicable:v1:${organizationId}:${providerEntityId}`).digest("hex");
+export function notApplicableClaimRouteFingerprint(
+  organizationId: string,
+  providerEntityId: string,
+): string {
+  return createHash("sha256")
+    .update(`m23-route:not-applicable:v1:${organizationId}:${providerEntityId}`)
+    .digest("hex");
 }
 
 export interface ClaimPreviewScope {
@@ -23,9 +35,11 @@ export interface ClaimPreviewScope {
 }
 
 function canonical(value: unknown): string {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return JSON.stringify(value);
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("preview fingerprint contains a non-finite number");
+    if (!Number.isFinite(value))
+      throw new Error("preview fingerprint contains a non-finite number");
     return JSON.stringify(value);
   }
   if (value instanceof Date) return JSON.stringify(value.toISOString());
@@ -40,7 +54,15 @@ function canonical(value: unknown): string {
 }
 
 function tokenKey(key: string): Buffer {
-  return Buffer.from(hkdfSync("sha256", Buffer.from(key, "utf8"), Buffer.from("chartwarden-m23-preview-v1"), Buffer.from("confirmation-token-aes-256-gcm"), 32));
+  return Buffer.from(
+    hkdfSync(
+      "sha256",
+      Buffer.from(key, "utf8"),
+      Buffer.from("chartwarden-m23-preview-v1"),
+      Buffer.from("confirmation-token-aes-256-gcm"),
+      32,
+    ),
+  );
 }
 
 /** HMAC the final mapped business input before envelope allocation. Sensitive values never leave this function. */
@@ -52,11 +74,23 @@ export function fingerprintClaim837iBusinessInput(
   if (key.length < 32) throw new Error("claim preview integrity key is unavailable");
   const { envelope: _envelope, ...business } = input;
   const claim = business.claim;
-  const claimWithoutControl = claim && typeof claim === "object"
-    ? Object.fromEntries(Object.entries(claim as Record<string, unknown>).filter(([name]) => name !== "controlNumber"))
-    : claim;
-  const payload = canonical({ schema: "m23-837i-business-v1", binding, business: { ...business, claim: claimWithoutControl } });
-  return createHmac("sha256", key).update("chartwarden:m23:claim-preview:fingerprint:v1\0").update(payload).digest("hex");
+  const claimWithoutControl =
+    claim && typeof claim === "object"
+      ? Object.fromEntries(
+          Object.entries(claim as Record<string, unknown>).filter(
+            ([name]) => name !== "controlNumber",
+          ),
+        )
+      : claim;
+  const payload = canonical({
+    schema: "m23-837i-business-v1",
+    binding,
+    business: { ...business, claim: claimWithoutControl },
+  });
+  return createHmac("sha256", key)
+    .update("chartwarden:m23:claim-preview:fingerprint:v1\0")
+    .update(payload)
+    .digest("hex");
 }
 
 export function issueClaimPreviewToken(
@@ -68,7 +102,10 @@ export function issueClaimPreviewToken(
   const cipher = createCipheriv("aes-256-gcm", tokenKey(key), nonce);
   cipher.setAAD(Buffer.from("chartwarden:m23:claim-preview:token:v1"));
   const encrypted = Buffer.concat([
-    cipher.update(JSON.stringify({ ...input, version: TOKEN_VERSION } satisfies ClaimPreviewScope), "utf8"),
+    cipher.update(
+      JSON.stringify({ ...input, version: TOKEN_VERSION } satisfies ClaimPreviewScope),
+      "utf8",
+    ),
     cipher.final(),
   ]);
   return `v1.${nonce.toString("base64url")}.${encrypted.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}`;
@@ -77,12 +114,16 @@ export function issueClaimPreviewToken(
 export function verifyClaimPreviewToken(
   token: string,
   key: string,
-  expected: Pick<ClaimPreviewScope, "organizationId" | "claimId" | "providerEntityId" | "actorUserId">,
+  expected: Pick<
+    ClaimPreviewScope,
+    "organizationId" | "claimId" | "providerEntityId" | "actorUserId"
+  >,
   now = Date.now(),
 ): ClaimPreviewScope | null {
   if (key.length < 32 || token.length > 4096) return null;
   const [version, nonceText, encryptedText, tagText, extra] = token.split(".");
-  if (version !== "v1" || !nonceText || !encryptedText || !tagText || extra !== undefined) return null;
+  if (version !== "v1" || !nonceText || !encryptedText || !tagText || extra !== undefined)
+    return null;
   try {
     const nonce = Buffer.from(nonceText, "base64url");
     const encrypted = Buffer.from(encryptedText, "base64url");
@@ -91,15 +132,35 @@ export function verifyClaimPreviewToken(
     const decipher = createDecipheriv("aes-256-gcm", tokenKey(key), nonce);
     decipher.setAAD(Buffer.from("chartwarden:m23:claim-preview:token:v1"));
     decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
+    const plaintext = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString(
+      "utf8",
+    );
     const value = JSON.parse(plaintext) as ClaimPreviewScope;
-    if (value.version !== TOKEN_VERSION || value.issuedAt > now || value.expiresAt <= now || value.expiresAt - value.issuedAt > CLAIM_PREVIEW_TOKEN_TTL_MS) return null;
-    if (value.organizationId !== expected.organizationId || value.claimId !== expected.claimId ||
-      value.providerEntityId !== expected.providerEntityId || value.actorUserId !== expected.actorUserId) return null;
-    if (!/^[0-9a-f]{64}$/.test(value.sourceFingerprint) || !/^[0-9a-f]{64}$/.test(value.routeFingerprint) ||
-      !/^[A-Za-z0-9._:-]{1,128}$/.test(value.accountReference) || !Number.isInteger(value.claimVersion)) return null;
+    if (
+      value.version !== TOKEN_VERSION ||
+      value.issuedAt > now ||
+      value.expiresAt <= now ||
+      value.expiresAt - value.issuedAt > CLAIM_PREVIEW_TOKEN_TTL_MS
+    )
+      return null;
+    if (
+      value.organizationId !== expected.organizationId ||
+      value.claimId !== expected.claimId ||
+      value.providerEntityId !== expected.providerEntityId ||
+      value.actorUserId !== expected.actorUserId
+    )
+      return null;
+    if (
+      !/^[0-9a-f]{64}$/.test(value.sourceFingerprint) ||
+      !/^[0-9a-f]{64}$/.test(value.routeFingerprint) ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(value.accountReference) ||
+      !Number.isInteger(value.claimVersion)
+    )
+      return null;
     return value;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 /** Decide the worker fail-closed case. Claim.MD requires a snapshot even for pre-upgrade queued work. */

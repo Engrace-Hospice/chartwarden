@@ -240,11 +240,27 @@ describe("CommercialClaimDetail", () => {
       () => ({ body: view({ claim: { ...(view().claim as object), state: "ready" } }) }),
       {
         [`GET ${BASE}/send-gate`]: () => ({
-          body: { claimId: CLAIM_ID, state: "ready", patientId: PATIENT_ID, canSubmit: true, clearinghouseKey: "synthetic-ch", reasons: [] },
+          body: {
+            claimId: CLAIM_ID,
+            state: "ready",
+            patientId: PATIENT_ID,
+            canSubmit: true,
+            clearinghouseKey: "synthetic-ch",
+            reasons: [],
+          },
         }),
         [`POST ${BASE}/submit`]: () => ({
           status: 202,
-          body: { submissionId: "submission-1", claimId: CLAIM_ID, status: "queued", controlNumber: "CCN-0001", clearinghouseKey: "synthetic-ch", attemptCount: 0, requestedAt: "2026-11-08T00:00:00.000Z", replayed: false },
+          body: {
+            submissionId: "submission-1",
+            claimId: CLAIM_ID,
+            status: "queued",
+            controlNumber: "CCN-0001",
+            clearinghouseKey: "synthetic-ch",
+            attemptCount: 0,
+            requestedAt: "2026-11-08T00:00:00.000Z",
+            replayed: false,
+          },
         }),
       },
       permissions,
@@ -267,7 +283,14 @@ describe("CommercialClaimDetail", () => {
       () => ({ body: view({ claim: { ...(view().claim as object), state: "ready" } }) }),
       {
         [`GET ${BASE}/send-gate`]: () => ({
-          body: { claimId: CLAIM_ID, state: "ready", patientId: PATIENT_ID, canSubmit: false, clearinghouseKey: null, reasons: [{ code: "CH_NOT_WIRED", message: "No clearinghouse is connected." }] },
+          body: {
+            claimId: CLAIM_ID,
+            state: "ready",
+            patientId: PATIENT_ID,
+            canSubmit: false,
+            clearinghouseKey: null,
+            reasons: [{ code: "CH_NOT_WIRED", message: "No clearinghouse is connected." }],
+          },
         }),
       },
       ["commercial_billing.read", "commercial_billing.submit"],

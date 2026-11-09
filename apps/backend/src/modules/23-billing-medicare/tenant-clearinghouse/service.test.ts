@@ -757,6 +757,32 @@ describe("tenant clearinghouse service: verifying and activating", () => {
     expect(again.version).toBe(first.version);
   });
 
+  it("a platform operator may not activate: 403 CLEARINGHOUSE_ACTIVATION_TENANT_ONLY, even for a verified config; the tenant's own admin still can", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    await verify(service, store, ACTOR);
+    await service.recordBaa(store, ACTOR, BAA);
+    await verifyBaaSeen(service, store);
+    // everything an activation needs is in place: only the lane is wrong
+    const refused = await service.activate(store, OPERATOR).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ChartWardenError);
+    expect(refused).toMatchObject({
+      code: "CLEARINGHOUSE_ACTIVATION_TENANT_ONLY",
+      statusCode: 403,
+    });
+    expect((await service.view(store, ORG)).status).toBe("verified");
+    expect(await service.activate(store, ACTOR)).toMatchObject({ status: "active" });
+    // and an operator cannot re-run it over an active config either (a refusal, not an idempotent success)
+    expect(await codeOf(service.activate(store, OPERATOR))).toBe(
+      "CLEARINGHOUSE_ACTIVATION_TENANT_ONLY",
+    );
+  });
+
   it("re-verifying an active config keeps it active", async () => {
     const { store, service } = setup();
     await makeActive(service, store);

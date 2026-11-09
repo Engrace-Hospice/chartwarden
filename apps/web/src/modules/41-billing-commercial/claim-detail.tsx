@@ -265,10 +265,14 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
         return;
       }
       setSendGate(null);
-      setNotice("Submission queued. This confirms queueing only; clearinghouse receipt is still pending.");
+      setNotice(
+        "Submission queued. This confirms queueing only; clearinghouse receipt is still pending.",
+      );
       reload();
     } catch {
-      setSendGateError("The submission result is uncertain. Check claim history before trying again.");
+      setSendGateError(
+        "The submission result is uncertain. Check claim history before trying again.",
+      );
     } finally {
       setSendGateBusy(false);
     }
@@ -377,7 +381,8 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
         {notice ? <InlineAlert tone="success">{notice}</InlineAlert> : null}
         {claim.state === "ready" ? (
           <InlineAlert tone="success">
-            This claim is validated and ready. The server will recheck payer routing, enrollment and current claim facts before queueing.
+            This claim is validated and ready. The server will recheck payer routing, enrollment and
+            current claim facts before queueing.
           </InlineAlert>
         ) : null}
         {claim.state === "ready" && permissions.includes("commercial_billing.submit") ? (
@@ -399,23 +404,36 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
                     <Button disabled={sendGateBusy} onClick={() => void submitCommercialClaim()}>
                       {sendGateBusy ? "Queueing…" : "Confirm and queue submission"}
                     </Button>
-                    <Button tone="tertiary" disabled={sendGateBusy} onClick={() => void reviewForSubmission()}>
+                    <Button
+                      tone="tertiary"
+                      disabled={sendGateBusy}
+                      onClick={() => void reviewForSubmission()}
+                    >
                       Refresh checks
                     </Button>
                   </div>
                 ) : (
                   <ul className="wx-checklist" aria-label="Submission blockers">
                     {sendGate.reasons.map((reason) => (
-                      <li key={reason.code}><span className="wx-checklist-text"><strong>{reason.code}</strong> · {reason.message}</span></li>
+                      <li key={reason.code}>
+                        <span className="wx-checklist-text">
+                          <strong>{reason.code}</strong> · {reason.message}
+                        </span>
+                      </li>
                     ))}
                   </ul>
                 )}
                 {!sendGate.canSubmit && sendGate.reasons.length === 0 ? (
-                  <InlineAlert tone="warning">No blocker details were returned. Refresh the checks before continuing.</InlineAlert>
+                  <InlineAlert tone="warning">
+                    No blocker details were returned. Refresh the checks before continuing.
+                  </InlineAlert>
                 ) : null}
               </>
             )}
-            <p className="wx-row-sub">Submission requires the submit permission and a fresh step-up. Queueing does not mean the clearinghouse or payer accepted the claim.</p>
+            <p className="wx-row-sub">
+              Submission requires the submit permission and a fresh step-up. Queueing does not mean
+              the clearinghouse or payer accepted the claim.
+            </p>
           </Panel>
         ) : null}
 

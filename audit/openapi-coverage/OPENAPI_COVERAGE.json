@@ -1,10 +1,10 @@
 {
   "totals": {
-    "routes": 2026,
-    "enriched": 2023,
-    "deficit": 3,
-    "mutating": 1163,
-    "mutatingNoBody": 2,
+    "routes": 2025,
+    "enriched": 2025,
+    "deficit": 0,
+    "mutating": 1162,
+    "mutatingNoBody": 1,
     "gets": 810,
     "getsNoResponse": 11
   },
@@ -242,8 +242,8 @@
     {
       "module": "25-remittance",
       "routes": 160,
-      "enriched": 158,
-      "deficit": 2,
+      "enriched": 160,
+      "deficit": 0,
       "mutating": 104,
       "mutatingNoBody": 0,
       "gets": 53,
@@ -331,10 +331,10 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 91,
-      "enriched": 91,
+      "routes": 90,
+      "enriched": 90,
       "deficit": 0,
-      "mutating": 59,
+      "mutating": 58,
       "mutatingNoBody": 0,
       "gets": 31,
       "getsNoResponse": 0
@@ -412,10 +412,10 @@
     {
       "module": "bootstrap",
       "routes": 12,
-      "enriched": 11,
-      "deficit": 1,
+      "enriched": 12,
+      "deficit": 0,
       "mutating": 2,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 1
     }

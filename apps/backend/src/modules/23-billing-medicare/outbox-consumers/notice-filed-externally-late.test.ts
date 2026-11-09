@@ -81,19 +81,20 @@ describe("the late external filing consumer", () => {
     expect(notices[0]).toMatchObject({
       kind: "m23.notice_filed_late",
       correlationId: "evt-1",
-      details: {
-        organizationId: ORG,
-        noticeKind: "noe",
-        noticeId: "notice-1",
-        filedOn: "2026-11-08",
-        windowTargetAt: "2026-11-06",
-      },
     });
+    // The ops notice goes to OPS_ALERT_WEBHOOK_URL, an outside receiver: only the org and the kind, never a notice id or a
+    // filing / deadline date (those stay in the tenant's own alert above).
+    expect(Object.keys(notices[0]?.details ?? {}).sort()).toEqual(["noticeKind", "organizationId"]);
+    expect(notices[0]?.details).toEqual({ organizationId: ORG, noticeKind: "noe" });
+    expect(notices[1]?.details).toEqual({ organizationId: ORG, noticeKind: "notr" });
+    expect(JSON.stringify(notices)).not.toMatch(
+      /notice-1|2026-11-0|filedOn|windowTargetAt|noticeId/,
+    );
     // ids and dates: no name, no free text, no patient
     expect(JSON.stringify([alerts, notices])).not.toMatch(/patient|name|mbi/i);
   });
 
-  it("an in-window filing recorded over a watchdog breach stamp alerts with BOTH dates and a distinguishing ops notice", async () => {
+  it("an in-window filing recorded over a watchdog breach stamp alerts the tenant with BOTH dates and sends a distinguishing, date-free ops notice", async () => {
     const { consumer, alerts, notices } = setup();
     const contested = { ...NOE, filedOn: "2026-11-05", breachObservedAt: "2026-11-07" };
     await consumer.handle(event("m23.noe.filed_externally_late", contested));
@@ -109,15 +110,9 @@ describe("the late external filing consumer", () => {
     expect(notices[0]).toMatchObject({
       kind: "m23.notice_filing_contradicts_breach",
       correlationId: "evt-1",
-      details: {
-        organizationId: ORG,
-        noticeKind: "noe",
-        noticeId: "notice-1",
-        filedOn: "2026-11-05",
-        windowTargetAt: "2026-11-06",
-        breachObservedAt: "2026-11-07",
-      },
     });
+    // the kind says it is the contradiction; no date or id leaves for the outside receiver
+    expect(notices[0]?.details).toEqual({ organizationId: ORG, noticeKind: "noe" });
     // a plain late filing carries no breachObservedAt (the field is what tells the two apart)
     await consumer.handle(event("m23.noe.filed_externally_late", NOE));
     expect(alerts[1]?.payload).not.toHaveProperty("breachObservedAt");

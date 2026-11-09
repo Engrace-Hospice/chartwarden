@@ -83,14 +83,9 @@ export function buildM23NoticeFiledLateConsumer(
         summary: breachObservedAt
           ? `a tenant recorded an in-window filing date for a ${kind} the deadline watchdog had already stamped as breached; the breach stamp was kept`
           : `a tenant recorded a ${kind} it filed outside ChartWarden after the due date`,
-        details: {
-          organizationId: event.organizationId,
-          noticeKind,
-          noticeId,
-          filedOn,
-          windowTargetAt,
-          ...(breachObservedAt ? { breachObservedAt } : {}),
-        },
+        // OPS_ALERT_WEBHOOK_URL is an outside receiver: the org and the kind only. The notice id and the filing / deadline
+        // dates stay in the tenant's own alert above (the notice kind in `kind` already says whether it contradicts a breach).
+        details: { organizationId: event.organizationId, noticeKind },
         correlationId: event.id,
       });
     },

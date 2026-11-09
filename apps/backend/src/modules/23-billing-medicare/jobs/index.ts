@@ -4,8 +4,9 @@
 // lifecycle reducers, the validation rule registry, the HIPPS/SIA/sequestration/TOB calculators, the
 // control-number deriver) into running `Worker`s + the cron-schedule `Queue`s. @chartwarden/billing ships NO
 // BullMQ catalog, so this folder holds BOTH the §4.8 queue catalog (`queues.ts`) AND the live `Worker`/`Queue`
-// construction + processor logic (`m23-jobs.ts`). The composition root imports `registerM23Workers` /
-// `registerM23CronWorkers` / `scheduleM23Jobs` / `buildM23WorkerDeps` from here at boot. Nothing runs at import.
+// construction + processor logic (`m23-jobs.ts`). The composition root imports `registerM23DomainWorkers` /
+// `registerM23LaunchWorkers` / `registerM23CronWorkers` / `scheduleM23Jobs` / `buildM23WorkerDeps` from here at
+// boot. Nothing runs at import.
 export {
   M23_CRON_QUEUES,
   type M23CronQueueName,
@@ -52,7 +53,6 @@ export {
   registerM23CronWorkers,
   registerM23DomainWorkers,
   registerM23PortalHealthWorker,
-  registerM23Workers,
   registerM23LaunchWorkers,
   registerM23WatchCronWorkers,
   scheduleM23Jobs,
@@ -60,7 +60,11 @@ export {
   scheduleM23WatchJobs,
   unboundWorkerPort,
 } from "./m23-jobs";
-export { buildClaimPayerRouteStatus, buildClearinghouseContextPort } from "./clearinghouse-context";
+export {
+  buildClaimPayerRouteStatus,
+  buildClearinghouseContextPort,
+  claimAccountReferenceFor,
+} from "./clearinghouse-context";
 export { buildDirectMacGateway, buildSubmissionControlNumberReader } from "./direct-mac-gateway";
 export type { ClearinghouseContextPort, M23TransportDeps } from "./clearinghouse-submission";
 export {

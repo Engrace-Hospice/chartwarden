@@ -95,7 +95,10 @@ export interface M23RouteServices {
   readonly readService: M23ReadRouteService;
   readonly writeService: M23WriteRouteService;
   readonly assemblyService: ClaimAssemblyService;
-  readonly payerRouteStatus: (organizationId: string, providerEntityId: string) => Promise<
+  readonly payerRouteStatus: (
+    organizationId: string,
+    providerEntityId: string,
+  ) => Promise<
     | { readonly status: "verified"; readonly routeFingerprint: string }
     | { readonly status: "not_configured"; readonly reasonCode?: string }
     | { readonly status: "not_applicable" }

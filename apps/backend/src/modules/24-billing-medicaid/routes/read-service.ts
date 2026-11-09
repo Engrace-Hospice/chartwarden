@@ -1,10 +1,10 @@
+import type { MedicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 // apps/backend/src/modules/24-billing-medicaid/routes/read-service.ts — the M24 READ service interface (the
 // §4.1 GET surface). The Drizzle implementation lives in read-service-drizzle.ts; a route test may bind an
 // in-memory stand-in. Money crosses as integer cents; the seam read-views (seam-impls.ts) convert to
 // cents-as-string. No Recipient ID is ever returned (only the masked last-4 fact; D12 / §3.6).
 import type { M24ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
-import type { MedicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 
 export interface ClaimView {
   id: string;
