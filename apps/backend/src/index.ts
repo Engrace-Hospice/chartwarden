@@ -1123,10 +1123,6 @@ import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
 } from "./modules/23-billing-medicare/clearinghouse-binding";
-import {
-  buildClaim837iPersistencePort,
-  renderClaim837iPreview,
-} from "./modules/23-billing-medicare/services/claim-837i-loader";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
@@ -1224,6 +1220,10 @@ import {
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
 import { m23RouteClasses } from "./modules/23-billing-medicare/routes/route-classes";
+import {
+  buildClaim837iPersistencePort,
+  renderClaim837iPreview,
+} from "./modules/23-billing-medicare/services/claim-837i-loader";
 import {
   composeFacilitySpans,
   toFacilitySpans,
@@ -2002,6 +2002,7 @@ import {
   wireM41Tenancy,
 } from "./modules/41-billing-commercial/index";
 import { M41_ROUTE_CLASSES } from "./modules/41-billing-commercial/routes/route-classes";
+import { applyCommercialClaimMdReceipt } from "./modules/41-billing-commercial/services/claimmd-ack-adapter";
 import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
 
 export { buildServer };
@@ -5013,7 +5014,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         dekForOrgVersion: (organizationId, version) =>
           tenantKeys.dekForOrgVersion(organizationId, version),
       }),
-      commercialOutbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
+      applyCommercialReceipt: (tx, receipt) =>
+        applyCommercialClaimMdReceipt(
+          tx,
+          m41OutboxPublisher as unknown as CommercialOutboxPort,
+          receipt,
+        ),
     });
   }
   // Whether the M41 drain is scheduled. In the split deployment the API process (PROCESS_ROLE=api) never registers the repeatable jobs
@@ -7171,7 +7177,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             () =>
               mountM23Routes(app, {
                 previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
-                renderClaimPreview: async ({ organizationId, actorUserId, claimId, providerEntityId, routeFingerprint }) => {
+                renderClaimPreview: async ({
+                  organizationId,
+                  actorUserId,
+                  claimId,
+                  providerEntityId,
+                  routeFingerprint,
+                }) => {
                   const context = await buildClearinghouseContextPort({
                     db: dbHandle.db,
                     env: process.env,
@@ -7190,7 +7202,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                           addresses: lazyPatientAddressReader(),
                           parties: m23ClaimPreviewParties(tx as DbClient),
                           previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
-                          accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                          accountReference:
+                            process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
                         },
                         {
                           claimId,
@@ -7203,13 +7216,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                         },
                       );
                       return rendered.ok
-                        ? { status: "rendered" as const, document: rendered.document, sourceFingerprint: rendered.sourceFingerprint,
-                            accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac", usage: context.usage }
+                        ? {
+                            status: "rendered" as const,
+                            document: rendered.document,
+                            sourceFingerprint: rendered.sourceFingerprint,
+                            accountReference:
+                              process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                            usage: context.usage,
+                          }
                         : {
                             status: "blocked" as const,
-                            gaps: rendered.kind === "gaps"
-                              ? rendered.gaps
-                              : [{ field: "claim", reason: "missing" }],
+                            gaps:
+                              rendered.kind === "gaps"
+                                ? rendered.gaps
+                                : [{ field: "claim", reason: "missing" }],
                           };
                     },
                   );
@@ -7228,13 +7248,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       return { status: "not_configured", reasonCode: "PAYER_ROUTE_NOT_VERIFIED" };
                     }
                     if (!(await m23PayerNameByX12Id(dbHandle.db, context.payerId))) {
-                      return { status: "not_configured", reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE" };
+                      return {
+                        status: "not_configured",
+                        reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE",
+                      };
                     }
-                    return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
+                    return {
+                      status: "verified",
+                      routeFingerprint: context.claimMdRouteFingerprint,
+                    };
                   } catch (error) {
-                    const code = error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
-                      ? error.message
-                      : "PAYER_ROUTE_NOT_VERIFIED";
+                    const code =
+                      error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
+                        ? error.message
+                        : "PAYER_ROUTE_NOT_VERIFIED";
                     return { status: "not_configured", reasonCode: code };
                   }
                 },

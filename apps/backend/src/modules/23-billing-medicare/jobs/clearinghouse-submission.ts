@@ -110,9 +110,19 @@ export class ClearinghouseTransportError extends Error {
   }
 }
 
-function failure(what: string, code: string, reason: string, ambiguous = false): ClearinghouseTransportError {
+function failure(
+  what: string,
+  code: string,
+  reason: string,
+  ambiguous = false,
+): ClearinghouseTransportError {
   // `reason` is useful to the caller but must never be persisted or logged; it may contain vendor details.
-  return new ClearinghouseTransportError(what, code, ambiguous, `clearinghouse ${what} failed (${code}): ${reason}`);
+  return new ClearinghouseTransportError(
+    what,
+    code,
+    ambiguous,
+    `clearinghouse ${what} failed (${code}): ${reason}`,
+  );
 }
 
 type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
@@ -182,8 +192,16 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
     let evidenceId: string | null = null;
     let noticeEvidenceId: string | null = null;
     if (transport.binding.vendor === "claimmd") {
-      if (kind === "claim" && (!input.expectedRouteFingerprint || input.expectedRouteFingerprint !== ctx.claimMdRouteFingerprint)) {
-        throw failure(kind, CH.INVALID_REQUEST, "the Claim.MD payer route changed after submission was authorized");
+      if (
+        kind === "claim" &&
+        (!input.expectedRouteFingerprint ||
+          input.expectedRouteFingerprint !== ctx.claimMdRouteFingerprint)
+      ) {
+        throw failure(
+          kind,
+          CH.INVALID_REQUEST,
+          "the Claim.MD payer route changed after submission was authorized",
+        );
       }
       const exact = payloadFor(transport.binding.vendor, kind, input);
       if (exact.format !== "x12")
@@ -334,13 +352,17 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         ? transport.binding.transport.submitClaim(ctx, submission)
         : transport.binding.transport.submitNotice(ctx, submission),
     );
-    if (!result.ok) throw failure(
-      kind,
-      result.degraded.code,
-      result.degraded.reason,
-      result.degraded.ambiguous === true || result.degraded.code === CH.IN_DOUBT,
-    );
-    if ((evidenceId && transport.claimMdEvidence) || (noticeEvidenceId && transport.claimMdNoticeEvidence)) {
+    if (!result.ok)
+      throw failure(
+        kind,
+        result.degraded.code,
+        result.degraded.reason,
+        result.degraded.ambiguous === true || result.degraded.code === CH.IN_DOUBT,
+      );
+    if (
+      (evidenceId && transport.claimMdEvidence) ||
+      (noticeEvidenceId && transport.claimMdNoticeEvidence)
+    ) {
       const value = result.data.clearinghouseSubmissionId;
       const fieldNamespace: Record<
         string,

@@ -181,7 +181,11 @@ export async function runClaimSubmit(
 
   // A durable job can outlive route configuration. Recheck the server-owned claim program before
   // decrypting credentials or calling any adapter. Gateway presence alone is not certification.
-  const routeReadiness = medicaidClaimRouteReadiness(claim.serviceState, claim.mcoId ?? null, false);
+  const routeReadiness = medicaidClaimRouteReadiness(
+    claim.serviceState,
+    claim.mcoId ?? null,
+    false,
+  );
   if (!routeReadiness.submissionAvailable) {
     await terminalizeSubmissionAndTransition(
       tx,
@@ -525,7 +529,11 @@ export async function runClaimPoll(
 
   // Do not let an explicitly bound but uncertified state gateway poll old pending work. Keep the
   // existing attempt pending for authorized reconciliation; do not call the adapter or expose credentials.
-  const routeReadiness = medicaidClaimRouteReadiness(claim.serviceState, claim.mcoId ?? null, false);
+  const routeReadiness = medicaidClaimRouteReadiness(
+    claim.serviceState,
+    claim.mcoId ?? null,
+    false,
+  );
   if (!routeReadiness.submissionAvailable) return;
 
   const adapter = deps.adapters.adapterForState(claim.serviceState);
