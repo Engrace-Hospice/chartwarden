@@ -1007,13 +1007,31 @@ const SHELL = /^(bash|sh|zsh|dash|fish|ksh)$/;
 const LANGUAGE_REPL = /^(python[0-9.]*|node|ruby|irb|perl|lua|php)$/;
 const DATABASE_REPL = /^(psql|pgcli|sqlite3|mysql)$/;
 
-function interactiveInvocation(p: Parsed): boolean {
+function shellCommandBody(args: readonly string[]): string | null {
+  for (let k = 0; k < args.length; k++) {
+    const arg = args[k] ?? "";
+    if (arg === "-c" || arg === "--command") return args[k + 1] ?? "";
+    if (arg.startsWith("--command=")) return arg.slice("--command=".length);
+    if (/^-c.+/.test(arg)) return arg.slice(2);
+    if (/^-[^-]+c[^-]*$/.test(arg)) return args[k + 1] ?? "";
+  }
+  return null;
+}
+
+function interactiveInvocation(p: Parsed, depth = 0): boolean {
   const { prog, args, ins, docs } = p;
   const explicitInput = ins.length + docs.length > 0;
 
   if (SHELL.test(prog)) {
     if (args.some((a) => /^(-h|--help|--version)$/.test(a))) return false;
-    if (args.some((a) => a === "--command" || /^-[^-]*c/.test(a))) return false;
+    const body = shellCommandBody(args);
+    if (body !== null) {
+      if (depth >= 8) return true;
+      return (
+        body.length > 0 &&
+        segments(body).some((seg) => interactiveInvocation(parseSegment(seg), depth + 1))
+      );
+    }
     if (explicitInput) return false;
     const delimiter = args.indexOf("--");
     if (delimiter >= 0) return delimiter + 1 >= args.length;
@@ -1036,7 +1054,9 @@ function interactiveInvocation(p: Parsed): boolean {
       (prog === "perl" && args.some((a) => /^(?:-e|-E)(?:.+)?$/.test(a))) ||
       (prog === "lua" && args.some((a) => /^(?:-e)(?:.+)?$/.test(a))) ||
       (prog === "php" && args.some((a) => /^(?:-r|-f)(?:.+)?$/.test(a)));
-    if (executesCode) return false;
+    // Inline code can manufacture a child REPL (`code.interact`, `repl.start`, system/exec, …) after
+    // the guard returns. Codex must use a reviewable script file instead.
+    if (executesCode) return true;
     if (explicitInput || args.includes("-")) return false;
     // Language runtimes have large, evolving sets of options that consume a following value.
     // Guessing that an unrecognised value is a script can turn `runtime --some-option value` into
@@ -1054,6 +1074,12 @@ function interactiveInvocation(p: Parsed): boolean {
   if (DATABASE_REPL.test(prog)) {
     if (args.some((a) => /^(--help|-\?|--version|-V)$/.test(a))) return false;
     if (explicitInput) return false;
+    const shellEscape = args.some((a) => {
+      if (prog === "sqlite3") return /(?:^|[\r\n])\s*\.shell(?:\s|$)/i.test(a);
+      if (/^(psql|pgcli)$/.test(prog)) return /(?:^|[\r\n])\s*\\!/.test(a);
+      return /(?:^|[\r\n])\s*(?:system|\\!)(?:\s|$)/i.test(a);
+    });
+    if (shellEscape) return true;
     if (/^(psql|pgcli)$/.test(prog)) {
       return !args.some((a) => /^(?:-c.+|-c|-f.+|-f|--(?:command|file)(?:=.+)?)$/.test(a));
     }
@@ -1071,7 +1097,7 @@ function interactiveInvocation(p: Parsed): boolean {
 }
 
 export const isInteractiveShell = (cmd: string): boolean =>
-  segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg)));
+  segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg), 0));
 
 // ---------------------------------------------------------------------------------------------------
 // Paths: where a write lands once `cd`, `..`, `~`, `$HOME` and `$PWD` are accounted for
