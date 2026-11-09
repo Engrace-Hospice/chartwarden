@@ -326,11 +326,34 @@ export interface BashContext {
   readonly home?: string;
 }
 
+/** One simple command, and the operator (`&&`, `||`, `;`, a newline, `|`, `&`) that joined it to the one before. */
+interface Segment {
+  readonly text: string;
+  readonly joiner: string;
+}
+
+interface SplitCommand {
+  readonly parts: Segment[];
+  /**
+   * True when the line holds only `;`, `&&`, `||` and newlines between commands: no `( … )` group, pipe or
+   * `&`. Then every command runs in the shell itself, and `&&` really means "the one before it succeeded".
+   * Otherwise a `cd` may have run in a subshell or a pipeline and never applied to what follows.
+   */
+  readonly sequential: boolean;
+}
+
 /** Split a command line into simple commands on `;`, `&&`, `||`, `|` and newlines, outside quotes. */
-function segments(cmd: string): string[] {
-  const out: string[] = [];
+function splitSegments(cmd: string): SplitCommand {
+  const raw: Segment[] = [];
   let cur = "";
+  let joiner = "";
+  let sequential = true;
   let quote: string | null = null;
+  const cut = (next: string): void => {
+    raw.push({ text: cur, joiner });
+    cur = "";
+    joiner = next;
+  };
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i] as string;
     if (quote) {
@@ -345,29 +368,31 @@ function segments(cmd: string): string[] {
     }
     const two = cmd.slice(i, i + 2);
     if (two === "&&" || two === "||") {
-      out.push(cur);
-      cur = "";
+      cut(two);
       i++;
       continue;
     }
+    if (ch === "(" || ch === ")") sequential = false;
     // `>|` (clobber) and `&>` / `>&` / `2>&1` (redirections) are not separators; a lone `&` is.
     const prev = cmd[i - 1] ?? "";
-    const splits =
-      ch === ";" ||
-      ch === "\n" ||
-      (ch === "|" && prev !== ">") ||
-      (ch === "&" && cmd[i + 1] !== ">" && !/[<>&|]/.test(prev));
-    if (splits) {
-      out.push(cur);
-      cur = "";
+    const pipe = ch === "|" && prev !== ">";
+    const background = ch === "&" && cmd[i + 1] !== ">" && !/[<>&|]/.test(prev);
+    if (ch === ";" || ch === "\n" || pipe || background) {
+      if (pipe || background) sequential = false;
+      cut(ch);
       continue;
     }
     cur += ch;
   }
-  out.push(cur);
-  // `(cat .env)` and `{ cat .env; }`: the grouping characters are not part of the command.
-  return out.map(ungroup).filter(Boolean);
+  cut("");
+  // A subshell group's parentheses are not part of the command; they only end the line's `sequential` run.
+  const parts = raw
+    .map((p) => ({ text: ungroup(p.text), joiner: p.joiner }))
+    .filter((p) => p.text !== "");
+  return { parts, sequential };
 }
+
+const segments = (cmd: string): string[] => splitSegments(cmd).parts.map((p) => p.text);
 
 const count = (text: string, ch: string): number => text.split(ch).length - 1;
 
@@ -943,17 +968,18 @@ const MAX_SUBSTITUTIONS = 32;
 
 export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): BashVerdict {
   if (depth === 0) judgeBudget = MAX_JUDGED_COMMAND_LINES;
-  return judge(cmd, ctx, depth, startingDir(ctx));
+  const start = startingDir(ctx);
+  return judge(cmd, ctx, depth, { seq: start, any: [start] });
 }
 
-function judge(cmd: string, ctx: BashContext, depth: number, startDir: Cwd): BashVerdict {
+function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashVerdict {
   const c = cmd.trim();
   if (depth > MAX_NESTING || --judgeBudget < 0) {
     return ask(
       "Command substitutions or `bash -c` nested too deeply, or too many to check; a human decides.",
     );
   }
-  const segs = segments(c);
+  const { parts, sequential } = splitSegments(c);
 
   // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
   if (/\b(SKIP_FITNESS=(1|true|yes)|CW_SKIP_PHI_SCAN=(1|true|yes))\b/.test(c)) {
@@ -968,29 +994,39 @@ function judge(cmd: string, ctx: BashContext, depth: number, startDir: Cwd): Bas
     );
   }
 
-  // Every simple command is judged, in order, with the directory a preceding `cd` left it in; any deny
-  // wins, else the first ask, else allow.
+  // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
+  // judged against every directory the command could be running in (see `Dirs`).
   const verdicts: BashVerdict[] = [];
-  let cwd = startDir;
+  let seq = start.seq;
+  let after = start.any; // where the next command runs when the one before it succeeded
+  let anywhere = start.any; // everywhere any later command could run
   let scriptOnStdin = false;
-  segs.forEach((seg, index) => {
-    const parsed = parseSegment(seg);
-    const v = classifySegment(seg, parsed, ctx, cwd);
+  parts.forEach((part, index) => {
+    const parsed = parseSegment(part.text);
+    // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
+    const here = sequential && part.joiner === "&&" ? after : anywhere;
+    const v = classifySegment(part.text, parsed, ctx, seq, here);
     if (v) verdicts.push(v);
     // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`.
-    if (parsed.prog === "eval") verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, cwd));
-    else if (NESTED_SHELL.test(parsed.prog)) {
+    if (parsed.prog === "eval") {
+      verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, { seq, any: here }));
+    } else if (NESTED_SHELL.test(parsed.prog)) {
       const k = parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a));
-      if (k >= 0) verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, cwd));
+      if (k >= 0)
+        verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, { seq, any: here }));
     }
     scriptOnStdin ||= readsScriptFromStdin(parsed, index);
-    cwd = nextDir(cwd, parsed.prog, parsed.args, ctx);
+    seq = nextDir(seq, parsed.prog, parsed.args, ctx);
+    const moved = nextDirs(here, parsed.prog, parsed.args, ctx);
+    after = moved ?? here;
+    if (moved) anywhere = joinDirs(anywhere, moved);
   });
-  // `$( … )` and backticks.
+  // `$( … )` and backticks run wherever the command around them runs.
   const inners = substitutions(c);
   if (inners.length > MAX_SUBSTITUTIONS) {
     verdicts.push(ask("Too many command substitutions to check; a human decides."));
-  } else for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, startDir));
+  } else
+    for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, { seq, any: anywhere }));
   // A script fed to an interpreter on stdin is only text to us: judge all of it (heredoc body included).
   if (scriptOnStdin) {
     const v = scriptTextVerdict(c);
@@ -1206,11 +1242,17 @@ function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): s
     base = "";
   } else t = t.replace(HERE, ".");
   if (strict && /[$`*?[]/.test(t)) return null;
-  const absolute = t.startsWith("/") || t === "~" || t.startsWith("~/");
+  // `~` is the home directory: spell it out, or a repo that lives under it (`cd ~/Apps/x/repo`) is never
+  // recognised as the repo.
+  const home = homeOf(ctx);
+  const underHome = (p: string): boolean => p === "~" || p.startsWith("~/");
+  if (home && underHome(t)) t = `${home}${t.slice(1)}`;
+  if (home && base !== null && underHome(base)) base = `${home}${base.slice(1)}`;
+  const absolute = t.startsWith("/") || underHome(t);
   if (absolute) return relativise(collapse(t), ctx);
   if (base === null) return null;
   const root = ctx.root ? trimSlashes(ctx.root) : "";
-  const anchored = base.startsWith("/") || base.startsWith("~");
+  const anchored = base.startsWith("/") || underHome(base);
   const full = anchored || !root ? `${base}/${t}` : `${root}/${base}/${t}`;
   return relativise(collapse(base || root ? full : t), ctx);
 }
@@ -1218,13 +1260,52 @@ function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): s
 const startingDir = (ctx: BashContext): Cwd =>
   ctx.cwd === undefined ? "" : resolvePath(ctx.cwd, "", ctx);
 
+/**
+ * Where a command line is running. A `cd` is not certain to apply to what follows (it fails, or sits in a
+ * subshell, a pipeline or a background job), so a write is judged against EVERY directory it could land
+ * in, and one that resolves onto a protected path asks.
+ */
+interface Dirs {
+  /** Every `cd` applied in order, as if each succeeded and persisted: what the read sweeps judge from. */
+  readonly seq: Cwd;
+  /** The directories the next command could be running in; `null` is one the guard cannot resolve. */
+  readonly any: readonly Cwd[];
+}
+
+/** More possible directories than this means the guard has lost the thread: treat the directory as unknown. */
+const MAX_CWD_CANDIDATES = 16;
+const MAX_CWD_CHARS = 1024;
+
+const capDirs = (dirs: readonly Cwd[]): readonly Cwd[] =>
+  dirs.length > MAX_CWD_CANDIDATES ? [null] : dirs;
+
+/** Every directory in `a` or `b`, once each. */
+const joinDirs = (a: readonly Cwd[], b: readonly Cwd[]): readonly Cwd[] =>
+  capDirs([...new Set([...a, ...b])]);
+
+/** The target word of a `cd`/`pushd`: the first operand that is not a flag. A bare `cd` goes home. */
+const cdTarget = (args: readonly string[]): string =>
+  args.find((a) => !/^-[LPe@]+$/.test(a) && a !== "--") ?? "~";
+
 /** The directory after a simple command: `cd`/`pushd` move it, `popd` and anything dynamic lose it. */
 function nextDir(cwd: Cwd, prog: string, args: readonly string[], ctx: BashContext): Cwd {
   if (prog === "popd") return null;
   if (prog !== "cd" && prog !== "pushd") return cwd;
-  const target = args.find((a) => !/^-[LPe@]+$/.test(a) && a !== "--");
-  if (target === undefined) return "~";
-  return target === "-" ? null : resolvePath(target, cwd, ctx, true);
+  const target = cdTarget(args);
+  if (target === "-") return null;
+  const dir = resolvePath(target, cwd, ctx, true);
+  return dir !== null && dir.length > MAX_CWD_CHARS ? null : dir;
+}
+
+/** {@link nextDir} for each possible directory; undefined when the command does not move at all. */
+function nextDirs(
+  dirs: readonly Cwd[],
+  prog: string,
+  args: readonly string[],
+  ctx: BashContext,
+): readonly Cwd[] | undefined {
+  if (prog !== "cd" && prog !== "pushd" && prog !== "popd") return undefined;
+  return capDirs([...new Set(dirs.map((dir) => nextDir(dir, prog, args, ctx)))]);
 }
 
 /** Representative protected files, lower-case: a directory that holds one of them is an ancestor. */
@@ -1375,16 +1456,18 @@ interface WriteHit {
 }
 
 /** A protected path quoted inside an inline-code argument, e.g. `open('.claude/settings.json','w')`. */
-function findProtectedIn(arg: string, cwd: Cwd, ctx: BashContext): string | null {
+function findProtectedIn(arg: string, dirs: readonly Cwd[], ctx: BashContext): string | null {
   for (const m of arg.matchAll(/['"]([^'"\s]+)['"]/g)) {
-    const rel = resolvePath(m[1] ?? "", cwd, ctx);
-    if (rel !== null && PROTECTED_PATH.test(rel)) return rel;
+    for (const dir of dirs) {
+      const rel = resolvePath(m[1] ?? "", dir, ctx);
+      if (rel !== null && PROTECTED_PATH.test(rel)) return rel;
+    }
   }
   return null;
 }
 
-/** Does this command write onto the guard, ledger, rules or compliance record? */
-function writesProtectedPath(p: Parsed, cwd: Cwd, ctx: BashContext): WriteHit | null {
+/** Does this command write onto the guard, ledger, rules or compliance record, from any directory it may run in? */
+function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext): WriteHit | null {
   const inline = runsInlineCode(p.prog, p.args);
   const targets: WriteTarget[] = [
     ...p.outs.flatMap(expandBraces).map((raw) => wt(raw)),
@@ -1393,13 +1476,15 @@ function writesProtectedPath(p: Parsed, cwd: Cwd, ctx: BashContext): WriteHit | 
   ];
   let unknownDir = false;
   for (const t of targets) {
-    const rel = resolvePath(t.raw, cwd, ctx);
-    if (rel === null) unknownDir = true;
-    else if (protectedTouch(rel, t)) return { path: rel };
+    for (const dir of dirs) {
+      const rel = resolvePath(t.raw, dir, ctx);
+      if (rel === null) unknownDir = true;
+      else if (protectedTouch(rel, t)) return { path: rel };
+    }
   }
   if (inline) {
     for (const t of fileArgs(p.args)) {
-      const found = findProtectedIn(t, cwd, ctx);
+      const found = findProtectedIn(t, dirs, ctx);
       if (found) return { path: found };
     }
   }
@@ -1492,8 +1577,8 @@ function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, di
 function gitWriteVerdict(
   sub: string,
   rest: readonly string[],
-  dirs: readonly string[],
-  cwd: Cwd,
+  gitDirs: readonly string[],
+  cwds: readonly Cwd[],
   ctx: BashContext,
 ): BashVerdict | null {
   if (sub === "apply" || sub === "am") {
@@ -1509,12 +1594,14 @@ function gitWriteVerdict(
     );
   }
   if (!/^(checkout|restore|rm|mv)$/.test(sub)) return null;
-  let dir = cwd;
-  for (const d of dirs) dir = dir === null ? null : resolvePath(d, dir, ctx, true);
-  for (const p of gitPathspecs(sub, rest, ctx, dir)) {
-    const rel = resolvePath(p, dir, ctx);
-    if (rel === null) return ask(UNKNOWN_DIR_REASON);
-    if (protectedTouch(rel, WHOLE_TREE)) return ask(protectedReason(rel));
+  for (const cwd of cwds) {
+    let dir = cwd;
+    for (const d of gitDirs) dir = dir === null ? null : resolvePath(d, dir, ctx, true);
+    for (const p of gitPathspecs(sub, rest, ctx, dir)) {
+      const rel = resolvePath(p, dir, ctx);
+      if (rel === null) return ask(UNKNOWN_DIR_REASON);
+      if (protectedTouch(rel, WHOLE_TREE)) return ask(protectedReason(rel));
+    }
   }
   return null;
 }
@@ -1719,6 +1806,7 @@ function classifySegment(
   parsed: Parsed,
   ctx: BashContext,
   cwd: Cwd,
+  here: readonly Cwd[],
 ): BashVerdict | null {
   const { prog, args, assigns, outs, ins } = parsed;
   const argline = args.join(" ");
@@ -1813,7 +1901,7 @@ function classifySegment(
         );
       }
     }
-    const writer = gitWriteVerdict(sub, rest, dirs, cwd, ctx);
+    const writer = gitWriteVerdict(sub, rest, dirs, here, ctx);
     if (writer) return writer;
     if (pending) return pending;
   }
@@ -1905,7 +1993,7 @@ function classifySegment(
       "`patch` applies a diff the guard cannot read; it may rewrite the guard, the hooks or the compliance record. A human decides.",
     );
   }
-  const protectedHit = writesProtectedPath(parsed, cwd, ctx);
+  const protectedHit = writesProtectedPath(parsed, here, ctx);
   if (protectedHit) {
     return ask(
       protectedHit.path === null ? UNKNOWN_DIR_REASON : protectedReason(protectedHit.path),
