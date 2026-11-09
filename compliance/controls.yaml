@@ -312,6 +312,7 @@ controls:
       - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/model.ts
       - file: apps/backend/src/modules/34-saas-tenant-platform/__tests__/onboarding-template-upsert.test.ts
       - file: packages/db/migrations/1425_m34_platform_onboarding_template_write_grant.sql
+      - file: packages/db/migrations/1438_m34_platform_ops_onboarding_read_skip.sql
       - file: apps/backend/__tests__/m34-onboarding-wizard.live.test.ts
 
   - id: CW-AC-16
