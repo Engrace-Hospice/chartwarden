@@ -47,12 +47,17 @@ describe("resolveLimit()", () => {
 });
 
 describe("cursor encode/decode", () => {
-  it("round-trips an opaque (createdAt,id) cursor", () => {
-    const c = encodeCursor({ createdAt: "2026-06-01T00:00:00.000Z", id: "abc-123" });
-    expect(decodeCursor(c)).toEqual({ createdAt: "2026-06-01T00:00:00.000Z", id: "abc-123" });
+  const ID = "00000000-0000-4000-8000-000000000001";
+  it("round-trips a signed (createdAt,id) cursor for its org", () => {
+    const c = encodeCursor("org_a", { createdAt: "2026-06-01T00:00:00.000Z", id: ID });
+    expect(decodeCursor("org_a", c)).toEqual({ createdAt: "2026-06-01T00:00:00.000Z", id: ID });
   });
-  it("returns null for a malformed cursor", () => {
-    expect(decodeCursor("@@not-base64@@")).toBeNull();
+  it("refuses a malformed, unsigned or other-org cursor (422 INVALID_CURSOR)", () => {
+    const c = encodeCursor("org_a", { createdAt: "2026-06-01T00:00:00.000Z", id: ID });
+    expect(() => decodeCursor("org_a", "@@not-base64@@")).toThrow(/cursor/i);
+    expect(() => decodeCursor("org_b", c)).toThrow(/cursor/i);
+    const unsigned = Buffer.from(`2026-06-01T00:00:00.000Z|${ID}`).toString("base64url");
+    expect(() => decodeCursor("org_a", unsigned)).toThrow(/cursor/i);
   });
 });
 
@@ -87,16 +92,16 @@ describe("createInMemoryAuditQuery().searchEvents", () => {
 
   it("paginates newest-first with a stable cursor", async () => {
     const seed = Array.from({ length: 5 }, (_, i) =>
-      rec({ id: `e${i}`, createdAt: `2026-06-0${i + 1}T00:00:00Z` }),
+      rec({ id: `00000000-0000-4000-8000-00000000000${i}`, createdAt: `2026-06-0${i + 1}T00:00:00Z` }),
     );
     const { query } = createInMemoryAuditQuery(seed);
     const page1 = await query.searchEvents("org_a", { limit: 2 });
-    expect(page1.items.map((e) => e.id)).toEqual(["e4", "e3"]);
+    expect(page1.items.map((e) => e.id.slice(-1))).toEqual(["4", "3"]);
     expect(page1.nextCursor).not.toBeNull();
     const page2 = await query.searchEvents("org_a", { limit: 2, cursor: page1.nextCursor! });
-    expect(page2.items.map((e) => e.id)).toEqual(["e2", "e1"]);
+    expect(page2.items.map((e) => e.id.slice(-1))).toEqual(["2", "1"]);
     const page3 = await query.searchEvents("org_a", { limit: 2, cursor: page2.nextCursor! });
-    expect(page3.items.map((e) => e.id)).toEqual(["e0"]);
+    expect(page3.items.map((e) => e.id.slice(-1))).toEqual(["0"]);
     expect(page3.nextCursor).toBeNull();
   });
 });

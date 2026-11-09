@@ -1,7 +1,7 @@
 // apps/backend/src/bootstrap/onboarding-credential-port.ts — the seam through which the platform onboarding routes
 // (M34 `/api/v1/platform/tenants/:orgSlug/…`) fill in a tenant's billing credentials without importing the billing
 // modules (M34 has no `dependsOn` edge to M23/M24, and M23/M24 may not import each other, so the contract lives here
-// beside `reject-ai-actor.ts`, the other bootstrap-shared seam).
+// in bootstrap).
 //
 // The owning module implements the port over ITS OWN write service, so the validation, the envelope encryption and
 // the row logic are the ones the tenant's own admin screen runs — nothing is re-implemented for the operator. The

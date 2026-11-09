@@ -1,3 +1,4 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
 import {
   ACK_ADDRESSED_ROLES,
   ACK_CLASSES,
@@ -11,48 +12,45 @@ import {
 // routes. The create body has NO class, deadline, role or status field: the class is derived from the message, the deadline
 // from the platform policy, and the only choice the sender makes is one named colleague. `additionalProperties:false`.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
-const UuidOut = Type.String({ format: "uuid" });
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 const oneOf = <T extends readonly string[]>(values: T) =>
   Type.Union(values.map((v) => Type.Literal(v)));
 
-export const AckParamsSchema = Type.Object({ id: Uuid });
+export const AckParamsSchema = Type.Object({ id: Uuid() });
 
 export const CreateAckBodySchema = Type.Object(
-  { message_id: Uuid, assigned_user_id: Uuid },
+  { message_id: Uuid(), assigned_user_id: Uuid() },
   { additionalProperties: false },
 );
 export const ReassignAckBodySchema = Type.Object(
-  { assigned_user_id: Uuid },
+  { assigned_user_id: Uuid() },
   { additionalProperties: false },
 );
 /** ADR-0078: the supervisor names one colleague and gives a reason from a FIXED set (no free text, no PHI). */
 export const SupervisorReassignBodySchema = Type.Object(
-  { assigned_user_id: Uuid, reason_code: oneOf(ACK_SUPERVISOR_REASON_CODES) },
+  { assigned_user_id: Uuid(), reason_code: oneOf(ACK_SUPERVISOR_REASON_CODES) },
   { additionalProperties: false },
 );
 /** Acknowledge and resolve take no input: the actor is the session, the target is the path. */
 export const EmptyAckBodySchema = Type.Object({}, { additionalProperties: false });
 
 const AckRequest = Type.Object({
-  id: UuidOut,
-  message_id: UuidOut,
-  channel_id: UuidOut,
-  patient_id: UuidOut,
+  id: Uuid(),
+  message_id: Uuid(),
+  channel_id: Uuid(),
+  patient_id: Uuid(),
   ack_class: oneOf(ACK_CLASSES),
   addressed_role: nullable(oneOf(ACK_ADDRESSED_ROLES)),
   status: oneOf(ACK_STATUSES),
-  requester_user_id: UuidOut,
-  assigned_user_id: UuidOut,
+  requester_user_id: Uuid(),
+  assigned_user_id: Uuid(),
   requested_at: Type.String({ format: "date-time" }),
   window_started_at: Type.String({ format: "date-time" }),
   deadline_at: Type.String({ format: "date-time" }),
   current_tier: Type.Integer(),
   acknowledged_at: nullable(Type.String({ format: "date-time" })),
-  acknowledged_by_user_id: nullable(UuidOut),
+  acknowledged_by_user_id: nullable(Uuid()),
   resolved_at: nullable(Type.String({ format: "date-time" })),
   cancelled_at: nullable(Type.String({ format: "date-time" })),
   version: Type.Integer(),
@@ -65,14 +63,14 @@ const AckRequest = Type.Object({
 });
 
 const AckEvent = Type.Object({
-  id: UuidOut,
+  id: Uuid(),
   event_type: oneOf(ACK_EVENT_TYPES),
-  actor_user_id: nullable(UuidOut),
+  actor_user_id: nullable(Uuid()),
   actor_kind: oneOf(["user", "system"] as const),
   from_status: nullable(oneOf(ACK_STATUSES)),
   to_status: nullable(oneOf(ACK_STATUSES)),
-  assigned_user_id: nullable(UuidOut),
-  previous_assigned_user_id: nullable(UuidOut),
+  assigned_user_id: nullable(Uuid()),
+  previous_assigned_user_id: nullable(Uuid()),
   tier: Type.Integer(),
   reason_code: nullable(oneOf(ACK_REASON_CODES)),
   created_at: Type.String({ format: "date-time" }),
@@ -94,13 +92,13 @@ export const AckDetailResponseSchema = Type.Object({
 export const AckChannelListResponseSchema = Type.Object({ requests: Type.Array(AckRequest) });
 
 export const AckReassignCandidatesResponseSchema = Type.Object({
-  candidates: Type.Array(Type.Object({ user_id: UuidOut, display_name: nullable(Type.String()) })),
+  candidates: Type.Array(Type.Object({ user_id: Uuid(), display_name: nullable(Type.String()) })),
 });
 /** No channel, message or patient id: a supervisor may not be entitled to any of them. */
 export const AckSupervisorReassignResponseSchema = Type.Object({
-  request_ref: UuidOut,
+  request_ref: Uuid(),
   status: Type.Literal("pending"),
-  assigned_user_id: UuidOut,
+  assigned_user_id: Uuid(),
   deadline_at: Type.String({ format: "date-time" }),
   changed: Type.Boolean(),
 });

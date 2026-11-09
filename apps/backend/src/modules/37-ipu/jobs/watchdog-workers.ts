@@ -71,7 +71,7 @@ const SYSTEM_USER_ID = "";
 /** Per-org row caps (bounded work per tick). A tenant over the cap is caught up on the following ticks. */
 export const M37_WATCHDOG_ROW_LIMIT = 2_000;
 /** The census re-checks this many closed service dates, so a day lost to an outage is rebuilt, not skipped. */
-export const CENSUS_BACKFILL_DAYS = 3;
+const CENSUS_BACKFILL_DAYS = 3;
 
 export type Tx = DbClient;
 

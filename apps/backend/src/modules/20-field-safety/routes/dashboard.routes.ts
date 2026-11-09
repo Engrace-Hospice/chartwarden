@@ -22,9 +22,9 @@
 // permission category for the same reason: a compliance-category grant would sweep them into the
 // Compliance Officer template and make one person able to grant another's consent to be located, which is
 // exactly the coercion §2.2.8's `expired`-vs-`revoked` split exists to make visible.
+import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_DASHBOARD, ABAC_SELF, P } from "./guards";
 import {
   ConsentQuery,

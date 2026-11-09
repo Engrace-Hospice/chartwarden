@@ -1,3 +1,4 @@
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/global-search-settings-routes.ts - WP 2.7b C4 (ADR-0058 decisions 2-3).
 //
 //   GET /api/v1/messaging/global-search/settings   the switch, the go-live checklist and the rebuild progress
@@ -9,28 +10,20 @@
 // Org and actor are the server-side request context. The change is audited by the write-audit trigger on the table (who,
 // when, old, new); there is no separate domain event. Registered but inert: with default wiring the rate-limit check is
 // false, so ON is always refused until the composition root says the P2 limit is active.
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { GlobalSearchSettingsService } from "../global-search/settings-service";
 import { PutGlobalSearchSettingsBodySchema } from "./global-search-settings-typebox";
 import { parse } from "./messaging-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
-export const GLOBAL_SEARCH_MANAGE_KEY = "messaging.global_search.manage";
-export const GLOBAL_SEARCH_STEP_UP_KEY = "messaging.global_search.configure";
+const GLOBAL_SEARCH_MANAGE_KEY = "messaging.global_search.manage";
+const GLOBAL_SEARCH_STEP_UP_KEY = "messaging.global_search.configure";
 const MANAGE = requirePermission(GLOBAL_SEARCH_MANAGE_KEY) as PreHandler;
 const STEP_UP = requireStepUp(GLOBAL_SEARCH_STEP_UP_KEY) as PreHandler;
 
 export interface GlobalSearchSettingsRouteDeps {
   readonly service: GlobalSearchSettingsService;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerGlobalSearchSettingsRoutes(

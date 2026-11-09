@@ -3,10 +3,11 @@
 //
 // The profile holds the interchange parties the chart cannot supply (submitter + receiver). Nothing is defaulted: no row, no
 // profile, and the 837I loader reports a typed gap. An upsert is a compare-and-set on `version`: a first insert carries no
-// `If-Match`; an update of an existing row requires the version the caller last read (428 absent, 412 stale).
+// `If-Match`; an update of an existing row requires the version the caller last read (428 absent, 409 STALE_VERSION stale).
 import type { repositories } from "@chartwarden/billing";
 import { billingEdiProfile } from "@chartwarden/db/schema";
 import type * as schema from "@chartwarden/db/schema";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
@@ -44,11 +45,6 @@ export function mapEdiProfile(row: schema.BillingEdiProfile): EdiProfileView {
     updatedAt: row.updatedAt.toISOString(),
   };
 }
-
-const isUniqueViolation = (err: unknown): boolean => {
-  const e = err as { code?: string; cause?: { code?: string } } | null;
-  return e?.code === "23505" || e?.cause?.code === "23505";
-};
 
 export function buildDrizzleEdiProfileService(
   db: BillingDb,
@@ -93,10 +89,8 @@ export function buildDrizzleEdiProfileService(
 
         if (!existing) {
           if (expectedVersion !== undefined) {
-            throw new ChartWardenError(
-              "VERSION_CONFLICT",
+            throw new StaleVersionError(
               "no EDI profile exists for this provider entity and route; omit If-Match to create it",
-              412,
             );
           }
           try {
@@ -115,10 +109,8 @@ export function buildDrizzleEdiProfileService(
           } catch (err) {
             // A concurrent first insert: the caller must re-read and send the version.
             if (!isUniqueViolation(err)) throw err;
-            throw new ChartWardenError(
-              "VERSION_CONFLICT",
+            throw new StaleVersionError(
               "an EDI profile was created concurrently; read it and send its version in If-Match",
-              412,
             );
           }
         }
@@ -131,10 +123,8 @@ export function buildDrizzleEdiProfileService(
           );
         }
         if (existing.version !== expectedVersion) {
-          throw new ChartWardenError(
-            "VERSION_CONFLICT",
+          throw new StaleVersionError(
             `the EDI profile is at version ${existing.version}, not ${expectedVersion}`,
-            412,
           );
         }
         const [row] = await tx

@@ -1,3 +1,9 @@
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/support-sessions.ts — M34 (§4.1
 // platform-ops; §4.7/§6; F01/D8/D16). The tenant-consented break-glass *support session* route group:
 // list (active + recent across tenants), read the event ledger (the surveyor trail), start (a DISTINCT
@@ -16,14 +22,9 @@
 // `withPlatformContext` → typed response, and `auditRead()` records every PHI-adjacent surveyor read
 // (HIPAA §164.312(b) + the F09 bypass-audit guarantee). The start/elevate/close COMMANDS are synchronous
 // service calls that publish their own §4.9 `m34.support_session.*` outbox in-tx (no worker enqueue).
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
+import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   CloseSessionRequest,
   ElevateSessionRequest,
@@ -35,35 +36,9 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface SupportSessionRouteDeps {
   /** The §4.1 platform-ops route service (in-memory in the slice; Drizzle under `withPlatformContext`). */
   service: TenantPlatformRouteService;
-}
-
-/** Server-side platform-ops actor (org/membership binding from the context, NEVER the body). */
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  membershipId: string;
-  actorIp: string | null;
-} {
-  const ctx = request.context;
-  // `membershipId` writes straight into `support_session.actor_membership_id` ("platform-ops actor
-  // (M1 membership)"). This used to fall back to the raw Better Auth `ctx.userId` when
-  // `attributes.membershipId` was absent, landing the wrong id in that FK instead of failing —
-  // fail closed like the sibling `tenants.ts`/`tenant-invitations.ts` actorOf() do.
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId = ctx.attributes?.membershipId;
-  if (typeof membershipId !== "string") throw new UnauthorizedError();
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    membershipId,
-    actorIp: request.ip ?? null,
-  };
 }
 
 const sessionIdOf = (request: FastifyRequest): string =>
@@ -126,7 +101,7 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions",
     { preHandler: [LIST, ABAC_PLATFORM_OPS] },
     async (request) => {
-      actorOf(request);
+      writeActorOf(request);
       const q = parse(SupportSessionListQuerySchema, request.query);
       return service.listSessions(
         { tenantAccountId: q.tenantAccountId, status: q.status },
@@ -141,7 +116,7 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions/:id/events",
     { preHandler: [LIST, ABAC_PLATFORM_OPS] },
     async (request) => {
-      actorOf(request);
+      writeActorOf(request);
       const q = parse(SessionEventListQuerySchema, request.query);
       return service.listSessionEvents(sessionIdOf(request), q.cursor, q.limit);
     },
@@ -152,7 +127,8 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions",
     { preHandler: [START, ABAC_DISTINCT_ACTOR, STEPUP_START] },
     async (request, reply) => {
-      const { organizationId, membershipId, actorIp } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
+      const actorIp = request.ip ?? null;
       const body = parse(StartSessionRequest, request.body);
       const res = await service.startSession({
         organizationId,
@@ -169,7 +145,8 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions/:id/elevate",
     { preHandler: [ELEVATE, ABAC_SUPPORT_ACTIVE, STEPUP_ELEVATE] },
     async (request, reply) => {
-      const { organizationId, membershipId, actorIp } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
+      const actorIp = request.ip ?? null;
       parse(ElevateSessionRequest, request.body);
       const res = await service.elevateSession({
         organizationId,
@@ -186,7 +163,8 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions/:id/close",
     { preHandler: [CLOSE, ABAC_CLOSE] },
     async (request) => {
-      const { organizationId, membershipId, actorIp } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
+      const actorIp = request.ip ?? null;
       parse(CloseSessionRequest, request.body);
       return service.closeSession({
         organizationId,

@@ -23,12 +23,6 @@ export const ACK_TRANSITIONS: Readonly<Record<AckStatus, readonly AckStatus[]>> 
   cancelled: [],
 };
 
-/**
- * The only two same-status updates: a reassign keeps `pending` (new assignee, restarted window) and an escalation to a higher
- * tier keeps `escalated`. Anything else that leaves the status unchanged is not a transition.
- */
-export const ACK_SAME_STATUS_UPDATES: readonly AckStatus[] = ["pending", "escalated"];
-
 export const ackStateInvalid = (
   message = "That request is not in a state that allows this.",
 ): ChartWardenError => new ChartWardenError("ACK_STATE_INVALID", message, 409);
@@ -39,7 +33,7 @@ export const ackNotAcknowledged = (): ChartWardenError =>
     409,
   );
 
-export function isOpenAckStatus(status: AckStatus): boolean {
+function isOpenAckStatus(status: AckStatus): boolean {
   return (ACK_OPEN_STATUSES as readonly AckStatus[]).includes(status);
 }
 

@@ -1,11 +1,11 @@
+// apps/web/src/modules/25-remittance — milestone 3 denial routing and MAC reopenings. Asserts on RECORDED FETCH CALLS
+// (method, path, If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires
+// still fails. The server owns every rule and its refusal is shown verbatim; the filing form survives step-up.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
-// apps/web/src/modules/25-remittance — milestone 3 denial routing and MAC reopenings. Asserts on RECORDED FETCH CALLS
-// (method, path, If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires
-// still fails. The server owns every rule and its refusal is shown verbatim; the filing form survives step-up.
 import { peekStepUpDraft, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { DenialDetailPanel } from "./denial-detail-panel";
 
@@ -395,7 +395,7 @@ describe("M25 reopening lifecycle", () => {
       status: 409,
       body: {
         error: {
-          code: "VERSION_CONFLICT",
+          code: "STALE_VERSION",
           message: "This record changed before your action was applied.",
         },
       },

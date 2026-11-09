@@ -11,6 +11,13 @@
 // `caseload_or_scope` equivalent runs BEFORE the query (`actorMayReadPatient`) and answers `null` — the
 // route turns that into a 404, so an off-caseload plan is indistinguishable from a non-existent one.
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type CursorPage,
+  type PageSizePolicy,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { FiscalYear, IsoInstant, MembershipId, ProviderEntityId } from "@chartwarden/types";
 import { and, asc, desc, eq, gt, lt, lte, or, sql } from "drizzle-orm";
@@ -28,14 +35,6 @@ import {
 } from "../volunteer/index";
 import type { M15ReadActor } from "./actor";
 import {
-  type CursorPage,
-  M15_PAGE_SIZES,
-  type PageSizePolicy,
-  clampLimit,
-  decodeCursor,
-  toCursorPage,
-} from "./concurrency";
-import {
   type CaseloadPort,
   type DisclosureDecision,
   type DisclosurePort,
@@ -45,6 +44,7 @@ import {
   seamCaseloadPort,
   seamDisclosurePort,
 } from "./disclosure";
+import { M15_PAGE_SIZES } from "./read-service";
 import type {
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
@@ -261,7 +261,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 1 — plan worklist (keyset on `updated_at DESC, id DESC`) ─────────────────────────────────────
     async listPlans(actor, query: PlanListQuery) {
       const limit = pageLimit(query, M15_PAGE_SIZES.plans);
-      const cursor = decodeCursor(query.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "instant");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           query.patientId ? eq(P.patientId, query.patientId) : undefined,
@@ -290,6 +290,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
         if (await actorMayReadPatient(actor, row.patientId, caseloadPort)) visible.push(row);
       }
       return toCursorPage(
+        actor.organizationId,
         visible,
         limit,
         (r) => ({ a: iso(r.updatedAt), id: r.id }),
@@ -408,7 +409,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
       const plan = await loadReadablePlan(actor, planId);
       if (!plan) return null;
       const limit = pageLimit(query, M15_PAGE_SIZES.versions);
-      const cursor = decodeCursor(query.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "integer");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [eq(V.planId, planId)];
         if (cursor) {
@@ -424,7 +425,13 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           .orderBy(asc(V.sequence), asc(V.id))
           .limit(limit + 1);
       });
-      return toCursorPage(rows, limit, (r) => ({ a: String(r.sequence), id: r.id }), toVersionRow);
+      return toCursorPage(
+        actor.organizationId,
+        rows,
+        limit,
+        (r) => ({ a: String(r.sequence), id: r.id }),
+        toVersionRow,
+      );
     },
 
     // ── 5 — one version + its sealed snapshot + collected signatures ─────────────────────────────────
@@ -462,7 +469,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 19 — compliance gates (keyset on `valid_until ASC, id ASC`) ──────────────────────────────────
     async listVolunteerGates(actor, query: GateListQuery) {
       const limit = pageLimit(query, M15_PAGE_SIZES.gates);
-      const cursor = decodeCursor(query.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "instant");
       const instant = now();
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const horizon =
@@ -492,6 +499,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           .limit(limit + 1);
       });
       return toCursorPage(
+        actor.organizationId,
         rows,
         limit,
         (r) => ({ a: iso(r.validUntil), id: r.id }),
@@ -541,7 +549,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 25 — the discipline elements M8 / M14 / M22 pull (system principals) ─────────────────────────
     async listRelevantElements(actor, input) {
       const limit = pageLimit(input, M15_PAGE_SIZES.relevantElements);
-      const cursor = decodeCursor(input.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, input.cursor, "text");
       const plans = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           input.patientId ? eq(P.patientId, input.patientId) : undefined,
@@ -582,6 +590,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
         return out;
       });
       return toCursorPage(
+        actor.organizationId,
         plans,
         limit,
         (r) => ({ a: r.id, id: r.id }),
@@ -599,7 +608,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 26 — the MSW psychosocial risk factors for an admission (M16's rubric input) ─────────────────
     async listMswRiskFactors(actor, input) {
       const limit = pageLimit(input, M15_PAGE_SIZES.riskFactors);
-      const cursor = decodeCursor(input.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, input.cursor, "text");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           eq(P.admissionId, input.admissionId),
@@ -647,7 +656,13 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           };
         });
       };
-      const page = toCursorPage(rows, limit, (r) => ({ a: r.id, id: r.id }), factorsOf);
+      const page = toCursorPage(
+        actor.organizationId,
+        rows,
+        limit,
+        (r) => ({ a: r.id, id: r.id }),
+        factorsOf,
+      );
       // One assessment can carry several factors: flatten AFTER paging so the keyset stays on assessments.
       return { ...page, data: page.data.flat() };
     },
@@ -687,7 +702,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 28 — the supervisory cadence worklist (the §7.1 ladder, resolved per plan) ───────────────────
     async listSupervisoryCadence(actor, input) {
       const limit = pageLimit(input, M15_PAGE_SIZES.supervisoryCadence);
-      const cursor = decodeCursor(input.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, input.cursor, "instant");
       const instant = now();
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
@@ -713,6 +728,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           .limit(limit + 1);
       });
       return toCursorPage(
+        actor.organizationId,
         rows,
         limit,
         (r) => ({ a: iso(r.nextSupervisoryDueAt), id: r.id }),

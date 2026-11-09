@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/35-subscription/outbox-consumers/m2-session-created.ts — the §4.12
 // `user-active-period-aggregator` binding over `m2.session.created` (F-172, #248). M35's own D21 (locked,
 // exhaustive "8 inbound subscriptions") names this event; F-142/F-167 left it deferred on
@@ -15,7 +16,7 @@
 // A session for a user with NO membership row in this org (a platform-ops session, a stale/edge-case
 // delivery) is a documented no-op — the `membershipUserIdForOrg` "nothing to resolve, skip" precedent —
 // never a fabricated membership id.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import {
   type PseudonymKeyProvider,
   computeBillingPseudonym,
@@ -29,7 +30,6 @@ import { nonStaffMembershipIds } from "../pricing/staff-meter";
 const MB = schema.memberships;
 const MR = schema.membershipRoles;
 const RL = schema.roles;
-const CONSUMER_USER_ID = "";
 
 export const M35_SESSION_CREATED_CONSUMER = {
   eventNames: ["m2.session.created"] as const,

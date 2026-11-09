@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/31-portal/outbox-consumers/m17-visit-cancelled-telehealth.ts — the §4.10
 // `m17.visit.cancelled` (telehealth-scoped) binding (F-139/#248's follow-up build).
 //
@@ -29,7 +30,7 @@
 // `m31.*` emission from a consumer whose job is to CONSUME, for an event this path was never documented to
 // trigger, would be exactly the "declared a relationship that was never decided" shape this whole build arc
 // exists to correct in the other direction.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { TelehealthLifecycleState } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -40,9 +41,8 @@ const TV = schema.telehealthVisits;
 
 /** Not a real membership row — mirrors M18's own established system-actor sentinel convention
  *  (`M18_SYSTEM_USER_ID`) for a table with no actor/membership column this consumer needs to stamp. */
-const CONSUMER_USER_ID = "";
 
-export const M31_VISIT_CANCELLED_TELEHEALTH_CONSUMER = {
+const M31_VISIT_CANCELLED_TELEHEALTH_CONSUMER = {
   eventName: "m17.visit.cancelled",
   consumerName: "m31.m17-visit-cancelled-telehealth",
 } as const;

@@ -2,7 +2,7 @@
 // service. Each command runs under withOrgContext (RLS), validates the §2.2 transition via the pure
 // @chartwarden/medicaid-adapters reducers, stamps the acting membership, writes an append-only
 // medicaid_claim_state_history row, and emits the §4.11 outbox event on the caller's tx (transactional
-// outbox). A bad transition → INVALID_TRANSITION (409); a stale If-Match → VERSION_CONFLICT (409); a missing
+// outbox). A bad transition → INVALID_TRANSITION (409); a stale If-Match → STALE_VERSION (409); a missing
 // row → NOT_FOUND. Money is INTEGER cents; no MBI/Recipient ID enters an outbox payload (D12 / D13 / §3.6).
 //
 // DEFERRAL (the M25/M26 posture): commands that need an unbound consumed reader DEGRADE to a structured typed
@@ -28,6 +28,7 @@ import {
   runMedicaidRules,
   voidTob,
 } from "@chartwarden/medicaid-adapters";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -38,7 +39,7 @@ import {
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import type { CredentialCipherPort } from "../credential-crypto";
-import type { M24WriteActor } from "./actor";
+import type { M24Actor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
 import { resolveServiceState } from "./service-state";
 import type {
@@ -330,10 +331,7 @@ export function buildDrizzleM24WriteService(
   }
   function assertVersion(row: { version: number }, expected: number | null): void {
     if (expected !== null && row.version !== expected) {
-      throw new ConflictError(
-        "VERSION_CONFLICT",
-        "the If-Match version is stale; reload and retry",
-      );
+      throw new StaleVersionError("the If-Match version is stale; reload and retry");
     }
   }
   async function recordHistory(
@@ -410,7 +408,7 @@ export function buildDrizzleM24WriteService(
   /** Insert or version-bump one provider entity's state trading-partner credential, on `tx` (RLS already scoped). */
   async function upsertCredentialRow(
     tx: Tx,
-    actor: M24WriteActor,
+    actor: M24Actor,
     input: UpsertCredentialInput,
   ): Promise<{ id: string }> {
     const existing = await tx
@@ -518,7 +516,7 @@ export function buildDrizzleM24WriteService(
     // (`hospice_only`/`rb_only` skip the other). Backing M8 encounter evidence links via
     // `medicaid_claim_line_encounter` when the signed-encounters reader is bound (optional — supplementary
     // audit evidence, not a structural input).
-    async assembleClaim(actor: M24WriteActor, input: AssembleClaimInput): Promise<ClaimView> {
+    async assembleClaim(actor: M24Actor, input: AssembleClaimInput): Promise<ClaimView> {
       if (!coverage) {
         throw new DegradedError(
           "MEDICAID_COVERAGE_READER_UNBOUND",
@@ -1649,7 +1647,7 @@ export function buildDrizzleM24WriteService(
 
   /** Build a TOB 817 replacement / 818 void successor DRAFT claim by copying the original (D13 §2.5). */
   async function buildSuccessorClaim(
-    actor: M24WriteActor,
+    actor: M24Actor,
     originalClaimId: string,
     expectedVersion: number | null,
     tob: "817" | "818",

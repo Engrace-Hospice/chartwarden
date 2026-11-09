@@ -7,7 +7,6 @@ import type {
 } from "@chartwarden/types";
 
 export const RETENTION_TITLE = "Retention and legal holds";
-export const RETENTION_BREADCRUMB = "Admin / Messaging";
 // What the destruction executor does for this organization (ADR-0086): the words follow the server's `destruction_mode`.
 export const RETENTION_NOTICE: Readonly<Record<RetentionDestructionMode, string>> = {
   off: "Message destruction is switched off for this organization. The weekly scan only plans; approving a destruction certificate destroys nothing.",

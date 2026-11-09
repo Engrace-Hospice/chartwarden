@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionVisit } from "@chartwarden/scheduling";
 // apps/backend/src/modules/17-scheduling/outbox-consumers/m18-evv-at-patient-address.ts — the D14
 // EVV-authoritative `en_route → in_visit` advance (F-152, #248).
 //
@@ -12,17 +14,13 @@
 // membership. Unlike `arriveVisit`, this consumer does not emit an outbox event on `arrive` — neither
 // does the route-layer method, since no `m17.visit.arrived`/`.in_visit` catalog entry exists; `arrive`
 // is otherwise silent until `m8.encounter.signed` completes the visit.
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionVisit } from "@chartwarden/scheduling";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { VisitStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const V = schema.visit;
 const VSH = schema.visitStateHistory;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M17_EVV_AT_PATIENT_ADDRESS_CONSUMER = {
   eventName: "m18.evv.at_patient_address",

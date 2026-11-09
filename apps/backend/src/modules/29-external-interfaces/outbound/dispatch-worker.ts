@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { CONSUMER_USER_ID, Uuid } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/29-external-interfaces/outbound/dispatch-worker.ts — the M29-T08 outbound
 // dispatch worker (F-175/#248): the REAL, live path from `m11.order.hl7_orm_requested` to an MLLP wire send
 // and back. Every core this file orchestrates (`dispatch-planner.ts`, `ack-correlation.ts`,
@@ -35,7 +37,7 @@
 // NO underlying row write (`hl7.outbound.baa_refuse` — pre-persist; `hl7.outbound.orphan_ack` — no
 // correlating row) have nothing to trigger on, so `logAuditIntent` below structurally logs them instead of
 // fabricating a call to an M4 write-API this codebase does not have.
-import { randomUUID } from "node:crypto";
+import { Value } from "@sinclair/typebox/value";
 
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -117,10 +119,6 @@ const FEED = schema.externalFeed;
  *  since the claim (a rate-limiter wait, or earlier sends in the same sweep batch). Below it the claim's own
  *  lease still covers the whole send, so the extra write (and its audit row) is skipped. */
 const LEASE_REARM_AFTER_MS = 1_000;
-
-/** System-driven write (an outbox consumer, not a human reviewer) — the F-102 `CONSUMER_USER_ID`
- *  convention this arc uses throughout (`m5-patient-deceased.ts`, `state-channel-health-jobs.ts`, …). */
-const SYSTEM_USER_ID = "";
 
 /** MLLP TCP connect timeout. No spec value is pinned for this; a conservative default. */
 const OUTBOUND_CONNECT_TIMEOUT_MS = 10_000;
@@ -256,9 +254,8 @@ function isOrmRequestedPayload(payload: unknown): payload is OrmRequestedPayload
 /** F-200 — `hl7_message_outbound.attempt_id` is a `uuid`; every attempt id is a `randomUUID()`, but the request field is
  *  only typed `string`, so anything else is stored as NULL (its events then apply as pre-F-200 ones) instead of
  *  throwing at the INSERT and stranding the claim. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function asUuidOrNull(value: string | undefined): string | null {
-  return value !== undefined && UUID_RE.test(value) ? value : null;
+  return value !== undefined && Value.Check(Uuid(), value) ? value : null;
 }
 
 // ── The shared transmit + outcome-handling core, used by BOTH the fresh-dispatch path and the retry sweep ──
@@ -581,7 +578,7 @@ async function transmitClaimed(
 async function rearmLease(deps: ResolvedDeps, ctx: TransmitContext, now: Date): Promise<boolean> {
   return withOrgContext(
     deps.db,
-    { organizationId: ctx.organizationId, userId: SYSTEM_USER_ID },
+    { organizationId: ctx.organizationId, userId: CONSUMER_USER_ID },
     async (scoped) => {
       const tx = scoped as unknown as DbClient;
       const rows = await tx
@@ -601,7 +598,7 @@ async function finalizeClaimed(
 ): Promise<void> {
   await withOrgContext(
     deps.db,
-    { organizationId: ctx.organizationId, userId: SYSTEM_USER_ID },
+    { organizationId: ctx.organizationId, userId: CONSUMER_USER_ID },
     async (scoped) => {
       const tx = scoped as unknown as DbClient;
       // The send can take up to connect + ack timeout, so the backoff is measured from when it FINISHED.
@@ -707,7 +704,7 @@ async function handleOrmRequested(
   // happens AFTER this commits (see `transmitClaimed`), so a crash mid-send leaves a reclaimable row.
   const claimed = await withOrgContext(
     deps.db,
-    { organizationId, userId: SYSTEM_USER_ID },
+    { organizationId, userId: CONSUMER_USER_ID },
     async (scoped): Promise<TransmitContext | null> => {
       const tx = scoped as unknown as DbClient;
       const now = deps.now();
@@ -943,7 +940,7 @@ async function reclaimStaleInFlight(
   organizationId: string,
   now: Date,
 ): Promise<void> {
-  await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped) => {
+  await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
     const tx = scoped as unknown as DbClient;
     const stale = await tx
       .select()
@@ -1027,7 +1024,7 @@ async function claimDueRetries(
   organizationId: string,
   now: Date,
 ): Promise<TransmitContext[]> {
-  return withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped) => {
+  return withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
     const tx = scoped as unknown as DbClient;
     const due = await tx
       .select()

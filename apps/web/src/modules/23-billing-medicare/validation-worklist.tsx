@@ -683,7 +683,7 @@ function overrideErrorMessage(code: string | undefined, status: number | undefin
     default:
       if (status === 403) return "You do not have permission to override this rule.";
       if (status === 422) return "The rationale did not meet the minimum length — add more detail.";
-      if (status === 412)
+      if (status === 409)
         return "This result changed since you opened it — reopen the worklist to retry.";
       if (status === 503) return "The override seam is unavailable — try again shortly.";
       return "The override could not be applied.";

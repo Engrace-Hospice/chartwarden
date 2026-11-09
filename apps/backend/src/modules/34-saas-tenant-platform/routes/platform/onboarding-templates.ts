@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-templates.ts — M34 (§4.1).
 //
 // The platform-ops onboarding-template catalog routes (§4.1 platform-ops table): list the platform-seed
@@ -6,9 +7,9 @@
 // `tenant_lifecycle_platform_ops` ABAC predicate; the write route additionally requires §6 step-up.
 // The catalog is platform-shared/org-less, so reads run under `withPlatformContext` (F03/F09, audited)
 // in prod. Mirrors the M22 route-plugin shape.
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import {
   OnboardingTemplateListQuerySchema,
   UpsertOnboardingTemplateRequest,
@@ -16,17 +17,8 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface OnboardingTemplateRouteDeps {
   service: TenantPlatformRouteService;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 // §4.5 permission + §4.6 ABAC (`tenant_lifecycle_platform_ops`) + §6 step-up (write only).

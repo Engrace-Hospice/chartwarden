@@ -345,7 +345,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(await eventsFor(note.id)).not.toContain("m14.decision.recorded_open");
 
     // Optimistic concurrency: a fresh decision is version 0; an edit carrying it bumps the row to 1, and a
-    // second editor still holding 0 loses with 412 STALE_VERSION (the compare-and-set UPDATE, not just the read).
+    // second editor still holding 0 loses with 409 STALE_VERSION (the compare-and-set UPDATE, not just the read).
     expect(note.version).toBe(0);
     const edited = await svc.updateDecision(
       ORG_A,
@@ -363,7 +363,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         { kind: "team_note", noteText: "stale overwrite" },
         0,
       ),
-    ).rejects.toMatchObject({ statusCode: 412, code: "STALE_VERSION" });
+    ).rejects.toMatchObject({ statusCode: 409, code: "STALE_VERSION" });
     expect(
       (await admin.query("SELECT version FROM idg_decision WHERE id=$1", [note.id])).rows[0]
         .version,
@@ -1348,11 +1348,11 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       ),
     ).toMatchObject({ statusCode: 422, code: "INCLUSION_CRITERIA_FAILED" });
 
-    // Edit: If-Match. Stale -> 412; right version bumps; another discipline's non-coordinator -> 403.
+    // Edit: If-Match. Stale -> 409; right version bumps; another discipline's non-coordinator -> 403.
     expect(
       await err(svc.updateDisciplineNote(ORG_A, rn, clear.id, { bodyText: "edit" }, 5)),
     ).toMatchObject({
-      statusCode: 412,
+      statusCode: 409,
       code: "STALE_VERSION",
     });
     const edited = await svc.updateDisciplineNote(

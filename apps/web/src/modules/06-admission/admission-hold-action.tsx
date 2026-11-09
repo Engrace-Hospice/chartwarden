@@ -17,7 +17,7 @@ export interface AdmissionHoldActionProps {
 }
 
 const REFUSAL_MESSAGE: Record<string, string> = {
-  VERSION_CONFLICT: "This admission changed since it was loaded. Reload and try again.",
+  VERSION_MISMATCH: "This admission changed since it was loaded. Reload and try again.",
 };
 
 function messageFor(error: unknown, fallback: string): string {

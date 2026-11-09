@@ -17,8 +17,8 @@ const MEMBERSHIP_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
 const USER = schema.users;
 
-export const MENTION_NON_MEMBER_MIN_QUERY = 2;
-export const MENTION_NON_MEMBER_LIMIT = 10;
+const MENTION_NON_MEMBER_MIN_QUERY = 2;
+const MENTION_NON_MEMBER_LIMIT = 10;
 const MAX_QUERY_LENGTH = 100;
 
 export function createDbMentionNonMemberSearch(deps: {

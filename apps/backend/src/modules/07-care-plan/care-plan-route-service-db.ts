@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 // read convention): the M4 write-audit trigger still fires — the audit row records a NULL actor (a
 // follow-up threads the membership when the interface carries it).
 import { type DbClient, schema } from "@chartwarden/db";
+import { firstOrThrow as firstRow } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type CarePlanSignerRole,
@@ -124,12 +125,9 @@ export interface CarePlanWriteOutboxPort {
 }
 const NOOP_OUTBOX: CarePlanWriteOutboxPort = { async publish() {} };
 
-/** First row of a `RETURNING`/`SELECT` under `noUncheckedIndexedAccess`, or a 500 (unreachable after a write). */
-function firstOrThrow<T>(rows: readonly T[], msg: string): T {
-  const r = rows[0];
-  if (!r) throw new CarePlanStateError("ILLEGAL_TRANSITION", msg);
-  return r;
-}
+/** First row of a `RETURNING`/`SELECT`; empty means the row moved under the write (409 ILLEGAL_TRANSITION). */
+const firstOrThrow = <T>(rows: readonly T[], msg: string): T =>
+  firstRow(rows, msg, () => new CarePlanStateError("ILLEGAL_TRANSITION", msg));
 
 /**
  * The production, RLS-backed CarePlanRouteService. Reads and writes run under `withOrgContext`; every

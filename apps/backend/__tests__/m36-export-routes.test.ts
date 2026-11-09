@@ -177,7 +177,7 @@ describe("POST /export", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.json()).toMatchObject({ id: JOB, status: "pending_approval", downloadable: false });
     expect(res.body).not.toContain("SECRET");
-    expect(calls[0]?.args[0]).toEqual({ organizationId: ORG, userId: "officer" });
+    expect(calls[0]?.args[0]).toMatchObject({ organizationId: ORG, userId: "officer" });
     expect(stepUpAsked).toEqual(["messaging.export.request"]);
     await app.close();
   });

@@ -8,7 +8,7 @@ import { IpuStateError, requireIpu } from "../../errors";
 const DAY_MS = 86_400_000;
 
 /** §2.9 — the next-due interval (days) for the interval-based inspection kinds. */
-export const INSPECTION_INTERVAL_DAYS = { annual_biomed: 365, per_use_safety: 30 } as const;
+const INSPECTION_INTERVAL_DAYS = { annual_biomed: 365, per_use_safety: 30 } as const;
 /** §2.9 — the equipment-inspection-watchdog warn thresholds (days before due). */
 export const INSPECTION_DUE_WARN_DAYS: readonly number[] = [14, 7, 2, 0];
 

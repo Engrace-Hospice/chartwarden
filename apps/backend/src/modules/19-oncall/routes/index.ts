@@ -47,28 +47,15 @@ export {
   buildDrizzleM19WriteService,
 } from "./write-service-drizzle";
 export {
-  type M19MutatingActor,
   type M19ReadActor,
   type M19WriteActor,
   actorOf,
   disciplineOf,
   isPortalActor,
   isVendorActor,
-  mutatingActorOf,
   writeActorOf,
 } from "./actor";
-export {
-  type CursorPage,
-  InvalidCursorError,
-  M19_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  encodeCursor,
-  ifMatchVersion,
-  rejectOffsetPagination,
-  requireIdempotencyKey,
-  toCursorPage,
-} from "./concurrency";
+export { M19_PAGE_SIZES } from "./page-sizes";
 export {
   type EffectContext,
   type EffectPatch,

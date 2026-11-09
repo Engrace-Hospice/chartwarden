@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m5-patient-opt-out-changed.ts — the §2.6 / D9
 // M5 per-patient bereavement opt-out flip, live for the first time (F-159, #248).
 //
@@ -49,7 +50,7 @@
 // answers `already_closed` for any of the four closed/legal-hold states, so a redelivery after the first
 // delivery already closed the plan is a silent no-op — no separate uniqueness guard is needed beyond
 // `berv_closure_unique_plan` (a structural backstop, never expected to fire here).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavementPlanClosureReason, IsoInstant, MembershipId } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -67,9 +68,6 @@ const CLOSURE = schema.bereavementPlanClosure;
 const OUTREACH = schema.bereavementOutreach;
 const CONTACT = schema.bereavedContact;
 const COP_CREDIT = schema.bereavementCopOptOutCredit;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M16_PATIENT_OPT_OUT_CHANGED_CONSUMER = {
   eventName: "m5.patient.bereavement_opt_out_changed",

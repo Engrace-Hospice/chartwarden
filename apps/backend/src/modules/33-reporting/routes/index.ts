@@ -5,8 +5,8 @@
 // (pure in-memory + Drizzle split), TypeBox schemas, and cursor helpers. `mountM33ReadRoutes` is the
 // single composition-root entry (the M34 `mountTenantPlatformRoutes` precedent); the individual plugins
 // are exported so route tests can mount one group over a fresh in-memory backend.
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import type { PreHandler } from "./actor";
 import { registerReportingAdminRoutes } from "./admin.routes";
 import { registerBaseMetricRoutes } from "./bases-metrics.routes";
 import { registerDashboardTileRoutes } from "./dashboards-tiles.routes";
@@ -51,15 +51,8 @@ export {
   createInMemoryM33ExportDrilldownBackend,
 } from "./export-drilldown-service";
 
-export {
-  type CursorPage,
-  encodeCursor,
-  decodeCursor,
-  paginate,
-  requireIdempotencyKey,
-  IdempotencyKeyRequiredError,
-} from "./concurrency";
-export { type PreHandler, type M33WriteActor, actorOf, writeActorOf } from "./actor";
+export { type CursorPage, paginate } from "./pagination";
+export { type M33WriteActor, actorOf, writeActorOf } from "./actor";
 
 export {
   type DashboardSummaryView,

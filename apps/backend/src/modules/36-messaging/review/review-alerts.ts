@@ -16,8 +16,8 @@ export const REVIEW_ALERT_TEXT = {
     "A patient linked to one of your messaging tasks has left hospice care. Close the task with a reason or a supervisor will reassign it.",
 } as const;
 
-export const REVIEW_SUPERVISOR_DEEP_LINK = "/notifications?tab=review";
-export const REVIEW_ASSIGNEE_DEEP_LINK = "/notifications?tab=tasks";
+const REVIEW_SUPERVISOR_DEEP_LINK = "/notifications?tab=review";
+const REVIEW_ASSIGNEE_DEEP_LINK = "/notifications?tab=tasks";
 
 export type ReviewWarn = (message: string, context: Record<string, string>) => void;
 

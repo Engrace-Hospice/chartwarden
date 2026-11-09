@@ -264,12 +264,8 @@ describe.skipIf(!DB_URL)("M25 later tiers (milestone 7a-1) - LIVE Postgres", () 
         detail: { amountInControversyCents: 5, dispositionKind: "remand" },
       });
       // a stale or wrong version never overwrites
-      expect((await fx.refused(tier().putTierDetail(A(), id, {}, 1)))?.code).toBe(
-        "VERSION_CONFLICT",
-      );
-      expect((await fx.refused(tier().putTierDetail(A(), id, {}, 0)))?.code).toBe(
-        "VERSION_CONFLICT",
-      );
+      expect((await fx.refused(tier().putTierDetail(A(), id, {}, 1)))?.code).toBe("STALE_VERSION");
+      expect((await fx.refused(tier().putTierDetail(A(), id, {}, 0)))?.code).toBe("STALE_VERSION");
       // a remand records a label only: nothing spawned, the case outcome is untouched
       const spawned = await fx.admin.query(
         "SELECT count(*)::int AS n FROM appeal_case WHERE prior_tier_appeal_case_id=$1",

@@ -17,7 +17,7 @@
 //     collapsing two onto one alert IS the suppression S13 forbids. The absence of the header here is a
 //     load-bearing decision, not an oversight.
 //   • §2.5 — a state transition carries `If-Match`, and M20's ETag is the row's INTEGER `version`
-//     (`safety_sos_alert.version` / `safety_incident.version`), not a timestamp. A 409/412 means the row
+//     (`safety_sos_alert.version` / `safety_incident.version`), not a timestamp. A 409 STALE_LIFECYCLE_STATE means the row
 //     moved under you — reload, never retry blind.
 //   • D5 — `POST /sos/:id/cancel` takes NO `If-Match` either, and for a different reason: the cancel is a
 //     five-second one-tap act on a phone the clinician may be palming under a table (§7.4), and requiring

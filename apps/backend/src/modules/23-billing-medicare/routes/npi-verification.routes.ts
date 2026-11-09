@@ -5,10 +5,14 @@
 // somehow carries the key still cannot verify its own NPI. Writes add a fresh step-up, the AI-actor block and
 // `Idempotency-Key`; the operator is the session's membership. Data runs on the platform runner only. No PHI.
 import { requireAbac } from "@chartwarden/auth";
+import {
+  type PreHandler,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, rejectAiActor, writeActorOf } from "./actor";
-import { parse } from "./billing-typebox";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { P, STEP_UP } from "./guards";
 import type { NpiVerificationService } from "./npi-verification-service";
 import { NpiVerificationParamsSchema, VerifyNpiBodySchema } from "./npi-verification-typebox";

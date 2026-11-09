@@ -18,7 +18,7 @@ import { useParams } from "react-router-dom";
 // excluded ↔ voided) with a reason — `excluded` REQUIRES one, and a day already consumed by a claim line is
 // not offered (the claim must be replaced or voided first). Reads GET /api/v1/rb-arrangements/{id} +
 // /api/v1/rb-days; writes POST :activate / :terminate and PATCH /api/v1/rb-days/{id}, each carrying the
-// row version as If-Match (§2.5). The server is the only authz point (ADR-0030) — a 412/409/403 surfaces
+// row version as If-Match (§2.5). The server is the only authz point (ADR-0030) — a 409 (STALE_VERSION or a bad transition)/403 surfaces
 // inline (role="alert"). Lantern: DetailPageLayout + No-Line table (§6.7); CSS-var tokens only.
 import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import {
@@ -157,7 +157,9 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
       };
       setBusy(false);
       if (err) {
-        setActionError(writeErrorMessage(response?.status));
+        setActionError(
+          writeErrorMessage(response?.status, (err as { error?: { code?: string } }).error?.code),
+        );
         return;
       }
       setTerminating(false);
@@ -431,7 +433,9 @@ function DayOverrideModal({
     } as never)) as { error?: unknown; response?: Response };
     setBusy(false);
     if (err) {
-      setError(writeErrorMessage(response?.status));
+      setError(
+        writeErrorMessage(response?.status, (err as { error?: { code?: string } }).error?.code),
+      );
       return;
     }
     onApplied();
@@ -513,8 +517,9 @@ function DayOverrideModal({
 }
 
 /** Map a write status code to a precise, PHI-free inline message (§5.4). */
-function writeErrorMessage(status: number | undefined): string {
-  if (status === 412) return "This record changed since you opened it — reload and retry.";
+function writeErrorMessage(status: number | undefined, code?: string): string {
+  if (code === "STALE_VERSION")
+    return "This record changed since you opened it — reload and retry.";
   if (status === 409) return "That transition is not available from the current state.";
   if (status === 422) return "The requested change is not valid for this record.";
   if (status === 401 || status === 403) return "You lack permission for this action.";

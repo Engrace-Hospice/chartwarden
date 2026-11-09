@@ -7,6 +7,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -17,6 +18,7 @@ import {
   type PatientPrivacyView,
   type PrivacyOfficerService,
   batchContributes,
+  createDbPrivacyOfficerService,
   decideResync,
   detectDrift,
   flagSinceFromHistory,
@@ -399,4 +401,19 @@ describe("Privacy Officer routes — privacy.admin (M5 §4.7)", () => {
     });
     expect(bad.statusCode).toBe(422);
   });
+});
+
+describe("the Drizzle restricted-patients queue's signed offset cursor", () => {
+  // The cursor is decoded before any query runs, so bare ports prove the refusal without a database
+  // (the paged read itself is proven live in `m39-consent-privacy.live.test.ts`).
+  it.each(["garbage", "1", "50"])(
+    "refuses the unsigned cursor %j with 422 INVALID_CURSOR instead of paging from the start",
+    async (cursor) => {
+      const service = createDbPrivacyOfficerService({} as DbClient, {} as never, {} as never);
+      await expect(service.listRestricted(ORG, { cursor })).rejects.toMatchObject({
+        code: "INVALID_CURSOR",
+        statusCode: 422,
+      });
+    },
+  );
 });

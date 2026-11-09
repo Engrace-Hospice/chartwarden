@@ -22,7 +22,6 @@ import { createHash } from "node:crypto";
 import {
   FHIR_BULK_EXPORT_TTL_HOURS,
   type FhirBulkExportJobId,
-  type FhirBulkExportRequestKind,
   type FhirClientId,
 } from "@chartwarden/types";
 
@@ -153,15 +152,6 @@ export type BulkExportAlert =
       clientId: FhirClientId;
       failureReason: string;
     };
-
-export function bulkExportAcceptedEvent(args: {
-  jobId: FhirBulkExportJobId;
-  clientId: FhirClientId;
-  resourceTypes: string[];
-  requestKind: FhirBulkExportRequestKind;
-}): Extract<M28OutboxEvent, { type: "m28.fhir.bulk_export.accepted" }> {
-  return { type: "m28.fhir.bulk_export.accepted", payload: { ...args } };
-}
 
 export function bulkExportCompletedEvent(args: {
   jobId: FhirBulkExportJobId;

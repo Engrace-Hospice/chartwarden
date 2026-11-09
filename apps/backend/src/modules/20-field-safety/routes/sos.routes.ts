@@ -5,8 +5,8 @@
 // §4.1's Idempotent column says `no` for `POST /safety/sos`, and §2.6 / M20-F10 say why: every press is a
 // separate call for help, and collapsing two onto one alert IS the suppression S13 forbids. The D15
 // offline replay is the ONE dedupe, it is a BODY field (`localIdempotencyKey` + `offlineSync`) rather
-// than an HTTP header, and the write service applies it only when the press is a REPLAY — see
-// ./concurrency.ts's header.
+// than an HTTP header, and the write service applies it only when the press is a REPLAY
+// (`write-service-drizzle.ts` `raiseSos`).
 //
 // ── ROW 6 TAKES NO `If-Match` EITHER, AND FOR A DIFFERENT REASON ───────────────────────────────────
 //
@@ -22,9 +22,13 @@
 // `warn`-severity read-audit declaration, and — once the alert closes — a ≥40-character reason the read
 // service enforces and the clinician later sees on her self-service surface (§6, §8.7). Every other read
 // in this file answers "when did we last hear from her", which needs a timestamp, not a latitude.
+import {
+  optionalIfMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_FIELD_ELIGIBLE,
   ABAC_SELF,
@@ -127,7 +131,7 @@ export function registerSosRoutes(app: FastifyInstance, deps: SosRouteDeps): voi
       const body = parse(AcknowledgeSosBody, request.body);
       return writeService.acknowledgeSos(writeActorOf(request), sosAlertId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -144,7 +148,7 @@ export function registerSosRoutes(app: FastifyInstance, deps: SosRouteDeps): voi
       const body = parse(ResolveSosBody, request.body);
       return writeService.resolveSos(writeActorOf(request), sosAlertId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );

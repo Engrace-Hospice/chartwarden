@@ -12,7 +12,7 @@
 //     worker job through the injected {@link M33ReadEnqueuePort} and return the job id (HTTP 202) — the
 //     refresh runs on the PRIMARY in the worker, never the request thread (§2.4 / §4.8).
 import { NotFoundError } from "@chartwarden/types";
-import { type CursorPage, paginate } from "./concurrency";
+import { type CursorPage, paginate } from "./pagination";
 
 // ── actor (server-assembled; org/actor binding is the context, never the body/query) ─────────────────
 export interface M33ReadActor {
@@ -379,13 +379,13 @@ export function createInMemoryM33ReadBackend(seed: M33ReadRouteSeed = {}): {
   const freshnessAsOf = () => new Date(Date.parse(now()) - lag.lagSeconds * 1000).toISOString();
 
   const service: M33ReadRouteService = {
-    async listDashboards(_actor, cursor, limit) {
+    async listDashboards(actor, cursor, limit) {
       const rows = dashboards.map((d, i) => ({
         ...d,
         id: d.dashboardId,
         createdAt: uuidFromCounter("d", dashboards.length - i),
       }));
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(actor.organizationId, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d) };
     },
     async getDashboard(_actor, dashboardId) {
@@ -427,32 +427,32 @@ export function createInMemoryM33ReadBackend(seed: M33ReadRouteSeed = {}): {
         breakerOpen: lag.breakerOpen,
       };
     },
-    async listBases(_actor, filter, cursor, limit) {
+    async listBases(actor, filter, cursor, limit) {
       const rows = desc(
         [...bases.values()]
           .filter((b) => (filter.status ? b.status === filter.status : true))
           .map(({ dimensions: _d, measures: _m, ...b }) => b),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(actor.organizationId, rows, cursor, limit);
     },
     async getBase(_actor, baseKey) {
       const b = bases.get(baseKey);
       if (!b) throw new NotFoundError("report base");
       return b;
     },
-    async listMetrics(_actor, filter, cursor, limit) {
+    async listMetrics(actor, filter, cursor, limit) {
       const rows = desc(
         [...metrics.values()].filter((m) => (filter.status ? m.status === filter.status : true)),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(actor.organizationId, rows, cursor, limit);
     },
-    async listMvMetadata(_actor, filter, cursor, limit) {
+    async listMvMetadata(actor, filter, cursor, limit) {
       const rows = desc(
         [...mvs.values()]
           .filter((v) => (filter.status ? v.status === filter.status : true))
           .map((v) => ({ ...v, createdAt: v.mvKey })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(actor.organizationId, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...v }) => v) };
     },
     async refreshMv(_actor, mvKey) {
@@ -491,7 +491,7 @@ export function createInMemoryM33ReadBackend(seed: M33ReadRouteSeed = {}): {
           )
           .map((d) => ({ ...d, createdAt: d.accessedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(actor.organizationId, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...d }) => d) };
     },
     async getDashboardMetricSeam(_actor, metricKey, args) {

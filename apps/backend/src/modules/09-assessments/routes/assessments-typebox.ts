@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 import { SCALE_TYPES } from "@chartwarden/types";
 import type {
@@ -10,9 +11,8 @@ import type {
 // envelope. The record body is the §4.3 discriminated-union envelope: a `scaleType` (validated against the
 // canonical `SCALE_TYPES`), the common capture envelope, and a per-scale `data` object the server scores
 // (the API ignores any client-sent `score` — D6 server-authoritative). Optimistic concurrency on the
-// correction route rides the `If-Match` header (NOT the body) → 412 STALE_VERSION on skew.
+// correction route rides the `If-Match` header (NOT the body) → 409 STALE_VERSION on skew.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   AssessmentDetailView as ServiceAssessmentDetailView,
@@ -21,17 +21,6 @@ import type {
   ScalePolicyView as ServiceScalePolicyView,
   SignificantChangeView as ServiceSignificantChangeView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -162,8 +151,7 @@ export const AssessmentListQuerySchema = Type.Object({
   scaleType: Type.Optional(Type.String({ maxLength: 32 })),
   from: Type.Optional(Type.String({ maxLength: 32 })),
   to: Type.Optional(Type.String({ maxLength: 32 })),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 export const SeriesQuerySchema = Type.Object({
   from: Type.String({ format: "date" }),
@@ -185,8 +173,7 @@ export const SeriesBatchQuerySchema = Type.Object({
 });
 export const ChangeListQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ maxLength: 32 })),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 // ── §4.3 RESPONSE DTOs (F0 enrichment) ───────────────────────────────────────────────────────────────

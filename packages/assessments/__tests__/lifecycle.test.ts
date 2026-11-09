@@ -52,7 +52,7 @@ describe("§2.2.1 correction-of-record (planCorrection)", () => {
     ).toThrowError(expect.objectContaining({ code: "CORRECTION_MISMATCH", statusCode: 422 }));
   });
 
-  it("rejects a stale parent version (412 STALE_VERSION)", () => {
+  it("rejects a stale parent version (409 STALE_VERSION)", () => {
     expect(() =>
       planCorrection(target, {
         scaleType: "esas_r",
@@ -60,7 +60,7 @@ describe("§2.2.1 correction-of-record (planCorrection)", () => {
         admissionId: "a1",
         expectedTargetVersion: 0,
       }),
-    ).toThrowError(expect.objectContaining({ code: "STALE_VERSION", statusCode: 412 }));
+    ).toThrowError(expect.objectContaining({ code: "STALE_VERSION", statusCode: 409 }));
   });
 });
 

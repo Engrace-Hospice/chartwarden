@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/21-supplies/outbox-consumers/m13-comfort-kit-cascade.ts — M21's live binding
 // for three of the four `../consumers/m13-comfort-kit.ts` deciders (F-141/#248's m21 group, this pass;
 // the controlled-substance re-emit added F-172, #248).
@@ -26,7 +27,7 @@
 // THREE SEAMS TO ONE OUTCOME. `linkM13Deployment`, the return-open, and the controlled-substance re-emit
 // all run with NO acting membership — the `m11-order-cascade.ts` / F-102 `CONSUMER_USER_ID` convention —
 // because all three cascades are M13 telling M21 something happened, not a human acting on the row.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { RETURN_WINDOW_HOURS_DEFAULT } from "@chartwarden/supplies";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { ComfortKitReturnedContentPayload } from "@chartwarden/types";
@@ -52,9 +53,6 @@ const DISPATCH = schema.comfortKitDispatch;
 const DISPATCHED = schema.comfortKitDispatchedContent;
 const RETURN = schema.comfortKitReturn;
 const RETURNED = schema.comfortKitReturnedContent;
-
-/** A consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export interface M21ComfortKitCascadeDeps {
   readonly db: DbClient;

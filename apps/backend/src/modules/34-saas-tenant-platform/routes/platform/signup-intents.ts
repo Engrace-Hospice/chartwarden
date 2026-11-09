@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/signup-intents.ts — M34 (§4.1
 // platform-ops). The pre-provision signup-intent QUEUE (F02 / ADR-0010): the org-LESS intake funnel a
 // platform-ops actor triages. List (the triage queue across tenants), qualify (`new → qualified` →
@@ -11,9 +12,9 @@
 // ABAC. List is fully live (repo → withPlatformContext → typed page). Qualify ENQUEUES the §4.3
 // `tenant.provision` job through the service's injected enqueue port; the live BullMQ worker construction
 // is Phase 2D (see platform/service.ts TODO). Mirrors the sibling tenants.ts plugin shape.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   IntentParamsSchema,
   QualifyIntentRequest,
@@ -23,19 +24,9 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface SignupIntentRouteDeps {
   /** The §4.1 platform-ops route service (in-memory slice; Drizzle under `withPlatformContext` + enqueue). */
   service: TenantPlatformRouteService;
-}
-
-function actorOf(request: FastifyRequest): { userId: string; membershipId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId = ctx.attributes?.membershipId;
-  if (typeof membershipId !== "string") throw new UnauthorizedError();
-  return { userId: ctx.userId, membershipId };
 }
 
 const intentIdOf = (request: FastifyRequest): string =>
@@ -58,7 +49,7 @@ export function registerSignupIntentRoutes(
 
   // 1 — list the signup-intent triage queue (cursor-paginated; status/source filters). §4.1.
   app.get("/api/v1/platform/signup-intents", { preHandler: [LIST, ABAC_LIST] }, async (request) => {
-    actorOf(request);
+    writeActorOf(request);
     const q = parse(SignupIntentListQuerySchema, request.query);
     return service.listSignupIntents({ status: q.status, source: q.source }, q.cursor, q.limit);
   });
@@ -68,7 +59,7 @@ export function registerSignupIntentRoutes(
     "/api/v1/platform/signup-intents/:id/qualify",
     { preHandler: [QUALIFY, ABAC_QUALIFY] },
     async (request, reply) => {
-      const { membershipId } = actorOf(request);
+      const { membershipId } = writeActorOf(request);
       const body = parse(QualifyIntentRequest, request.body);
       const res = await service.qualifyIntent(intentIdOf(request), membershipId, {
         planLabel: body.planLabel,
@@ -86,7 +77,7 @@ export function registerSignupIntentRoutes(
       // membershipId (not userId) — matches the sibling qualifyIntent call above; the service
       // currently discards this parameter (`void actorUserId` in service-drizzle.ts), but the
       // moment that plumbing is wired up it must receive a membership id, not the raw user id.
-      const { membershipId } = actorOf(request);
+      const { membershipId } = writeActorOf(request);
       const body = parse(RejectIntentRequest, request.body);
       return service.rejectIntent(intentIdOf(request), membershipId, {
         rejectionReason: body.rejectionReason,

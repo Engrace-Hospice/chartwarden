@@ -10,7 +10,7 @@ import type { AlertEmitter } from "@chartwarden/messaging";
 import { REMINDER_ALERT_EVENT, REMINDER_STALE_AFTER_DAYS } from "@chartwarden/types";
 import type { DueReminder, ReminderSweepStore } from "./snooze-reminder-store-db";
 
-export const SWEEP_LIMIT = 200;
+const SWEEP_LIMIT = 200;
 const MAX_PAGES = 5;
 const STALE_MS = REMINDER_STALE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 export const REMINDER_ALERT_TEXT = "You asked to be reminded about a message in a conversation";

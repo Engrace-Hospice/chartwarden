@@ -155,7 +155,7 @@ describe.skipIf(!DB_URL)(
         noEncounters(),
       );
       const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        { organizationId: ORG, userId: USER, roles: [] },
         {
           patientId: PATIENT,
           admissionId: ADMISSION,
@@ -207,7 +207,7 @@ describe.skipIf(!DB_URL)(
         noEncounters(),
       );
       const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        { organizationId: ORG, userId: USER, roles: [] },
         {
           patientId: PATIENT,
           admissionId,
@@ -264,7 +264,7 @@ describe.skipIf(!DB_URL)(
         residenceReader,
       );
       const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        { organizationId: ORG, userId: USER, roles: [] },
         {
           patientId: PATIENT,
           admissionId,
@@ -314,7 +314,7 @@ describe.skipIf(!DB_URL)(
         facilityKindReader,
       );
       const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        { organizationId: ORG, userId: USER, roles: [] },
         {
           patientId: PATIENT,
           admissionId,
@@ -351,7 +351,7 @@ describe.skipIf(!DB_URL)(
         { encountersInWindow: async () => [{ encounterId, serviceDate: "2026-03-03" }] },
       );
       const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        { organizationId: ORG, userId: USER, roles: [] },
         {
           patientId: PATIENT,
           admissionId,
@@ -392,7 +392,7 @@ describe.skipIf(!DB_URL)(
       );
       await expect(
         svc.assembleClaim(
-          { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+          { organizationId: ORG, userId: USER, roles: [] },
           {
             patientId: PATIENT,
             admissionId,
@@ -465,7 +465,7 @@ describe.skipIf(!DB_URL)(
         noEncounters(),
       );
       const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        { organizationId: ORG, userId: USER, roles: [] },
         {
           patientId: RB_PATIENT,
           admissionId: RB_ADMISSION,
@@ -541,7 +541,7 @@ describe.skipIf(!DB_URL)(
       );
       await expect(
         svc.assembleClaim(
-          { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+          { organizationId: ORG, userId: USER, roles: [] },
           {
             patientId: PATIENT,
             admissionId,
@@ -598,7 +598,7 @@ describe.skipIf(!DB_URL)(
           noEncounters(),
         );
         const claim = await svc.assembleClaim(
-          { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+          { organizationId: ORG, userId: USER, roles: [] },
           {
             patientId: ESC_PATIENT,
             admissionId: ESC_ADMISSION,
@@ -646,7 +646,7 @@ describe.skipIf(!DB_URL)(
           undefined,
           isGatewayBound,
         );
-        const actor = { organizationId: ORG, userId: USER, roles: [], stepUpRecent: true };
+        const actor = { organizationId: ORG, userId: USER, roles: [] };
         const claim = await svc.assembleClaim(actor, {
           patientId: PATIENT,
           admissionId: "99999999-9999-9999-9999-999999999999",
@@ -737,7 +737,7 @@ describe.skipIf(!DB_URL)(
             ]),
             noEncounters(),
           );
-          const actor = { organizationId: ORG, userId: USER, roles: [], stepUpRecent: true };
+          const actor = { organizationId: ORG, userId: USER, roles: [] };
           const claim = await svc.assembleClaim(actor, {
             patientId: PATIENT,
             admissionId: "99999999-9999-9999-9999-999999999999",

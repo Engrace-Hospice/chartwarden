@@ -79,20 +79,6 @@ export const DATA_COMPLETENESS_TONE: Record<string, StatusTone> = {
   minimal: "error",
 };
 
-/** `bereavement_contact_log_outcome` (§3.2). */
-export const LOG_OUTCOME_TONE: Record<string, StatusTone> = {
-  engaged: "success",
-  brief_acknowledgement: "success",
-  declined: "neutral",
-  no_response: "warning",
-  voicemail_left: "progress",
-  wrong_number: "warning",
-  returned_undeliverable: "warning",
-  requested_followup: "progress",
-  requested_no_further_contact: "warning",
-  crisis_referral: "error",
-};
-
 /** `bereavement_plan_closure_reason` (§3.2 / D7). Only `thirteen_month_completion` is the obligation MET. */
 export const CLOSURE_REASON_TONE: Record<string, StatusTone> = {
   thirteen_month_completion: "success",

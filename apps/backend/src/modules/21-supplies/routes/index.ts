@@ -40,25 +40,7 @@ export {
   type VendorActiveProbe,
   buildDrizzleM21WriteService,
 } from "./write-service-drizzle";
-export {
-  type M21MutatingActor,
-  type M21ReadActor,
-  type M21WriteActor,
-  actorOf,
-  mutatingActorOf,
-  writeActorOf,
-} from "./actor";
-export {
-  type CursorPage,
-  M21_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  encodeCursor,
-  ifMatchStamp,
-  rejectOffsetPagination,
-  requireIdempotencyKey,
-  toCursorPage,
-} from "./concurrency";
+export { M21_PAGE_SIZES, ifMatchStamp } from "./route-policy";
 export {
   type EffectContext,
   type EffectPatch,

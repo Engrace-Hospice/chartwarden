@@ -13,7 +13,7 @@
 // DTO discipline (mirrors read-service.ts): audit-denylisted / cipher columns (`computation_snapshot`,
 // `configuration_cipher`, `primary_caregiver_contact_cipher`, SRA/QAPI narrative free-text, the incident
 // `kind_data` free-text members on LIST rows) are NEVER projected onto a view here. PHI lists are
-// cursor-paginated via `paginate()` (the §4.1.2 keyset helper) over a bounded, RLS-scoped, partition-key
+// cursor-paginated via `paginate(actor.organizationId, )` (the §4.1.2 keyset helper) over a bounded, RLS-scoped, partition-key
 // DESC-ordered window — the 33-reporting drilldown-audit precedent (fetch a bounded set, paginate in
 // memory). Aggregate measure reads project the materialized `quality_measure_value` ledger and label each
 // measure from the @chartwarden/quality MEASURE_CATALOG (the calculators themselves are worker-phase: a read
@@ -52,8 +52,8 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { toCahpsExportJobView } from "../cahps/export-job-store";
 import type { M30ReadActor } from "./actor";
 import { pendingCloseView } from "./close-cosign";
-import { type CursorPage, pageSizeOf, paginate } from "./concurrency";
 import { incidentOwnedBy } from "./incident-ownership";
+import { type CursorPage, pageSizeOf, paginate } from "./pagination";
 import { assertPatientInScope } from "./patient-scope";
 import {
   fetchIncidentPage,
@@ -388,7 +388,7 @@ export function buildDrizzleM30ReadService(
           })
           .sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 
-        const page = paginate(views, cursor, limit);
+        const page = paginate(actor.organizationId, views, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...view }) => view),
@@ -533,7 +533,7 @@ export function buildDrizzleM30ReadService(
             createdAt: isoReq(r.createdAt),
             id: r.id,
           }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -599,7 +599,7 @@ export function buildDrizzleM30ReadService(
               id: r.id,
             };
           });
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -624,7 +624,7 @@ export function buildDrizzleM30ReadService(
           createdAt: isoReq(r.createdAt),
           id: r.id,
         }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -663,7 +663,7 @@ export function buildDrizzleM30ReadService(
             id: r.id,
           };
         });
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -702,7 +702,7 @@ export function buildDrizzleM30ReadService(
             createdAt: isoReq(r.createdAt),
             id: r.id,
           }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -736,7 +736,7 @@ export function buildDrizzleM30ReadService(
           createdAt: isoReq(r.createdAt),
           id: r.id,
         }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -769,7 +769,7 @@ export function buildDrizzleM30ReadService(
           createdAt: isoReq(r.meetingAt),
           id: r.id,
         }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -786,7 +786,7 @@ export function buildDrizzleM30ReadService(
           createdAt: isoReq(r.createdAt),
           id: r.id,
         }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -823,9 +823,10 @@ export function buildDrizzleM30ReadService(
     async listIncidents(actor, filter, cursor, limit, scope) {
       // GAP-091 — an explicit patient filter outside the caller's scope is a 404, never an empty page.
       assertPatientInScope(scope, filter.patientId, "patient");
-      const keyset = toListCursor(cursor);
+      const keyset = toListCursor(actor.organizationId, cursor);
       return read(actor, async (tx) =>
         toKeysetPage(
+          actor.organizationId,
           await fetchIncidentPage(
             tx,
             actor.organizationId,
@@ -891,7 +892,7 @@ export function buildDrizzleM30ReadService(
           createdAt: isoReq(r.occurredAt),
           id: r.id,
         }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -902,9 +903,10 @@ export function buildDrizzleM30ReadService(
     // ── Mortality (R-70, R-71) — PHI ──────────────────────────────────────────────────────────────────
     async listMortalityReviews(actor, filter, cursor, limit, scope) {
       assertPatientInScope(scope, filter.patientId, "patient");
-      const keyset = toListCursor(cursor);
+      const keyset = toListCursor(actor.organizationId, cursor);
       return read(actor, async (tx) =>
         toKeysetPage(
+          actor.organizationId,
           await fetchMortalityPage(
             tx,
             actor.organizationId,
@@ -966,7 +968,7 @@ export function buildDrizzleM30ReadService(
           createdAt: isoReq(r.createdAt),
           id: r.id,
         }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -977,9 +979,10 @@ export function buildDrizzleM30ReadService(
     // ── Infection (R-90, R-92) ─────────────────────────────────────────────────────────────────────────
     async listInfectionEvents(actor, filter, cursor, limit, scope) {
       assertPatientInScope(scope, filter.patientId, "patient");
-      const keyset = toListCursor(cursor);
+      const keyset = toListCursor(actor.organizationId, cursor);
       return read(actor, async (tx) =>
         toKeysetPage(
+          actor.organizationId,
           await fetchInfectionEventPage(
             tx,
             actor.organizationId,
@@ -1014,7 +1017,7 @@ export function buildDrizzleM30ReadService(
             createdAt: isoReq(r.windowEnd),
             id: r.id,
           }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
@@ -1055,7 +1058,7 @@ export function buildDrizzleM30ReadService(
             if (filter.severity && e.severity !== filter.severity) return false;
             return true;
           });
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),

@@ -376,6 +376,8 @@ function messageForBackendError(err: unknown, item: WorkflowTimepoint | null): s
     return "The allowed capture period has expired. An authorized override is required.";
   if (code === "M10_SFV_PAST_DUE")
     return "This follow-up is past due and needs an authorized override.";
+  if (code === "M10_VERSION_CONFLICT")
+    return "This assessment changed since it was loaded. Reload and try again.";
   return "Could not record the HOPE work. Review the values and try again.";
 }
 

@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/14-idg/consumers/m22-document-backref.ts — M14's live `m22.document.rendered`
 // back-ref consumer (§4.4 form-rendering handshake, the RETURN leg).
 //
@@ -20,16 +21,13 @@
 //
 // TENANCY: a relay tick is not a request — the write runs in `withOrgContext` pinned to the event's own
 // `organizationId`, and the explicit `organization_id` predicate is the belt behind RLS.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 
 const MIN = schema.idgMinutes;
 const PKT = schema.idgPatientPacket;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 export const M14_DOCUMENT_BACKREF_CONSUMER = {
   eventName: "m22.document.rendered",

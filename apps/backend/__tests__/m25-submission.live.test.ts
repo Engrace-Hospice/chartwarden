@@ -656,7 +656,7 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
       expect(await bad({ receiptAt: new Date(Date.now() + 864e5).toISOString() })).toMatchObject({
         code: "RECEIPT_IN_FUTURE",
       });
-      expect(await bad({}, att.version + 5)).toMatchObject({ code: "VERSION_CONFLICT" });
+      expect(await bad({}, att.version + 5)).toMatchObject({ code: "STALE_VERSION" });
       expect((await attempts("appeal_case_id", id))[0].status).toBe("needs_manual");
     });
 

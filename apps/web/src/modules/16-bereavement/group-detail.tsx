@@ -2,7 +2,7 @@
 //
 // The group's details, its sessions, its roster and attendance. `bereavement.group.manage` edits the group, opens a draft to families and
 // closes it (completed, or cancelled); every state change carries the group version the page READ in `If-Match` and one `Idempotency-Key`
-// per attempt. A 412/409/404 closes any open dialog, reloads the group and says why. The roster (it names families) is read only with
+// per attempt. A 409/404 closes any open dialog, reloads the group and says why. The roster (it names families) is read only with
 // `bereavement.group.run`. A 403 on the group renders nothing; any other failure is announced and never unmounts what is on screen.
 import {
   Button,
@@ -17,7 +17,7 @@ import { useCallback, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
-import { errorMessage, isStaleWrite } from "./bereavement-api";
+import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
 import {
   Card,
@@ -119,7 +119,9 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
     inFlight.current = false;
     setBusy(null);
     if (res.error || !res.data) {
-      const message = res.status === 412 ? GROUP_MOVED : errorMessage(res.error, fallback);
+      const message = isStaleVersion(res.status, res.error)
+        ? GROUP_MOVED
+        : errorMessage(res.error, fallback);
       if (isStaleWrite(res.status)) {
         void reload();
         refreshParts();

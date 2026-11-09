@@ -1,12 +1,12 @@
+// apps/web/src/modules/25-remittance — milestone 4 QIC reconsideration. Asserts on RECORDED FETCH CALLS (method, path,
+// If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires still fails. The
+// server owns every rule and its refusal is shown verbatim; the escalation form survives step-up; a missing QIC
+// receipt date is a visible state, never a blank, and offers no escalation.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
-// apps/web/src/modules/25-remittance — milestone 4 QIC reconsideration. Asserts on RECORDED FETCH CALLS (method, path,
-// If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires still fails. The
-// server owns every rule and its refusal is shown verbatim; the escalation form survives step-up; a missing QIC
-// receipt date is a visible state, never a blank, and offers no escalation.
 import { peekStepUpDraft, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { AppealDetailPanel } from "./appeal-detail-panel";
 
@@ -512,7 +512,7 @@ describe("M25 QIC reconsideration - review fixes", () => {
     refusal = {
       status: 409,
       body: {
-        error: { code: "VERSION_CONFLICT", message: "This record changed before your action." },
+        error: { code: "STALE_VERSION", message: "This record changed before your action." },
       },
     };
     mount();

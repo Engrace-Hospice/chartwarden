@@ -1,9 +1,8 @@
 // apps/backend/src/modules/26-cap/routes/psr.routes.ts — M26 (§4.1) the PS&R reconciliation surface: CSV
 // import, import status, the per-line variance queue, and variance resolution. Reads gate on cap.psr.read;
 // import on cap.psr.import; resolve on cap.psr.reconcile. Org/actor binding is server-side.
+import { actorOf, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
 import {
   LineIdParams,
@@ -37,11 +36,7 @@ export function registerPsrRoutes(app: FastifyInstance, deps: PsrRouteDeps): voi
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(PsrImportRequest, request.body);
-      const res = await writeService.importPsr(
-        writeActorOf(request),
-        pParam(request, "periodId"),
-        body,
-      );
+      const res = await writeService.importPsr(actorOf(request), pParam(request, "periodId"), body);
       return reply.code(202).send({ ...res, status: "queued" });
     },
   );
@@ -78,7 +73,7 @@ export function registerPsrRoutes(app: FastifyInstance, deps: PsrRouteDeps): voi
     async (request, reply) => {
       const { lineId } = parse(LineIdParams, request.params);
       const body = parse(ResolveVarianceRequest, request.body);
-      await writeService.resolveVariance(writeActorOf(request), lineId, body);
+      await writeService.resolveVariance(actorOf(request), lineId, body);
       return reply.code(204).send();
     },
   );

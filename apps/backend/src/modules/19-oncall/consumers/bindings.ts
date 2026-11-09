@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/19-oncall/consumers/bindings.ts — the live `OutboxConsumerBinding`s for M19's
 // two D10 inbound triggers (F-043 / #103), plus the §4.8 M36 delivery-failure trigger (#205 M36 follow-up).
 //
@@ -48,7 +49,7 @@
 // triage-escalations.ts`), and the decider's own header names exactly this ("escalate the EXISTING call
 // one rung (`sla_breach` trigger kind, tier 1)"). The recipient is resolved off the SAME covering-shift
 // read the `open_operational_call` path already uses — "tier 1" in this module IS whoever is on-call.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type { IsoInstant, OrgId, ProviderEntityId, TriageCallId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -74,9 +75,6 @@ import { resolveInboundTriggerFacts } from "./trigger-context";
 const CALL = schema.triageCall;
 const HISTORY = schema.triageCallStateHistory;
 const ESCALATION = schema.triageEscalation;
-
-/** §3.3 — a machine-opened call names no acting membership. */
-export const CONSUMER_USER_ID = "";
 
 export interface OncallTriggerConsumerDeps {
   readonly db: DbClient;

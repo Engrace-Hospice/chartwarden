@@ -4,17 +4,15 @@
 //   POST  /api/v1/billing/commercial/enrollments                              (commercial_billing.manage_enrollment + fresh step-up)
 //   PATCH /api/v1/billing/commercial/enrollments/:id                          (same; the body names the provider entity)
 // Enrollment gates every send: only status 'enrolled', in effect that day, on the clearinghouse the platform is bound to, lets one through.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import type { CommercialAdminService } from "../eligibility/admin-service";
-import {
-  ENROLLMENT_STEP_UP,
-  MANAGE_ENROLLMENT,
-  PROVIDER_SCOPE,
-  READ,
-  REJECT_AI_ACTOR,
-  REQUIRE_IDEMPOTENCY_KEY,
-  actorOf,
-} from "./guards";
+import { ENROLLMENT_STEP_UP, MANAGE_ENROLLMENT, PROVIDER_SCOPE, READ } from "./guards";
 import {
   CreateEnrollmentBodySchema,
   EnrollmentListQuerySchema,
@@ -22,7 +20,6 @@ import {
   EnrollmentResponseSchema,
   IdParamsSchema,
   PatchEnrollmentBodySchema,
-  parse,
 } from "./typebox";
 
 const LIST_LIMIT = 200;
@@ -63,8 +60,8 @@ export function registerCommercialEnrollmentRoutes(
         MANAGE_ENROLLMENT,
         PROVIDER_SCOPE(MANAGE_KEY, "body"),
         ENROLLMENT_STEP_UP,
-        REJECT_AI_ACTOR,
-        REQUIRE_IDEMPOTENCY_KEY,
+        rejectAiActor(),
+        requireIdempotencyKey(),
       ],
       schema: { response: { 201: EnrollmentResponseSchema } },
     },
@@ -90,8 +87,8 @@ export function registerCommercialEnrollmentRoutes(
         MANAGE_ENROLLMENT,
         PROVIDER_SCOPE(MANAGE_KEY, "body"),
         ENROLLMENT_STEP_UP,
-        REJECT_AI_ACTOR,
-        REQUIRE_IDEMPOTENCY_KEY,
+        rejectAiActor(),
+        requireIdempotencyKey(),
       ],
       schema: { response: { 200: EnrollmentResponseSchema } },
     },

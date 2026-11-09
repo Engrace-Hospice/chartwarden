@@ -1,18 +1,19 @@
+import {
+  type ClaimAssemblySeams,
+  createDefaultBillingRegistry,
+  medicareReceiptDay,
+  repositories,
+} from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-worker-ports.ts
 //
 // The real implementations of the M23 worker ports the composition root binds (GAP-069 / GAP-070). They were
 // left as fail-closed `unboundWorkerPort` thunks, so every NOE/NOTR window-watch tick, every validation run and
 // every revalidation threw. Each port here is a thin adapter over an owner of the behaviour (the notice
 // repositories, the claim-validation service, BullMQ) — no business rules live in this file.
-import {
-  createDefaultBillingRegistry,
-  medicareReceiptDay,
-  repositories,
-} from "@chartwarden/billing";
-import type * as schema from "@chartwarden/db/schema";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { ChartWardenError } from "@chartwarden/types";
 import { type ConnectionOptions, Queue } from "bullmq";
-import type { ClaimAssemblySeams } from "../services/claim-assembly";
 import {
   type BillingTx,
   type BillingWriteActor,
@@ -44,7 +45,7 @@ export function buildNoticeWindowPort(): NoticeWindowPort {
         if (!row) throw new ChartWardenError("NOT_FOUND", `noe ${noticeId} not found`, 404);
         const res = await repo.transitionToState(row.id, expectedVersion, row.state, patch);
         if (!res.ok) {
-          throw new ChartWardenError("VERSION_CONFLICT", "the NOE was modified concurrently", 412);
+          throw new StaleVersionError("the NOE was modified concurrently");
         }
         return;
       }
@@ -53,7 +54,7 @@ export function buildNoticeWindowPort(): NoticeWindowPort {
       if (!row) throw new ChartWardenError("NOT_FOUND", `notr ${noticeId} not found`, 404);
       const res = await repo.transitionToState(row.id, expectedVersion, row.state, patch);
       if (!res.ok) {
-        throw new ChartWardenError("VERSION_CONFLICT", "the NOTR was modified concurrently", 412);
+        throw new StaleVersionError("the NOTR was modified concurrently");
       }
     },
   };

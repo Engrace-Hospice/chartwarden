@@ -82,7 +82,7 @@ export function registerM40CronWorkers(deps: M40WorkerDeps): Worker[] {
 }
 
 /** The (queue, cron pattern) pairs registered as repeatables. */
-export const M40_SCHEDULES: ReadonlyArray<readonly [string, string]> = [
+const M40_SCHEDULES: ReadonlyArray<readonly [string, string]> = [
   [MDM_QUEUES.nppesNightlyDelta, MDM_JOB_SCHEDULES.nppesNightlyDelta],
   [MDM_QUEUES.nppesWeeklyFull, MDM_JOB_SCHEDULES.nppesWeeklyFull],
   [MDM_QUEUES.fuzzyDedupScan, MDM_JOB_SCHEDULES.fuzzyDedupScan],

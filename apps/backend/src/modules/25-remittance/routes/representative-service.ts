@@ -13,6 +13,7 @@
 //     read is derived from typed dates only (a passed end reads "validity end passed (as recorded)" and changes nothing).
 //   - An appointment writes no portal, consent or caregiver row, and no appeal_case / denial_case state.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -33,7 +34,6 @@ import {
   snapshotElements,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
 import {
   type LinkedDocumentPort,
   UNBOUND_LINKED_DOCUMENTS,
@@ -379,7 +379,7 @@ export function buildDrizzleRepresentativeService(
         ),
       )
       .returning({ id: RA.id, version: RA.version });
-    if (!updated[0]) throw new VersionConflictError(cur.version);
+    if (!updated[0]) throw new StaleVersionError();
     return updated[0];
   }
 
@@ -437,7 +437,7 @@ export function buildDrizzleRepresentativeService(
           .set({ retiredAt: new Date(), version: sql`${FV.version} + 1`, updatedAt: new Date() })
           .where(and(eq(FV.id, id), eq(FV.version, ifMatch), sql`${FV.retiredAt} is null`))
           .returning({ id: FV.id, version: FV.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },

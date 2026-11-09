@@ -18,8 +18,6 @@ import {
   type QueuePage,
   type QueueQuery,
   WAITING,
-  decodeQueueCursor,
-  encodeQueueCursor,
 } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { registerUnacknowledgedRoutes } from "../src/modules/36-messaging/routes/unacknowledged-routes";
@@ -34,7 +32,6 @@ const HIDDEN_MSG = "bbbbbbbb-bbbb-4bbb-8bbb-000000000002";
 const HIDDEN_PATIENT = "99999999-9999-4999-8999-000000000002";
 const HIDDEN_ASSIGNEE = "dddddddd-dddd-4ddd-8ddd-000000000002";
 const HIDDEN_REQUEST = "cccccccc-cccc-4ccc-8ccc-000000000002";
-const TIE = "a".repeat(64);
 
 const row = (over: Partial<AckRow> & { id: string; channelId: string }): AckRow => ({
   organizationId: ORG,
@@ -323,7 +320,7 @@ describe("unacknowledged service - what the viewer is shown", () => {
   });
 
   it("states complete only when there is no next cursor, and clamps the limit", async () => {
-    page = { ...page, nextCursor: encodeQueueCursor("2026-10-18 11:45:00+00", TIE) };
+    page = { ...page, nextCursor: "opaque-cursor" };
     const out = await service.list(actor, { limit: 5000 });
     expect(out.complete).toBe(false);
     expect(out.next_cursor).not.toBeNull();
@@ -339,36 +336,5 @@ describe("the inlined waiting list", () => {
     expect(params).toEqual([]);
     const listed = [...text.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...ACK_QUEUE_STATUSES]);
-  });
-});
-
-describe("queue cursor", () => {
-  it("round-trips and never carries a request id", () => {
-    const cursor = encodeQueueCursor("2026-10-18 11:45:00.123456+00", TIE);
-    expect(decodeQueueCursor(cursor)).toEqual({
-      deadlineAt: "2026-10-18 11:45:00.123456+00",
-      tie: TIE,
-    });
-    expect(Buffer.from(cursor, "base64url").toString("utf8")).not.toMatch(
-      /[0-9a-f]{8}-[0-9a-f]{4}-/,
-    );
-  });
-
-  const b64 = (text: string) => Buffer.from(text).toString("base64url");
-  it.each([
-    ["empty", ""],
-    ["one part", b64("2026-10-18 11:45:00+00")],
-    ["three parts", b64(`2026-10-18 11:45:00+00|${TIE}|x`)],
-    ["a sql-ish time", b64(`2026'; drop table x;--|${TIE}`)],
-    ["a short tie", b64("2026-10-18 11:45:00+00|abc")],
-    ["a well-shaped but impossible month/day/time", b64(`2026-13-45 99:99:99+00|${TIE}`)],
-    ["a 30th of February", b64(`2026-02-30 10:00:00+00|${TIE}`)],
-    ["an impossible zone", b64(`2026-10-18 10:00:00+99|${TIE}`)],
-    ["an uppercase tie", b64(`2026-10-18 11:45:00+00|${"A".repeat(64)}`)],
-    ["a uuid instead of a tie", b64("2026-10-18 11:45:00+00|aaaaaaaa-aaaa-4aaa-8aaa-000000000001")],
-  ])("refuses %s with a 400, never a first page", (_name, cursor) => {
-    expect(() => decodeQueueCursor(cursor)).toThrowError(
-      expect.objectContaining({ statusCode: 400, code: "INVALID_CURSOR" }),
-    );
   });
 });

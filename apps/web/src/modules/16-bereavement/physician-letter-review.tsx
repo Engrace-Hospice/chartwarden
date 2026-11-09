@@ -7,7 +7,7 @@
 //
 // A reader without `bereavement.letter.read` sees NOTHING here: the intake queue does not mount this section for them, and a 403 from the
 // list (a session whose permission list is stale) hides it too: no heading, no empty state, no hint that letters exist. Any other failure is
-// said plainly, with a retry. Approval and decline carry the version the list READ in `If-Match`; a 412/409/404 means another reviewer moved
+// said plainly, with a retry. Approval and decline carry the version the list READ in `If-Match`; a 409/404 means another reviewer moved
 // first, which is said and the list reloaded. A reload keeps the list on screen: only the first load shows a placeholder.
 import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";

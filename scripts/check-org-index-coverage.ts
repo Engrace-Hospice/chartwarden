@@ -41,11 +41,17 @@
  * Run:   bun run arch:org-indexes
  * CI:    exits 1 on any org-scoped table with no qualifying index.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  MIGRATIONS_DIR as MIGRATIONS_REL,
+  listMigrations,
+  parseCreateTables,
+  stripSqlComments,
+} from "./lib/gate-scan";
 
 const REPO_ROOT = process.cwd();
-const MIGRATIONS_DIR = join(REPO_ROOT, "packages", "db", "migrations");
+const MIGRATIONS_DIR = join(REPO_ROOT, MIGRATIONS_REL);
 const ORG_COL = "organization_id";
 /** How far into an index key `organization_id` may sit and still prune — see header. */
 export const MAX_ORG_KEY_POSITION = 2;
@@ -55,11 +61,6 @@ export interface OrgIndexCoverage {
   readonly orgTables: readonly string[];
   /** Org-scoped tables with no index placing `organization_id` in the first two key columns. */
   readonly uncovered: readonly string[];
-}
-
-/** Strip SQL line comments and block comments so their prose never parses as DDL. */
-function stripComments(sql: string): string {
-  return sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
 }
 
 /** The substring of `sql` inside the parenthesis opening at `open`, honoring nesting. */
@@ -113,9 +114,7 @@ function keyColumns(body: string): string[] {
 
 /** Parse the whole migration corpus into org-scoped tables and their index key columns. */
 export function analyzeMigrations(dir: string = MIGRATIONS_DIR): OrgIndexCoverage {
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+  const files = listMigrations(dir);
 
   const orgTables = new Set<string>();
   /** Tables created as `PARTITION OF` another — they inherit the parent's indexes. */
@@ -130,23 +129,13 @@ export function analyzeMigrations(dir: string = MIGRATIONS_DIR): OrgIndexCoverag
   };
 
   for (const file of files) {
-    const sql = stripComments(readFileSync(join(dir, file), "utf8"));
+    const sql = stripSqlComments(readFileSync(join(dir, file), "utf8"));
 
     // ── CREATE TABLE [IF NOT EXISTS] "t" ( … )  /  … PARTITION OF parent ──────────────────
-    const createRe = /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?("[^"]+"|[a-z_][a-z0-9_$]*)/gi;
-    let cm: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
-    while ((cm = createRe.exec(sql))) {
-      const table = unquote(cm[1] as string);
-      // `PARTITION OF` must be looked for ONLY between the table name and whatever ends the
-      // statement's head — the first `(` or `;`. A fixed-width lookahead window spills into the
-      // NEXT statement, and `CREATE TABLE evt (…) PARTITION BY RANGE (at);` followed later by
-      // `CREATE TABLE evt_2026 PARTITION OF evt` would then classify the PARENT as a partition and
-      // drop it from coverage entirely.
-      const open = sql.indexOf("(", createRe.lastIndex);
-      const semi = sql.indexOf(";", createRe.lastIndex);
-      const headEnd = Math.min(open === -1 ? sql.length : open, semi === -1 ? sql.length : semi);
-      if (/\bPARTITION\s+OF\b/i.test(sql.slice(createRe.lastIndex, headEnd))) {
+    for (const created of parseCreateTables(sql)) {
+      const table = unquote(created.name);
+      const { open } = created;
+      if (created.isPartition) {
         partitions.add(table);
         continue;
       }
@@ -177,6 +166,7 @@ export function analyzeMigrations(dir: string = MIGRATIONS_DIR): OrgIndexCoverag
     }
 
     // ── ALTER TABLE … ADD COLUMN organization_id ──────────────────────────────────────────
+    let cm: RegExpExecArray | null;
     const addColRe =
       /\bALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?("[^"]+"|[a-z_][a-z0-9_$]*)[\s\S]{0,200}?\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?("[^"]+"|[a-z_][a-z0-9_$]*)/gi;
     // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.

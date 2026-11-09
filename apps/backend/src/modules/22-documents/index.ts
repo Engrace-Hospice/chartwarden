@@ -335,15 +335,7 @@ export {
   type DocumentView,
   createInMemoryDocumentBackend,
 } from "./routes/service";
-export {
-  type CursorPage,
-  type CursorKeyset,
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SIZE,
-  decodeCursor,
-  encodeCursor,
-  paginate,
-} from "./routes/concurrency";
+export { type CursorPage, M22_PAGE_SIZE, paginate } from "./routes/pagination";
 export {
   type MintedSignedUrl,
   type SignedUrlObjectResolver,

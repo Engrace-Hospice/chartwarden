@@ -62,7 +62,6 @@ export const minutesLeft = (n: number): string =>
 
 // ── compliance review screen ────────────────────────────────────────────────────────────────────────────────────────────────
 export const REVIEW_TITLE = "Break-glass review";
-export const REVIEW_BREADCRUMB = "Admin / Messaging";
 export const REVIEW_NOTICE =
   "Every break-glass grant is reviewed. The reads listed are ids and times only, never message text. The due time is one business day after the access ends (a default pending compliance confirmation).";
 export const TABS_LABEL = "Review status";

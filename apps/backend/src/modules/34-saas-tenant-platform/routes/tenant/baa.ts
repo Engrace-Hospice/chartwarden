@@ -9,8 +9,8 @@
 // ATTEST carries `passkey_recent_5min` step-up (§6/D10). The BAA register read surface is auditRead-declared
 // in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";
 import { BaaAttestRequest, BaaListQuerySchema, BaaParamsSchema, parse } from "./tenant-typebox";
 
@@ -47,7 +47,7 @@ export function registerTenantBaaRoutes(app: FastifyInstance, deps: BaaRouteDeps
     "/api/v1/tenant/baa/:id/attest",
     { preHandler: [ATTEST, ABAC_ATTEST, STEP_UP_ATTEST] },
     async (request) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const { id } = parse(BaaParamsSchema, request.params);
       parse(BaaAttestRequest, request.body);
       return service.attestBaa(organizationId, id, membershipId);

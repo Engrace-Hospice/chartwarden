@@ -1,16 +1,3 @@
-// apps/backend/src/modules/30-quality/cahps/pipeline.ts — GAP-087. The REAL ports behind M30's CAHPS-Hospice
-// pipeline (§7.2 WF-04 monthly sample + W-14 vendor export), replacing the `unboundWorkerPort` thunks that made
-// every run throw:
-//
-//   SAMPLE (cron):   death census (M6 port) → caregiver contact (M5 port) → pure CMS classifier → sealed insert
-//                    into `cahps_decedent_sample` (tenant-DEK envelope, AAD-bound) → `m30.cahps.sample_ready`.
-//   EXPORT (worker): active binding + sealed vendor config → adapter from `@chartwarden/cahps-vendors` → decrypt the
-//                    sample rows to the in-flight vendor shape → render → STORE the sealed artifact on the
-//                    `cahps_export_job` row → push (SHP) / no_push (manual) → stamp rows → `export_completed`.
-//
-// Cross-module data (deaths, caregiver contact) arrives through two PORTS injected at the composition root, so
-// M30 reads no M5/M6 table and gains no manifest edge (the F-160 `CapConsumerStore` shape). Every statement runs
-// in `withOrgContext` on the row's own org (RLS) with the system actor ('' → NULL in the M4 trigger).
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import type {
@@ -30,6 +17,20 @@ import type {
   DecedentCandidateReadPort,
   DecedentDeathSource,
 } from "@chartwarden/quality";
+// apps/backend/src/modules/30-quality/cahps/pipeline.ts — GAP-087. The REAL ports behind M30's CAHPS-Hospice
+// pipeline (§7.2 WF-04 monthly sample + W-14 vendor export), replacing the `unboundWorkerPort` thunks that made
+// every run throw:
+//
+//   SAMPLE (cron):   death census (M6 port) → caregiver contact (M5 port) → pure CMS classifier → sealed insert
+//                    into `cahps_decedent_sample` (tenant-DEK envelope, AAD-bound) → `m30.cahps.sample_ready`.
+//   EXPORT (worker): active binding + sealed vendor config → adapter from `@chartwarden/cahps-vendors` → decrypt the
+//                    sample rows to the in-flight vendor shape → render → STORE the sealed artifact on the
+//                    `cahps_export_job` row → push (SHP) / no_push (manual) → stamp rows → `export_completed`.
+//
+// Cross-module data (deaths, caregiver contact) arrives through two PORTS injected at the composition root, so
+// M30 reads no M5/M6 table and gains no manifest edge (the F-160 `CapConsumerStore` shape). Every statement runs
+// in `withOrgContext` on the row's own org (RLS) with the system actor ('' → NULL in the M4 trigger).
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -38,7 +39,6 @@ import type { CahpsPhiCipher } from "./phi-cipher";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-const SYSTEM_USER_ID = "";
 const B = schema.cahpsVendorBinding;
 const S = schema.cahpsDecedentSample;
 
@@ -47,7 +47,7 @@ export const CAHPS_PENDING_CONFIGURATION = "pending_secure_configuration";
 
 /** CMS-supported CAHPS-Hospice survey languages (ISO-639-1): English, Spanish, Chinese, Russian, Portuguese,
  *  Vietnamese, Polish. A caregiver whose filed language is outside the set is a CMS exclusion. */
-export const CAHPS_SUPPORTED_LANGUAGES: ReadonlySet<string> = new Set([
+const CAHPS_SUPPORTED_LANGUAGES: ReadonlySet<string> = new Set([
   "en",
   "es",
   "zh",
@@ -125,10 +125,10 @@ export function uuidFromKey(key: string): string {
 }
 
 const inOrg = <T>(db: DbClient, organizationId: string, fn: (tx: Tx) => Promise<T>): Promise<T> =>
-  withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, (tx) => fn(tx as Tx));
+  withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, (tx) => fn(tx as Tx));
 
 /** ISO-639 → the two-letter primary subtag, lowercased; null when nothing usable. */
-export function normalizeLanguage(code: string | null): string | null {
+function normalizeLanguage(code: string | null): string | null {
   const t = code?.trim().toLowerCase();
   if (!t) return null;
   return t.slice(0, 2);

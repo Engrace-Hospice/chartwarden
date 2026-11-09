@@ -1,3 +1,10 @@
+import {
+  type GuardRequest,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/05-patient/routes/patient-routes.ts — M5-T09 the patient route inventory
 // (§4.2; the §4.7 permission handshake; §7.1 admit-no-dup / §7.4 address cascade / §7.7 right-to-amend).
 //
@@ -39,13 +46,7 @@
 // §7.1: admit runs the T06 matcher — a hard duplicate returns 409 with the existing id, no row
 // created; a soft match returns 201 + matchReviewIds. §7.4: an address change emits the cascade
 // event. §7.7: an amendment opens with a 60-day SLA; accept/deny decides it (deny needs a reason).
-import {
-  type GuardRequest,
-  hasOrgWideScope,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -75,8 +76,6 @@ import {
   parse,
 } from "./patient-typebox";
 import type { PatientRouteService } from "./service";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The one real caller of `merges-db.ts`'s `mergePatients` — closed over `db` + the outbox port at
  *  the composition root (`../index.ts`'s `mountPatientRoutes`), mirroring how `deceased-db.ts`'s
@@ -111,12 +110,6 @@ function mapMergeError(err: unknown): unknown {
     return new ChartWardenError("UNKNOWN_MERGE_FIELD", err.message, 422);
   }
   return err;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 const READ = requirePermission("patient.read") as PreHandler;

@@ -5,8 +5,7 @@
 // The payer id is the one the bound clearinghouse routes the plan on (commercial_payer_route), supplied by the send gate.
 // A tenant's own clearinghouse carries its own usage mode: `usageFor` supplies it per organization and wins over the platform value.
 import { randomUUID } from "node:crypto";
-import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
-import { clearinghouseUsageFromEnv } from "../../23-billing-medicare/jobs/clearinghouse-context";
+import { type ClearinghouseContext, clearinghouseUsageFromEnv } from "@chartwarden/x12-837-client";
 import type { CommercialContextPort } from "./service";
 
 export interface CommercialContextDeps {

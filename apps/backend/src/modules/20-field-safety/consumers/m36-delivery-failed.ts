@@ -1,3 +1,5 @@
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 // apps/backend/src/modules/20-field-safety/consumers/m36-delivery-failed.ts — M20's subscriber to
 // `m36.notification.delivery_failed` (§4.8, #205 M36 follow-up).
 //
@@ -28,8 +30,7 @@
 // an alert straight into the terminus with no SLA breach and call a spouse. The SLA watchdog
 // (`../jobs/cron-workers.ts`) is the only edge that enters the terminus. `terminus_unsupported` therefore
 // still DEAD-LETTERS (OPS-035's posture: a DLQ entry is a signal ops reviews, not noise).
-import type { DbClient } from "@chartwarden/db";
-import { schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
@@ -48,9 +49,6 @@ import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 const SOS = schema.safetySosAlert;
 const SOS_HISTORY = schema.safetySosAlertStateHistory;
 const CONSENT = schema.safetyEmergencyContactConsent;
-
-/** §3.3 — a system-driven escalation names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The states `escalateSos` may safely advance from, given this consumer never resolves the terminus
  *  caller-owned effects (see the header). `escalation_tier_3` is EXCLUDED on purpose. */

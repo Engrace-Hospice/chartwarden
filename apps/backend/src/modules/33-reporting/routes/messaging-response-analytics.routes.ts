@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/messaging-response-analytics.routes.ts - M33 serving M36 WP 6.2 (ADR-0092).
 //
 //   GET /api/v1/messaging/analytics/response?from&to&groupBy=class|discipline   (messaging.analytics.read)
@@ -10,7 +11,7 @@
 // Tenant flag `messaging.response_analytics` off (or absent) is a uniform 404, the same answer for any unknown route: it is checked BEFORE
 // the query is parsed, so an invalid query cannot tell a flag-off tenant from a flag-on one. Responses are `Cache-Control: no-store`.
 // An optional per-route rate limit (a modest per-user/per-org cap, see ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT) runs after the permission.
-import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   ANALYTICS_MIN_COHORT,
   NotFoundError,
@@ -18,7 +19,7 @@ import {
 } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
-import { type PreHandler, actorOf } from "./actor";
+import { actorOf } from "./actor";
 import { resolveAnalyticsWindow } from "./analytics-window";
 import { ResponseAnalyticsQuerySchema } from "./messaging-response-analytics-typebox";
 import { parse } from "./reporting-typebox";

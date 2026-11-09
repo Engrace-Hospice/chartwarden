@@ -11,7 +11,6 @@ export const REDACTIONS_EMPTY_TITLE = "No redaction requests";
 export const REDACTIONS_EMPTY_TEXT =
   "Nothing has been asked to be redacted. Request a redaction to start.";
 export const REQUEST_LABEL = "Request redaction";
-export const LOAD_FAILED_REDACTIONS = "The redaction list could not be loaded.";
 
 export const STATUS: Readonly<
   Record<

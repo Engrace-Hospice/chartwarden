@@ -13,12 +13,10 @@ export {
 } from "./store";
 export {
   type M31Actor,
-  type PreHandler,
   actorOf,
   portalAccountIdOf,
   portalPatientIdOf,
 } from "./actor";
-export { requireIdempotencyKey, rejectOffsetPagination } from "./concurrency";
 export {
   ABAC_ACCOUNT,
   ABAC_BEREAVED,
@@ -28,6 +26,7 @@ export {
   ABAC_RECORDING_STATE,
   ABAC_TELEHEALTH_CONSENT,
   P,
+  rejectOffsetPagination,
   STEP_UP,
 } from "./guards";
 export { parse, parseQuery } from "./portal-typebox";

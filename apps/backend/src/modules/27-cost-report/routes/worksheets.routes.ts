@@ -6,10 +6,9 @@
 // the `:code`, version-checked); POST .../compute enqueues a derived-worksheet recompute (B/C/D/E-1) onto
 // the allocation queue (202). Reads gate `cost_report.read`; writes compose `cost_report_editor_for_provider`
 // (§4.7) over the `:id`. Org/actor binding server-side; mutations carry `Idempotency-Key` (§4.1).
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
-import { PutWorksheetBodySchema, WorksheetParamsSchema, parse } from "./cost-report-typebox";
+import { PutWorksheetBodySchema, WorksheetParamsSchema } from "./cost-report-typebox";
 import { EDITOR_FOR_PROVIDER, P } from "./guards";
 import type { M27ReadRouteService, WorksheetCode } from "./read-service";
 import type { M27WriteRouteService } from "./write-service";

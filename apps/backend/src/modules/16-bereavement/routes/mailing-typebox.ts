@@ -3,6 +3,7 @@
 // Request bodies, params and queries for the mailing routes, plus the response DTOs the OpenAPI enrichment publishes (pinned to the service views
 // by `m16-response-dtos.ts`). No body carries a version or an idempotency key: `If-Match` and `Idempotency-Key` ride the headers, and the header decides.
 // Neither a request nor a response carries a recipient name or address: those exist only inside the batch PDF.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import {
   BEREAVEMENT_BUILT_MAILING_KEYS,
   BEREAVEMENT_MAILING_EXCLUSION_REASONS,
@@ -70,17 +71,14 @@ export const UpdateMailingRunContentBody = Type.Object({ content: BereavementMai
 
 export const MailingRunListQuerySchema = Type.Object({
   status: Type.Optional(RunStatus),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 export const MailingItemListQuerySchema = Type.Object({
   status: Type.Optional(ItemStatus),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  ...pageQuery({ max: 500 }),
 });
 export const ContactTimelineQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 export type PutMailingConfigBody = Static<typeof PutMailingConfigBody>;

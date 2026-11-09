@@ -660,7 +660,7 @@ export function EncounterRead(): JSX.Element {
 
         if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
           setActionError("Your step-up expired — try again.");
-        } else if (response?.status === 412) {
+        } else if (errCode === "STALE_VERSION") {
           setActionError("This encounter changed since you opened it — reload to retry.");
         } else if (response?.status === 403) {
           setActionError("You do not have permission for this action.");

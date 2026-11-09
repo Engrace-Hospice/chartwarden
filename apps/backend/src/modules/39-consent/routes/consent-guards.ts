@@ -12,11 +12,10 @@
 // an emergency grant is proof of emergency access to READ, never to author, sign, revoke or administer.
 import { BREAK_GLASS_ATTRIBUTE, requireAbac } from "@chartwarden/auth";
 import type { ConsentRouteService } from "@chartwarden/consent";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyRequest } from "fastify";
 import type { ConsentDisciplineScope, ConsentStaffActor } from "../access-scope";
-
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** A patient id no one is on the caseload of — what an unresolved consent resolves to (⇒ 404). */
 const UNRESOLVED_PATIENT = "00000000-0000-0000-0000-000000000000";

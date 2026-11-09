@@ -259,7 +259,7 @@ describe("M14 discipline notes — writes", () => {
 });
 
 describe("M14 discipline notes — PATCH (If-Match, author rule)", () => {
-  it("428 without If-Match, 412 on a stale version, 200 + version bump on the right one", async () => {
+  it("428 without If-Match, 409 on a stale version, 200 + version bump on the right one", async () => {
     const app = await makeServer(false);
     const created = (await post(app, RN, { discipline: "rn", bodyText: "v0" })).json();
     const patch = (ifMatch: string | undefined, user = RN) =>
@@ -270,7 +270,7 @@ describe("M14 discipline notes — PATCH (If-Match, author rule)", () => {
         payload: { bodyText: "v1" },
       });
     expect((await patch(undefined)).statusCode).toBe(428);
-    expect((await patch("7")).statusCode).toBe(412);
+    expect((await patch("7")).statusCode).toBe(409);
     const ok = await patch('"0"');
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ bodyText: "v1", version: 1, authorName: "Rita RN" });

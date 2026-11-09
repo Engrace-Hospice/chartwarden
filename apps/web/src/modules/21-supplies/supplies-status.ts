@@ -200,7 +200,6 @@ export const DEFAULT_RECEIPT_ACTOR = "caregiver";
 export const DEFAULT_DISPOSAL_METHOD = "take_back_by_supply_team";
 export const DEFAULT_FULFILLMENT_MODE = "vendor";
 export const DEFAULT_ROUTING_SCOPE = "tenant";
-export const DEFAULT_SKU_CLASS = "E";
 
 /** `transaction_kind` on a §8.1 DEA perpetual-log entry. */
 export const LOG_KIND_TONE: Record<string, StatusTone> = {

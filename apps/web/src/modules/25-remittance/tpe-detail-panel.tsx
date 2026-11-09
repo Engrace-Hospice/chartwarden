@@ -1,10 +1,10 @@
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the TPE PROGRAM PANEL (hospice ADR/TPE/QIC PRD, milestone 5). Reads the program
 // fresh (so the If-Match version is the one the server holds NOW) and shows each round's notice, the MAC's results
 // letter, education date, sampled claims (linked to the ADR flow) and the outcome. The MAC's rate and result are the
 // official values; the claim-count rate is advisory and labelled so; the referral risk is advisory and labelled so. A
 // missing threshold is shown as "No threshold confirmed", never assumed. Server messages are shown verbatim and a 409
 // reloads the panel (ADR-0030). Nothing is filed or computed beyond what the letters state.
+import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -117,7 +117,7 @@ export function TpeDetailPanel({
     setBusy(false);
     setConfirmClose(false);
     if (!res.ok) {
-      if (res.code === "VERSION_CONFLICT") stale(res.message);
+      if (res.code === "STALE_VERSION") stale(res.message);
       else setError(res.message);
       return;
     }

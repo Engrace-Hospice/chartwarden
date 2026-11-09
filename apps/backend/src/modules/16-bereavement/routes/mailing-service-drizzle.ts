@@ -17,6 +17,12 @@
 //
 // NO NAME OR ADDRESS passes through this file: items hold ids, the PDF holds the people.
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type KeysetCursor,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   BereavedContactRelationship,
@@ -41,7 +47,6 @@ import {
 } from "../mailings/facts-drizzle";
 import { memorialMailingInviteeIds } from "../memorials/publish-drizzle";
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import { type Cursor, clampLimit, decodeCheckedCursor, toCursorPage } from "./concurrency";
 import type {
   M16MailingService,
   MailingConfigView,
@@ -50,6 +55,7 @@ import type {
   MailingRunView,
   MailingScheduleView,
 } from "./mailing-service";
+
 import type { WriteOutboxPort } from "./write-service";
 
 type ConfigRow = typeof schema.bereavementMailingConfig.$inferSelect;
@@ -344,7 +350,11 @@ export function buildDrizzleM16MailingService(
 
     async listRuns(actor, input) {
       const limit = clampLimit(input.limit, RUN_PAGE);
-      const after: Cursor | null = decodeCheckedCursor(input.cursor, "date");
+      const after: KeysetCursor | null = decodeKeysetCursor(
+        actor.organizationId,
+        input.cursor,
+        "date",
+      );
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const rows = await tx
@@ -368,6 +378,7 @@ export function buildDrizzleM16MailingService(
           rows.slice(0, limit).map((r) => r.id),
         );
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (row) => ({ a: dateOnly(row.scheduledFor), id: row.id }),
@@ -386,7 +397,7 @@ export function buildDrizzleM16MailingService(
 
     async listItems(actor, runId, input) {
       const limit = clampLimit(input.limit, ITEM_PAGE);
-      const afterCursor = decodeCheckedCursor(input.cursor, "integer");
+      const afterCursor = decodeKeysetCursor(actor.organizationId, input.cursor, "integer");
       const afterOrdinal = Number(afterCursor?.a ?? Number.NaN);
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
@@ -426,6 +437,7 @@ export function buildDrizzleM16MailingService(
           .orderBy(asc(position), asc(ITEM.id))
           .limit(limit + 1);
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (row) => ({ a: String(row.position), id: row.itemId }),

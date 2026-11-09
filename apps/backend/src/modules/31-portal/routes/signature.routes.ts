@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // M31 ADR-0107 (PROPOSED) — the portal admission-document signing routes:
 //   GET  /api/v1/portal/signature-requests                 the session patient's requests (read-audited list)
 //   GET  /api/v1/portal/signature-requests/:requestId      one request + the exact attestation sentence (read-audited, resource id recorded)
@@ -8,7 +9,7 @@
 //   POST /api/v1/portal/signature-requests/:requestId/signed-copy  attach a completed `signed_admission_document` upload as the signed paper copy (D6)
 // An attached copy parks the request in `uploaded_pending_review`; it is never marked signed here (staff accept or reject it). Attaching needs the same
 // fresh step-up as signing: a hijacked low-assurance session must not be able to put a document in front of staff as the patient's signed copy.
-import { createHash } from "node:crypto";
+import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-signing-authority";
@@ -20,7 +21,6 @@ import {
 } from "../signature-templates";
 import { type SignDenyCode, signAdmissionDocument } from "../write-paths/sign-admission-document";
 import { actorOf, portalAccountIdOf, portalPatientIdOf, portalSessionIdOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_GRANT, P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
 import { PortalSignatureAttachUpload, PortalSignatureSignRequest, parse } from "./portal-typebox";

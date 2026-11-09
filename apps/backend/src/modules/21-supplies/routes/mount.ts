@@ -6,8 +6,8 @@
 // route gates on its §4.3 `requirePermission` key plus its §4.4 ABAC binding; the three
 // controlled-substance signatures add the step-up gate; every mutation declares `Idempotency-Key`
 // (ADR-0021) and every state transition requires `If-Match` (§7.2).
+import { rejectAiActor } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { rejectAiActor } from "./actor";
 import { registerSupplyCatalogRoutes } from "./catalog.routes";
 import { registerComfortKitRoutes } from "./comfort-kits.routes";
 import type { M21RouteServices } from "./index";
@@ -24,11 +24,13 @@ export function mountM21Routes(app: FastifyInstance, services: M21RouteServices)
   const { readService, writeService } = services;
   // D15 / GAP-137 — an AI principal can never reach a mutating M21 handler. A scope-level hook (rather than
   // per-route) so a route added later is covered by default; reads stay open (M32 may read supplies).
-  const aiReject = rejectAiActor();
+  const aiReject = rejectAiActor(
+    "AI principals cannot create or modify supply or controlled-substance records (D15)",
+  );
   app.register(async (scope) => {
-    scope.addHook("preHandler", async (request, reply) => {
+    scope.addHook("preHandler", async (request) => {
       if (request.method === "GET" || request.method === "HEAD") return;
-      await aiReject(request, reply);
+      await aiReject(request);
     });
     registerSupplyRequestRoutes(scope, { readService, writeService });
     registerSupplyCatalogRoutes(scope, { readService, writeService });

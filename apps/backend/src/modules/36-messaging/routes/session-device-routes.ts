@@ -1,3 +1,13 @@
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import {
+  SESSIONS_MANAGE_PERMISSION,
+  SESSIONS_REVOKE_STEP_UP_KEY,
+  UnauthorizedError,
+} from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { SessionDeviceService } from "../session-devices/session-device-service";
+import type { SessionDeviceActor } from "../session-devices/session-device-types";
 // apps/backend/src/modules/36-messaging/routes/session-device-routes.ts - WP 5.5 (ADR-0083, PROPOSED): the device and session manager.
 //
 //   GET    /api/v1/devices                              the caller's OWN staff sessions ("devices"); the current one is marked
@@ -10,15 +20,7 @@
 // Self-service needs no permission key: it can only ever reach the caller's own sessions. A session that is not the caller's (admin: not in the
 // caller's organisation), an unknown one and one already revoked are the same 404. Org, user and the current session id are the server-side
 // request context, never the client's. Nothing returned is secret (no token, IP address, raw user agent or endpoint value).
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
-import {
-  SESSIONS_MANAGE_PERMISSION,
-  SESSIONS_REVOKE_STEP_UP_KEY,
-  UnauthorizedError,
-} from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { SessionDeviceService } from "../session-devices/session-device-service";
-import type { SessionDeviceActor } from "../session-devices/session-device-types";
+import { sessionActorOf } from "./actor";
 import { parse } from "./messaging-typebox";
 import {
   DeviceListResponseSchema,
@@ -27,8 +29,6 @@ import {
   SessionAdminListQuerySchema,
 } from "./session-device-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const MANAGE = requirePermission(SESSIONS_MANAGE_PERMISSION) as PreHandler;
 const STEP_UP = requireStepUp(SESSIONS_REVOKE_STEP_UP_KEY) as PreHandler;
 
@@ -36,18 +36,9 @@ export interface SessionDeviceRouteDeps {
   readonly service: SessionDeviceService;
 }
 
-function actorOf(request: FastifyRequest): SessionDeviceActor {
-  const ctx = request.context;
-  const sessionId = ctx?.attributes?.sessionId;
-  if (!ctx?.organizationId || !ctx.userId || typeof sessionId !== "string" || sessionId === "") {
-    throw new UnauthorizedError();
-  }
-  return { organizationId: ctx.organizationId, userId: ctx.userId, sessionId };
-}
-
 // Self-service has no permission preHandler, so the authenticated, organisation-bound actor is the gate (a 401 otherwise, before any query).
 const REQUIRE_ACTOR: PreHandler = async (request) => {
-  actorOf(request);
+  sessionActorOf(request);
 };
 
 export function registerSessionDeviceRoutes(
@@ -68,7 +59,9 @@ export function registerSessionDeviceRoutes(
       },
     },
     async (request, reply) =>
-      reply.header("Cache-Control", "no-store").send(await service.listOwn(actorOf(request))),
+      reply
+        .header("Cache-Control", "no-store")
+        .send(await service.listOwn(sessionActorOf(request))),
   );
 
   app.delete(
@@ -81,7 +74,7 @@ export function registerSessionDeviceRoutes(
       const { id } = parse(DeviceParamsSchema, request.params);
       return reply
         .header("Cache-Control", "no-store")
-        .send(await service.revokeOwn(actorOf(request), id));
+        .send(await service.revokeOwn(sessionActorOf(request), id));
     },
   );
 
@@ -100,7 +93,7 @@ export function registerSessionDeviceRoutes(
       const { user_id } = parse(SessionAdminListQuerySchema, request.query);
       return reply
         .header("Cache-Control", "no-store")
-        .send(await service.listForUser(actorOf(request), user_id));
+        .send(await service.listForUser(sessionActorOf(request), user_id));
     },
   );
 
@@ -114,7 +107,7 @@ export function registerSessionDeviceRoutes(
       const { id } = parse(DeviceParamsSchema, request.params);
       return reply
         .header("Cache-Control", "no-store")
-        .send(await service.revokeForUser(actorOf(request), id));
+        .send(await service.revokeForUser(sessionActorOf(request), id));
     },
   );
 }

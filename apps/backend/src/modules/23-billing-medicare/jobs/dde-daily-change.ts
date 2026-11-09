@@ -323,7 +323,7 @@ async function handleEvent(
     );
   } catch (err) {
     // An answer we will not act on, or a deterministic 4xx (a missing notice, a conflicting date), counts toward
-    // quarantine so one bad event cannot stall the chain forever. An outage, a 5xx or a concurrent edit (412) stays
+    // quarantine so one bad event cannot stall the chain forever. An outage, a 5xx or a concurrent edit (409 STALE_VERSION) stays
     // transient and is retried without counting.
     if (!isRefusal(err)) throw err;
     const refusalCode = CODE_SHAPE.test(err.code) ? err.code : ANSWER_INVALID_CODE;
@@ -371,7 +371,7 @@ async function handleEvent(
 }
 
 /** The only transient concurrency error the apply step raises (a stale item version): retried, never counted. */
-const TRANSIENT_CONFLICT_CODE = "VERSION_CONFLICT";
+const TRANSIENT_CONFLICT_CODE = "STALE_VERSION";
 
 /**
  * True for an error that is the EVENT's fault and will recur: our answer-invalid code, or any 4xx other than the

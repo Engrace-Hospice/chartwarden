@@ -12,8 +12,6 @@
 import type { schema } from "@chartwarden/db";
 import type { OutboxEmitInput } from "../services/claim-state-service";
 
-/** The revenue codes the 20% inpatient cap's NUMERATOR counts (42 CFR 418.309(b)). */
-export const INPATIENT_CAP_REVENUE_CODES: ReadonlySet<string> = new Set(["0655", "0656"]);
 /** Every hospice level-of-care code: the numerator codes plus RHC (0651) and CHC (0652), the denominator. */
 export const HOSPICE_LOC_REVENUE_CODES: ReadonlySet<string> = new Set([
   "0651",

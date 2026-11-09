@@ -298,15 +298,15 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
-  it("correct — the amendment supersedes the target (DB trigger) and reuses its captured_at; stale ifVersion is 412", async () => {
+  it("correct — the amendment supersedes the target (DB trigger) and reuses its captured_at; stale ifVersion is 409", async () => {
     const orig = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
-    // Stale optimistic-concurrency read → 412.
+    // Stale optimistic-concurrency read → 409 STALE_VERSION.
     await expect(
       svc.correctAssessment(ORG_A, recorderOf[ORG_A], PATIENT, orig.id, orig.version + 5, {
         ...recordArgs({ data: { ...PAINAD, breathing: 2 } }),
         correctionReason: "corrected breathing item after re-review",
       }),
-    ).rejects.toMatchObject({ statusCode: 412 });
+    ).rejects.toMatchObject({ statusCode: 409 });
     const corrected = await svc.correctAssessment(
       ORG_A,
       recorderOf[ORG_A],

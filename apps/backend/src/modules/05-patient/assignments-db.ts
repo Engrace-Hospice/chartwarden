@@ -16,6 +16,7 @@
 // call — there is no durable-set cache to invalidate. The only cache (M17's shift Valkey set) is a
 // separate additive union keyed by visit, not by this table.
 import { type DbClient, schema } from "@chartwarden/db";
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import {
@@ -39,7 +40,6 @@ const P = schema.patients;
 const MB = schema.memberships;
 
 const PRIMARY_RN = "primary_rn";
-const UNIQUE_VIOLATION = "23505";
 const PRIMARY_RN_INDEX = "patient_assignment_primary_rn_unique";
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
@@ -59,10 +59,7 @@ function toView(row: typeof PA.$inferSelect): AssignmentView {
 
 /** True for the Postgres unique violation on the primary_rn partial index (driver error or its cause). */
 function isPrimaryRnViolation(err: unknown): boolean {
-  const e = err as { code?: string; constraint?: string; cause?: unknown } | null;
-  if (!e || typeof e !== "object") return false;
-  if (e.code === UNIQUE_VIOLATION && e.constraint === PRIMARY_RN_INDEX) return true;
-  return e.cause !== undefined && isPrimaryRnViolation(e.cause);
+  return isUniqueViolation(err, PRIMARY_RN_INDEX);
 }
 
 /**

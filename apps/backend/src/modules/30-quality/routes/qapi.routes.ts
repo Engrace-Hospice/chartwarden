@@ -18,10 +18,10 @@
 // actor's own-org QAPI rows (aggregate; no PHI) cursor-paginated per §4.1.2. Org/actor/owner binding is
 // ALWAYS server-side (`request.context`, never the body). Mirrors M33 routes/definitions.routes.ts.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { actorOf, writeActorOf } from "./actor";
 import {
   AddQapiPipBodySchema,
   AdoptQapiProgramBodySchema,

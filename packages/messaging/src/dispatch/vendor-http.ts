@@ -10,7 +10,7 @@ import { TransportError } from "./transports";
 /** `fetch`, injectable so tests drive the adapters without a network. */
 export type VendorFetch = (url: string, init: RequestInit) => Promise<Response>;
 
-export const VENDOR_DEFAULT_TIMEOUT_MS = 10_000;
+const VENDOR_DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RETRY_AFTER_MS = 60_000;
 
 export interface VendorResponse {

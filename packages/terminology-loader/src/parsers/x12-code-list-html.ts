@@ -79,7 +79,7 @@ function statusOf(rowClass: string, where: string): ConceptStatus {
 }
 
 /** True when the bytes are an HTML page rather than a normalized CSV (first non-blank character is `<`). */
-export function looksLikeHtml(bytes: Uint8Array): boolean {
+function looksLikeHtml(bytes: Uint8Array): boolean {
   const head = decodeUtf8(bytes.subarray(0, 512)).trimStart().toLowerCase();
   return head.startsWith("<!doctype html") || head.startsWith("<html");
 }

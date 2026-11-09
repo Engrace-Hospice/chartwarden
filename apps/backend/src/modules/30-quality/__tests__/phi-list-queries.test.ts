@@ -1,5 +1,6 @@
 // GAP-091 — the incident / mortality / infection LIST queries push every filter, the patient scope and
 // the keyset cursor into SQL (no fixed in-memory window), and page by fetching size+1.
+import { InvalidCursorError, encodeCursor } from "@chartwarden/shared/route-kit";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import {
@@ -150,18 +151,18 @@ describe("splitPage", () => {
 });
 
 describe("toListCursor", () => {
-  it("round-trips an encoded keyset", () => {
-    const raw = Buffer.from(
-      JSON.stringify({ createdAt: CURSOR.at.toISOString(), id: CURSOR.id }),
-      "utf8",
-    ).toString("base64url");
-    expect(toListCursor(raw)).toEqual(CURSOR);
-    expect(toListCursor(undefined)).toBeUndefined();
+  it("round-trips a signed keyset", () => {
+    const raw = encodeCursor(ORG, { a: CURSOR.at.toISOString(), id: CURSOR.id });
+    expect(toListCursor(ORG, raw)).toEqual(CURSOR);
+    expect(toListCursor(ORG, undefined)).toBeUndefined();
   });
 
-  it("rejects a malformed or non-date cursor with 400 rather than paging from the start", () => {
-    expect(() => toListCursor("not-a-cursor")).toThrow(/malformed/);
-    const bad = Buffer.from(JSON.stringify({ createdAt: "nope", id: "x" })).toString("base64url");
-    expect(() => toListCursor(bad)).toThrow(/malformed/);
+  it("rejects a tampered, foreign-org or non-date cursor with 422 rather than paging from the start", () => {
+    expect(() => toListCursor(ORG, "not-a-cursor")).toThrow(InvalidCursorError);
+    const foreign = encodeCursor(P1, { a: CURSOR.at.toISOString(), id: CURSOR.id });
+    expect(() => toListCursor(ORG, foreign)).toThrow(InvalidCursorError);
+    expect(() => toListCursor(ORG, encodeCursor(ORG, { a: "nope", id: "x" }))).toThrow(
+      InvalidCursorError,
+    );
   });
 });

@@ -1,3 +1,4 @@
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { NotFoundError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 // apps/backend/src/modules/36-messaging/routes/afterhours-triage-routes.ts - ADR-0082 slices S4/S5 (PROPOSED, flag `messaging.afterhours_triage`):
@@ -15,12 +16,10 @@ import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { AfterHoursLinesQuerySchema, AfterHoursLinesResponseSchema } from "./role-send-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The comma-separated ids as a bounded list of uuids (any other shape is a 422, before a uuid cast can fail in SQL). */
-export function parseMessageIds(raw: string): readonly string[] {
+function parseMessageIds(raw: string): readonly string[] {
   const ids = raw.split(",").map((s) => s.trim());
   if (ids.length > AFTERHOURS_LINES_MAX_MESSAGES || ids.some((id) => !UUID.test(id))) {
     throw new ValidationError("request validation failed", [

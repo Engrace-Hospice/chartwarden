@@ -19,11 +19,10 @@
 // EVERY WRITE: the permission, its ABAC predicate, a FRESH step-up, the AI-actor block (pricing is a person's decision), an
 // `Idempotency-Key` and a recorded reason. The operator is the session; the tenant is the PATH slug, never the body.
 import { requireAbac } from "@chartwarden/auth";
+import { actorOf, rejectAiActor, writeActorOf } from "@chartwarden/shared/route-kit";
 import { DEFAULT_CENSUS_BAND_THRESHOLDS } from "@chartwarden/subscription-billing";
 import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
-import { actorOf, writeActorOf } from "../routes/actor";
 import { IDEMPOTENT, P, PLATFORM_SCOPE, STEP_UP } from "../routes/guards";
 import type { ContractService } from "./contract-service";
 import type { PlanPricingInput, PricingPlanService } from "./plan-service";

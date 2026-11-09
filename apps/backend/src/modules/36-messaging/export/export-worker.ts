@@ -26,7 +26,7 @@ export interface ExportBuildJobData {
   readonly jobId: string;
 }
 
-export const M36_EXPORT_BUILD_CONSUMER = "m36.export-build" as const;
+const M36_EXPORT_BUILD_CONSUMER = "m36.export-build" as const;
 
 export type EnqueueExportBuild = (data: ExportBuildJobData) => Promise<void>;
 

@@ -111,7 +111,9 @@ export function MedicaidRuleConfig(): JSX.Element {
       )) as { error?: unknown; response?: Response };
       setPendingKey(null);
       if (err) {
-        setActionError(configErrorMessage(response?.status));
+        setActionError(
+          configErrorMessage(response?.status, (err as { error?: { code?: string } }).error?.code),
+        );
         return;
       }
       void load();
@@ -432,9 +434,10 @@ export function MedicaidRuleConfig(): JSX.Element {
 }
 
 /** Map a rule-overlay write status code to a precise inline message (§5.4). */
-function configErrorMessage(status: number | undefined): string {
+function configErrorMessage(status: number | undefined, code?: string): string {
+  if (code === "STALE_VERSION")
+    return "The rule overlay changed since you loaded it — reload and retry.";
   if (status === 409) return "This rule is regulatory-required and cannot be disabled.";
-  if (status === 412) return "The rule overlay changed since you loaded it — reload and retry.";
   if (status === 401 || status === 403) return "You lack permission to edit the rule overlay.";
   return "The rule could not be updated.";
 }

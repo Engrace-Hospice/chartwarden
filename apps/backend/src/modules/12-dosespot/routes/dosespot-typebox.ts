@@ -1,3 +1,4 @@
+import "@chartwarden/shared/route-kit";
 import {
   HospiceCoverageFieldsSchema,
   SetHospiceCoverageBodySchema,
@@ -10,7 +11,6 @@ import {
 // at this boundary (the server discriminates on `medClass` and validates against the per-class TypeBox + the
 // M38 RxNorm/NDC binding); the lifecycle-bearing envelope fields are pinned here.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   MedicationHistoryRecordView,
@@ -22,14 +22,6 @@ import type {
   RefillInboxPolicyView as ServiceRefillInboxPolicyView,
   RefillRequestView as ServiceRefillRequestView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 /** §2.1 — the medication taxonomy (mirrors `MedClass`). */
 const MED_CLASS = Type.Union([

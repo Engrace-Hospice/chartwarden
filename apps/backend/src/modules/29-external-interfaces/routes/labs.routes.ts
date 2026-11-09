@@ -13,8 +13,8 @@
 import { ConflictError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { getSeam } from "../../../bootstrap/index";
-import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, ABAC_LAB_CASELOAD, P, STEP_UP } from "./guards";
 import { resolveLabListScope } from "./lab-list-scope";
 import {

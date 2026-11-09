@@ -10,20 +10,18 @@ import {
   requirePermission,
   requireStepUp,
 } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { TenantFlagWriteRequest } from "../typebox";
 import type { TenantAccountFlagsService } from "./account-flags-service";
-import { actorOf } from "./actor";
 import { parse } from "./tenant-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface TenantAccountFlagsRouteDeps {
   readonly service: TenantAccountFlagsService;
 }
 
-export const TenantFlagKeyParamsSchema = Type.Object({
+const TenantFlagKeyParamsSchema = Type.Object({
   flagKey: Type.String({ minLength: 1, maxLength: 128 }),
 });
 

@@ -1,12 +1,12 @@
 // apps/web/src/modules/16-bereavement — the support-group FORM (ADR-0109 D10, routes 54 and 56): create a draft group, or edit one.
 //
-// Create carries an `Idempotency-Key`; an edit also carries the group version the page READ in `If-Match`. A 412/409/404 on an edit means the
+// Create carries an `Idempotency-Key`; an edit also carries the group version the page READ in `If-Match`. A 409/404 on an edit means the
 // group moved under the reader: the dialog closes and the page reloads and says why. While a group is open its schedule (recurrence) is fixed:
 // only a draft's schedule can change, and a drop-in group has none. The format itself is chosen once, at creation.
 import { useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
-import { errorMessage, isStaleWrite } from "./bereavement-api";
+import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import {
   CheckboxField,
   ErrorText,
@@ -178,7 +178,7 @@ export function GroupFormModal({
       const message = errorMessage(res.error, "The group could not be saved.");
       if (group !== null && isStaleWrite(res.status) && onStale) {
         onStale(
-          res.status === 412
+          isStaleVersion(res.status, res.error)
             ? "This group changed while you were editing it. The page has been refreshed: check it and try again."
             : message,
         );

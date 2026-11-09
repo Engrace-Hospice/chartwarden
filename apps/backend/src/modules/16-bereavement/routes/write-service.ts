@@ -10,7 +10,7 @@
 // `m22.document.rendered`.
 //
 // Optimistic concurrency is §2.5: every PATCH / state transition carries `expectedVersion` (the `If-Match`
-// header) and a mismatch raises `STALE_VERSION` → 412 with the current row.
+// header) and a mismatch raises `STALE_VERSION` → 409 with the current row.
 import type { ManualRiskFactors } from "@chartwarden/bereavement";
 import type { BereavementSideEffect } from "../lifecycle/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";

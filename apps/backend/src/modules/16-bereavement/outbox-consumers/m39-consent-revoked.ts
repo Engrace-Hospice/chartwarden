@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m39-consent-revoked.ts — the §2.6 / D6
 // M39 consent-revocation cascade (F-151, #248).
 //
@@ -30,7 +31,7 @@
 // takes on its own unresolvable death-fact cases, not a bug in THIS consumer. Whether an unconfirmed
 // contact's consent revocation should instead be a no-op (matching `opted_out`/`deceased`) or drive some
 // other transition is a product decision this pass does not make.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavedContactId, ConsentId, IsoInstant } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -42,9 +43,6 @@ const CONTACT = schema.bereavedContact;
 const OPT_OUT = schema.bereavementOptOut;
 const TASK = schema.bereavementAssessmentTask;
 const OUTREACH = schema.bereavementOutreach;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M16_CONSENT_REVOKED_CONSUMER = {
   eventName: "m39.consent.revoked",
