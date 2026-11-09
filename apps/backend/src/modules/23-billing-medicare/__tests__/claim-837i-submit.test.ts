@@ -31,12 +31,41 @@ describe("renderClaimForTransport", () => {
   it("returns both renderings, loading under the attempt's control number and the interchange number the caller allocated", async () => {
     loadAndRender837i.mockResolvedValue({
       ok: true,
+      document: {
+        lines: [
+          {
+            sourceLineId: "line-1",
+            revenueCode: "0551",
+            hcpcs: "G0182",
+            serviceDateFrom: "2026-01-01",
+            serviceDateTo: "2026-01-01",
+            units: 1,
+            chargeCents: 4200,
+          },
+        ],
+      },
+      sourceFingerprint: "source-fingerprint",
       rendered: { reveal: () => ({ x12: "ISA*00~", stediJson: { j: 1 } }) },
     });
 
     const rendered = await renderClaimForTransport(ARGS);
 
-    expect(rendered).toEqual({ x12: "ISA*00~", stediJson: { j: 1 } });
+    expect(rendered).toEqual({
+      x12: "ISA*00~",
+      stediJson: { j: 1 },
+      sourceFingerprint: "source-fingerprint",
+      submittedLines: [
+        {
+          internalClaimLineId: "line-1",
+          revenueCode: "0551",
+          procedureCode: "G0182",
+          serviceFrom: "20260101",
+          serviceTo: "20260101",
+          units: "1",
+          chargeCents: 4200,
+        },
+      ],
+    });
     expect(loadAndRender837i.mock.calls[0]?.[1]).toMatchObject({
       claimId: "claim-1",
       context: CONTEXT,
@@ -49,6 +78,8 @@ describe("renderClaimForTransport", () => {
   it("asks the caller for the number with the context it resolved, and never derives one itself", async () => {
     loadAndRender837i.mockResolvedValue({
       ok: true,
+      document: { lines: [] },
+      sourceFingerprint: null,
       rendered: { reveal: () => ({ x12: "ISA*00~" }) },
     });
     const interchangeNumberFor = vi.fn(async () => ({

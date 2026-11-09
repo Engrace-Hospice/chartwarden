@@ -6,6 +6,11 @@ import type { ClaimMdEraListPage } from "@chartwarden/x12-837-client";
 import { and, asc, count, eq, inArray, isNull, lt, min, notExists, or, sql } from "drizzle-orm";
 import type { ClaimMdPayloadKeyRing } from "../../../bootstrap/claimmd-payload-cipher";
 import { createClaimMdProtectedPayloadCipher } from "../../../bootstrap/claimmd-payload-cipher";
+import type {
+  ClaimMdEraHistoryStageReference,
+  ClaimMdEraReviewHistory,
+  ClaimMdEraReviewHistoryEvent,
+} from "./claimmd-era-review";
 
 export const CLAIMMD_ERA_CAPTURE_JOB_ID = "m25-claimmd-era-capture";
 export const CLAIMMD_ERA_RESOLUTION_JOB_ID = "m25-claimmd-era-ownership-resolution";
@@ -13,6 +18,7 @@ export const CLAIMMD_ERA_DELIVERY_JOB_ID = "m25-claimmd-era-delivery";
 export const CLAIMMD_ERA_RECOVERY_JOB_ID = "m25-claimmd-era-recovery";
 /** Read-only metrics principal, independent of ERA capture and delivery activation. */
 export const CLAIMMD_ERA_METRICS_JOB_ID = "m25-claimmd-era-metrics";
+export const CLAIMMD_ERA_REVIEW_HISTORY_JOB_ID = "m25-claimmd-era-review-history";
 const S = schema.claimmdEraStreams;
 const I = schema.claimmdEraInbox;
 const R = schema.claimmdEraResolution;
@@ -43,12 +49,18 @@ export function createClaimMdEraStore(input: {
     input.keyRing,
     "claimmd-era-resolution:v1",
   );
-  const run = <T>(reason: string, fn: (tx: Tx) => Promise<T>, jobId = CLAIMMD_ERA_CAPTURE_JOB_ID) =>
+  const run = <T>(
+    reason: string,
+    fn: (tx: Tx) => Promise<T>,
+    jobId = CLAIMMD_ERA_CAPTURE_JOB_ID,
+    options?: { readonly isolation?: "repeatable read" },
+  ) =>
     withPlatformContext(
       input.platformDb,
       { jobId, reason, crossTenant: true },
       input.auditBypass,
       fn,
+      options,
     );
   const leasePredicate = (lease: ClaimMdEraLease) =>
     and(
@@ -58,6 +70,126 @@ export function createClaimMdEraStore(input: {
       sql`${S.leaseUntil} > now()`,
     );
   return {
+    /**
+     * Tenant history is projected only after the M25 stage has been authorized and loaded. The exact
+     * stage ownership, source digest and resolution version are revalidated against the central
+     * delivery record before any central history is read; no raw inbox or ciphertext is returned.
+     */
+    async tenantStageHistory(
+      stage: ClaimMdEraHistoryStageReference,
+    ): Promise<ClaimMdEraReviewHistory> {
+      return run(
+        "Claim.MD ERA tenant-authorized stage history projection",
+        async (tx) => {
+          const [delivery] = await tx
+            .select({
+              id: D.id,
+              resolutionId: D.resolutionId,
+              resolutionVersion: D.resolutionVersion,
+            })
+            .from(D)
+            .where(
+              and(
+                eq(D.inboxId, stage.sourceInboxId),
+                eq(D.accountReference, stage.accountReference),
+                eq(D.usage, stage.usage),
+                eq(D.eraId, stage.eraId),
+                eq(D.original835Digest, stage.original835Digest),
+                eq(D.organizationId, stage.organizationId),
+                eq(D.providerEntityId, stage.providerEntityId),
+                stage.resolutionId ? eq(D.resolutionId, stage.resolutionId) : undefined,
+                stage.resolutionVersion
+                  ? eq(D.resolutionVersion, stage.resolutionVersion)
+                  : undefined,
+              ),
+            )
+            .limit(1);
+          if (!delivery) return { availability: "unavailable", events: [] };
+
+          const [source] = await tx
+            .select({
+              discoveredAt: I.discoveredAt,
+              capturedAt: I.capturedAt,
+              captureState: I.captureState,
+            })
+            .from(I)
+            .where(
+              and(
+                eq(I.id, stage.sourceInboxId),
+                eq(I.accountReference, stage.accountReference),
+                eq(I.usage, stage.usage),
+                eq(I.eraId, stage.eraId),
+                eq(I.original835Digest, stage.original835Digest),
+              ),
+            )
+            .limit(1);
+          const resolutionRows = stage.resolutionId
+            ? await tx
+                .select({
+                  version: RH.resolutionVersion,
+                  status: RH.status,
+                  reasonCode: RH.reasonCode,
+                  createdAt: RH.createdAt,
+                })
+                .from(RH)
+                .where(
+                  and(
+                    eq(RH.resolutionId, stage.resolutionId),
+                    eq(RH.organizationId, stage.organizationId),
+                    eq(RH.providerEntityId, stage.providerEntityId),
+                    stage.resolutionVersion
+                      ? sql`${RH.resolutionVersion} <= ${stage.resolutionVersion}`
+                      : undefined,
+                  ),
+                )
+                .orderBy(asc(RH.resolutionVersion))
+                .limit(200)
+            : [];
+          const deliveryRows = await tx
+            .select({
+              state: DH.state,
+              reasonCode: DH.safeReasonCode,
+              attemptCount: DH.attemptCount,
+              createdAt: DH.createdAt,
+              stageIds: DH.stageIds,
+            })
+            .from(DH)
+            .where(eq(DH.deliveryId, delivery.id))
+            .orderBy(asc(DH.createdAt))
+            .limit(200);
+          const recoveryRows = await tx
+            .select({
+              reasonCode: REC.reasonCode,
+              outcome: REC.outcome,
+              safeFailureCode: REC.safeFailureCode,
+              deliveryAttemptCount: REC.deliveryAttemptCount,
+              createdAt: REC.createdAt,
+            })
+            .from(REC)
+            .where(
+              and(
+                eq(REC.deliveryId, delivery.id),
+                eq(REC.inboxId, stage.sourceInboxId),
+                eq(REC.accountReference, stage.accountReference),
+                eq(REC.usage, stage.usage),
+                eq(REC.stage, "m25_delivery"),
+              ),
+            )
+            .orderBy(asc(REC.createdAt))
+            .limit(200);
+
+          return projectTenantStageHistory(
+            stage,
+            source,
+            resolutionRows,
+            deliveryRows,
+            recoveryRows,
+          );
+        },
+        CLAIMMD_ERA_REVIEW_HISTORY_JOB_ID,
+        { isolation: "repeatable read" },
+      );
+    },
     /** Small, indexed and non-decrypting aggregate view used by the Prometheus scrape sampler. */
     async operationalSnapshot(accountReference: string, usage: "test" | "production") {
       if (!/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference))
@@ -1873,4 +2005,186 @@ export function createClaimMdEraStore(input: {
       }
     },
   };
+}
+
+export function projectTenantStageHistory(
+  stage: ClaimMdEraHistoryStageReference,
+  source:
+    | {
+        discoveredAt: Date;
+        capturedAt: Date | null;
+        captureState: string;
+      }
+    | undefined,
+  resolutionRows: readonly {
+    status: string;
+    reasonCode: string | null;
+    createdAt: Date;
+  }[],
+  deliveryRows: readonly {
+    state: string;
+    reasonCode: string | null;
+    attemptCount: number;
+    createdAt: Date;
+    stageIds: readonly string[];
+  }[],
+  recoveryRows: readonly {
+    reasonCode: string;
+    outcome: string;
+    safeFailureCode: string | null;
+    deliveryAttemptCount: number | null;
+    createdAt: Date;
+  }[],
+): ClaimMdEraReviewHistory {
+  const events: ClaimMdEraReviewHistoryEvent[] = [];
+  if (source) {
+    events.push({
+      eventType: "era_discovered",
+      description: "Claim.MD reported this ERA for capture.",
+      occurredAt: source.discoveredAt.toISOString(),
+      stageId: stage.id,
+      fromState: null,
+      toState: "discovered",
+      reasonCode: null,
+      origin: "ingestion",
+      actorClassification: "system",
+      attemptCount: null,
+    });
+    if (source.capturedAt && source.captureState === "captured")
+      events.push({
+        eventType: "era_captured",
+        description: "The original ERA content was captured and protected.",
+        occurredAt: source.capturedAt.toISOString(),
+        stageId: stage.id,
+        fromState: "discovered",
+        toState: "captured",
+        reasonCode: null,
+        origin: "ingestion",
+        actorClassification: "system",
+        attemptCount: null,
+      });
+  }
+  for (const row of resolutionRows) {
+    events.push({
+      eventType: `ownership_${safeEventToken(row.status)}`,
+      description: ownershipDescription(row.status),
+      occurredAt: row.createdAt.toISOString(),
+      stageId: stage.id,
+      fromState: null,
+      toState: safeEventToken(row.status),
+      reasonCode: safeCode(row.reasonCode),
+      origin: "ownership",
+      actorClassification: "system",
+      attemptCount: null,
+    });
+  }
+  events.push({
+    eventType: "m25_stage_created",
+    description:
+      "A tenant-scoped M25 review stage was created. This is a staging event, not a financial posting.",
+    occurredAt: asDate(stage.createdAt).toISOString(),
+    stageId: stage.id,
+    fromState: null,
+    // Creation time is durable, but the current stage state may have changed later.
+    // Do not manufacture a historical state transition from today's state.
+    toState: null,
+    reasonCode: null,
+    origin: "delivery",
+    actorClassification: "system",
+    attemptCount: null,
+  });
+  for (const row of deliveryRows) {
+    if (row.state !== "prepared" && !row.stageIds.includes(stage.id)) continue;
+    events.push({
+      eventType: `delivery_${safeEventToken(row.state)}`,
+      description: deliveryDescription(row.state),
+      occurredAt: row.createdAt.toISOString(),
+      stageId: stage.id,
+      fromState: null,
+      toState: safeEventToken(row.state),
+      reasonCode: safeCode(row.reasonCode),
+      origin: "delivery",
+      actorClassification: "system",
+      attemptCount: row.attemptCount,
+    });
+  }
+  for (const row of recoveryRows) {
+    events.push({
+      eventType: `delivery_recovery_${safeEventToken(row.outcome)}`,
+      description: recoveryDescription(row.outcome),
+      occurredAt: row.createdAt.toISOString(),
+      stageId: stage.id,
+      fromState: null,
+      toState: null,
+      reasonCode: safeCode(row.safeFailureCode ?? row.reasonCode),
+      origin: "recovery",
+      // The central record stores actor UUID but not principal kind; do not infer it.
+      actorClassification: null,
+      attemptCount: row.deliveryAttemptCount,
+    });
+  }
+  events.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+  const hasTerminalDelivery = deliveryRows.some((row) =>
+    ["delivered", "possible_duplicate", "exact_duplicate", "held"].includes(row.state),
+  );
+  const complete = Boolean(source?.capturedAt && resolutionRows.length && hasTerminalDelivery);
+  return { availability: complete ? "available" : "partial", events };
+}
+
+function safeEventToken(value: string): string {
+  return /^[a-z][a-z0-9_]{0,63}$/.test(value) ? value : "unknown";
+}
+
+function safeCode(value: string | null): string | null {
+  return value && /^[A-Z][A-Z0-9_]{1,63}$/.test(value) ? value : null;
+}
+
+function asDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function ownershipDescription(status: string): string {
+  switch (status) {
+    case "verified":
+      return "Provider ownership was verified against the captured submission evidence.";
+    case "ambiguous":
+      return "Ownership evidence was ambiguous; this stage remains restricted for review.";
+    case "conflict":
+      return "Ownership evidence conflicted; the source remains held.";
+    case "unmatched":
+      return "No verified provider ownership match was available.";
+    default:
+      return "An ownership evaluation was recorded.";
+  }
+}
+
+function deliveryDescription(state: string): string {
+  switch (state) {
+    case "prepared":
+      return "A durable M25 delivery was prepared for this verified stage.";
+    case "delivered":
+      return "The tenant M25 staging receipt was committed; no financial posting occurred.";
+    case "possible_duplicate":
+      return "The stage was held for possible duplicate review.";
+    case "exact_duplicate":
+      return "The source was classified as an exact duplicate and was not staged for posting.";
+    case "held":
+      return "M25 delivery was held for operational review.";
+    default:
+      return "An M25 delivery state was recorded.";
+  }
+}
+
+function recoveryDescription(outcome: string): string {
+  switch (outcome) {
+    case "accepted":
+    case "requeued":
+      return "An authorized platform operator requested delivery recovery.";
+    case "rejected":
+      return "A platform recovery request was rejected by state or evidence checks.";
+    case "already_processed":
+      return "A recovery request found the delivery already processed.";
+    default:
+      return "A platform delivery recovery result was recorded.";
+  }
 }
