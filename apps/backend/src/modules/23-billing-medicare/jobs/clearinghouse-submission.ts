@@ -38,10 +38,22 @@ import {
   withCredentialGuard,
 } from "./clearinghouse-credential-guard";
 
+/** What a context is for. `payerRoute: "skip"`: it is not addressed to a payer (an ack or remittance pull), so no Claim.MD payer route is resolved. */
+export interface ClearinghouseContextOptions {
+  readonly payerRoute?: "skip";
+}
+
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
-  /** Context for one provider entity; throws when it has no MAC submitter credential (nothing to submit as). */
-  contextFor(organizationId: string, providerEntityId: string): Promise<ClearinghouseContext>;
+  /**
+   * Context for one provider entity; throws when it has no MAC submitter credential (nothing to submit as). For a Claim.MD account it
+   * also throws when no payer route is configured, unless `options.payerRoute` is `"skip"`: only a claim is addressed to a payer.
+   */
+  contextFor(
+    organizationId: string,
+    providerEntityId: string,
+    options?: ClearinghouseContextOptions,
+  ): Promise<ClearinghouseContext>;
   /** Provider entities of the org that have a credential, i.e. whose acknowledgments are pulled. */
   providerEntitiesFor(organizationId: string): Promise<readonly string[]>;
 }
@@ -622,7 +634,10 @@ async function pullEntity(
   onPage: PageHandler,
   quarantined: QuarantinedAck[],
 ): Promise<"done" | "backlog"> {
-  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
+  // An ack pull is not addressed to a payer: it must not fail for want of a Claim.MD payer route.
+  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId, {
+    payerRoute: "skip",
+  });
   const macJurisdiction = ctx.jurisdiction;
   if (!macJurisdiction) return "done";
   const { vendor, transport: port } = transport.binding;

@@ -448,6 +448,20 @@ clearinghouses a binding built from a tenant's own sealed credential carries `ac
 - **Evidence per account.** Every Claim.MD send (M23 claims and notices, M41 commercial claims) first commits main's immutable
   submission evidence. A tenant account commits it under its own organization with account reference `tenant:<organization id>`
   (a namespace the platform's `CLAIMMD_ACCOUNT_REFERENCE` may not take); with no such store, or a failed write, nothing is sent.
+- **Payer route per account (the org's binding decides, never the platform env vendor).** A Claim.MD claim's payer (2010BB) route
+  is resolved from the organization's OWN resolved binding. A Stedi org (its own account, or one served by the platform's Stedi
+  account) needs no Claim.MD route at all, whatever the platform vendor is. The platform's Claim.MD account, and the orgs it serves
+  through `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS`, resolve under `CLAIMMD_ACCOUNT_REFERENCE` as before. A tenant's OWN Claim.MD
+  account resolves under `tenant:<organization id>` (the reference its evidence already uses) and the tenant's own mode, from the
+  same platform-owned `CLAIMMD_M23_PAYER_ROUTES`. **What a tenant-owned Claim.MD account needs before it can submit a Medicare
+  claim:** an operator adds an effective-dated route record for it (organization, provider entity, MAC jurisdiction,
+  `accountReference: "tenant:<organization id>"`, `usage` = the tenant's mode, and a vendor-confirmed `payerId` that is an active M40
+  X12 payer). A record under the platform's account reference never satisfies a tenant account, and the global
+  `CLEARINGHOUSE_PAYER_ID` never authorizes one. Without the record, preparation and submit answer 422
+  `CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE`; a queued attempt whose route has gone or changed fails before anything is sent (a plain failed
+  attempt, never in doubt). Acknowledgment and remittance pulls ask for a context that skips the payer route (only a
+  claim is addressed to a payer), so a tenant that chose Claim.MD before its route was added never fails the shared pull crons. There is no tenant-facing route editor: the route stays platform-owned deployment
+  configuration (not built; it needs an owner decision on who may assert a payer route).
 - **NOE / NOTR jobs keep main's contract.** Every job carries `submissionId`; it is checked against the stored attempt
   (organization, provider entity, notice, kind) and `attemptIndex` is passed through. A job without it fails loudly; a park closes
   only the job's own matching attempt.

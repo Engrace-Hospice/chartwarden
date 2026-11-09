@@ -1157,6 +1157,7 @@ import {
   type ProviderCcnPort,
   buildClaim837iPartiesPortFactory,
   buildClaim837iProviderReader,
+  buildClaimPayerRouteStatus,
   buildClaimStateService,
   buildClaimValidationContextPort,
   buildClaimValidationRunner,
@@ -4179,6 +4180,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const clearinghouseUsageFor = tenantClearinghouse
     ? { usageFor: tenantClearinghouse.usageFor }
     : {};
+  /**
+   * The 837I parties' EDI-profile route: per organization on a tenant boot (the vendor of its OWN live clearinghouse; the tenant
+   * runtime's top-level `vendor` is null and names no organization), else the one platform vendor. The claim preview and the submit
+   * worker share it, so the preview reviews the very parties the worker sends.
+   */
+  const claimPartiesRouteKey = tenantClearinghouse
+    ? buildOrgRouteKeyReader(clearinghouseFallback.lookup)
+    : clearinghouseBinding.vendor;
   const claimMdSubmissionEvidence =
     platformClearinghouseBinding.vendor === "claimmd" && dbHandle
       ? createClaimMdSubmissionEvidenceStore({
@@ -7332,7 +7341,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           });
           const m23PayerNameByX12Id = buildPayerNameByX12IdReader();
           const m23ClaimPreviewParties = buildClaim837iPartiesPortFactory({
-            routeKey: clearinghouseBinding.vendor,
+            routeKey: claimPartiesRouteKey,
             profile: buildDrizzleEdiProfileReader(),
             provider: buildClaim837iProviderReader({
               sealedFacts: (tx, organizationId, providerEntityId) =>
@@ -7362,7 +7371,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   const context = await buildClearinghouseContextPort({
                     db: dbHandle.db,
                     env: process.env,
+                    binding: clearinghouseBinding,
                     providerNpi: m25PayeeNpi,
+                    ...clearinghouseUsageFor,
                   }).contextFor(organizationId, providerEntityId);
                   return withOrgContext(
                     dbHandle.db,
@@ -7401,30 +7412,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     },
                   );
                 },
-                payerRouteStatus: async (organizationId, providerEntityId) => {
-                  if (process.env.CLEARINGHOUSE_VENDOR?.trim() !== "claimmd") {
-                    return { status: "not_applicable" };
-                  }
-                  try {
-                    const context = await buildClearinghouseContextPort({
-                      db: dbHandle.db,
-                      env: process.env,
-                      providerNpi: m25PayeeNpi,
-                    }).contextFor(organizationId, providerEntityId);
-                    if (!context.claimMdRouteFingerprint) {
-                      return { status: "not_configured", reasonCode: "PAYER_ROUTE_NOT_VERIFIED" };
-                    }
-                    if (!(await m23PayerNameByX12Id(dbHandle.db, context.payerId))) {
-                      return { status: "not_configured", reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE" };
-                    }
-                    return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
-                  } catch (error) {
-                    const code = error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
-                      ? error.message
-                      : "PAYER_ROUTE_NOT_VERIFIED";
-                    return { status: "not_configured", reasonCode: code };
-                  }
-                },
+                // Decided by the ORG's resolved binding (vendor + whose account), never the platform env vendor.
+                payerRouteStatus: buildClaimPayerRouteStatus({
+                  db: dbHandle.db,
+                  env: process.env,
+                  binding: clearinghouseBinding,
+                  providerNpi: m25PayeeNpi,
+                  ...clearinghouseUsageFor,
+                  payerIsActive: async (payerId) =>
+                    Boolean(await m23PayerNameByX12Id(dbHandle.db, payerId)),
+                }),
                 // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
                 // assembly service's `referenceData.perDiemRateTable`/`chcHourlyRateCents` read (M23-owned, so
                 // the boot assembly reads it over `dbHandle.db` directly — no injected port).
@@ -10615,9 +10612,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         addresses: lazyPatientAddressReader(),
         parties: buildClaim837iPartiesPortFactory({
           // Per organization: the vendor of its OWN live clearinghouse (the EDI profile the tenant entered for it).
-          routeKey: tenantClearinghouse
-            ? buildOrgRouteKeyReader(clearinghouseFallback.lookup)
-            : clearinghouseBinding.vendor,
+          routeKey: claimPartiesRouteKey,
           profile: buildDrizzleEdiProfileReader(),
           provider: buildClaim837iProviderReader({
             sealedFacts: (tx, organizationId, providerEntityId) =>
@@ -10653,6 +10648,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         contexts: buildClearinghouseContextPort({
           db: dbHandle.db,
           env: process.env,
+          binding: clearinghouseBinding,
           providerNpi: m25PayeeNpi,
           ...clearinghouseUsageFor,
         }),
@@ -11128,6 +11124,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             contexts: buildClearinghouseContextPort({
               db: dbHandle.db,
               env: process.env,
+              binding: clearinghouseBinding,
               providerNpi: m25PayeeNpi,
               ...clearinghouseUsageFor,
             }),
