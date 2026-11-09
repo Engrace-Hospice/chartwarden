@@ -191,6 +191,19 @@ describe("createServerUploadService.createDocument", () => {
     expect(mem.objects.size).toBe(0);
   });
 
+  // The signed BAA is filed once by a platform operator through the onboarding port (createDocumentOn). The tenant-facing upload (this
+  // method) must refuse the kind itself: the route schema is not the only thing that keeps a tenant from filing evidence of its own BAA.
+  it("refuses an operator-filed kind (tenant_baa) with 409 DOCUMENT_IMMUTABLE, storing nothing", async () => {
+    const { db, inserts } = fakeDb();
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db, objects: mem.store });
+    await expect(
+      svc.createDocument(ORG, ACTOR, { ...ARGS, aggregateType: "tenant_baa" }),
+    ).rejects.toMatchObject({ code: "DOCUMENT_IMMUTABLE", statusCode: 409 });
+    expect(inserts).toHaveLength(0);
+    expect(mem.objects.size).toBe(0);
+  });
+
   // ADR-0109 D10 (PR 3) — the same org-level rule the verified upload applies (one shared assertion).
   it("refuses a grief-library document that names a patient or an admission, storing nothing", async () => {
     for (const named of [
@@ -245,6 +258,17 @@ describe("createServerUploadService.createDocumentOn", () => {
       organizationId: ORG,
       createdByMembershipId: ACTOR.membershipId,
     });
+    expect(mem.objects.size).toBe(1);
+  });
+
+  it("still files the operator-filed kind (tenant_baa): the onboarding port's door is createDocumentOn", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    await expect(
+      svc.createDocumentOn(tx, ORG, ACTOR, { ...ARGS, aggregateType: "tenant_baa" }),
+    ).resolves.toMatchObject({ versionNumber: 1 });
     expect(mem.objects.size).toBe(1);
   });
 

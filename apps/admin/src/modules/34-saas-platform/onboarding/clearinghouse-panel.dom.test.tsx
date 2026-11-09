@@ -9,6 +9,7 @@ import { ClearinghousePanel } from "./clearinghouse-panel";
 import {
   ONBOARDING_OPERATOR,
   ORG_SLUG,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -78,6 +79,7 @@ function mount(
   v = view(),
   contractMode: string | null = null,
   session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
+  at: Parameters<typeof renderAt>[0] = "/x",
 ) {
   const client = stubClient({
     GET: {
@@ -92,9 +94,10 @@ function mount(
     ...extra,
   });
   const ctx = panelCtx(v, "clearinghouse_selected", undefined, session);
-  renderAt("/x", [{ path: "/x", element: <ClearinghousePanel ctx={ctx} /> }], client, session);
+  renderAt(at, [{ path: "/x", element: <ClearinghousePanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
+
 beforeEach(() => window.sessionStorage.clear());
 
 const confirm = (reason: string, button: string) => {
@@ -268,11 +271,69 @@ describe("ClearinghousePanel: choosing", () => {
     expect(stashed).not.toContain(TYPED_VALUE);
     cleanup();
 
-    mount(NOTHING, { PUT: { [CH]: () => ok(CLAIMMD, 201) } });
+    mount(
+      NOTHING,
+      { PUT: { [CH]: () => ok(CLAIMMD, 201) } },
+      view(),
+      null,
+      ONBOARDING_OPERATOR,
+      RETURNED_FROM_STEP_UP,
+    );
     expect(await screen.findByRole("heading", { name: "Choose the clearinghouse" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect((secretBox() as HTMLInputElement).value).toBe("");
   });
+
+  it("does not reopen the form from a draft an abandoned Re-verify left behind (Back from /step-up), now or on a later return", async () => {
+    mount(NOTHING, { PUT: { [CH]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer sent us their Claim.MD account key", "Save");
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // Back from /step-up: the screen mounts with no step-up return marker
+    mount(NOTHING);
+    expect(await screen.findByRole("button", { name: "Choose clearinghouse" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Choose the clearinghouse" })).toBeNull();
+    cleanup();
+
+    // the abandoned draft was dropped by that visit: a later, genuine return does not resurrect it
+    mount(NOTHING, {}, view(), null, ONBOARDING_OPERATOR, RETURNED_FROM_STEP_UP);
+    expect(await screen.findByRole("button", { name: "Choose clearinghouse" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Choose the clearinghouse" })).toBeNull();
+  });
+
+  // The PUT also answers 409 for refusals on the merits. Nothing was stale, so the form and the credential the operator typed stay.
+  it.each([
+    "CLEARINGHOUSE_ACCOUNT_IN_USE",
+    "CLEARINGHOUSE_VENDOR_LOCKED",
+    "CLEARINGHOUSE_WORK_WAITING",
+  ])(
+    "keeps the form and the typed credential when the server refuses on the merits (409 %s)",
+    async (code) => {
+      const { client } = mount(CLAIMMD, {
+        PUT: { [CH]: () => refused(409, code, "the server's own refusal sentence") },
+      });
+      fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+      fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "test" } });
+      fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      confirm("Customer moved to their sandbox account", "Save");
+
+      // the refusal shows in the prompt, which stays open; no "changed since you opened it", no reload
+      const dialog = within(await screen.findByRole("dialog"));
+      expect(await dialog.findByText("the server's own refusal sentence")).toBeTruthy();
+      expect(screen.queryByText(/changed since you opened it/i)).toBeNull();
+      expect(client.GET.mock.calls.filter((c) => c[0] === CH)).toHaveLength(1);
+      // cancelling the prompt leaves the form, and what was typed in it, as it was
+      fireEvent.click(dialog.getByRole("button", { name: /Cancel/ }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect((secretBox() as HTMLInputElement).value).toBe(TYPED_VALUE);
+      expect((screen.getByLabelText("Mode") as HTMLSelectElement).value).toBe("test");
+    },
+  );
 });
 
 describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant's billing mode)", () => {
@@ -527,6 +588,10 @@ describe("ClearinghousePanel: coming back from Re-verify keeps the pin", () => {
     const { client } = mount(
       { ...CLAIMMD, version: 4 },
       { PUT: { [CH]: () => refused(412, "VERSION_CONFLICT", "stale") } },
+      view(),
+      null,
+      ONBOARDING_OPERATOR,
+      RETURNED_FROM_STEP_UP,
     );
     expect(await screen.findByRole("heading", { name: "Change the clearinghouse" })).toBeTruthy();
     fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
@@ -546,7 +611,14 @@ describe("ClearinghousePanel: coming back from Re-verify keeps the pin", () => {
     fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
     cleanup();
 
-    const { client } = mount(NOTHING, { PUT: { [CH]: () => ok(CLAIMMD, 201) } });
+    const { client } = mount(
+      NOTHING,
+      { PUT: { [CH]: () => ok(CLAIMMD, 201) } },
+      view(),
+      null,
+      ONBOARDING_OPERATOR,
+      RETURNED_FROM_STEP_UP,
+    );
     await screen.findByRole("heading", { name: "Choose the clearinghouse" });
     fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));

@@ -128,6 +128,25 @@ describe("PlanContractPanel", () => {
     ).toBe("/admin/pricing-plans");
   });
 
+  it("says when the plan or contract cannot be loaded and offers Try again, which reads only what failed (each contract read is audited)", async () => {
+    let planReads = 0;
+    const { client } = mount({
+      GET: {
+        [PLANS]: () => {
+          planReads += 1;
+          return planReads === 1 ? refused(503, "UNAVAILABLE", "down") : ok([]);
+        },
+        [SUB]: () => ok(NO_CONTRACT),
+      },
+    });
+    expect(await screen.findByText(/Could not load the plan and contract/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText(/No published plan to sign/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(planReads).toBe(2);
+    expect(client.GET.mock.calls.filter((c) => c[0] === SUB)).toHaveLength(1);
+  });
+
   it("without plan.admin.read the empty state says who publishes plans, with no link to a refusal", async () => {
     mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } });
     expect(await screen.findByText(/A billing admin publishes plans/)).toBeTruthy();

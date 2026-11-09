@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { MacPanel } from "./mac-panel";
 import {
   ORG_SLUG,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -53,13 +54,18 @@ const view = (over = {}) =>
     ],
     over,
   );
-function mount(credentials: unknown[], extra: Parameters<typeof stubClient>[0] = {}, v = view()) {
+function mount(
+  credentials: unknown[],
+  extra: Parameters<typeof stubClient>[0] = {},
+  v = view(),
+  at: Parameters<typeof renderAt>[0] = "/x",
+) {
   const client = stubClient({
     GET: { [ENTITIES]: () => ok({ items: [PE] }), [MAC]: () => ok({ items: credentials }) },
     ...extra,
   });
   const ctx = panelCtx(v, "mac_configured");
-  renderAt("/x", [{ path: "/x", element: <MacPanel ctx={ctx} /> }], client);
+  renderAt(at, [{ path: "/x", element: <MacPanel ctx={ctx} /> }], client);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -263,16 +269,21 @@ describe("MacPanel: coming back from Re-verify", () => {
     await reverify([CRED]);
 
     // someone else replaced it while the operator was re-verifying: the version is now 4
-    const { client } = mount([{ ...CRED, version: 4 }], {
-      POST: {
-        [MAC]: (init) =>
-          (init as { params?: { header?: Record<string, string> } }).params?.header?.[
-            "If-Match"
-          ] === "4"
-            ? ok(CRED)
-            : refused(412, "VERSION_CONFLICT", "stale"),
+    const { client } = mount(
+      [{ ...CRED, version: 4 }],
+      {
+        POST: {
+          [MAC]: (init) =>
+            (init as { params?: { header?: Record<string, string> } }).params?.header?.[
+              "If-Match"
+            ] === "4"
+              ? ok(CRED)
+              : refused(412, "VERSION_CONFLICT", "stale"),
+        },
       },
-    });
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     expect(await screen.findByText("Replace MAC credential")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/^Client secret/), { target: { value: TYPED_VALUE } });
     save("Customer rotated their client key");
@@ -285,7 +296,12 @@ describe("MacPanel: coming back from Re-verify", () => {
   it("resumes a CREATE as a create (no If-Match) for the same provider entity, never as a replace of whatever is loaded now", async () => {
     await reverify([]);
 
-    const { client } = mount([], { POST: { [MAC]: () => ok(CRED, 201) } });
+    const { client } = mount(
+      [],
+      { POST: { [MAC]: () => ok(CRED, 201) } },
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     expect(await screen.findByText("New MAC credential")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/^Client secret/), { target: { value: TYPED_VALUE } });
     save("Customer sent their Noridian enrolment");

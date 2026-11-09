@@ -167,6 +167,7 @@ export {
   buildNoticeWindowPort,
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
+  buildClaimPayerRouteStatus,
   buildClearinghouseContextPort,
   buildDirectMacGateway,
   buildSubmissionControlNumberReader,

@@ -1,5 +1,6 @@
 import {
   ApiClientProvider,
+  STEP_UP_RETURN_STATE,
   createApiClient,
   discardStepUpDrafts,
   parsePriceCents,
@@ -139,13 +140,20 @@ function History(): JSX.Element {
   );
 }
 
+/** A path, or a path on the return from a successful step-up (the history state StepUpCard navigates back with). */
+type Entry = string | { pathname: string; search: string; state: typeof STEP_UP_RETURN_STATE };
+function returnedTo(path: string): Entry {
+  const { pathname, search } = new URL(path, "http://localhost");
+  return { pathname, search, state: STEP_UP_RETURN_STATE };
+}
+
 /** `withPrevious` seeds one earlier history entry (a different page), so a test can count how many Backs leave the screen. */
-function mount(path = "/admin/pricing-plans", as: Actor = WRITER, withPrevious = false): void {
+function mount(entry: Entry = "/admin/pricing-plans", as: Actor = WRITER, withPrevious = false): void {
   actor = as;
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <MemoryRouter
-        initialEntries={withPrevious ? ["/previous", path] : [path]}
+        initialEntries={withPrevious ? ["/previous", entry] : [entry]}
         initialIndex={withPrevious ? 1 : 0}
       >
         <Routes>
@@ -523,7 +531,7 @@ describe("PricingPlans", () => {
     fireEvent.click(reVerify);
     expect(await screen.findByText("step-up page")).toBeTruthy();
     cleanup();
-    mount("/admin/pricing-plans?plan=new");
+    mount(returnedTo("/admin/pricing-plans?plan=new"));
     const form = await drawer("New price plan");
     expect((within(form).getByLabelText(/Plan family/) as HTMLInputElement).value).toBe(
       "hospice-core",
@@ -534,6 +542,25 @@ describe("PricingPlans", () => {
     expect((within(dialog()).getByRole("textbox") as HTMLTextAreaElement).value).toBe(
       "Edited after the refusal, ticket PRICE-12",
     );
+  });
+
+  it("an abandoned step-up (Back from /step-up) restores nothing: the create form opens empty, now and on a later return", async () => {
+    writeReplies = [() => refusal(403, "STEP_UP_REQUIRED", "refused")];
+    mount("/admin/pricing-plans?plan=new");
+    fill(await drawer("New price plan"));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    confirmWithReason("Create draft");
+    fireEvent.click(await within(dialog()).findByRole("link", { name: "Re-verify" }));
+    expect(await screen.findByText("step-up page")).toBeTruthy();
+    cleanup();
+    mount("/admin/pricing-plans?plan=new"); // back, without the return state
+    const form = await drawer("New price plan");
+    expect((within(form).getByLabelText(/Plan family/) as HTMLInputElement).value).toBe("");
+    expect((within(form).getByLabelText(/Per user a month/) as HTMLInputElement).value).toBe("");
+    cleanup();
+    mount(returnedTo("/admin/pricing-plans?plan=new")); // the stash was consumed by the visit above
+    const later = await drawer("New price plan");
+    expect((within(later).getByLabelText(/Plan family/) as HTMLInputElement).value).toBe("");
   });
 
   it("edits a draft's prices in place (PUT, no plan family)", async () => {
@@ -590,7 +617,7 @@ describe("PricingPlans", () => {
     fireEvent.click(await within(dialog()).findByRole("link", { name: "Re-verify" }));
     expect(await screen.findByText("step-up page")).toBeTruthy();
     cleanup();
-    mount(`/admin/pricing-plans?plan=${DRAFT.id}`);
+    mount(returnedTo(`/admin/pricing-plans?plan=${DRAFT.id}`));
     const back = await drawer();
     expect(perUser(back)).toBe("77"); // the editor reopened with the typed prices
     // and the reason typed in the dialog comes back when it next opens
@@ -706,7 +733,7 @@ describe("PricingPlans", () => {
     // meanwhile another operator saved the draft
     list = [{ ...DRAFT, updatedAt: "2026-11-08T12:00:00.000Z" }];
     writeReplies = [changedReply("2026-11-08T12:00:00.000Z")];
-    mount(`/admin/pricing-plans?plan=${DRAFT.id}`);
+    mount(returnedTo(`/admin/pricing-plans?plan=${DRAFT.id}`));
     const back = await drawer();
     expect(perUser(back)).toBe("77");
     fireEvent.click(within(back).getByRole("button", { name: "Save prices" }));

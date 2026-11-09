@@ -563,6 +563,8 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
 
   return {
     async createDocument(organizationId, actor, args) {
+      // The tenant-facing upload never files an operator-filed kind (the signed BAA): that door is `createDocumentOn`, for the onboarding port.
+      assertKindWritable(args.aggregateType);
       const { documentId, versionId, versionNumber } = await fileDocument(
         organizationId,
         actor,

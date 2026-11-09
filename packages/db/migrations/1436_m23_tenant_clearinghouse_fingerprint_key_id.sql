@@ -6,9 +6,10 @@
 --   credential_fingerprint_key_id  the public id of the fingerprint key (16 hex, one-way from the key; it names the key, never
 --                                  reveals it), on the reservation and on the config's current fingerprint. NULL = recorded
 --                                  before this migration, under the KEK that was current then.
--- While a retired KEK is configured (M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS), every save reserves the credential under the
--- current AND each retired key, so a reservation recorded under the retired key still collides on 1435's unique index; dropping
--- the retired KEK ends the protection of reservations only it computed (ops runbook §8.3).
+-- While a retired fingerprint key is configured (M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS: the DERIVED fingerprint subkey of
+-- the old KEK, never the KEK itself), every save reserves the credential under the current AND each retired key, so a reservation
+-- recorded under the retired key still collides on 1435's unique index; dropping the retired key ends the protection of
+-- reservations only it computed (ops runbook §8.3).
 --
 -- Also (same review): the reservation write-audit scrubs the release reason too, so the reservation rows' audit carries none. The
 -- reason is NOT hidden from the tenant: the platform-ops onboarding audit row on the tenant's own trail records it as given, so the

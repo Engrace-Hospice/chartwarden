@@ -594,6 +594,9 @@ describe("service: uploadBaaDocument", () => {
     expect(warned[0]?.context).toMatchObject({
       documentId: DOCUMENT_ID,
       objectKey: "uploads/00000000/tenant_baa-0123456789ab",
+      // the object sits in the TENANT's bucket (deriveTenantBucket of the target org): reconciling it needs that org, not the operator's
+      organizationId: TARGET_ORG,
+      operatorOrganizationId: PLATFORM_ORG,
     });
   });
 

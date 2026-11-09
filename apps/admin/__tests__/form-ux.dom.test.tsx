@@ -1,6 +1,11 @@
 // #597 (browser audit F-042, F-043, F-044): console forms explain a refused submit, keep what was typed across the
 // step-up round trip, and do not offer "Try again" for a record that is not there.
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
+import {
+  ApiClientProvider,
+  STEP_UP_RETURN_STATE,
+  ToastProvider,
+  createApiClient,
+} from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -25,7 +30,11 @@ const envelope = (code: string): unknown => ({
 type Handler = (method: string, path: string) => Response;
 let calls: { method: string; path: string }[] = [];
 
-function mount(handler: Handler, Screen: ComponentType, entry: string, routePath = "*"): void {
+/** A path, or a path on the return from a successful step-up (the history state StepUpCard navigates back with). */
+type Entry = string | { pathname: string; state: typeof STEP_UP_RETURN_STATE };
+const returnedTo = (pathname: string): Entry => ({ pathname, state: STEP_UP_RETURN_STATE });
+
+function mount(handler: Handler, Screen: ComponentType, entry: Entry, routePath = "*"): void {
   calls = [];
   const client = createApiClient({
     baseUrl: "http://localhost",
@@ -167,7 +176,7 @@ describe("F-043 typed input survives the step-up round trip", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     expect(await screen.findByTestId("step-up")).toBeTruthy();
     cleanup();
-    mount(stepUp, PlansList, "/admin/plans");
+    mount(stepUp, PlansList, returnedTo("/admin/plans"));
     expect(((await screen.findByLabelText(/^Slug/)) as HTMLInputElement).value).toBe(
       "team-monthly",
     );
@@ -188,7 +197,7 @@ describe("F-043 typed input survives the step-up round trip", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     cleanup();
-    mount(() => json(200, {}), RefundNew, "/admin/refunds/new");
+    mount(() => json(200, {}), RefundNew, returnedTo("/admin/refunds/new"));
     expect((screen.getByLabelText(/^Invoice id/) as HTMLInputElement).value).toBe(SUB);
     expect((screen.getByLabelText(/^Amount/) as HTMLInputElement).value).toBe("25");
   });

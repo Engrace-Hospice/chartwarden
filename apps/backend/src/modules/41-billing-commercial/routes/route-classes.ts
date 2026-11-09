@@ -1,6 +1,6 @@
 // apps/backend/src/modules/41-billing-commercial/routes/route-classes.ts — ADR-0110 D5: the M41 routes (the mount plus
 // the commercial claim and acknowledgment-quarantine registrars) that start NEW claims-billing work: claim assemble,
-// ready, submit and the eligibility check. Validation, void, reconcile, authorizations, enrollment (and its Claim.MD reports), payer-plan policy
+// clearinghouse-rejection correction, ready, submit and the eligibility check. Validation, void, reconcile, authorizations, enrollment (and its Claim.MD reports), payer-plan policy
 // and the acknowledgment quarantine stay open. Ordered, first match wins.
 import type { RouteClassRule } from "../../../bootstrap/claims-billing-gate";
 
@@ -8,6 +8,12 @@ export const M41_ROUTE_CLASSES: readonly RouteClassRule[] = [
   { cls: "new_work", method: "POST", path: "/api/v1/billing/commercial/claims/assemble" },
   { cls: "new_work", method: "POST", path: "/api/v1/billing/commercial/claims/:id/ready" },
   { cls: "new_work", method: "POST", path: "/api/v1/billing/commercial/claims/:id/submit" },
+  // A clearinghouse-rejection correction assembles a new draft claim from current source facts (D5 claim create).
+  {
+    cls: "new_work",
+    method: "POST",
+    path: "/api/v1/billing/commercial/claims/:id/corrections/clearinghouse-rejection",
+  },
   { cls: "new_work", method: "POST", path: "/api/v1/billing/commercial/eligibility/check" },
   { cls: "open", method: "*", path: "/api/v1/billing/commercial/claims/*" },
   { cls: "open", method: "*", path: "/api/v1/billing/commercial/eligibility/*" },

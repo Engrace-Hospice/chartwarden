@@ -142,7 +142,6 @@ export function TenantOnboardingWizard(): JSX.Element {
         <div className="wx-wizard">
           <nav className="wx-wizard-rail" aria-label="Onboarding steps">
             <StepRail
-              ariaLabel="Onboarding steps"
               steps={railItemsOf(view)}
               activeKey={stepKey ?? null}
               onSelect={(key) => navigate(stepPath(orgSlug, key))}

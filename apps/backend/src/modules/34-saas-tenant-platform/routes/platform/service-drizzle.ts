@@ -1037,6 +1037,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     async upsertOnboardingTemplate(actorUserId, args): Promise<OnboardingTemplateView> {
       return inPlatformCtx("platform-ops upsert onboarding template", async (tx) => {
         const T = schema.onboardingTaskTemplate;
+        // A step becomes canonical (gating go-live for every tenant) only by migration: this upsert never promotes one, so the row below
+        // is always written non-canonical and its UPDATE never touches `is_canonical`.
+        if (args.isCanonical) throw canonicalTemplateConflict(args.key);
         // Refused before any write (a typed 409, whatever the carrier's grants); `setWhere` below holds the same rule under a race.
         const [existing] = await tx
           .select({ isCanonical: T.isCanonical })
@@ -1055,7 +1058,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             // (preserved on update: the onConflictDoUpdate set below intentionally omits them).
             requiredRole: "platform_ops",
             defaultDueDaysAfterProvisioning: 0,
-            isCanonical: args.isCanonical,
+            isCanonical: false,
           })
           .onConflictDoUpdate({
             target: T.key,
@@ -1063,7 +1066,6 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
               displayLabel: args.title,
               description: args.description ?? "",
               canonicalOrder: args.canonicalOrder,
-              isCanonical: args.isCanonical,
             },
             // A canonical template is migration-owned: the route never overwrites it (nor flips it non-canonical).
             setWhere: eq(T.isCanonical, false),

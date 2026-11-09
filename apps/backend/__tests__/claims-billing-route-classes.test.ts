@@ -91,6 +91,7 @@ const MODULES: readonly ModuleCase[] = [
       "POST /api/v1/billing/commercial/claims/assemble",
       "POST /api/v1/billing/commercial/claims/:id/ready",
       "POST /api/v1/billing/commercial/claims/:id/submit",
+      "POST /api/v1/billing/commercial/claims/:id/corrections/clearinghouse-rejection",
       "POST /api/v1/billing/commercial/eligibility/check",
     ],
   },

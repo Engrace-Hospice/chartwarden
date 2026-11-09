@@ -364,7 +364,8 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               error={fieldError("documentId")}
               onUploaded={(documentId, fileName) => {
                 setForm((f) => ({ ...f, documentId }));
-                setErrors((e) => ({ ...e, documentId: undefined }));
+                // drop the key (not `documentId: undefined`): a leftover key keeps `errors` non-empty, and the focus effect above fires on it
+                setErrors(({ documentId: _cleared, ...rest }) => rest);
                 setUploadedName(fileName);
               }}
               onReverify={() =>

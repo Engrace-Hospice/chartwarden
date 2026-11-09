@@ -60,6 +60,46 @@ describe("describeOpsError", () => {
     ).toBe("conflict");
   });
 
+  it.each([
+    "ONBOARDING_TASK_CHANGED",
+    "PRICING_PLAN_CHANGED",
+    "NOTICE_FILING_RECORD_CHANGED",
+    "NOTICE_NOT_FILED_EXTERNALLY",
+    "CLEARINGHOUSE_BAA_CHANGED",
+    "CLEARINGHOUSE_CHANGED_DURING_VERIFY",
+    "TENANT_STATUS_CHANGED",
+  ])(
+    "a 409 %s says the record moved under the operator: a conflict (re-read, ask again)",
+    (code) => {
+      expect(describeOpsError(envelope(code, "changed"), { status: 409 }).kind).toBe("conflict");
+    },
+  );
+
+  it("a 409 with no envelope cannot be told from a stale pin, so it stays a conflict", () => {
+    expect(describeOpsError(undefined, { status: 409 }).kind).toBe("conflict");
+    expect(describeOpsError("<html>conflict</html>", { status: 409 }).kind).toBe("conflict");
+  });
+
+  // The clearinghouse PUT answers 409 for business refusals too. The operator's typed form and credential must survive them: only a
+  // stale pin is worth throwing the form away for.
+  it.each([
+    "CLEARINGHOUSE_ACCOUNT_IN_USE",
+    "CLEARINGHOUSE_VENDOR_LOCKED",
+    "CLEARINGHOUSE_WORK_WAITING",
+    "CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR",
+    "GO_LIVE_SAME_PERSON",
+  ])(
+    "a coded 409 refusal (%s) is `refused`, not a conflict, and keeps the server's sentence",
+    (code) => {
+      const failure = describeOpsError(envelope(code, "the server's own sentence"), {
+        status: 409,
+      });
+      expect(failure.kind).toBe("refused");
+      expect(failure.code).toBe(code);
+      expect(failure.message).toBe("the server's own sentence");
+    },
+  );
+
   it("an out-of-order step is 'locked' and names the step to finish first", () => {
     const failure = describeOpsError(
       envelope("ONBOARDING_STEP_OUT_OF_ORDER", "an earlier onboarding step is not finished yet", [

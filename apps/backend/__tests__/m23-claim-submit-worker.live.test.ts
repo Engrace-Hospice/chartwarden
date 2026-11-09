@@ -27,6 +27,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { deriveControlNumber, type repositories } from "@chartwarden/billing";
 import { type DbClient, createDbClient } from "@chartwarden/db";
+import { CH, NOT_WIRED_TRANSPORT } from "@chartwarden/x12-837-client";
+import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -355,6 +357,127 @@ describe.skipIf(!DB_URL)(
       await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
       expect(uploads).toBe(1);
       expect(publishedFailure).toBe(false);
+    });
+
+    // ── tenant clearinghouses: the org's transport is resolved per organization, never inside a worker transaction ──
+    /** Per-org deps over an in-memory vendor; `onResolve` runs at every `forOrg`, `contextFor` is the injected context port. */
+    function perOrgDeps(opts: {
+      onResolve: () => Promise<void>;
+      contextFor: () => Promise<
+        | never
+        | {
+            organizationId: string;
+            providerEntityId: string;
+            payerId: string;
+            correlationId: string;
+            usage: "test";
+            jurisdiction: string;
+          }
+      >;
+      onFailure?: () => void;
+    }): M23WorkerDeps {
+      const vendor = new InMemoryClearinghouse();
+      return {
+        connection: {} as never,
+        db: handle.db as unknown as repositories.BillingDb,
+        outbox: {
+          publish: async (_tx: unknown, event: { eventName: string }) => {
+            if (event.eventName === "m23.claim.submission_failed") opts.onFailure?.();
+          },
+        },
+        renderClaim: async () => ({
+          x12: "ISA*00*...",
+          correlationId: "corr-per-org",
+          sourceFingerprint: null,
+        }),
+        transport: {
+          binding: {
+            vendor: null,
+            transport: NOT_WIRED_TRANSPORT,
+            forOrg: async () => {
+              await opts.onResolve();
+              return { vendor: "in_memory", transport: vendor };
+            },
+          },
+          contexts: { contextFor: opts.contextFor, providerEntitiesFor: async () => [PE] },
+        },
+      } as unknown as M23WorkerDeps;
+    }
+    const goodContext = async () => ({
+      organizationId: ORG,
+      providerEntityId: PE,
+      payerId: "ngs_j6",
+      correlationId: "corr",
+      usage: "test" as const,
+      jurisdiction: "ngs_j6",
+    });
+    const idleInTransaction = async (): Promise<number> =>
+      (
+        await admin.query(`SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND state = 'idle in transaction' AND pid <> pg_backend_pid()`)
+      ).rows[0].n;
+
+    it("resolves the org's transport once, before any transaction (never a second pooled connection inside one)", async () => {
+      const { claimId, submissionId, ccn } = await seedReadyClaim({
+        patient: "f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1",
+        attemptIndex: 0,
+        withBlockingFailure: false,
+      });
+      const openTransactionsAtResolve: number[] = [];
+      const deps = perOrgDeps({
+        onResolve: async () => {
+          openTransactionsAtResolve.push(await idleInTransaction());
+        },
+        contextFor: goodContext,
+      });
+      const job: ClaimSubmitJob = {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      };
+      await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
+      expect(await submissionRow(submissionId)).toMatchObject({
+        outcome: "submitted",
+        dispatch_state: "finished",
+      });
+      // once for the job (generate re-used it), and with no worker transaction open at that moment
+      expect(openTransactionsAtResolve.slice(0, 1)).toEqual([0]);
+      expect(openTransactionsAtResolve.every((n) => n === 0)).toBe(true);
+    });
+
+    it("an upload that fails before reaching the vendor (no context) is a plain failed attempt, never TRANSPORT_OUTCOME_UNCERTAIN", async () => {
+      const { claimId, submissionId, ccn } = await seedReadyClaim({
+        patient: "f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2",
+        attemptIndex: 0,
+        withBlockingFailure: false,
+      });
+      let publishedFailure = false;
+      const deps = perOrgDeps({
+        onResolve: async () => {},
+        contextFor: async () => {
+          throw new Error("postgres://app:hunter2@10.0.0.9/chartwarden refused");
+        },
+        onFailure: () => {
+          publishedFailure = true;
+        },
+      });
+      const job: ClaimSubmitJob = {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      };
+      await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
+      expect(await submissionRow(submissionId)).toMatchObject({
+        outcome: "failed_portal",
+        outcome_reason: CH.UNAVAILABLE,
+        dispatch_state: "finished",
+      });
+      expect(publishedFailure).toBe(true);
+      expect(await claimRow(claimId)).toMatchObject({ state: "READY" });
     });
 
     it("allows only one concurrent worker delivery to acquire the durable send reservation", async () => {

@@ -929,6 +929,8 @@ export function createInMemoryTenantPlatformBackend(
       return paginate(rows, cursor, limit);
     },
     async upsertOnboardingTemplate(_actorUserId, args) {
+      // A step becomes canonical (gating go-live for every tenant) only by migration: this upsert never promotes one.
+      if (args.isCanonical) throw canonicalTemplateConflict(args.key);
       const existing = templates.get(args.key);
       if (existing?.isCanonical) throw canonicalTemplateConflict(args.key);
       const view: OnboardingTemplateView = {

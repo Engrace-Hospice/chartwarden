@@ -59,6 +59,8 @@ export async function uploadTenantBaaDocument(
     );
   }
   let filed: OnboardingBaaDocumentUpload | undefined;
+  // The object lives in the TARGET tenant's bucket, so that is the org a reconciliation needs; `op.organizationId` is the operator's.
+  let targetOrganizationId: string | undefined;
   return deps.write(
     op,
     orgSlug,
@@ -81,12 +83,14 @@ export async function uploadTenantBaaDocument(
           {
             documentId: filed.resourceId,
             objectKey: filed.objectKey,
-            organizationId: op.organizationId,
+            organizationId: targetOrganizationId,
+            operatorOrganizationId: op.organizationId,
           },
         );
       },
     },
     async (tx, target) => {
+      targetOrganizationId = target.organizationId;
       filed = await port.upload(tx, deps.scopeOf(op, target.organizationId), input);
       return { value: filed.view, resourceId: filed.resourceId, detail: filed.detail };
     },

@@ -1,4 +1,8 @@
-import { peekStepUpMemoryDraft, stashStepUpMemoryDraft } from "@chartwarden/ui";
+import {
+  STEP_UP_RETURN_STATE,
+  peekStepUpMemoryDraft,
+  stashStepUpMemoryDraft,
+} from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The onboarding wizard screen: one ordered list of steps, the current one open, every write behind a reason and (when it is refused)
 // an explanation the operator can act on. The server owns the rules; this proves what the operator sees and what is sent.
@@ -105,8 +109,10 @@ describe("TenantOnboardingWizard: reading", () => {
       await screen.findByRole("heading", { level: 1, name: /Cedar Ridge Hospice/ }),
     ).toBeTruthy();
     await waitFor(() => expect(where()).toBe(`${URL_BASE}/payer_enrollment`));
-    const rail = screen.getByRole("list", { name: "Onboarding steps" });
-    expect(within(rail).getAllByRole("listitem")).toHaveLength(4);
+    // one name, on the landmark: the list inside it must not announce the same words again
+    expect(screen.getAllByLabelText("Onboarding steps")).toHaveLength(1);
+    const nav = screen.getByRole("navigation", { name: "Onboarding steps" });
+    expect(within(nav).getAllByRole("listitem")).toHaveLength(4);
     expect(screen.getByText(/1 of 3 steps done/)).toBeTruthy();
     expect(
       screen.getByRole("heading", { level: 2, name: "Billing: payer enrollment" }),
@@ -328,8 +334,28 @@ describe("TenantOnboardingWizard: marking a step done with evidence", () => {
       reason: "Typed reason for audit",
     });
     const { client } = setup();
-    renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, client);
+    renderAt(
+      { pathname: `${URL_BASE}/payer_enrollment`, state: STEP_UP_RETURN_STATE },
+      ROUTES,
+      client,
+    );
     expect(await screen.findByDisplayValue("Typed before re-verifying")).toBeTruthy();
+  });
+
+  it("does not reopen the evidence form from a draft an abandoned Re-verify left behind, now or on a later return", async () => {
+    const key = "wizard:cedar-ridge:payer_enrollment:attest";
+    stashStepUpMemoryDraft(key, {
+      evidenceNote: "Typed before re-verifying",
+      evidenceRef: "",
+      reason: "Typed reason for audit",
+    });
+    const { client } = setup();
+    // Back from /step-up: the page mounts with no step-up return marker
+    renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, client);
+    expect(await screen.findByRole("button", { name: "Mark done with evidence" })).toBeTruthy();
+    expect(screen.queryByDisplayValue("Typed before re-verifying")).toBeNull();
+    // that visit dropped the draft: it is gone for a later, genuine return as well
+    await waitFor(() => expect(peekStepUpMemoryDraft(key)).toBeUndefined());
   });
 
   it("shows the server's reason when an earlier step is unfinished, with a link to that step", async () => {
@@ -419,6 +445,70 @@ describe("TenantOnboarding wizard: skip and re-open", () => {
       /\S/,
     );
     expect(init.body).toEqual({ reason: "Display name was misspelled" });
+  });
+
+  // A stale step-up sends the operator to /step-up and back. What they typed in the prompt (free text: memory only) goes with them.
+  it.each([
+    { what: "skip", url: "mac_configured", open: /Skip this step/, confirm: "Skip step" },
+    { what: "re-open", url: "account_created", open: /Re-open to edit/, confirm: "Re-open step" },
+  ])(
+    "keeps the reason typed in the $what prompt through a Re-verify, and reopens the prompt with it on the return",
+    async ({ url, open, confirm }) => {
+      const view = wizardView([
+        wizardStep("account_created", 1, { status: "done" }),
+        wizardStep("mac_configured", 2, {
+          title: "Billing: MAC credentials",
+          completionMode: "either",
+          owner: "either",
+        }),
+      ]);
+      const typed = "Customer asked us to settle this, CHG-4411";
+      const { client } = setup({ view });
+      client.POST.mockResolvedValueOnce(refused(403, "STEP_UP_REQUIRED", "x"));
+      renderAt(`${URL_BASE}/${url}`, ROUTES, client);
+      fireEvent.click(await screen.findByRole("button", { name: open }));
+      fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: typed } });
+      fireEvent.click(screen.getByRole("button", { name: confirm }));
+      fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+      expect(await screen.findByText("step-up page")).toBeTruthy();
+      // free text: memory only, never sessionStorage
+      expect(JSON.stringify({ ...window.sessionStorage })).not.toContain(typed);
+      cleanup();
+
+      renderAt(
+        { pathname: `${URL_BASE}/${url}`, state: STEP_UP_RETURN_STATE },
+        ROUTES,
+        setup({ view }).client,
+      );
+      expect(((await screen.findByLabelText(/Reason/)) as HTMLTextAreaElement).value).toBe(typed);
+      expect(screen.getByRole("button", { name: confirm })).toBeTruthy();
+    },
+  );
+
+  it("does not reopen the skip prompt from a reason an abandoned Re-verify left behind", async () => {
+    const view = wizardView([
+      wizardStep("account_created", 1, { status: "done" }),
+      wizardStep("mac_configured", 2, {
+        title: "Billing: MAC credentials",
+        completionMode: "either",
+        owner: "either",
+      }),
+    ]);
+    const { client } = setup({ view });
+    client.POST.mockResolvedValueOnce(refused(403, "STEP_UP_REQUIRED", "x"));
+    renderAt(`${URL_BASE}/mac_configured`, ROUTES, client);
+    fireEvent.click(await screen.findByRole("button", { name: /Skip this step/ }));
+    fireEvent.change(screen.getByLabelText(/Reason/), {
+      target: { value: "Customer asked us to settle this, CHG-4411" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Skip step" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // Back from /step-up, no return marker: the page opens on the step, with no prompt
+    renderAt(`${URL_BASE}/mac_configured`, ROUTES, setup({ view }).client);
+    expect(await screen.findByRole("button", { name: /Skip this step/ })).toBeTruthy();
+    expect(screen.queryByLabelText(/Reason/)).toBeNull();
   });
 
   it("will not re-open while a go-live attestation is pending, and says what to do", async () => {

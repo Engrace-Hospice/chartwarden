@@ -43,12 +43,15 @@ export function SwitchToVendor({
   orgSlug,
   view,
   tenantStatus,
+  returnedFromStepUp,
   reload,
   onSwitched,
 }: {
   orgSlug: string;
   view: ClearinghouseView;
   tenantStatus: string;
+  /** The hub card read the return from Re-verify once and cleared its history marker before this mounted: it hands the answer down. */
+  returnedFromStepUp?: boolean;
   /** Read the choice again (a pin that went stale). */
   reload: () => Promise<void> | void;
   /** The switch committed; `modeConfirmed` is false when the billing mode could not be confirmed afterwards (the caller says so). */
@@ -61,6 +64,7 @@ export function SwitchToVendor({
   // Coming back from Re-verify: the form and its pin are restored (the credential is typed again).
   const restored = useStepUpDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
     draftKey(orgSlug),
+    returnedFromStepUp,
   );
   const [open, setOpen] = useState(restored !== undefined);
   const [asking, setAsking] = useState(false);

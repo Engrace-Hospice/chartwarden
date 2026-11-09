@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { LocationsPanel } from "./locations-panel";
 import {
   ORG_SLUG,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -52,13 +53,18 @@ const view = (over = {}) =>
     ],
     over,
   );
-function mount(locations: unknown[], extra: Parameters<typeof stubClient>[0] = {}, v = view()) {
+function mount(
+  locations: unknown[],
+  extra: Parameters<typeof stubClient>[0] = {},
+  v = view(),
+  at: Parameters<typeof renderAt>[0] = "/x",
+) {
   const client = stubClient({
     GET: { [ENTITIES]: () => ok({ items: [PE] }), [LOCATIONS]: () => ok({ items: locations }) },
     ...extra,
   });
   const ctx = panelCtx(v, "locations_seeded");
-  renderAt("/x", [{ path: "/x", element: <LocationsPanel ctx={ctx} /> }], client);
+  renderAt(at, [{ path: "/x", element: <LocationsPanel ctx={ctx} /> }], client);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -141,7 +147,12 @@ describe("LocationsPanel", () => {
   });
 
   it("edits a location with a PATCH to that location", async () => {
-    const { client } = mount([LOC], { PATCH: { [LOCATION]: () => ok(LOC) } });
+    const { client } = mount(
+      [LOC],
+      { PATCH: { [LOCATION]: () => ok(LOC) } },
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Edit Main office" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Main campus" } });
     fireEvent.click(screen.getByRole("button", { name: "Save location" }));
@@ -182,7 +193,12 @@ describe("LocationsPanel: coming back from Re-verify", () => {
     fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
     cleanup();
 
-    const { client } = mount([LOC], { PATCH: { [LOCATION]: () => ok(LOC) } });
+    const { client } = mount(
+      [LOC],
+      { PATCH: { [LOCATION]: () => ok(LOC) } },
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     expect(((await screen.findByLabelText("Name")) as HTMLInputElement).value).toBe("Main campus");
     expect(screen.queryByLabelText("Provider entity")).toBeNull(); // an edit, not a create
     fireEvent.click(screen.getByRole("button", { name: "Save location" }));
@@ -220,7 +236,12 @@ describe("LocationsPanel: coming back from Re-verify", () => {
     cleanup();
 
     // an existing location is on file when the operator comes back: the resumed form is still the create
-    const { client } = mount([LOC], { POST: { [LOCATIONS]: () => ok(LOC, 201) } });
+    const { client } = mount(
+      [LOC],
+      { POST: { [LOCATIONS]: () => ok(LOC, 201) } },
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     expect(((await screen.findByLabelText("Name")) as HTMLInputElement).value).toBe("Main office");
     expect(screen.getByLabelText("Provider entity")).toBeTruthy(); // a create picks the entity
     fireEvent.click(screen.getByRole("button", { name: "Save location" }));

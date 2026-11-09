@@ -1,5 +1,6 @@
 import {
   ApiClientProvider,
+  STEP_UP_RETURN_STATE,
   ToastProvider,
   createApiClient,
   discardStepUpDrafts,
@@ -43,11 +44,14 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   posted = [...posted, { url, body: await req.json() }];
   return postReply();
 }
-function mount(path: string): void {
+/** A path, or a path on the return from a successful step-up (the history state StepUpCard navigates back with). */
+type Entry = string | { pathname: string; state: typeof STEP_UP_RETURN_STATE };
+const returnedTo = (pathname: string): Entry => ({ pathname, state: STEP_UP_RETURN_STATE });
+function mount(entry: Entry): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <ToastProvider>
-        <MemoryRouter initialEntries={[path]}>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route path="/admin/refunds/new" element={<RefundNew />} />
             <Route path="/admin/refunds" element={<p>refunds</p>} />
@@ -213,11 +217,11 @@ describe("plan meter refusals", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     await screen.findByText("step-up");
     cleanup();
-    mount(`/admin/plans/${PLAN.id}/edit`);
+    mount(returnedTo(`/admin/plans/${PLAN.id}/edit`));
     await screen.findByLabelText(/^Event type/);
     expect(values()).toEqual(["seat", "10", "0.29", "75"]);
     cleanup();
-    mount(`/admin/plans/${PLAN.id}/edit`);
+    mount(returnedTo(`/admin/plans/${PLAN.id}/edit`));
     await screen.findByLabelText(/^Event type/);
     expect(values()).toEqual(["", "0", "0", "80"]);
   });

@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BaaPanel, baaFacts } from "./baa-panel";
 import {
   ONBOARDING_OPERATOR,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -44,13 +45,14 @@ function mount(
   extra: Parameters<typeof stubClient>[0] = {},
   v = view(),
   session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
+  at: Parameters<typeof renderAt>[0] = "/x",
 ) {
   const client = stubClient({
     GET: { [REGISTER]: () => ok({ items, nextCursor: null, hasMore: false }) },
     ...extra,
   });
   const ctx = panelCtx(v, "baa_executed", undefined, session);
-  renderAt("/x", [{ path: "/x", element: <BaaPanel ctx={ctx} /> }], client, session);
+  renderAt(at, [{ path: "/x", element: <BaaPanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -337,9 +339,13 @@ describe("BaaPanel: coming back from Re-verify", () => {
     fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
     cleanup();
 
-    const { client } = mount([record()], {
-      PATCH: { [ONE]: () => ok(record({ baaStatus: "executed" })) },
-    });
+    const { client } = mount(
+      [record()],
+      { PATCH: { [ONE]: () => ok(record({ baaStatus: "executed" })) } },
+      view(),
+      ONBOARDING_OPERATOR,
+      RETURNED_FROM_STEP_UP,
+    );
     expect(((await screen.findByLabelText("Status")) as HTMLSelectElement).value).toBe("executed");
     expect(screen.queryByLabelText("Addendum version")).toBeNull(); // an edit, not a record
     fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
@@ -366,7 +372,13 @@ describe("BaaPanel: coming back from Re-verify", () => {
     cleanup();
 
     // a record exists when the operator comes back: the resumed form is still the create, with what was typed
-    const { client } = mount([record()], { POST: { [REGISTER]: () => ok(record(), 201) } });
+    const { client } = mount(
+      [record()],
+      { POST: { [REGISTER]: () => ok(record(), 201) } },
+      view(),
+      ONBOARDING_OPERATOR,
+      RETURNED_FROM_STEP_UP,
+    );
     expect(((await screen.findByLabelText("Addendum version")) as HTMLInputElement).value).toBe(
       "v2",
     );
@@ -525,13 +537,32 @@ describe("BaaPanel: uploading the signed agreement", () => {
     fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
     cleanup();
 
-    mount([]);
+    mount([], {}, view(), ONBOARDING_OPERATOR, RETURNED_FROM_STEP_UP);
     expect(((await screen.findByLabelText("Addendum version")) as HTMLInputElement).value).toBe(
       "v7",
     );
     expect(
       (screen.getByRole("button", { name: "Upload agreement" }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  it("does not reopen the BAA form from a draft an abandoned Re-verify left behind (Back from /step-up)", async () => {
+    await openNew({ POST: { [UPLOAD]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.change(screen.getByLabelText("Addendum version"), { target: { value: "v7" } });
+    await chooseAndUpload();
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // Back from /step-up: no step-up return marker, so the draft is dropped, not restored
+    mount([]);
+    expect(await screen.findByRole("button", { name: "Record BAA" })).toBeTruthy();
+    expect(screen.queryByLabelText("Addendum version")).toBeNull();
+    cleanup();
+
+    // and a later genuine return (another step-up) does not resurrect it either
+    mount([], {}, view(), ONBOARDING_OPERATOR, RETURNED_FROM_STEP_UP);
+    expect(await screen.findByRole("button", { name: "Record BAA" })).toBeTruthy();
+    expect(screen.queryByLabelText("Addendum version")).toBeNull();
   });
 
   it("keeps the document already linked to a record when the operator edits it without choosing a file", async () => {

@@ -1,5 +1,5 @@
 // Test fixtures shared by the wizard's suites: a wizard view builder and a stub API client that dispatches on the typed path.
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
+import { type ApiClient, ApiClientProvider, STEP_UP_RETURN_STATE } from "@chartwarden/ui";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -132,6 +132,9 @@ export const refused = (
   error: { error: { code, message, correlationId: "corr-test", ...(details ? { details } : {}) } },
   response: { status },
 });
+
+/** Where a panel mounts on the operator's return from a successful Re-verify: the only visit a stashed draft is restored on. */
+export const RETURNED_FROM_STEP_UP = { pathname: "/x", state: STEP_UP_RETURN_STATE };
 
 function Where(): ReactElement {
   const { pathname, search } = useLocation();
