@@ -1,4 +1,4 @@
-import { createApiClient } from "@chartwarden/ui";
+import { STEP_UP_RETURN_STATE, createApiClient } from "@chartwarden/ui";
 // @chartwarden/admin — the console's /step-up page. Platform-ops writes answer 403 STEP_UP_REQUIRED on a stale session,
 // and before this route existed the console had no way to re-verify, so those actions could never succeed. The net:
 // a signed-in platform_ops actor reaches /step-up (chromeless — RequireChrome does not bounce it), sees the shared
@@ -70,5 +70,7 @@ describe("admin /step-up", () => {
       expect(`${window.location.pathname}${window.location.search}`).toBe("/admin/revenue?x=1"),
     );
     expect(paths).toEqual(["/api/v1/sessions/step-up/initiate", "/api/v1/sessions/step-up"]);
+    // the return carries the marker a screen restores its stashed draft on (and only on)
+    expect(window.history.state?.usr).toEqual(STEP_UP_RETURN_STATE);
   });
 });

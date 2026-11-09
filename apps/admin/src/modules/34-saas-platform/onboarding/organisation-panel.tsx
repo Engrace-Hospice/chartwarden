@@ -8,6 +8,7 @@ import {
   TextField,
   stashStepUpDraft,
   useApiClient,
+  useStepUpDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -16,7 +17,6 @@ import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { StepFrame } from "./step-frame";
 import { useOpsWrite } from "./use-ops-write";
-import { useReturnedDraft } from "./use-returned-draft";
 
 interface Draft {
   displayName: string;
@@ -36,7 +36,7 @@ export function OrganisationPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const client = useApiClient();
   const { orgSlug, view, actions } = ctx;
   const key = draftKey(orgSlug);
-  const restored = useReturnedDraft<Draft>(key);
+  const restored = useStepUpDraft<Draft>(key);
   const [displayName, setDisplayName] = useState(
     restored?.displayName ?? view.orgProfile?.displayName ?? "",
   );

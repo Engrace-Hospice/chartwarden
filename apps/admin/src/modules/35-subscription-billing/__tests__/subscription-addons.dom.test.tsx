@@ -2,6 +2,7 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // ADR-0110 — the subscription detail's Add-ons panel: lists the subscription's add-ons, grants (or starts a trial of)
 // the claims-billing add-on with a reason and an Idempotency-Key, cancels a live one, and shows the period's count.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { AddonsPanel } from "../subscription-addons";
 
@@ -40,7 +41,9 @@ function mount(rows: unknown[], usage: Parameters<typeof AddonsPanel>[0]["usage"
   };
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: fetchStub })}>
-      <AddonsPanel subscriptionId={SUB} usage={usage} />
+      <MemoryRouter>
+        <AddonsPanel subscriptionId={SUB} usage={usage} />
+      </MemoryRouter>
     </ApiClientProvider>,
   );
   return seen;

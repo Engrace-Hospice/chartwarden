@@ -10,6 +10,7 @@ import {
   type StatusTone,
   stashStepUpMemoryDraft,
   useApiClient,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
@@ -20,7 +21,6 @@ import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { useOpsWrite } from "./use-ops-write";
-import { useReturnedMemoryDraft } from "./use-returned-draft";
 import { OWNER_LABEL, isSystemSkip } from "./wizard-model";
 
 const STEP_TONE: Record<string, StatusTone> = {
@@ -109,10 +109,10 @@ export function StepFrame({
   const { step, actions, orgSlug } = ctx;
   // Coming back from Re-verify with a stashed form: the card opens with what was typed (the card itself restores it). Only on that
   // return: a draft an abandoned Re-verify left is dropped here, so it never opens the card on a later visit or another step-up's return.
-  const attestDraft = useReturnedMemoryDraft(attestDraftKey(orgSlug, step.key));
+  const attestDraft = useStepUpMemoryDraft(attestDraftKey(orgSlug, step.key));
   const [attesting, setAttesting] = useState(() => actions.canAttest && attestDraft !== undefined);
   // The same for the skip / re-open prompt: it reopens, with the reason that was typed, on the return from Re-verify.
-  const decideDraft = useReturnedMemoryDraft<DecideDraft>(decideDraftKey(orgSlug, step.key));
+  const decideDraft = useStepUpMemoryDraft<DecideDraft>(decideDraftKey(orgSlug, step.key));
   const [dialog, setDialog] = useState<Dialog>(decideDraft?.dialog ?? null);
   // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
   const typedReason = useRef(decideDraft?.reason ?? "");
