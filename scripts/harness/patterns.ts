@@ -1040,7 +1040,7 @@ function interactiveInvocation(p: Parsed): boolean {
   }
   if (prog === "kubectl") {
     if (args.includes("attach")) return true;
-    if (args.includes("exec")) return interactiveFlag(args);
+    if (args.some((a) => /^(?:debug|exec|run)$/.test(a))) return interactiveFlag(args);
   }
 
   if (SHELL.test(prog)) {
