@@ -1012,7 +1012,7 @@ const TERMINAL_INPUT =
 function interactiveFlag(args: readonly string[]): boolean {
   return args.some(
     (a) =>
-      /^(?:--interactive|--tty|--stdin)$/.test(a) ||
+      /^--(?:interactive|tty|stdin)(?:=(?:true|1))?$/.test(a) ||
       (/^-[^-]+$/.test(a) && (a.slice(1).includes("i") || a.slice(1).includes("t"))),
   );
 }
@@ -1023,7 +1023,9 @@ function interactiveInvocation(p: Parsed): boolean {
   const explicitInput = !terminalInput && ins.length + docs.length > 0;
 
   if (prog === "rlwrap") return true;
-  if (/^(docker|podman)$/.test(prog)) {
+  if (/^(docker-compose|podman-compose)$/.test(prog) && args.some((a) => /^(?:exec|run)$/.test(a)))
+    return true;
+  if (/^(docker|podman|nerdctl)$/.test(prog)) {
     const compose = args.indexOf("compose");
     if (compose >= 0) {
       const composeArgs = args.slice(compose + 1);
