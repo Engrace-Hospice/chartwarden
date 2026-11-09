@@ -3,12 +3,12 @@
  * (a clinic key, a clearinghouse secret). A plain SHA-256 there lets anyone who can read the table test guesses for the secret
  * offline, so the fingerprint is an HMAC under a server key derived from BETTER_AUTH_SECRET: not testable without it.
  *
- * Also proved: a record written BEFORE the deploy (plain SHA-256, no `h1:` prefix) still replays the same request and still
- * conflicts on another body, so a retry across the deploy is not re-executed; a record under another server key is a clean 409; and
- * production refuses to boot without the secret.
+ * Also proved: a record written BEFORE the deploy (the plain SHA-256 origin/main's middleware wrote, no `h1:` prefix) still
+ * replays the same request and still conflicts on another body or another user, so a retry across the deploy is not re-executed; a
+ * record under another server key is a clean 409; and production refuses to boot without a real secret.
  */
 import { createHash } from "node:crypto";
-import { type IdempotencyStore, legacyIdempotencyHash } from "@chartwarden/shared";
+import type { IdempotencyStore } from "@chartwarden/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
@@ -21,9 +21,20 @@ import {
 const ORG = "00000000-0000-4000-8000-000000000001";
 const USER = "00000000-0000-4000-8000-0000000000aa";
 const SERVER_KEY = "server-side-fingerprint-key-for-tests-0001";
+const OTHER_USER = "00000000-0000-4000-8000-0000000000bb";
 const SECRET_BODY = { clinicKey: "a-guessable-clinic-key-1234" };
-/** The scope the middleware binds (org, user, actor kind, method, route template, params, query, If-Match): the legacy hash was taken over it. */
-const SCOPE = JSON.stringify([ORG, USER, "user", "POST", "/secrets", {}, {}, null]);
+
+/**
+ * origin/main's request fingerprint, copied from before the keyed hash (packages/shared computeIdempotencyHash): the plain SHA-256 of
+ * JSON({organizationId, key, body}). Its middleware called it with the scope `${orgId}|${userId}` as the organizationId argument, so a
+ * row written before this deploy binds org, user, key and body, and NOTHING else (no method, route, params, query string, If-Match).
+ */
+const mainsComputeIdempotencyHash = (organizationId: string, key: string, body: unknown): string =>
+  createHash("sha256")
+    .update(JSON.stringify({ organizationId, key, body: body ?? null }))
+    .digest("hex");
+const mainsMiddlewareHash = (org: string, user: string, key: string, body: unknown): string =>
+  mainsComputeIdempotencyHash(`${org}|${user}`, key, body);
 
 describe("the Idempotency-Key fingerprint is keyed", () => {
   let app: FastifyInstance;
@@ -38,7 +49,13 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     app = Fastify();
     app.decorateRequest("context", undefined as never);
     app.addHook("onRequest", async (request) => {
-      (request as unknown as { context: unknown }).context = { organizationId: ORG, userId: USER };
+      const user = request.headers["x-test-user"];
+      const actorKind = request.headers["x-test-actor-kind"];
+      (request as unknown as { context: unknown }).context = {
+        organizationId: ORG,
+        userId: typeof user === "string" ? user : USER,
+        attributes: typeof actorKind === "string" ? { actorKind } : {},
+      };
     });
     applyErrorHandler(app);
     applyIdempotency(app, store, { hmacKey });
@@ -48,11 +65,11 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     });
     await app.ready();
   }
-  const post = (body: unknown, key = "k-1") =>
+  const post = (body: unknown, key = "k-1", headers: Record<string, string> = {}) =>
     app.inject({
       method: "POST",
       url: "/secrets",
-      headers: { "idempotency-key": key },
+      headers: { "idempotency-key": key, ...headers },
       payload: body as object,
     });
 
@@ -79,7 +96,7 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     const stored = claimed[0] as string;
     expect(stored).toMatch(/^h1:[0-9a-f]{8}:[0-9a-f]{64}$/);
     // what an attacker with table access can compute for a candidate body (the old scheme) is NOT what is stored
-    expect(stored).not.toContain(legacyIdempotencyHash(SCOPE, "k-1", SECRET_BODY));
+    expect(stored).not.toContain(mainsMiddlewareHash(ORG, USER, "k-1", SECRET_BODY));
     expect(stored).not.toContain(
       createHash("sha256").update(JSON.stringify(SECRET_BODY)).digest("hex"),
     );
@@ -99,19 +116,47 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     expect(runs).toBe(1);
   });
 
-  it("a record written before the keyed hash (plain SHA-256) still replays the same request and conflicts on another: a retry across the deploy is not re-executed", async () => {
-    const inner = createInMemoryIdempotencyStore();
-    const legacy = legacyIdempotencyHash(SCOPE, "k-1", SECRET_BODY);
-    expect(legacy).toMatch(/^[0-9a-f]{64}$/);
-    await inner.putPending(ORG, "k-1", legacy);
-    await inner.complete(ORG, "k-1", { status: "201", body: { run: "before-the-deploy" } });
-    await build(inner);
-    const replay = await post(SECRET_BODY);
-    expect(replay.statusCode).toBe(201);
-    expect(replay.json()).toEqual({ run: "before-the-deploy" });
-    expect(runs).toBe(0); // the handler never ran
-    expect((await post({ clinicKey: "a-different-clinic-key-5678" })).statusCode).toBe(409);
-    expect(runs).toBe(0);
+  describe("a record origin/main wrote before the keyed hash (plain SHA-256, no `h1:` prefix)", () => {
+    /** Seeds what main's middleware stored for a completed request, then builds the app over it. */
+    async function seedMainsRecord(user: string = USER) {
+      const inner = createInMemoryIdempotencyStore();
+      const legacy = mainsMiddlewareHash(ORG, user, "k-1", SECRET_BODY);
+      expect(legacy).toMatch(/^[0-9a-f]{64}$/);
+      await inner.putPending(ORG, "k-1", legacy);
+      await inner.complete(ORG, "k-1", { status: "201", body: { run: "before-the-deploy" } });
+      await build(inner);
+    }
+
+    it("replays the same request (same org, user, key and body): the handler never runs", async () => {
+      await seedMainsRecord();
+      const replay = await post(SECRET_BODY);
+      expect(replay.statusCode).toBe(201);
+      expect(replay.json()).toEqual({ run: "before-the-deploy" });
+      expect(runs).toBe(0);
+    });
+
+    it("conflicts on another body, and on another USER (the user is part of what main hashed)", async () => {
+      await seedMainsRecord();
+      const otherBody = await post({ clinicKey: "a-different-clinic-key-5678" });
+      expect(otherBody.statusCode).toBe(409);
+      expect(otherBody.json().error?.code).toBe("IDEMPOTENCY_CONFLICT");
+      const otherUser = await post(SECRET_BODY, "k-1", { "x-test-user": OTHER_USER });
+      expect(otherUser.statusCode).toBe(409);
+      expect(otherUser.json().error?.code).toBe("IDEMPOTENCY_CONFLICT");
+      expect(runs).toBe(0);
+    });
+
+    it("is matched by the STORED record having no `h1:` prefix, never by anything the request says", async () => {
+      // a keyed record never falls back to the plain hash: same user and body under a changed scope is a conflict
+      const records = recordingStore();
+      await build(records.store);
+      await post(SECRET_BODY);
+      const sameBodyOtherActorKind = await post(SECRET_BODY, "k-1", {
+        "x-test-actor-kind": "ai_x",
+      });
+      expect(sameBodyOtherActorKind.statusCode).toBe(409);
+      expect(runs).toBe(1);
+    });
   });
 
   // Review of slice 4, L-c: this used to answer "reused with different body" for the SAME body, sending the client hunting for a body
@@ -166,6 +211,46 @@ describe("the server key", () => {
     const b = idempotencyHmacKey({ NODE_ENV: "test" });
     expect(a).toHaveLength(32);
     expect(a.equals(b)).toBe(false);
+  });
+
+  it("trims the secret: the key is the one the production env gate validated (it trims too)", () => {
+    const padded = idempotencyHmacKey({
+      BETTER_AUTH_SECRET: `  ${SECRET}\n`,
+      NODE_ENV: "production",
+    });
+    expect(
+      padded.equals(idempotencyHmacKey({ BETTER_AUTH_SECRET: SECRET, NODE_ENV: "production" })),
+    ).toBe(true);
+  });
+
+  it("requires 32 characters on the TRIMMED value: a short secret padded with whitespace is a short secret", () => {
+    const shortPadded = `${"s".repeat(31)}${" ".repeat(20)}`;
+    expect(() =>
+      idempotencyHmacKey({ NODE_ENV: "production", BETTER_AUTH_SECRET: shortPadded }),
+    ).toThrow(/BETTER_AUTH_SECRET/);
+    expect(() =>
+      idempotencyHmacKey({ NODE_ENV: "production", BETTER_AUTH_SECRET: " ".repeat(64) }),
+    ).toThrow(/BETTER_AUTH_SECRET/);
+    // outside production a weak secret is not used: a process-local random key, never a key derived from 31 characters
+    const a = idempotencyHmacKey({ NODE_ENV: "test", BETTER_AUTH_SECRET: shortPadded });
+    const b = idempotencyHmacKey({ NODE_ENV: "test", BETTER_AUTH_SECRET: shortPadded });
+    expect(a.equals(b)).toBe(false);
+  });
+
+  it("refuses an unedited .env.example placeholder (the production env gate's reserved-host rule)", () => {
+    const placeholder = "a-long-placeholder-secret-name.example.com";
+    expect(placeholder.length).toBeGreaterThanOrEqual(32);
+    expect(() =>
+      idempotencyHmacKey({ NODE_ENV: "production", BETTER_AUTH_SECRET: placeholder }),
+    ).toThrow(/placeholder|reserved/i);
+  });
+
+  it("refuses an injected EMPTY hmacKey: an empty key would sign every fingerprint under nothing", () => {
+    for (const hmacKey of ["", new Uint8Array(0)]) {
+      expect(() =>
+        applyIdempotency(Fastify(), createInMemoryIdempotencyStore(), { hmacKey }),
+      ).toThrow(/hmac key|must not be empty/i);
+    }
   });
 
   it("applyIdempotency with no explicit key takes it from the environment", async () => {

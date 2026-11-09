@@ -24,6 +24,7 @@ import {
   legacyIdempotencyHash,
 } from "@chartwarden/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { reservedPlaceholderProblem } from "../env";
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -59,13 +60,17 @@ const MIN_SECRET_LENGTH = 32;
  * makes every stored fingerprint a clean mismatch (409 IDEMPOTENCY_KEY_STALE), never a replay and never a re-run.
  */
 export function idempotencyHmacKey(env: NodeJS.ProcessEnv = process.env): Buffer {
-  const secret = env.BETTER_AUTH_SECRET;
-  if (secret !== undefined && secret.length >= MIN_SECRET_LENGTH) {
+  // Trimmed, like the production env gate (assertProductionEnv trims before it checks), so the key is derived from the very
+  // value that gate validated; and held to its rules: at least 32 characters AFTER the trim, and not an unedited .env.example
+  // placeholder (a reserved host). A weak secret outside production is not used: a process-local random key.
+  const secret = env.BETTER_AUTH_SECRET?.trim() ?? "";
+  const placeholder = reservedPlaceholderProblem(secret);
+  if (secret.length >= MIN_SECRET_LENGTH && placeholder === null) {
     return createHmac("sha256", secret).update(FINGERPRINT_KEY_LABEL).digest();
   }
   if (env.NODE_ENV === "production") {
     throw new Error(
-      `BETTER_AUTH_SECRET (at least ${MIN_SECRET_LENGTH} characters) is required in production: it keys the Idempotency-Key request fingerprint`,
+      `BETTER_AUTH_SECRET (at least ${MIN_SECRET_LENGTH} characters, trimmed${placeholder === null ? "" : `; ${placeholder}`}) is required in production: it keys the Idempotency-Key request fingerprint`,
     );
   }
   return randomBytes(32);
@@ -82,6 +87,10 @@ export function applyIdempotency(
   options: ApplyIdempotencyOptions = {},
 ): void {
   const hmacKey = options.hmacKey ?? idempotencyHmacKey();
+  if (hmacKey.length === 0) {
+    // an empty key would sign every fingerprint under nothing: refuse it instead of quietly weakening the HMAC
+    throw new Error("the Idempotency-Key fingerprint HMAC key must not be empty");
+  }
   app.addHook("preHandler", async (request, reply) => {
     if (request.method === "GET" || request.method === "HEAD") return;
     // A route that returns a ONE-TIME SECRET (GAP-020: the wristband token) opts out: its response must never be
@@ -117,8 +126,13 @@ export function applyIdempotency(
     // response replays (a record stored before the keyed hash still matches the same request, so a retry across the deploy
     // replays), a different body is 409 IDEMPOTENCY_CONFLICT, a record under another server key (a rotated secret) is
     // 409 IDEMPOTENCY_KEY_STALE, a duplicate still in flight is 409 CONFLICT.
+    // The legacy arm is chosen from the STORED record (no `h1:` prefix), never from anything the request says. What it matches is
+    // what origin/main's middleware wrote: the plain SHA-256 of `${orgId}|${userId}` (as the scope), key and body, and nothing
+    // else (no method, route, params, query string or If-Match). Good enough for the 24 h a pre-deploy row lives: a retry of a
+    // pre-deploy request replays, another body or another user is a 409, and nothing is ever re-run.
+    const legacyScope = `${orgId}|${request.context?.userId ?? ""}`;
     const cached = await claimIdempotencyKey(store, orgId, key, requestHash, () =>
-      legacyIdempotencyHash(scope, key, request.body ?? null),
+      legacyIdempotencyHash(legacyScope, key, request.body ?? null),
     );
     if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
     pendingCaptures.set(request, { orgId, key });
