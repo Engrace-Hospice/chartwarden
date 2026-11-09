@@ -119,6 +119,27 @@ function setup(
   return { far, deps, cursors, ingest };
 }
 
+describe("pullRemittances and the payer route", () => {
+  it("asks for a context without the payer route (a remittance feed is not addressed to a payer)", async () => {
+    const { deps } = setup();
+    const asked: unknown[] = [];
+    await pullRemittances(
+      {
+        ...deps,
+        contexts: {
+          ...deps.contexts,
+          contextFor: async (_org: string, _pe: string, options?: unknown) => {
+            asked.push(options);
+            return ctx;
+          },
+        },
+      },
+      ORG,
+    );
+    expect(asked).toEqual([{ payerRoute: "skip" }]);
+  });
+});
+
 describe("pullRemittances", () => {
   it("pages the feed, stages every file through receiveAdvice and persists the cursor", async () => {
     const { far, deps, cursors, ingest } = setup();

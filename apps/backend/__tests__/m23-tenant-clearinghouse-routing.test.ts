@@ -10,6 +10,7 @@ import {
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
 import { describe, expect, it } from "vitest";
 import {
+  ClearinghouseTransportError,
   type M23TransportDeps,
   hasPerOrgTransport,
   transportForOrg,
@@ -131,5 +132,58 @@ describe("per-organization transport resolution in M23", () => {
     const { deps } = perOrgDeps();
     expect(() => assertTransportInjected({ CLEARINGHOUSE_VENDOR: "stedi" }, deps)).not.toThrow();
     expect(() => assertTransportInjected({}, deps)).not.toThrow();
+  });
+
+  // Nothing was sent when the org's clearinghouse (or its context) could not even be resolved, so the worker must record a
+  // plain failed attempt it can retry, never TRANSPORT_OUTCOME_UNCERTAIN (which parks the attempt for a human). The raw cause
+  // (a connection string, a row) stays out of the typed error.
+  describe("an upload that fails before reaching a vendor is a typed, non-ambiguous refusal", () => {
+    const RAW_CAUSE = "connect ECONNREFUSED postgres://app:hunter2@10.0.0.9/chartwarden";
+
+    it("the org's binding cannot be resolved", async () => {
+      const { deps } = perOrgDeps();
+      const failing = {
+        transport: {
+          ...deps.transport,
+          binding: {
+            ...deps.transport.binding,
+            forOrg: async () => {
+              throw new Error(RAW_CAUSE);
+            },
+          },
+        },
+      };
+      const refusal = await transportUploadPerOrg(failing)(upload(ORG_A, "000000003")).catch(
+        (error: unknown) => error,
+      );
+      expect(refusal).toBeInstanceOf(ClearinghouseTransportError);
+      expect(refusal).toMatchObject({ code: CH.UNAVAILABLE, ambiguous: false });
+      expect((refusal as Error).message).not.toContain("hunter2");
+    });
+
+    it("the org's clearinghouse context cannot be built (no credential, no NPI, no payer route)", async () => {
+      const { deps, a } = perOrgDeps();
+      const failing = {
+        transport: {
+          ...deps.transport,
+          contexts: {
+            ...deps.transport.contexts,
+            contextFor: async () => {
+              throw new Error(RAW_CAUSE);
+            },
+          },
+        },
+      };
+      const refusal = await transportUploadPerOrg(failing)(upload(ORG_A, "000000004")).catch(
+        (error: unknown) => error,
+      );
+      expect(refusal).toBeInstanceOf(ClearinghouseTransportError);
+      expect(refusal).toMatchObject({ code: CH.UNAVAILABLE, ambiguous: false });
+      expect((refusal as Error).message).not.toContain("hunter2");
+      // and nothing reached the vendor
+      const ctx = (await deps.transport.contexts.contextFor(ORG_A, PE)) as ClearinghouseContext;
+      const sent = await a.fetchClaimStatus(ctx, "000000004");
+      expect(sent.ok && sent.data.state).toBe("not_found");
+    });
   });
 });

@@ -30,7 +30,12 @@ export const MAX_REMITTANCE_PAGES = 100;
 
 export interface RemittancePullContexts {
   providerEntitiesFor(organizationId: string): Promise<readonly string[]>;
-  contextFor(organizationId: string, providerEntityId: string): Promise<ClearinghouseContext>;
+  /** `payerRoute: "skip"`: a remittance feed is not addressed to a payer, so no Claim.MD payer route is resolved for it. */
+  contextFor(
+    organizationId: string,
+    providerEntityId: string,
+    options?: { readonly payerRoute?: "skip" },
+  ): Promise<ClearinghouseContext>;
 }
 
 /** The Medicare payer's id in this tenant's payer directory (M40), or null when it cannot be resolved. */
@@ -205,7 +210,9 @@ async function pullOne(
   label: string,
   quarantined: string[],
 ): Promise<{ queued: number; duplicates: number } | "unsupported"> {
-  const ctx = await deps.contexts.contextFor(organizationId, providerEntityId);
+  const ctx = await deps.contexts.contextFor(organizationId, providerEntityId, {
+    payerRoute: "skip",
+  });
   const payerId = await deps.payers.medicarePayerId(organizationId);
   if (!payerId) throw new Error("the Medicare payer is not resolvable in the payer directory");
   const key: RemittanceCursorKey = {

@@ -3,6 +3,7 @@
 // legacy launch-gateway ports; set, the claim/NOE/NOTR submit + retry workers and the 999/277CA ack crons go through
 // the transport and NEVER fall back to the legacy MAC portal. Claim workers distinguish a known pre-send refusal
 // from a transport result explicitly marked ambiguous; only the latter remains in doubt.
+import { ChartWardenError } from "@chartwarden/types";
 import type {
   AckEvent,
   ClearinghouseBinding,
@@ -38,10 +39,22 @@ import {
   withCredentialGuard,
 } from "./clearinghouse-credential-guard";
 
+/** What a context is for. `payerRoute: "skip"`: it is not addressed to a payer (an ack or remittance pull), so no Claim.MD payer route is resolved. */
+export interface ClearinghouseContextOptions {
+  readonly payerRoute?: "skip";
+}
+
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
-  /** Context for one provider entity; throws when it has no MAC submitter credential (nothing to submit as). */
-  contextFor(organizationId: string, providerEntityId: string): Promise<ClearinghouseContext>;
+  /**
+   * Context for one provider entity; throws when it has no MAC submitter credential (nothing to submit as). For a Claim.MD account it
+   * also throws when no payer route is configured, unless `options.payerRoute` is `"skip"`: only a claim is addressed to a payer.
+   */
+  contextFor(
+    organizationId: string,
+    providerEntityId: string,
+    options?: ClearinghouseContextOptions,
+  ): Promise<ClearinghouseContext>;
   /** Provider entities of the org that have a credential, i.e. whose acknowledgments are pulled. */
   providerEntitiesFor(organizationId: string): Promise<readonly string[]>;
 }
@@ -154,6 +167,31 @@ function failure(what: string, code: string, reason: string, ambiguous = false):
   return new ClearinghouseTransportError(what, code, ambiguous, `clearinghouse ${what} failed (${code}): ${reason}`);
 }
 
+/**
+ * A PHI-free label for an error: a typed refusal's stable code, else the error's class name, never its message (which can carry a
+ * connection string or a row). What a job error, a log line or an alert may say about an unexpected failure.
+ */
+export const failureLabel = (err: unknown): string =>
+  err instanceof ChartWardenError || err instanceof ClearinghouseTransportError
+    ? err.code
+    : err instanceof Error
+      ? err.name
+      : "failed";
+
+/**
+ * A step BEFORE anything reaches a vendor (resolving the org's transport, building its context) that threw: nothing was sent, so
+ * it is a typed, retryable, NON-ambiguous refusal. An untyped throw here would be read by the claim worker as "the outcome of the
+ * send is uncertain" and park a send that never happened (`TRANSPORT_OUTCOME_UNCERTAIN`).
+ */
+async function beforeSend<T>(kind: string, what: string, step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (err) {
+    if (err instanceof ClearinghouseTransportError) throw err;
+    throw failure(kind, CH.UNAVAILABLE, `${what} (${failureLabel(err)})`);
+  }
+}
+
 type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
 
 /** Structurally `MacPortalPort["upload"]` (declared here so m23-jobs can import this file without a cycle). */
@@ -210,7 +248,11 @@ export function transportUploadPerOrg(deps: {
   readonly transport?: M23TransportDeps;
 }): TransportUpload {
   return async (input) => {
-    const transport = await transportForOrg(deps, input.organizationId);
+    const transport = await beforeSend(
+      input.kind,
+      "the organization's clearinghouse could not be resolved",
+      () => transportForOrg(deps, input.organizationId),
+    );
     if (!transport)
       throw failure(input.kind, CH.NOT_WIRED, "no clearinghouse transport is injected");
     assertOrgBound(transport, input.kind);
@@ -233,7 +275,9 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         "this file kind is not routable through the clearinghouse",
       );
     }
-    const ctx = await transport.contexts.contextFor(input.organizationId, input.providerEntityId);
+    const ctx = await beforeSend(kind, "the clearinghouse context could not be built", () =>
+      transport.contexts.contextFor(input.organizationId, input.providerEntityId),
+    );
     // A tenant's own Claim.MD account records under its own stores, the platform account under the platform's (never crossed).
     const evidence = claimMdEvidenceFor(transport, input.organizationId, ctx.usage);
     let evidenceId: string | null = null;
@@ -622,7 +666,10 @@ async function pullEntity(
   onPage: PageHandler,
   quarantined: QuarantinedAck[],
 ): Promise<"done" | "backlog"> {
-  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
+  // An ack pull is not addressed to a payer: it must not fail for want of a Claim.MD payer route.
+  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId, {
+    payerRoute: "skip",
+  });
   const macJurisdiction = ctx.jurisdiction;
   if (!macJurisdiction) return "done";
   const { vendor, transport: port } = transport.binding;

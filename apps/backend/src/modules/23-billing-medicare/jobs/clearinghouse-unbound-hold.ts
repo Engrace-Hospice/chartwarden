@@ -44,12 +44,46 @@ interface AlertPort {
 
 const lastAlertAt = new Map<string, number>();
 
+/** Test seam: forget which orgs were already alerted, so a suite's cases do not depend on each other's order. */
+export const __resetClearinghouseAlertMemoryForTest = (): void => lastAlertAt.clear();
+
+interface AlertDeps {
+  readonly alerts?: AlertPort | undefined;
+  readonly logger?: { error(fields: Record<string, unknown>, message: string): void } | undefined;
+}
+
+/** Raise the once-per-(org, reason)-per-window alert. Never throws: a broken alert router must not keep a job from being held. */
+async function alertOncePerWindow(
+  deps: AlertDeps,
+  input: {
+    readonly queue: string;
+    readonly organizationId: string;
+    readonly reason: string;
+    readonly at: number;
+  },
+): Promise<void> {
+  const { queue, organizationId, reason, at } = input;
+  const key = `${organizationId}:${reason}`;
+  if (at - (lastAlertAt.get(key) ?? Number.NEGATIVE_INFINITY) < ALERT_QUIET_MS) return;
+  lastAlertAt.set(key, at);
+  await Promise.resolve(
+    deps.alerts?.dispatch({
+      alertCode: CLEARINGHOUSE_UNBOUND_ALERT,
+      severity: "warn",
+      organizationId,
+      payload: { queue, reason },
+    }),
+  ).catch(() => {
+    deps.logger?.error(
+      { organizationId, queue, reason },
+      "clearinghouse hold alert not dispatched",
+    );
+  });
+}
+
 /** Hold the job (moved back to delayed, no attempt spent) and raise the once-per-window alert. Always throws {@link DelayedError}. */
 export async function holdJobWhileUnbound(input: {
-  readonly deps: {
-    readonly alerts?: AlertPort | undefined;
-    readonly logger?: { error(fields: Record<string, unknown>, message: string): void } | undefined;
-  };
+  readonly deps: AlertDeps;
   readonly job: HoldableJob;
   readonly token: string | undefined;
   readonly queue: string;
@@ -59,24 +93,34 @@ export async function holdJobWhileUnbound(input: {
 }): Promise<never> {
   const { deps, job, token, queue, organizationId, reason } = input;
   const at = (input.now ?? Date.now)();
-  const key = `${organizationId}:${reason}`;
-  if (at - (lastAlertAt.get(key) ?? Number.NEGATIVE_INFINITY) >= ALERT_QUIET_MS) {
-    lastAlertAt.set(key, at);
-    // Not awaited past a failure: a broken alert router must never keep a job from being held.
-    await Promise.resolve(
-      deps.alerts?.dispatch({
-        alertCode: CLEARINGHOUSE_UNBOUND_ALERT,
-        severity: "warn",
-        organizationId,
-        payload: { queue, reason },
-      }),
-    ).catch(() => {
-      deps.logger?.error(
-        { organizationId, queue, reason },
-        "clearinghouse hold alert not dispatched",
-      );
-    });
-  }
+  await alertOncePerWindow(deps, { queue, organizationId, reason, at });
   await job.moveToDelayed(at + CLAIMS_BILLING_HOLD_MS, token);
   throw new DelayedError();
+}
+
+/**
+ * A SHARED cron (ack pull) could not resolve ONE organization's clearinghouse (its sealed credential cannot be opened, its config
+ * read failed). Reported for that organization (a log line and the same once-per-window alert, `reason` = the error code or class,
+ * never a message) so the tick carries on: failing it would retry the job into the DLQ for every other tenant.
+ */
+export async function reportClearinghouseUnresolved(
+  deps: AlertDeps,
+  input: {
+    readonly queue: string;
+    readonly organizationId: string;
+    readonly code: string;
+    readonly now?: () => number;
+  },
+): Promise<void> {
+  const { queue, organizationId, code } = input;
+  deps.logger?.error(
+    { organizationId, queue, code },
+    "clearinghouse could not be resolved for this organization; the shared job carries on without it",
+  );
+  await alertOncePerWindow(deps, {
+    queue,
+    organizationId,
+    reason: code,
+    at: (input.now ?? Date.now)(),
+  });
 }
