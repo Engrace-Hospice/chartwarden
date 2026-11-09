@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   RESET,
   checkBackupImageChain,
+  checkBackupOverlayImage,
   checkCompose,
   checkRustEnvExample,
   checkRustEnvScope,
@@ -329,5 +330,27 @@ describe("arch:compose-policy — the backup image is built on the Postgres prod
     expect(sources.length).toBeGreaterThan(0);
     const missing = sources.filter((s) => !deployYml.includes(`deploy/production/backup/${s}`));
     expect(missing).toEqual([]);
+  });
+
+  it("requires both backup-overlay services to pull one digest-pinned GHCR variable", () => {
+    const image = "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}";
+    expect(
+      checkBackupOverlayImage({ services: { postgres: { image }, backup: { image } } }),
+    ).toEqual([]);
+    expect(
+      checkBackupOverlayImage({
+        services: {
+          postgres: { image: "chartwarden-backup:local", build: "./backup" },
+          backup: { image },
+        },
+      }).join("\n"),
+    ).toMatch(/postgres\.image.*CHARTWARDEN_BACKUP_IMAGE.*not build on the host/s);
+  });
+
+  it("holds on the real production backup overlay", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    expect(
+      checkBackupOverlayImage(loadCompose(join(root, "deploy/production/compose.backup.yml"))),
+    ).toEqual([]);
   });
 });

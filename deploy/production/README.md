@@ -238,18 +238,27 @@ Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving 
 (versioned SSE-C mirror to an object-locked bucket), tied together by a per-snapshot marker (DB LSN + object
 manifest with sha256). Design, variables, key management and RPO/RTO: `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`
 §4.8; operating loop and alerts: `CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §5.7. `deploy.yml` ships `compose.backup.yml` and
-`backup/` with every release; nothing runs until it is enabled once:
+the source/drill kit in `backup/` with every release; production pulls the scanned, signed image published by
+`.github/workflows/backup-image.yml`, so a fresh host does not need GitHub or the Go module proxies to rebuild it.
+Nothing runs until it is enabled once:
 
 ```sh
 cd /opt/chartwarden    # after setting the BACKUP_* ids in .env.production and the files in ./secrets/ (DR/BCP §4.8.4)
 install -d -m 0700 -o 999 -g 999 secrets   # one file per secret, mode 0400, owner 999 (the image's postgres user)
 dc() { docker compose --env-file .env.production -f compose.yml -f compose.backup.yml "$@"; }
-dc build postgres                      # chartwarden-backup:local (the signed Wolfi Postgres image + pgBackRest 2.60.0 built from source + mc)
+dc pull postgres backup                # the same digest-pinned chartwarden-backup image serves both roles
 dc run --rm object-store-provision     # adds the backup's read-only SeaweedFS key (reader-policy.json)
 docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate --wait seaweedfs  # reload identities
 dc up -d postgres backup               # recreates postgres once (same volume) with archive_mode=on
 dc logs -f backup                      # the first snapshot takes a full base backup
 ```
+
+Set `CHARTWARDEN_BACKUP_IMAGE` to the exact `tag@sha256:digest` printed by a successful manual
+`backup-image.yml` run on `main`. Before changing it, verify both the signature and SBOM attestation against
+`https://github.com/Engrace-Hospice/chartwarden/.github/workflows/backup-image.yml@refs/heads/main`, using the
+same `cosign verify` / `verify-attestation` form as the Postgres-image runbook below. Keep that output in the
+change record. Never replace it with a tag-only reference. The weekly workflow rebuilds and scans the source-pinned
+toolchain without publishing or moving the production pin.
 
 The off-site bucket must have Object Lock with a COMPLIANCE default retention of >= 100 days (every snapshot checks
 it), a lifecycle longer than the lock, and three keys with the policies in `backup/offsite-policies/` (WAL-only key
@@ -407,8 +416,9 @@ directly installed package pinned (the glibc locale packages follow the base's g
 Dev compose, every CI live-DB job and the restore drills build it from this folder. Production runs the copy that
 `.github/workflows/postgres-image.yml` (manual, `main` only) builds, scans, signs and publishes as
 `ghcr.io/engrace-hospice/chartwarden-postgres`. `compose.yml` pins its digest, and so does the `POSTGRES_IMAGE` default of
-`backup/Dockerfile`: production runs `postgres` through the backup overlay, so the image it actually starts is
-`chartwarden-backup:local`, built `FROM` that digest plus pgBackRest and `mc`. The image opens a volume the Debian image
+`backup/Dockerfile`: production runs `postgres` through the backup overlay, so the image it actually starts is the
+digest-pinned `CHARTWARDEN_BACKUP_IMAGE` published by `backup-image.yml`, built `FROM` that Postgres digest plus
+pgBackRest and `mc`. The image opens a volume the Debian image
 created as is: postgres is uid/gid 999, PGDATA is `/var/lib/postgresql/18/docker`, and the server also listens on
 `/var/run/postgresql`.
 
@@ -433,6 +443,12 @@ Wolfi image: from then until a rollback moves it back, any `dc up` that reaches 
 `depends_on`, or through the `api`/`worker` chain `provision` → `migrate`) recreates it on Wolfi with no reindex. So
 every `up` below and in the rollback is `--no-deps --no-build`, one service at a time in the order written. The downtime
 is steps 3-10 and grows with the reindex.
+
+> Historical procedure: this one-time migration predates the published backup image in #993 and intentionally names
+> the old local build/tag. Current installs already on Wolfi must use the digest-pinned
+> `CHARTWARDEN_BACKUP_IMAGE` procedure above, not `dc build`. An un-migrated legacy host must execute this section
+> from the pre-#993 release it is migrating from, then move to the published-image release after step 11 succeeds.
+
 Preconditions: the release that carries the Wolfi `backup/Dockerfile` and the pinned `compose.yml` is deployed; the
 rehearsal record `audit/restore-drill/2026-11-08-wolfi-migration-rehearsal.md` exists and names this digest (rehearse
 again before using another); merges to `main` are paused from step 1 until step 10 passes, and no `deploy` run is in

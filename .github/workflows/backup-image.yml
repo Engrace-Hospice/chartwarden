@@ -1,0 +1,132 @@
+name: Backup image build, scan and publish
+
+# The weekly run rebuilds the source-pinned pgBackRest/mc toolchain and scans it even when no
+# deploy/production PR has touched the image recently (#992). A manual run on main additionally
+# publishes the exact image, signs it keylessly and attaches an SBOM attestation (#993). A scheduled
+# run starts exactly one job and there is no matrix: this private repository's Actions minutes are metered.
+on:
+  schedule:
+    - cron: "23 10 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup-image
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/engrace-hospice/chartwarden-backup
+  LOCAL_IMAGE: chartwarden-backup:scheduled-${{ github.run_id }}
+
+jobs:
+  scheduled-scan:
+    name: Weekly backup image rebuild and scan
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assert the runtime starts from the published Postgres digest
+        run: |
+          base=$(sed -n 's/^ARG POSTGRES_IMAGE=//p' deploy/production/backup/Dockerfile | head -n 1)
+          printf '%s\n' "$base" | grep -Eq \
+            '^ghcr\.io/engrace-hospice/chartwarden-postgres:[^@]+@sha256:[0-9a-f]{64}$' \
+            || { echo "backup/Dockerfile POSTGRES_IMAGE is not the published digest-pinned Postgres image: $base" >&2; exit 1; }
+
+      - name: Build scheduled scan image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/production/backup
+          load: true
+          push: false
+          tags: ${{ env.LOCAL_IMAGE }}
+          cache-from: type=gha,scope=backup-image
+          cache-to: type=gha,mode=max,scope=backup-image
+      - name: Scan scheduled image (HIGH/CRITICAL fail)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ env.LOCAL_IMAGE }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+      - name: Remove scheduled image from the persistent runner
+        if: ${{ always() }}
+        run: docker image rm -f "${LOCAL_IMAGE}" >/dev/null 2>&1 || true
+
+  publish:
+    name: Publish, scan, sign and attest backup image
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Assert the runtime starts from the published Postgres digest
+        run: |
+          base=$(sed -n 's/^ARG POSTGRES_IMAGE=//p' deploy/production/backup/Dockerfile | head -n 1)
+          printf '%s\n' "$base" | grep -Eq \
+            '^ghcr\.io/engrace-hospice/chartwarden-postgres:[^@]+@sha256:[0-9a-f]{64}$' \
+            || { echo "backup/Dockerfile POSTGRES_IMAGE is not the published digest-pinned Postgres image: $base" >&2; exit 1; }
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push immutable image
+        id: publish
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/production/backup
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:18-tools-sha-${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=backup-image
+          cache-to: type=gha,mode=max,scope=backup-image
+      - name: Scan published image (HIGH/CRITICAL fail)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.publish.outputs.digest }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+      - uses: sigstore/cosign-installer@v3
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Sign, attest SBOM, verify and print the production pin
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+          COSIGN_YES: "true"
+        run: |
+          test -n "$DIGEST" || { echo "build reported no digest" >&2; exit 1; }
+          ref="${IMAGE}@${DIGEST}"
+          syft "$ref" -o spdx-json=sbom-backup.spdx.json
+          packages=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('packages',[])))" sbom-backup.spdx.json)
+          test "$packages" -gt 0 || { echo "SBOM describes no packages" >&2; exit 1; }
+          cosign sign "$ref"
+          cosign attest --predicate sbom-backup.spdx.json --type spdxjson "$ref"
+          id="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/backup-image.yml@${GITHUB_REF}"
+          cosign verify "$ref" --certificate-identity "$id" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+          cosign verify-attestation "$ref" --type spdxjson --certificate-identity "$id" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+          {
+            echo "### Published backup image"
+            echo '```'
+            echo "CHARTWARDEN_BACKUP_IMAGE=${IMAGE}:18-tools-sha-${GITHUB_SHA}@${DIGEST}"
+            echo '```'
+            echo "Copy this exact digest-pinned value into production only after the documented cosign verification."
+          } >> "$GITHUB_STEP_SUMMARY"
