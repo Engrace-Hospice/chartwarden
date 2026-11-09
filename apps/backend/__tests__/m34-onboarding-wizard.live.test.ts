@@ -3463,6 +3463,28 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       expect(await row()).toEqual(before);
     });
 
+    it("never promotes a step to canonical, new or existing: the upsert is 409 and the row stays non-canonical (the column grant stays, the code is the guard)", async () => {
+      const upsert = (key: string, isCanonical: boolean) =>
+        backend().service.upsertOnboardingTemplate(OPS_USER, {
+          key,
+          title: "Promotable",
+          description: null,
+          canonicalOrder: 152,
+          isCanonical,
+        });
+      await upsert("promote_guard_custom_step", false);
+      for (const key of ["promote_guard_custom_step", "promote_guard_new_step"]) {
+        await expect(upsert(key, true), key).rejects.toMatchObject({
+          code: "ONBOARDING_TEMPLATE_CANONICAL",
+          statusCode: 409,
+        });
+      }
+      const rows = await admin.query(
+        "SELECT key, is_canonical FROM onboarding_task_template WHERE key LIKE 'promote_guard_%' ORDER BY key",
+      );
+      expect(rows.rows).toEqual([{ key: "promote_guard_custom_step", is_canonical: false }]);
+    });
+
     it("migration 1425: platform ops add and re-edit a non-canonical step on the real platform carrier (it was a 42501 before)", async () => {
       const created = await backend().service.upsertOnboardingTemplate(OPS_USER, {
         key: "grant_1425_custom_step",

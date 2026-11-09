@@ -28,4 +28,20 @@ describe("upsertOnboardingTemplate", () => {
     const edited = await service.upsertOnboardingTemplate("ops", { ...ARGS, key: "custom" });
     expect(edited).toMatchObject({ key: "custom", title: "Renamed", isCanonical: false });
   });
+
+  // A step becomes canonical (it then gates go-live for every tenant) only by migration: the upsert never promotes one, new or existing.
+  it("refuses to make a template canonical, on an existing key and on a new one, and changes nothing", async () => {
+    const { service } = createInMemoryTenantPlatformBackend({});
+    await service.upsertOnboardingTemplate("ops", { ...ARGS, key: "custom", title: "Custom" });
+    for (const key of ["custom", "brand_new"]) {
+      const err = await service
+        .upsertOnboardingTemplate("ops", { ...ARGS, key, title: "Promoted", isCanonical: true })
+        .catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: "ONBOARDING_TEMPLATE_CANONICAL", statusCode: 409 });
+    }
+    const page = await service.listOnboardingTemplates(undefined, 50);
+    expect(page.items.map((t) => [t.key, t.title, t.isCanonical])).toEqual([
+      ["custom", "Custom", false],
+    ]);
+  });
 });

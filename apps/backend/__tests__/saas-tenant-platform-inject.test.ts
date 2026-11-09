@@ -952,6 +952,15 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     expect(edit.statusCode).toBe(201);
     expect(edit.json()).toMatchObject({ title: "Custom step, renamed", isCanonical: false });
 
+    // ...but never made canonical: that is a migration's act (the body schema takes only `false`)
+    const promote = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { key: "custom_step", title: "Promoted", canonicalOrder: 6, isCanonical: true },
+    });
+    expect(promote.statusCode).toBe(422);
+
     await app.close();
   });
 
