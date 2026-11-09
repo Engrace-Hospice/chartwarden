@@ -1050,7 +1050,7 @@ function interactiveInvocation(p: Parsed): boolean {
     if (executesCode) return false;
     if (explicitInput || args.includes("-")) return false;
     const valueFlags =
-      /^(-W|-X|-I|-M|-m|-F|-C|-l|-d|--require|-r|--loader|--import|--conditions|--title|--openssl-config|--icu-data-dir)$/;
+      /^(-W|-X|-I|-M|-m|-F|-C|-l|-d|--require|-r|--loader|--import|--conditions|--title|--openssl-config|--icu-data-dir|--inspect-port)$/;
     return !hasPositional(args, valueFlags);
   }
 
