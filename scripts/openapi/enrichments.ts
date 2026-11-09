@@ -15935,12 +15935,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: M34_NOTICE_WITHDRAW_HEADERS,
     response: M34OnboardingNoticeWithdrawalViewSchema,
   },
-  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/activate": {
-    summary: `Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
-    body: M34OnboardingReasonSchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
-    response: M34OnboardingClearinghouseViewSchema,
-  },
 });
 
 // ── Claim.MD ERA recovery (platform ops) ──────────────────────────────────────────────────────────────────

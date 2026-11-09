@@ -21820,23 +21820,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
-        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseActivate"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify": {
         parameters: {
             query?: never;
@@ -95844,77 +95827,6 @@ export interface operations {
         responses: {
             /** @description OK */
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
-                        mode: ("test" | "production") | null;
-                        status: ("draft" | "verified" | "active") | null;
-                        source: "tenant" | "platform_env" | "none";
-                        /** @description The credential itself is never projected. */
-                        hasSecret: boolean;
-                        verifiableBy: ("connection_test" | "attestation") | null;
-                        verification: {
-                            kind: "connection_test" | "attested";
-                            evidence: string | null;
-                            /** Format: date-time */
-                            verifiedAt: string;
-                        } | null;
-                        lastTest: {
-                            outcome: "ok" | "credential_rejected" | "unreachable";
-                            /** Format: date-time */
-                            at: string;
-                        } | null;
-                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
-                        baaRequired: boolean;
-                        baa: {
-                            /** @constant */
-                            heldBy: "tenant";
-                            /** Format: date */
-                            effectiveDate: string;
-                            documentRef: string;
-                            /** Format: date-time */
-                            recordedAt: string;
-                            verified: {
-                                /** Format: date-time */
-                                at: string;
-                            } | null;
-                        } | null;
-                        activatedAt: string | null;
-                        version: number | null;
-                        updatedAt: string | null;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1PlatformTenantsByOrgSlugClearinghouseActivate: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
-                "Idempotency-Key": string;
-            };
-            path: {
-                orgSlug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
-                    reason: string;
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -114,7 +114,6 @@ export interface OnboardingDataService {
     fields: OnboardingFields,
     reason: string,
   ): Promise<{ readonly config: unknown; readonly test: unknown }>;
-  activateClearinghouse(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
   /**
    * The operator verifies the vendor BAA the tenant recorded. NOT gated on the tenant's onboarding status: a live tenant that
    * changed vendor or re-recorded its BAA needs this too.
@@ -664,21 +663,6 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         },
       );
       return settleStepAfter(organizationId, result);
-    },
-
-    activateClearinghouse: async (op, orgSlug, reason) => {
-      let organizationId = "";
-      const view = await write(
-        op,
-        orgSlug,
-        { event: EVENTS.clearinghouseActivated, resourceKind: CLEARINGHOUSE_KIND, reason },
-        async (tx, t) => {
-          organizationId = t.organizationId;
-          const done = await clearinghousePort().activate(tx, scopeOf(op, t.organizationId));
-          return { value: done.view, resourceId: done.resourceId };
-        },
-      );
-      return settleStepAfter(organizationId, view);
     },
 
     verifyClearinghouseBaa: (op, orgSlug, reason, expected) =>

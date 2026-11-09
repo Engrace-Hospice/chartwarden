@@ -813,6 +813,16 @@ export function createTenantClearinghouseService(
     },
 
     async activate(store, actor) {
+      // A platform operator sets up and verifies a tenant's clearinghouse during onboarding, but only the tenant's own billing admin
+      // activates it (the step that lets claims go out under its account). Checked first: an operator gets the refusal even over an
+      // already-active config, never an idempotent success.
+      if (actor.lane === "platform") {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_ACTIVATION_TENANT_ONLY",
+          "only the organization's own billing administrator may activate its clearinghouse",
+          403,
+        );
+      }
       const { organizationId } = actor;
       const row = await lockedRow(store, organizationId);
       if (row.status === "active") return viewOf(row, organizationId); // idempotent; `outside` is always here
