@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CLAIMS_BILLING_HOLD_MS,
   assertClaimsBillingSeamBound,
+  claimsBillingAddonRequired,
   claimsBillingPreHandler,
   configureClaimsBillingGate,
   holdUnlessClaimsBillingEntitled,
@@ -97,6 +98,23 @@ describe("the route gate", () => {
     bindReader({ entitled: true });
     expect((await app.inject({ method: "POST", url: "/claims/submit" })).statusCode).toBe(200);
     await app.close();
+  });
+
+  it("enforce: the 402 message and detail say why, not always that the add-on is missing", () => {
+    const wording = [
+      ["never_purchased", "has not purchased the claims-billing add-on"],
+      ["lapsed", "claims-billing add-on has ended"],
+      ["subscription_suspended", "subscription is suspended"],
+      ["subscription_canceled", "subscription is canceled"],
+      ["subscription_paused", "subscription is paused"],
+    ] as const;
+    for (const [reason, phrase] of wording) {
+      const refusal = claimsBillingAddonRequired(reason);
+      expect(refusal.statusCode, reason).toBe(402);
+      expect(refusal.message, reason).toContain(phrase);
+      expect(refusal.details?.[0], reason).toMatchObject({ code: reason });
+      expect(refusal.details?.[0]?.message, reason).toContain(phrase);
+    }
   });
 
   it("a gated route reached with no org is refused 403 in shadow and enforce, untouched in off", async () => {
