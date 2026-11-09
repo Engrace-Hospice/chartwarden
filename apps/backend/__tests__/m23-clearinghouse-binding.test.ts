@@ -34,6 +34,7 @@ describe("platform clearinghouse binding", () => {
     const binding = bindPlatformClearinghouse(
       {
         CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_REFERENCE: "acct-dev-0001",
         CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log",
         CLAIMMD_ACCOUNT_USAGE: "test",
       },
@@ -43,11 +44,21 @@ describe("platform clearinghouse binding", () => {
     expect(describeClearinghouseBinding(binding)).toBe("Clearinghouse binding: claimmd");
     expect(describeClearinghouseBinding(binding)).not.toContain("cmd_do_not_log");
     expect(() => bindPlatformClearinghouse({ CLEARINGHOUSE_VENDOR: "claimmd" }, deps())).toThrow(
-      /CLAIMMD_ACCOUNT_KEY/,
+      /CLAIMMD_ACCOUNT_REFERENCE/,
     );
     expect(() =>
       bindPlatformClearinghouse(
-        { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "k" },
+        { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_REFERENCE: "acct-dev-0001" },
+        deps(),
+      ),
+    ).toThrow(/CLAIMMD_ACCOUNT_KEY/);
+    expect(() =>
+      bindPlatformClearinghouse(
+        {
+          CLEARINGHOUSE_VENDOR: "claimmd",
+          CLAIMMD_ACCOUNT_REFERENCE: "acct-dev-0001",
+          CLAIMMD_ACCOUNT_KEY: "k",
+        },
         deps(),
       ),
     ).toThrow(/CLAIMMD_ACCOUNT_USAGE/);
@@ -55,6 +66,7 @@ describe("platform clearinghouse binding", () => {
       bindPlatformClearinghouse(
         {
           CLEARINGHOUSE_VENDOR: "claimmd",
+          CLAIMMD_ACCOUNT_REFERENCE: "acct-dev-0001",
           CLAIMMD_ACCOUNT_KEY: "k",
           CLAIMMD_ACCOUNT_USAGE: "test",
         },
@@ -68,6 +80,7 @@ describe("platform clearinghouse binding", () => {
     const binding = bindPlatformClearinghouse(
       {
         CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_REFERENCE: "acct-dev-0001",
         CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log",
         CLAIMMD_ACCOUNT_USAGE: "test",
       },

@@ -109,12 +109,22 @@ export function SubmissionsTable({ rows }: { rows: ClaimSubmission[] }): JSX.Ele
             </td>
             <td style={tdStyle}>{statusLabel(r.kind)}</td>
             <td style={tdStyle}>
-              <StatusPill label={submissionStatusLabel(r.outcome, r.dispatchState)} tone={submissionStatusTone(r.dispatchState === "in_doubt" ? "failed_portal" : r.dispatchState === "sending" ? "queued" : r.outcome)} />
+              <StatusPill
+                label={submissionStatusLabel(r.outcome, r.dispatchState)}
+                tone={submissionStatusTone(
+                  r.dispatchState === "in_doubt"
+                    ? "failed_portal"
+                    : r.dispatchState === "sending"
+                      ? "queued"
+                      : r.outcome,
+                )}
+              />
             </td>
             <td style={{ ...tdStyle, color: "var(--color-on-surface-variant)" }}>
               {r.dispatchState === "in_doubt"
                 ? "Transport outcome uncertain. Reconcile this attempt before retrying."
-                : r.outcomeReason ?? (r.dispatchReasonCode ? "Transport requires reconciliation." : "—")}
+                : (r.outcomeReason ??
+                  (r.dispatchReasonCode ? "Transport requires reconciliation." : "—"))}
             </td>
             <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
               {r.submittedAt ?? r.createdAt}

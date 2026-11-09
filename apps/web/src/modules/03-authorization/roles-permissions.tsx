@@ -399,11 +399,19 @@ function PermissionMatrix({
   const client = useApiClient();
   const matrixRef = useRef<HTMLElement>(null);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<Set<string>>(new Set());
+  const [draft, setDraft] = useState<Set<string>>(() => new Set(role.permissionKeys));
   const [busy, setBusy] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
-  // A role switch abandons an unsaved edit rather than carrying it onto another role.
+  // A role switch abandons an unsaved edit rather than carrying it onto another role. Not on mount: the effect also runs
+  // once after the first commit, and a click that already started an edit would then be cancelled by it.
+  const shown = useRef({ roleId: role.roleId, permissionKeys: role.permissionKeys });
   useEffect(() => {
+    if (
+      shown.current.roleId === role.roleId &&
+      shown.current.permissionKeys === role.permissionKeys
+    )
+      return;
+    shown.current = { roleId: role.roleId, permissionKeys: role.permissionKeys };
     setEditing(false);
     setWriteError(null);
     if (role.roleId) setDraft(new Set(role.permissionKeys));

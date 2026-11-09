@@ -99,25 +99,34 @@ export function resolveClaimMdM23PayerRoute(input: {
   readonly at?: Date;
 }): { readonly payerId: string; readonly routeFingerprint: string } {
   const now = input.at ?? new Date();
-  const scoped = input.routes.filter((r) =>
-    r.organizationId === input.organizationId &&
-    r.providerEntityId === input.providerEntityId &&
-    r.macJurisdiction === input.macJurisdiction &&
-    r.accountReference === input.accountReference &&
-    r.usage === input.usage
+  const scoped = input.routes.filter(
+    (r) =>
+      r.organizationId === input.organizationId &&
+      r.providerEntityId === input.providerEntityId &&
+      r.macJurisdiction === input.macJurisdiction &&
+      r.accountReference === input.accountReference &&
+      r.usage === input.usage,
   );
   const validDate = (value: string): boolean => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const parsed = new Date(`${value}T00:00:00.000Z`);
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
   };
-  if (scoped.some((r) => !validDate(r.effectiveFrom) ||
-    (r.effectiveTo !== undefined && (!validDate(r.effectiveTo) || r.effectiveTo < r.effectiveFrom)))) {
+  if (
+    scoped.some(
+      (r) =>
+        !validDate(r.effectiveFrom) ||
+        (r.effectiveTo !== undefined &&
+          (!validDate(r.effectiveTo) || r.effectiveTo < r.effectiveFrom)),
+    )
+  ) {
     throw new Error("CLAIMMD_PAYER_ROUTE_INVALID_DATES");
   }
-  const matches = scoped.filter((r) =>
-    Date.parse(`${r.effectiveFrom}T00:00:00.000Z`) <= now.getTime() &&
-    (r.effectiveTo === undefined || Date.parse(`${r.effectiveTo}T23:59:59.999Z`) >= now.getTime())
+  const matches = scoped.filter(
+    (r) =>
+      Date.parse(`${r.effectiveFrom}T00:00:00.000Z`) <= now.getTime() &&
+      (r.effectiveTo === undefined ||
+        Date.parse(`${r.effectiveTo}T23:59:59.999Z`) >= now.getTime()),
   );
   if (matches.length === 0) throw new Error("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
   if (matches.length !== 1) throw new Error("CLAIMMD_PAYER_ROUTE_AMBIGUOUS");
@@ -139,14 +148,25 @@ function readClaimMdM23PayerRoutes(env: EnvMap): readonly ClaimMdM23PayerRoute[]
     return parsed.map((item) => {
       if (!item || typeof item !== "object") throw new Error();
       const r = item as Record<string, unknown>;
-      const required = ["organizationId", "providerEntityId", "macJurisdiction", "accountReference", "usage", "payerId", "effectiveFrom"];
-      if (required.some((k) => typeof r[k] !== "string" || !(r[k] as string).trim())) throw new Error();
+      const required = [
+        "organizationId",
+        "providerEntityId",
+        "macJurisdiction",
+        "accountReference",
+        "usage",
+        "payerId",
+        "effectiveFrom",
+      ];
+      if (required.some((k) => typeof r[k] !== "string" || !(r[k] as string).trim()))
+        throw new Error();
       if (r.usage !== "test" && r.usage !== "production") throw new Error();
       if (r.effectiveTo !== undefined && typeof r.effectiveTo !== "string") throw new Error();
       return r as unknown as ClaimMdM23PayerRoute;
     });
   } catch {
-    throw new Error(`${CLAIMMD_M23_PAYER_ROUTES_ENV} must be a valid array of scoped, effective-dated route records`);
+    throw new Error(
+      `${CLAIMMD_M23_PAYER_ROUTES_ENV} must be a valid array of scoped, effective-dated route records`,
+    );
   }
 }
 
@@ -180,7 +200,9 @@ export function buildClearinghouseContextPort(
   const platformVendor = deps.env.CLEARINGHOUSE_VENDOR?.trim();
   const claimMdRoutes = readClaimMdM23PayerRoutes(deps.env);
   if (platformVendor === "claimmd" && payerOverride) {
-    throw new Error(`${CLEARINGHOUSE_PAYER_ID_ENV} cannot authorize Claim.MD payer routing; configure ${CLAIMMD_M23_PAYER_ROUTES_ENV}`);
+    throw new Error(
+      `${CLEARINGHOUSE_PAYER_ID_ENV} cannot authorize Claim.MD payer routing; configure ${CLAIMMD_M23_PAYER_ROUTES_ENV}`,
+    );
   }
   return {
     async contextFor(organizationId, providerEntityId, options) {

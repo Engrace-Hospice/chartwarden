@@ -673,8 +673,14 @@ describe.skipIf(!DB_URL)(
       });
 
       it("a READY Oregon claim remains blocked even with a gateway bound until certification is verified", async () => {
-        const { svc, actor, claim, published, version } = await readyClaim("OR", "READY", () => true);
-        await expect(svc.submitClaim(actor, claim.id, { expectedVersion: version })).rejects.toMatchObject({
+        const { svc, actor, claim, published, version } = await readyClaim(
+          "OR",
+          "READY",
+          () => true,
+        );
+        await expect(
+          svc.submitClaim(actor, claim.id, { expectedVersion: version }),
+        ).rejects.toMatchObject({
           code: "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY",
           statusCode: 422,
         });
@@ -753,7 +759,9 @@ describe.skipIf(!DB_URL)(
           ).rejects.toMatchObject({
             code: "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY",
             statusCode: 422,
-            message: expect.stringMatching(/cannot verify whether this .* coverage is fee-for-service or a managed-care plan/),
+            message: expect.stringMatching(
+              /cannot verify whether this .* coverage is fee-for-service or a managed-care plan/,
+            ),
           });
           const subs = await admin.query(
             "SELECT 1 FROM medicaid_submission WHERE medicaid_claim_id=$1",

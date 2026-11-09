@@ -236,7 +236,10 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         probeHealth: async () => true,
       },
       // These cases exercise the transport, not the rendering (the loader has its own suites and the gap cases below).
-      renderClaim: async () => ({ x12: x12Text ?? "ISA*00*...~", sourceFingerprint: REVIEWED_SOURCE_FINGERPRINT }),
+      renderClaim: async () => ({
+        x12: x12Text ?? "ISA*00*...~",
+        sourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
+      }),
       transport: {
         binding: { vendor, transport: clearinghouse },
         contexts: { contextFor: async () => CTX, providerEntitiesFor: async () => [PE] },
@@ -369,7 +372,9 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     );
     expect(await claimState(assembled.claimId)).toBe("READY");
 
-    const currentClaimResult = await admin.query("SELECT version FROM claim WHERE id = $1", [assembled.claimId]);
+    const currentClaimResult = await admin.query("SELECT version FROM claim WHERE id = $1", [
+      assembled.claimId,
+    ]);
     const currentClaim = currentClaimResult.rows[0];
     const accepted = await write.submitClaim(writeActor, assembled.claimId, {
       expectedVersion: currentClaim.version,
@@ -549,9 +554,13 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     expect(failed.rows[0].outcome_reason).toBe("CH_UNAVAILABLE");
 
     await clearinghouse.control.setOutage(false);
-    await runInOrg((tx) => runClaimSubmitRetry(tx, depsFor(clearinghouse), {
-      ...job, submissionId: failed.rows[0].id, attemptIndex: failed.rows[0].attempt_index,
-    }));
+    await runInOrg((tx) =>
+      runClaimSubmitRetry(tx, depsFor(clearinghouse), {
+        ...job,
+        submissionId: failed.rows[0].id,
+        attemptIndex: failed.rows[0].attempt_index,
+      }),
+    );
     expect(await claimState(claimId)).toBe("SUBMITTED");
   });
 
@@ -560,7 +569,11 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     const inDoubt = Object.create(inMemory) as InMemoryClearinghouse;
     inDoubt.submitClaim = async () => ({
       ok: false,
-      degraded: { code: "CH_IN_DOUBT", reason: "the MAC portal upload may have landed", ambiguous: true },
+      degraded: {
+        code: "CH_IN_DOUBT",
+        reason: "the MAC portal upload may have landed",
+        ambiguous: true,
+      },
     });
     const deps = depsFor(inMemory);
     const doubtful: M23WorkerDeps = {
@@ -586,7 +599,10 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       }),
     );
     expect(await claimState(claimId)).toBe("READY");
-    expect(await submissionRow(submissionId)).toMatchObject({ outcome: "queued", dispatch_state: "in_doubt" });
+    expect(await submissionRow(submissionId)).toMatchObject({
+      outcome: "queued",
+      dispatch_state: "in_doubt",
+    });
 
     // The healthy transport must not be asked to file it again until the attempt is reconciled.
     const retry: ClaimSubmitRetryJob = {
@@ -596,7 +612,10 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       attemptIndex: 0,
     };
     await runInOrg((tx) => runClaimSubmitRetry(tx, deps, retry));
-    expect(await submissionRow(submissionId)).toMatchObject({ outcome: "queued", dispatch_state: "in_doubt" });
+    expect(await submissionRow(submissionId)).toMatchObject({
+      outcome: "queued",
+      dispatch_state: "in_doubt",
+    });
     expect(await claimState(claimId)).toBe("READY");
   });
 
@@ -605,14 +624,32 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     const upload = vi.spyOn(clearinghouse, "submitClaim");
     const deps = depsFor(clearinghouse);
     const { claimId, submissionId, ccn } = await seedReadyClaim({
-      patient: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", attemptIndex: 0, withBlockingFailure: false,
+      patient: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      attemptIndex: 0,
+      withBlockingFailure: false,
     });
-    await runInOrg((tx) => runClaimSubmit(tx, deps, {
-      organizationId: ORG, claimId, submissionId, claimControlNumber: ccn, attemptIndex: 0,
-      reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
-    }));
-    await runInOrg((tx) => runClaimSubmitRetry(tx, deps, { organizationId: ORG, claimId, submissionId, attemptIndex: 0 }));
-    const attempts = await admin.query("SELECT count(*)::int AS count FROM claim_submission WHERE claim_id = $1", [claimId]);
+    await runInOrg((tx) =>
+      runClaimSubmit(tx, deps, {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+        reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
+      }),
+    );
+    await runInOrg((tx) =>
+      runClaimSubmitRetry(tx, deps, {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        attemptIndex: 0,
+      }),
+    );
+    const attempts = await admin.query(
+      "SELECT count(*)::int AS count FROM claim_submission WHERE claim_id = $1",
+      [claimId],
+    );
     expect(attempts.rows[0].count).toBe(1);
     expect(upload).toHaveBeenCalledTimes(1);
     expect(await claimState(claimId)).toBe("SUBMITTED");
@@ -889,7 +926,10 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     ) {
       expect(await attemptStatus(c.ccn)).toEqual(["reserved"]);
       expect(await claimState(c.claimId)).toBe("READY");
-      expect((await submissionRow(c.submissionId))).toMatchObject({ outcome: "queued", dispatch_state: "in_doubt" });
+      expect(await submissionRow(c.submissionId)).toMatchObject({
+        outcome: "queued",
+        dispatch_state: "in_doubt",
+      });
 
       await runInOrg((tx) => runClaimSubmit(tx, r.deps(), c.job));
       const sub = await submissionRow(c.submissionId);
@@ -913,7 +953,10 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       };
       await expect(runThenKill(r.deps(dyingStore), c.job)).rejects.toThrow(KILLED);
       expect(r.uploads).toHaveLength(0);
-      expect((await submissionRow(c.submissionId))).toMatchObject({ outcome: "failed_portal", dispatch_state: "finished" });
+      expect(await submissionRow(c.submissionId)).toMatchObject({
+        outcome: "failed_portal",
+        dispatch_state: "finished",
+      });
       expect(await attemptStatus(c.ccn)).toEqual(["reserved"]);
       expect(await claimState(c.claimId)).toBe("READY");
 
@@ -1073,7 +1116,10 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       const c = await seed("f6f6f6f6-f6f6-f6f6-f6f6-f6f6f6f6f6f6");
       await expect(runThenKill(r.deps(), c.job)).rejects.toThrow(KILLED);
       await runInOrg((tx) => runClaimSubmit(tx, r.deps(), c.job));
-      expect((await submissionRow(c.submissionId))).toMatchObject({ outcome: "queued", dispatch_state: "in_doubt" });
+      expect(await submissionRow(c.submissionId)).toMatchObject({
+        outcome: "queued",
+        dispatch_state: "in_doubt",
+      });
       // Force the contradictory state: the vendor "definitively did not take it" yet the submission still says in doubt.
       const released = await admin.query(
         "UPDATE clearinghouse_submission_attempt SET status = 'released' WHERE idempotency_key = $1",
@@ -1107,7 +1153,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         const numbers: number[] = [];
         const deps: M23WorkerDeps = {
           ...r.deps(),
-        renderClaim: async (args) => {
+          renderClaim: async (args) => {
             numbers.push((await args.interchangeFor(CTX)).interchangeNumber);
             return { x12: X12_CLAIM, sourceFingerprint: REVIEWED_SOURCE_FINGERPRINT };
           },
@@ -1122,7 +1168,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
           )
         ).rows;
 
-    it("a completed job redelivery does not render again; another claim gets a distinct ISA13", async () => {
+      it("a completed job redelivery does not render again; another claim gets a distinct ISA13", async () => {
         const r = rig();
         const { numbers, deps } = numbering(r);
         const c = await seed("a4a4a4a4-a4a4-a4a4-a4a4-a4a4a4a4a4a4");

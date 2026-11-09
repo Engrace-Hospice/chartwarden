@@ -436,7 +436,9 @@ export function MedicaidClaimWorkbench(): JSX.Element {
                         {shortDate(r.serviceFrom)} → {shortDate(r.serviceTo)}
                       </td>
                       <td style={tdMono}>
-                        {r.mcoId ? `MCO assignment ${shortId(r.mcoId)} · unverified` : "Program unresolved"}
+                        {r.mcoId
+                          ? `MCO assignment ${shortId(r.mcoId)} · unverified`
+                          : "Program unresolved"}
                       </td>
                       <td style={td}>
                         <StatusPill

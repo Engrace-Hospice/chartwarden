@@ -547,7 +547,12 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
         CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
         CLAIMMD_ACCOUNT_USAGE: "live",
       }),
-    ).toEqual(["CLAIMMD_ACCOUNT_REFERENCE", "CLAIM_PREVIEW_INTEGRITY_KEY", "CLAIMMD_M23_PAYER_ROUTES", "CLAIMMD_ACCOUNT_USAGE"]);
+    ).toEqual([
+      "CLAIMMD_ACCOUNT_REFERENCE",
+      "CLAIM_PREVIEW_INTEGRITY_KEY",
+      "CLAIMMD_M23_PAYER_ROUTES",
+      "CLAIMMD_ACCOUNT_USAGE",
+    ]);
     expect(
       keysFor({
         CLEARINGHOUSE_VENDOR: "claimmd",

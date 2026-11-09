@@ -141,12 +141,22 @@ export async function isClaimsBillingEntitled(
   return (await claimsBillingVerdict(organizationId, site)).allow;
 }
 
+/** Why new claims work is refused, in words that match the reason code (the envelope code stays the one 402). */
+const REFUSAL_WORDING: Record<ClaimsBillingDenyReason, string> = {
+  never_purchased: "this organization has not purchased the claims-billing add-on",
+  lapsed: "this organization's claims-billing add-on has ended",
+  subscription_suspended: "this organization's subscription is suspended",
+  subscription_canceled: "this organization's subscription is canceled",
+  subscription_paused: "this organization's subscription is paused",
+};
+
 export function claimsBillingAddonRequired(reason: ClaimsBillingDenyReason): ChartWardenError {
+  const why = REFUSAL_WORDING[reason];
   return new ChartWardenError(
     CLAIMS_BILLING_ADDON_REQUIRED,
-    "this organization does not have the claims-billing add-on; new claims work is not available",
+    `${why}; new claims work is not available`,
     402,
-    [{ code: reason, message: "claims-billing add-on not active" }],
+    [{ code: reason, message: why }],
   );
 }
 
