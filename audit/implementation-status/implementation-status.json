@@ -311,15 +311,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 34,
-        "enriched": 34
+        "routes": 82,
+        "enriched": 82
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 11,
-        "covered": 11
+        "tables": 24,
+        "covered": 24
       }
     },
     {
@@ -451,15 +451,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 101,
-        "enriched": 101
+        "routes": 102,
+        "enriched": 102
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 47,
-        "covered": 39
+        "tables": 48,
+        "covered": 40
       }
     },
     {
@@ -491,15 +491,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 160,
-        "enriched": 158
+        "routes": 168,
+        "enriched": 168
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 54,
-        "covered": 53
+        "tables": 58,
+        "covered": 56
       }
     },
     {
@@ -611,8 +611,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 67,
-        "enriched": 67
+        "routes": 72,
+        "enriched": 72
       },
       "screens": true,
       "tests": true,
@@ -691,15 +691,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 72,
-        "enriched": 72
+        "routes": 58,
+        "enriched": 58
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 29,
-        "covered": 29
+        "tables": 23,
+        "covered": 23
       }
     },
     {
@@ -811,8 +811,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 28,
-        "enriched": 28
+        "routes": 29,
+        "enriched": 29
       },
       "screens": true,
       "tests": true,
