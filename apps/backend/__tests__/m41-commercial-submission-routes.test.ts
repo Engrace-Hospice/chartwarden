@@ -90,6 +90,7 @@ const submissions: CommercialSubmissionService = {
       patientId: "55555555-5555-4555-8555-555555555555",
       state: "ready",
       items: [],
+      claimLineage: [],
       truncated: false,
     };
   },

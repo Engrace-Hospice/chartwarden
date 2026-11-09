@@ -751,6 +751,13 @@ export const MODULES: ModuleDef[] = [
       "bereavement_mailing_config",
       "bereavement_mailing_run",
       "bereavement_mailing_item",
+      "bereavement_support_group",
+      "bereavement_support_group_session",
+      "bereavement_support_group_enrollment",
+      "bereavement_support_group_attendance",
+      "bereavement_memorial_service",
+      "bereavement_memorial_invitation",
+      "bereavement_library_item",
       "tenant_bereavement_external_source_gate_override",
     ],
   },
@@ -943,9 +950,9 @@ export const MODULES: ModuleDef[] = [
       "claimmd_webhook_event",
       // ADR-0053 amendment precondition 2 (migration 1326): platform-verified NPI ownership the Claim.MD sweep routes on.
       "provider_npi_verification",
-      // ADR-0053 amendment 2026-11-06 (migration 1386): the clearinghouse each tenant chose, with its sealed credential.
+      // ADR-0053 amendment 2026-11-06 (migration 1417): the clearinghouse each tenant chose, with its sealed credential.
       "tenant_clearinghouse_config",
-      // Migration 1404: every credential a tenant sealed, held to it until a platform operator releases it.
+      // Migration 1435: every credential a tenant sealed, held to it until a platform operator releases it.
       "tenant_clearinghouse_credential_reservation",
       "claim",
       "claim_acknowledgment",

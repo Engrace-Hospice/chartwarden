@@ -1080,7 +1080,7 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `M34_TENANT_KEK_RETIRED` (prior KEKs, unwrap-only) | Backend, workers | Pruned only after re-wrap, §8.3.3 | | |
 | `TWO_FACTOR_ENCRYPTION_KEY` (TOTP secrets + backup codes) | Backend | **Not rotatable today**, §8.3.3 | | |
 | `M24_CREDENTIAL_ENCRYPTION_KEY` (Medicaid trading-partner secrets AND M23 MAC-portal client secrets) | Backend | **Not rotatable today**, §8.3.3. Required in production (boot refuses without it); unset elsewhere, `POST /api/v1/billing/mac-credentials` and M24 credential writes answer 503 `SEAM_UNBOUND` and store nothing | | |
-| `CLEARINGHOUSE_VENDOR` + the vendor's own credential (clearinghouse binding, ADR-0053 D3) | Backend | Per vendor contract. Not a secret itself; unset = unbound (`CH_NOT_WIRED`). A vendor named with no adapter in the build, a missing credential, or no database refuses to boot. `stedi` reads `STEDI_API_KEY` and records every submission in `clearinghouse_submission_attempt` (submit side only today). A `stedi` claim goes on Stedi's JSON route (it carries no ISA13); the ISA13 of every other 837I is a number remembered per submission in `clearinghouse_interchange_number`, so a redelivered job re-sends the same one (ADR-0053 amendment 2026-10-26). `direct_mac` wraps the M23 launch gateway and needs it plus the database. With any vendor set the M23 workers send and pull acks only through it (no fallback to the legacy portal; ADR-0053 D10); `CLEARINGHOUSE_USAGE` is optional; `CLEARINGHOUSE_PAYER_ID` is required (the X12 payer id of an active M40 payer, looked up for the 837I payer loop; a missing one refuses to boot). While a vendor is set, 8xC/8xD transfer notices are not submitted (fail closed, #750), and a `direct_mac` upload that may have landed is `CH_IN_DOUBT`: it is never auto-retried; settle it through the clearinghouse attempt resolution routes | | |
+| `CLEARINGHOUSE_VENDOR` + the vendor's own credential (clearinghouse binding, ADR-0053 D3) | Backend | Per vendor contract. Not a secret itself; unset = unbound (`CH_NOT_WIRED`). A vendor named with no adapter in the build, a missing credential, or no database refuses to boot. `stedi` reads `STEDI_API_KEY` and records every submission in `clearinghouse_submission_attempt` (submit side only today). A `stedi` claim goes on Stedi's JSON route (it carries no ISA13); the ISA13 of every other 837I is a number remembered per submission in `clearinghouse_interchange_number`, so a redelivered job re-sends the same one (ADR-0053 amendment 2026-10-26). `direct_mac` wraps the M23 launch gateway and needs it plus the database. With any vendor set the M23 workers send and pull acks only through it (no fallback to the legacy portal; ADR-0053 D10). Payer configuration is vendor-specific: Claim.MD requires `CLAIMMD_M23_PAYER_ROUTES` scoped by organization/provider/MAC/account/usage and rejects the legacy global `CLEARINGHOUSE_PAYER_ID`; other vendors retain the configured active M40 X12 payer id. `CLEARINGHOUSE_USAGE` is optional for non-Claim.MD; Claim.MD usage follows `CLAIMMD_ACCOUNT_USAGE`. While a vendor is set, 8xC/8xD transfer notices are not submitted (fail closed, #750), and a `direct_mac` upload that may have landed is `CH_IN_DOUBT`: it is never auto-retried; settle it through the clearinghouse attempt resolution routes | | |
 | `EPISODE_ALERT_API_KEY` + `EPISODE_ALERT_BASE_URL` (Episode Alert eligibility transport, #758) and `DDE_PROVIDER` (ADR-0103 D2) | Backend | Proposed 90 days or the vendor contract, whichever is shorter. Not read by `apps/` yet (wiring is #760); no credential issued until the BAA is signed. `DDE_PROVIDER` is not a secret and stays unset (`manual`) until an Episode Alert DDE adapter exists. See `docs/audits/clearinghouse-integration/EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md` | | |
 | `MESSAGING_ENCRYPTION_KEY` (message bodies) | Backend, workers | **Not rotatable today**, §8.3.3 | | |
 | `SOPS_AGE_KEY` (decryption key for secrets-in-Git) | Each VM at startup | Annual (with operator presence) | | |
@@ -1268,8 +1268,8 @@ data is recoverable by re-entry (a user re-enrols 2FA; an operator re-enters a t
 secret) except for message bodies, which are not.
 
 `M24_CREDENTIAL_ENCRYPTION_KEY` also keys the M23 tenant clearinghouse credentials and their **fingerprints** (migrations
-1403–1405: an HMAC under a key derived from it, held unique across organizations so one credential belongs to one tenant). Every
-fingerprint row records the public id of the key it was computed under (`credential_fingerprint_key_id`; NULL = before 1405). A
+1434–1436: an HMAC under a key derived from it, held unique across organizations so one credential belongs to one tenant). Every
+fingerprint row records the public id of the key it was computed under (`credential_fingerprint_key_id`; NULL = before 1436). A
 re-encryption project for this key must:
 
 1. Before the new value goes live, derive the old value's **fingerprint subkey** (never put the old KEK itself anywhere):
@@ -1300,13 +1300,13 @@ re-encryption project for this key must:
    saves while the check has not finished or has failed (`M23_PLATFORM_CREDENTIAL_CHECK_FAILED`). The fix is to configure the missing
    subkey and restart, or to release (platform ops) every reservation under the unknown key; a refused save re-runs the check at most
    once a minute, so a release lifts the refusal without a restart.
-   Rows with a NULL key id (recorded before migration 1405, or re-reserved when the credential could not be opened) cannot be
+   Rows with a NULL key id (recorded before migration 1436, or re-reserved when the credential could not be opened) cannot be
    attributed to a key: the check counts them and logs `M23_FINGERPRINT_KEY_UNVERIFIABLE` (an error, with the count only); they do
    not block saves. They were computed under the KEK current when they were written. Before removing a retired value, resolve each
    one like the rows above: the tenant re-enters the credential, or platform ops releases it, or you accept in writing that its
    protection may lapse. `SELECT organization_id, vendor, reserved_at FROM tenant_clearinghouse_credential_reservation WHERE
    released_at IS NULL AND credential_fingerprint_key_id IS NULL` lists them.
-   Releases happen only through the platform release route: migration 1406's trigger refuses setting `released_at` unless the
+   Releases happen only through the platform release route: migration 1437's trigger refuses setting `released_at` unless the
    transaction carries the release path's own setting (`app.clearinghouse_release`), so no other app-role code path frees one.
 
 > **Update (M36 WP 2.13, ADR-0058 P1; code on branch `feat/m36-wp213-body-key-ring`, backfill not yet run anywhere):** message

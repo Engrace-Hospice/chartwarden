@@ -13,7 +13,7 @@ export interface CredentialCheckResult {
   readonly held: number;
   /** The distinct non-NULL key ids unreleased reservations were computed under. */
   readonly keyIds: readonly string[];
-  /** Unreleased reservations with a NULL key id (recorded before migration 1405, or re-reserved unopenable): unverifiable. */
+  /** Unreleased reservations with a NULL key id (recorded before migration 1436, or re-reserved unopenable): unverifiable. */
   readonly unverifiable: number;
 }
 
@@ -29,7 +29,7 @@ export const unknownFingerprintKeyIds = (
 
 /**
  * Log what the check found, each at error. True when every held key id is configured (NULL key ids cannot be checked, so they are
- * logged and do not block: a pre-1405 row is under the KEK current then, and the runbook lists them).
+ * logged and do not block: a pre-1436 row is under the KEK current then, and the runbook lists them).
  */
 export function reportCredentialCheck(
   result: CredentialCheckResult,
@@ -44,7 +44,7 @@ export function reportCredentialCheck(
   if (result.unverifiable > 0)
     log.error(
       { code: "M23_FINGERPRINT_KEY_UNVERIFIABLE", count: result.unverifiable },
-      "m23.clearinghouse: credentials are reserved with no fingerprint key id (recorded before migration 1405), so the check cannot tell whether their key is still configured (ops runbook §8.3)",
+      "m23.clearinghouse: credentials are reserved with no fingerprint key id (recorded before migration 1436), so the check cannot tell whether their key is still configured (ops runbook §8.3)",
     );
   const unknown = unknownFingerprintKeyIds(result.keyIds, configuredKeyIds);
   if (unknown.length > 0)

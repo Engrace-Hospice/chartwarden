@@ -63,7 +63,7 @@ describe("clearinghouse secret cipher", () => {
     expect(a.cipher).not.toBe(b.cipher);
   });
 
-  // One vendor account belongs to one tenant (migration 1403): the fingerprint is the same for the same account whoever seals it,
+  // One vendor account belongs to one tenant (migration 1434): the fingerprint is the same for the same account whoever seals it,
   // differs per vendor, ignores surrounding whitespace, is keyed (another KEK gives another value) and never contains the key.
   it("fingerprints an account key: stable across orgs and modes, per vendor, keyed, and never the key itself", () => {
     const fp = cipher.fingerprint("claimmd", KEY);
@@ -92,7 +92,7 @@ describe("clearinghouse secret cipher", () => {
     expect(fp).not.toBe(createHmac("sha256", kek).update(`claimmd\n${KEY}`, "utf8").digest("hex"));
   });
 
-  // Migration 1405 (security review MEDIUM-1): a retired entry is the old KEK's DERIVED fingerprint subkey and only fingerprints. A
+  // Migration 1436 (security review MEDIUM-1): a retired entry is the old KEK's DERIVED fingerprint subkey and only fingerprints. A
   // credential is fingerprinted under the current key first, then each retired one, each with its key's public id; the old cipher's
   // fingerprint and key id are among them, so a reservation it recorded still collides on the unique index.
   it("fingerprints under the current key and each retired subkey, with a stable public key id", () => {

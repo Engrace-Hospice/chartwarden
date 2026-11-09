@@ -1,6 +1,6 @@
 // apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/credential-reservation.ts — one credential, one organization
 // (owner decisions 2026-11-08). Every credential a tenant seals is reserved to it in `tenant_clearinghouse_credential_reservation`
-// (migration 1404), whose partial unique index spans organizations; switching to `outside` or rotating keeps the old reservation, and
+// (migration 1435), whose partial unique index spans organizations; switching to `outside` or rotating keeps the old reservation, and
 // only the platform-ops release frees it. The database index is the enforcement point: RLS hides the other organization's row, the
 // index is checked regardless, and its unique violation becomes one typed 409 that never names the holder.
 import { CLEARINGHOUSE_RELEASE_QUIET_DAYS, ChartWardenError } from "@chartwarden/types";
@@ -14,7 +14,7 @@ import {
 } from "./config-store";
 import type { ClearinghouseSecretCipher, CredentialFingerprint } from "./secret-cipher";
 
-/** The indexes that keep one credential to one organization: the current-credential one (1403) and the reservation one (1404). */
+/** The indexes that keep one credential to one organization: the current-credential one (1434) and the reservation one (1435). */
 const FINGERPRINT_INDEXES: ReadonlySet<string> = new Set([
   "tenant_clearinghouse_config_fingerprint_uq",
   "tenant_clearinghouse_credential_reservation_held_uq",
@@ -67,7 +67,7 @@ export const isFingerprintViolation = (err: unknown): boolean => {
 
 /**
  * Reserve a credential to the organization under every fingerprint key it was computed under (current first, then each retired
- * KEK's; migration 1405), refusing the platform's own keys first. Idempotent for a credential the organization already holds. Runs on
+ * KEK's; migration 1436), refusing the platform's own keys first. Idempotent for a credential the organization already holds. Runs on
  * the put's transaction, so a refusal rolls the whole change back.
  *
  * The cross-organization unique index is the enforcement point: each insert is `ON CONFLICT DO NOTHING` on it, so a fingerprint
@@ -140,11 +140,11 @@ export async function assertReleasable(
 
 /**
  * Keep the row's CURRENT credential reserved on every write that does not replace it (never capped: it is not a new credential).
- *   - A row sealed before migration 1403 has a credential and no fingerprint; 1404's CHECK refuses any write that keeps it that way.
+ *   - A row sealed before migration 1434 has a credential and no fingerprint; 1435's CHECK refuses any write that keeps it that way.
  *     The write unseals it (this alone needs the cipher: 503 without one), fingerprints it under every configured key and reserves
  *     it (the same refusals as a fresh save).
  *   - A row with a fingerprint: when the credential opens, it is reserved under EVERY configured key, so a missing reservation (a
- *     pre-1404 build's write, security review LOW-1; a retired key's row) is repaired, and one another organization holds surfaces
+ *     pre-1435 build's write, security review LOW-1; a retired key's row) is repaired, and one another organization holds surfaces
  *     as CLEARINGHOUSE_ACCOUNT_IN_USE. The row's key id is re-derived from the match (a stale label, LOW-5). When it does not open
  *     (no cipher, or a KEK it was not sealed under), only the stored fingerprint is reserved, under no verifiable key id (NULL).
  */

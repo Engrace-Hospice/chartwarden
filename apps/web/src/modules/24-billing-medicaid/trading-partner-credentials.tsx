@@ -370,7 +370,9 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
                           </div>
                         ) : null}
                       </td>
-                      <td style={tdMono}>{c.mcoId ? shortId(c.mcoId) : "FFS"}</td>
+                      <td style={tdMono}>
+                        {c.mcoId ? `MCO ${shortId(c.mcoId)}` : "No MCO route configured"}
+                      </td>
                       <td style={tdMono}>{c.tradingPartnerId}</td>
                       <td style={td}>
                         <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>

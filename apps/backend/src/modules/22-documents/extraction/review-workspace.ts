@@ -30,6 +30,7 @@ import {
   NotFoundError,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { assertAdoptableByIntake } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import {
   type RecordsRequestConflictView,
@@ -888,6 +889,13 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .where(eq(BATCH.id, batchId))
           .for("update");
         if (!b) throw new NotFoundError("intake batch");
+        // ADR-0109 D10 (PR 3) — first, before any other check: a batch never moves an internal-only or a grief-library document onto a chart.
+        const [src] = await tx
+          .select({ aggregateType: DOC.aggregateType })
+          .from(DOC)
+          .where(eq(DOC.id, b.documentId))
+          .limit(1);
+        if (src) assertAdoptableByIntake(src.aggregateType);
         if (b.status === "writeback_complete" || b.status === "discarded") {
           throw new ChartWardenError(
             "BATCH_CLOSED",
@@ -950,7 +958,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           toPatientId: patientId,
           movedByMembershipId: actor.membershipId,
         });
-        // The filed source document follows its batch (M22 owns both rows).
+        // The filed source document follows its batch (M22 owns both rows); its type was checked when the batch loaded.
         await tx.update(DOC).set({ patientId }).where(eq(DOC.id, b.documentId));
         await tx.insert(RELINK).values({
           organizationId,

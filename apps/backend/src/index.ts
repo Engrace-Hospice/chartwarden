@@ -862,8 +862,11 @@ import {
   M16_PLATFORM_JOB_ID,
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16DraftService,
+  buildDrizzleM16GroupService,
   buildDrizzleM16LetterService,
+  buildDrizzleM16LibraryService,
   buildDrizzleM16MailingService,
+  buildDrizzleM16MemorialService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
@@ -878,6 +881,7 @@ import {
   buildM16PatientOptOutChangedConsumer,
   buildM16WorkerDeps,
   createBereavementCipher,
+  createBereavementPortalContentProvider,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
   createM16AlertPort,
@@ -1149,6 +1153,10 @@ import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
 } from "./modules/23-billing-medicare/clearinghouse-binding";
+import {
+  buildClaim837iPersistencePort,
+  renderClaim837iPreview,
+} from "./modules/23-billing-medicare/services/claim-837i-loader";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
@@ -2401,6 +2409,22 @@ export function wireModuleSeams(
   // methods incl. the ONE write: the append to the immutable risk-score ledger; contact channel
   // ciphers never cross the seam).
   registerBereavementSeams(deps.db ? { store: createDrizzleBereavementSeamStore(deps.db) } : {});
+  // ADR-0109 D10 (PR 3) — `BereavementPortalContentProvider`: the bereaved family's own memorial invitations and RSVP for M31's portal routes. The
+  // RSVP emits `m16.bereavement.memorial_rsvp_recorded` through the catalog-validating publisher (callerModule `m16`); a virtual service's link is
+  // opened with the tenant-DEK envelope (resolved per call). Without a db or a publisher the deny-stub stands (the portal routes answer 503).
+  if (deps.db && deps.outboxPublisher) {
+    registerSeam(
+      "BereavementPortalContentProvider",
+      createBereavementPortalContentProvider(deps.db, {
+        outbox: bindCallerModule(deps.outboxPublisher, "m16") as never,
+        cipher: createBereavementCipher({
+          dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+          dekForOrgVersion: (orgId, version) =>
+            getTenantKeyProvider().dekForOrgVersion(orgId, version),
+        }),
+      }),
+    );
+  }
   // M16-T06 — the four §4.8 ABAC predicates M16 OWNS (bereavement_window / discipline_can_provide_bereavement
   // / org_scope_bereavement_oversight / portal_self_service) into M3's named-predicate registry. §4.8 calls
   // the last two "reused / M3 §4.2 family", but nothing on the platform registers either name, and an
@@ -4011,10 +4035,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m16MailingEnqueue = buildM16MailingEnqueuePort(queueConnection);
   // GAP-070 — the `validation-run` / `eligibility.refresh` producer (queue connection only; no launch gateway).
   const m23WorkQueues = queueConnection ? buildM23WorkQueueEnqueuePort(queueConnection) : null;
-  // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
-  // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
-  // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
-  // GAP-146 — in production an unset M24_LAUNCH_GATEWAY_ENABLED means enabled (opt-out, like M23's switch).
+  // M24 (WX-PR-011) — the Oregon reference gateway binds only when explicitly opted into in any environment.
+  // The adapter registry always constructs (WA/ID/CA/NV deny-stubs register regardless); a bound gateway
+  // remains non-certified and cannot authorize claim submissions.
+  // M24's gateway remains explicitly opt-in in every environment; binding a configured gateway is
+  // not sufficient for claim submission because state/program certification is independently required.
   const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(
     withM24LaunchGatewayDefault(process.env) as NodeJS.ProcessEnv,
   );
@@ -7460,6 +7485,31 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // instance here, rather than each module reading the schema directly.
           const { providerCcn: m23ProviderCcn, assemblyPorts: m23AssemblyPorts } =
             buildM23AssemblyPorts(dbHandle.db);
+          const m23PreviewSeams = buildM23BootAssemblySeams(dbHandle.db, {
+            outbox: m23OutboxPublisher,
+            providerCcn: m23ProviderCcn,
+            ...m23AssemblyPorts,
+          });
+          const m23PayerNameByX12Id = buildPayerNameByX12IdReader();
+          const m23ClaimPreviewParties = buildClaim837iPartiesPortFactory({
+            routeKey: clearinghouseBinding.vendor,
+            profile: buildDrizzleEdiProfileReader(),
+            provider: buildClaim837iProviderReader({
+              sealedFacts: (tx, organizationId, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityBillingFacts(
+                  tx,
+                  organizationId,
+                  providerEntityId,
+                ),
+              decryptTaxId: (input) =>
+                createTaxIdCipher({
+                  dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                  dekForOrgVersion: (orgId, version) =>
+                    getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                }).decrypt(input),
+            }),
+            payerName: m23PayerNameByX12Id,
+          });
           // ADR-0110 — the claims-billing add-on gate on M23's new-work routes (route-classes.ts); submitting a void
           // claim stays open (read under the caller's org).
           withClaimsBillingGate(
@@ -7467,6 +7517,74 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             m23RouteClasses((org, id) => isVoidM23Claim(dbHandle.db, org, id)),
             () =>
               mountM23Routes(app, {
+                previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+                renderClaimPreview: async ({ organizationId, actorUserId, claimId, providerEntityId, routeFingerprint }) => {
+                  const context = await buildClearinghouseContextPort({
+                    db: dbHandle.db,
+                    env: process.env,
+                    providerNpi: m25PayeeNpi,
+                  }).contextFor(organizationId, providerEntityId);
+                  return withOrgContext(
+                    dbHandle.db,
+                    { organizationId, userId: actorUserId },
+                    async (tx) => {
+                      const rendered = await renderClaim837iPreview(
+                        {
+                          persistence: buildClaim837iPersistencePort(tx as never),
+                          admission: m23PreviewSeams.admission,
+                          mbiUnlock: () => getSeam("MbiUnlockReader"),
+                          patients: lazyPatientReader(),
+                          addresses: lazyPatientAddressReader(),
+                          parties: m23ClaimPreviewParties(tx as DbClient),
+                          previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+                          accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                        },
+                        {
+                          claimId,
+                          context,
+                          // Preview-only values. The actual attempt reserves its own identifiers at submission time.
+                          interchangeControlNumber: 1,
+                          createdAt: new Date(),
+                          actorUserId,
+                          ...(routeFingerprint ? { routeFingerprint } : {}),
+                        },
+                      );
+                      return rendered.ok
+                        ? { status: "rendered" as const, document: rendered.document, sourceFingerprint: rendered.sourceFingerprint,
+                            accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac", usage: context.usage }
+                        : {
+                            status: "blocked" as const,
+                            gaps: rendered.kind === "gaps"
+                              ? rendered.gaps
+                              : [{ field: "claim", reason: "missing" }],
+                          };
+                    },
+                  );
+                },
+                payerRouteStatus: async (organizationId, providerEntityId) => {
+                  if (process.env.CLEARINGHOUSE_VENDOR?.trim() !== "claimmd") {
+                    return { status: "not_applicable" };
+                  }
+                  try {
+                    const context = await buildClearinghouseContextPort({
+                      db: dbHandle.db,
+                      env: process.env,
+                      providerNpi: m25PayeeNpi,
+                    }).contextFor(organizationId, providerEntityId);
+                    if (!context.claimMdRouteFingerprint) {
+                      return { status: "not_configured", reasonCode: "PAYER_ROUTE_NOT_VERIFIED" };
+                    }
+                    if (!(await m23PayerNameByX12Id(dbHandle.db, context.payerId))) {
+                      return { status: "not_configured", reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE" };
+                    }
+                    return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
+                  } catch (error) {
+                    const code = error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
+                      ? error.message
+                      : "PAYER_ROUTE_NOT_VERIFIED";
+                    return { status: "not_configured", reasonCode: code };
+                  }
+                },
                 // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
                 // assembly service's `referenceData.perDiemRateTable`/`chcHourlyRateCents` read (M23-owned, so
                 // the boot assembly reads it over `dbHandle.db` directly — no injected port).
@@ -8056,6 +8174,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               getTenantKeyProvider().dekForOrgVersion(orgId, version),
           });
           const m16ReadService = buildDrizzleM16ReadService(dbHandle.db, { cipher: m16Cipher });
+          // ADR-0109 D10 (PR 3) — the discipline read the support-group service validates facilitators with (the ABAC resolver's own).
+          const m16DisciplineResolver = buildDrizzleBereavementAbacResolver(dbHandle.db, {
+            roleGrants: createDbEffectivePermissionStore(dbHandle.db),
+          });
           const m16AlertPort = createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter);
           const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
             outbox: m16OutboxPublisher,
@@ -8089,6 +8211,31 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               enqueue: m16MailingEnqueue.port,
               log: (message, context) => app.log.warn(context, message),
             }),
+            // ADR-0109 D10 (PR 3) — support groups. The facilitator's discipline resolves through the same M3 role-grant read the ABAC resolver
+            // uses; a VOLUNTEER facilitator's 418.78 gates through M15's `VolunteerComplianceProvider` (fail closed on throw); the meeting link is
+            // sealed with the shared tenant-DEK envelope. Attendance emits `support_group_attendance_recorded` on its own transaction.
+            groupService: buildDrizzleM16GroupService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+              disciplineOf: (organizationId, membershipId) =>
+                m16DisciplineResolver.disciplineOf(organizationId, membershipId),
+              volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
+                const status = await getSeam("VolunteerComplianceProvider").effectiveStatusFor(
+                  organizationId as never,
+                  volunteerMembershipId as never,
+                );
+                return status.isActive === true;
+              },
+            }),
+            // ADR-0109 D10 (PR 3) — memorial services. Publish selects the invitations set-based and drafts the invitation mailing run (worded,
+            // generated and confirmed on the mailing screens); an RSVP emits `memorial_rsvp_recorded` on its own transaction.
+            memorialService: buildDrizzleM16MemorialService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+            }),
+            // ADR-0109 D10 (PR 3) — the grief library: M16 metadata over M22 documents, checked and served through M22's
+            // `OrgDocumentAccessProvider` (resolved per call; families reach published items through the M31 portal routes).
+            libraryService: buildDrizzleM16LibraryService(dbHandle.db),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
@@ -10620,6 +10767,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // bound and fail the attempt on a gap). Seams resolve lazily per call, so registration order never matters. The
       // billing-provider EIN is opened with M2's tax-id cipher (the tenant's own DEK) and held in memory for one build.
       claim837i: {
+        previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+        accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
         admission: m23AssemblySeams.admission,
         mbiUnlock: () => getSeam("MbiUnlockReader"),
         patients: lazyPatientReader(),

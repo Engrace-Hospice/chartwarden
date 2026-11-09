@@ -428,12 +428,16 @@ export function createDrizzleOrgDocumentAccessPort(db: DbClient): OrgDocumentAcc
             status: DOC.status,
             activeVersionId: DOC.activeVersionId,
             objectKey: DV.minioObjectKey,
+            mimeType: DV.mimeType,
+            byteSize: DV.byteSize,
           })
           .from(DOC)
           .leftJoin(DV, eq(DV.id, DOC.activeVersionId))
           .where(and(eq(DOC.id, documentId), eq(DOC.organizationId, organizationId)))
           .limit(1);
-        return row ?? null;
+        return row
+          ? { ...row, byteSize: row.byteSize === null ? null : Number(row.byteSize) }
+          : null;
       });
     },
     async activeMembershipId({ organizationId, userId }) {

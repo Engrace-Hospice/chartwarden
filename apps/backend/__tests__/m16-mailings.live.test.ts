@@ -486,6 +486,12 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
               }
             : { denied: true, reason: "not_found" };
         },
+        async describeOrgDocument() {
+          return { denied: true, reason: "not_found" };
+        },
+        async mintPortalLibraryUrl() {
+          return { denied: true, reason: "not_found" };
+        },
       }),
       log: () => undefined,
     });

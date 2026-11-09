@@ -66,7 +66,7 @@ export const CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
 
 /**
  * M23 `PUT /tenant/clearinghouse`: 10/min/user and 30/min/org. Its 409 CLEARINGHOUSE_ACCOUNT_IN_USE tells a caller that a key is held
- * elsewhere, so the cap bounds that as an oracle (security review of migration 1403, LOW-2). Fail-CLOSED (security review of cfd943e82,
+ * elsewhere, so the cap bounds that as an oracle (security review of migration 1434, LOW-2). Fail-CLOSED (security review of cfd943e82,
  * L5): with the limiter's store down the oracle would be unbounded, so the PUT answers a typed 503 (DEGRADED) instead.
  */
 export const CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT: RouteRateLimit = {
