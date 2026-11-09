@@ -21991,23 +21991,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/platform/tenants/{orgSlug}/dosespot/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Activate a tenant's verified DoseSpot registration; settles wizard step 10 once every earlier step allows it. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
-        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotActivate"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/platform/tenants/{orgSlug}/dosespot/deactivate": {
         parameters: {
             query?: never;
@@ -96656,61 +96639,6 @@ export interface operations {
         responses: {
             /** @description OK */
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        source: "tenant" | "platform_env" | "none";
-                        status: ("draft" | "registered" | "verified" | "active") | null;
-                        environment: ("sandbox" | "production") | null;
-                        clinicId: string | null;
-                        serviceClinicianId: string | null;
-                        hasSecret: boolean;
-                        live: boolean;
-                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
-                        registeredAt: string | null;
-                        verifiedAt: string | null;
-                        activatedAt: string | null;
-                        lastTest: {
-                            outcome: "ok" | "credential_rejected" | "unreachable";
-                            /** Format: date-time */
-                            at: string;
-                        } | null;
-                        prescribersEnrolled: number;
-                        queuedTransmissions: number;
-                        version: number | null;
-                        updatedAt: string | null;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1PlatformTenantsByOrgSlugDosespotActivate: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
-                "Idempotency-Key": string;
-            };
-            path: {
-                orgSlug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
-                    reason: string;
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };

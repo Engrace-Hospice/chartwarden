@@ -59,7 +59,7 @@ export interface OnboardingDoseSpotPort {
     plan: OnboardingPlan,
     outcome: unknown,
   ): Promise<OnboardingDoseSpotResult>;
-  activate(tx: DbClient, scope: OnboardingWriteScope): Promise<OnboardingDoseSpotResult>;
+  /** Active -> verified: the safe direction (it only stops e-prescribing). There is no `activate`: only the tenant's own administrator does that (CW-AC-21). */
   deactivate(tx: DbClient, scope: OnboardingWriteScope): Promise<OnboardingDoseSpotResult>;
   /** The tenant's roster prescribers and whether each is linked to DoseSpot (no NPI, no DEA), on the adapter's own read. */
   listPrescribers(scope: OnboardingWriteScope): Promise<readonly object[]>;

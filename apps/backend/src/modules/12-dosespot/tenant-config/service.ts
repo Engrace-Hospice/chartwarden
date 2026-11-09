@@ -12,7 +12,9 @@
 //   verify      registered -> verified, in three steps that never hold a transaction across the vendor call: `prepareVerify`
 //               reads and unseals (read-only, no lock), `runProbe` mints one token with no transaction open, `completeVerify`
 //               locks the row and compare-and-sets on the version it read (409 when the config moved meanwhile).
-//   activate    verified -> active (production only when the platform has enabled it).
+//   activate    verified -> active (production only when the platform has enabled it). The TENANT's own administrator alone:
+//               the platform lane may register and test a clinic for a tenant but never turn it on (403
+//               DOSESPOT_ACTIVATION_TENANT_ONLY, CW-AC-21); it may deactivate, which only ever stops e-prescribing.
 //   deactivate  active -> verified: nothing the credential earned is lost, so no new test is owed.
 //
 // The credential is write-only: no view carries it (a `hasSecret` flag is derived). Nothing here logs or audits a value; the
@@ -641,6 +643,16 @@ export function createDoseSpotClinicService(
   }
 
   async function activate(store: ConfigStore, actor: ClinicActor): Promise<TransitionResult> {
+    // A platform operator registers and tests a tenant's clinic during onboarding, but only the tenant's own administrator makes it
+    // live (the step that lets prescriptions go out under its clinic). Checked first: an operator gets the refusal even over an
+    // already-active registration, never an idempotent success, and learns nothing about a tenant that has no registration.
+    if (actor.lane === "platform") {
+      throw new ChartWardenError(
+        "DOSESPOT_ACTIVATION_TENANT_ONLY",
+        "only the organization's own administrator may activate its DoseSpot registration",
+        403,
+      );
+    }
     const { organizationId } = actor;
     const row = await lockedRow(store, organizationId);
     if (row.status === "active")

@@ -81,7 +81,9 @@ Everything below is flagged in code (`client/endpoints.ts` `verification`, `clie
 ## Tenant registration (slice 4, ADR-0111)
 
 A tenant registers its own clinic: `PUT /api/v1/tenant/dosespot` (org admin) or `PUT /api/v1/platform/tenants/:orgSlug/dosespot`
-(platform ops, while the tenant is onboarding), then `verify` (one token mint, no PHI), then `activate`. The clinic key is sealed under
+(platform ops, while the tenant is onboarding), then `verify` (one token mint, no PHI), then `activate` (the tenant's own administrator
+alone since 2026-11-09, CW-AC-21: there is no platform activate route and the service refuses the platform lane with 403
+`DOSESPOT_ACTIVATION_TENANT_ONLY`; the platform lane may still deactivate). The clinic key is sealed under
 the tenant key ring and never returned; the environment (`sandbox` | `production`) maps to a platform host, never a tenant-typed URL.
 A rotation lands on `registered` and needs a fresh test; a plain deactivation goes to `verified`. `GET` shows `prescribersEnrolled` and
 `queuedTransmissions`; neither gates anything. A prescriber is enrolled with DoseSpot by
@@ -133,7 +135,7 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   1431 must be recreated. Both were edited in place because neither had shipped, and the migration runner checksums applied files, so it
   will refuse them. Nothing in any shared environment applied the old copies.
 
-- Enabling a tenant = it (or an operator for it) registers, tests and activates its clinic (sandbox first), then enrols its prescribers
+- Enabling a tenant = it (or an operator for it) registers and tests its clinic and the tenant activates it (sandbox first), then enrols its prescribers
   with DoseSpot; patient sync then populates `dosespot_patient_sync`. `DOSESPOT_TENANT_CONFIGS` is only the fallback for an org with no
   registration row (the demo tenant): the boot log names each such org, and a row takes over the day it exists. A tenant that loses its
   live registration (deactivated, rotated) keeps its queued orders `queued` (the crons skip it) rather than failing them; newly signed

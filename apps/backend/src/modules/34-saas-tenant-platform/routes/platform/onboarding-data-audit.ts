@@ -38,7 +38,6 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   /** Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration (environment, clinic, sealed key). */
   dosespotSet: "m34.tenant_onboarding.dosespot_set",
   dosespotVerified: "m34.tenant_onboarding.dosespot_verified",
-  dosespotActivated: "m34.tenant_onboarding.dosespot_activated",
   /** A deactivation is the one DoseSpot write a LIVE tenant also needs, so it is not status-gated. */
   dosespotDeactivated: "m34.tenant_onboarding.dosespot_deactivated",
   dosespotPrescriberEnrolled: "m34.tenant_onboarding.dosespot_prescriber_enrolled",

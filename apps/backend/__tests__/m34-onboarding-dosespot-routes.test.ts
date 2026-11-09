@@ -85,7 +85,6 @@ function recordingService(calls: Call[]): OnboardingDataService {
       config: { status: "verified" },
       test: { outcome: "ok" },
     }),
-    activateDoseSpot: rec("activateDoseSpot", { status: "active" }),
     deactivateDoseSpot: rec("deactivateDoseSpot", { status: "verified" }),
     listDoseSpotPrescribers: rec("listDoseSpotPrescribers", { items: [] }),
     enrollDoseSpotPrescriber: async (
@@ -188,7 +187,6 @@ describe("platform DoseSpot write guards", () => {
   const WRITES = [
     { method: "PUT", url: BASE, payload: PUT_BODY },
     { method: "POST", url: `${BASE}/verify`, payload: { reason: REASON } },
-    { method: "POST", url: `${BASE}/activate`, payload: { reason: REASON } },
     { method: "POST", url: `${BASE}/deactivate`, payload: { reason: REASON } },
     { method: "POST", url: ENROLL, payload: ENROLL_BODY },
   ] as const;
@@ -353,16 +351,13 @@ describe("platform DoseSpot plumbing", () => {
     await app.close();
   });
 
-  it("verify, activate, deactivate and enrol reach the service with the reason; the prescriber id is a uuid", async () => {
+  it("verify, deactivate and enrol reach the service with the reason; the prescriber id is a uuid", async () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
     const post = (url: string, payload: object) =>
       app.inject({ method: "POST", url, headers: fresh(), payload });
     expect((await post(`${BASE}/verify`, { reason: REASON })).json()).toMatchObject({
       test: { outcome: "ok" },
-    });
-    expect((await post(`${BASE}/activate`, { reason: REASON })).json()).toMatchObject({
-      status: "active",
     });
     expect((await post(`${BASE}/deactivate`, { reason: REASON })).json()).toMatchObject({
       status: "verified",
@@ -380,12 +375,36 @@ describe("platform DoseSpot plumbing", () => {
     }
     expect(calls.map((c) => c.method)).toEqual([
       "verifyDoseSpot",
-      "activateDoseSpot",
       "deactivateDoseSpot",
       "enrollDoseSpotPrescriber",
     ]);
-    expect(calls[3]).toMatchObject({ membershipId: PRESCRIBER, reason: REASON });
-    expect(calls[3]).not.toHaveProperty("fields");
+    expect(calls[2]).toMatchObject({ membershipId: PRESCRIBER, reason: REASON });
+    expect(calls[2]).not.toHaveProperty("fields");
+    await app.close();
+  });
+
+  // CW-AC-21: only the tenant's own administrator activates its DoseSpot clinic. The platform lane has no route for it, whatever its
+  // role, keys and step-up, and nothing is routed to the service.
+  it("there is no platform activate route: an operator with every key, a fresh step-up and an Idempotency-Key gets a 404 and nothing reaches the service", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const activate = await app.inject({
+      method: "POST",
+      url: `${BASE}/activate`,
+      headers: fresh(),
+      payload: { reason: REASON },
+    });
+    expect(activate.statusCode).toBe(404);
+    expect(calls).toEqual([]);
+    // deactivation, the safe direction, stays on this lane
+    const down = await app.inject({
+      method: "POST",
+      url: `${BASE}/deactivate`,
+      headers: fresh(),
+      payload: { reason: REASON },
+    });
+    expect(down.statusCode).toBe(200);
+    expect(calls.map((c) => c.method)).toEqual(["deactivateDoseSpot"]);
     await app.close();
   });
 

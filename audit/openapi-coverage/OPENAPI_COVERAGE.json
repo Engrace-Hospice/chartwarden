@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 2024,
-    "enriched": 2024,
+    "routes": 2023,
+    "enriched": 2023,
     "deficit": 0,
-    "mutating": 1165,
+    "mutating": 1164,
     "mutatingNoBody": 1,
     "gets": 806,
     "getsNoResponse": 11
@@ -331,10 +331,10 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 94,
-      "enriched": 94,
+      "routes": 93,
+      "enriched": 93,
       "deficit": 0,
-      "mutating": 62,
+      "mutating": 61,
       "mutatingNoBody": 0,
       "gets": 31,
       "getsNoResponse": 0

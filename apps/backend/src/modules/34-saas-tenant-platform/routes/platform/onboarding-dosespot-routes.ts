@@ -94,16 +94,8 @@ export function registerOnboardingDoseSpotRoutes(
     },
   );
 
-  // POST activate — verified -> active.
-  app.post(
-    "/api/v1/platform/tenants/:orgSlug/dosespot/activate",
-    { preHandler: [...WRITE] },
-    async (request) => {
-      const op = operatorOf(request);
-      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-      return service.activateDoseSpot(op, slugOf(request), reason);
-    },
-  );
+  // There is NO activate route here (CW-AC-21): only the tenant's own administrator makes its DoseSpot clinic live
+  // (`POST /api/v1/tenant/dosespot/activate`), and M12's service refuses the platform lane with 403 DOSESPOT_ACTIVATION_TENANT_ONLY.
 
   // POST deactivate — active -> verified. NOT gated on the tenant's onboarding status: a live tenant needs this too.
   app.post(

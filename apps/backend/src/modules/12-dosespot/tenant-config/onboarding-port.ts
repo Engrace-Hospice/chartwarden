@@ -198,12 +198,6 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
       });
     },
 
-    async activate(tx, scope) {
-      await assertTxScopedToOrg(tx, scope.organizationId);
-      const result = await service.activate(createDrizzleConfigStore(tx), actorFor(scope));
-      return finish(tx, scope, result.view, changeOfTransition(result, "activated"));
-    },
-
     async deactivate(tx, scope) {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const result = await service.deactivate(createDrizzleConfigStore(tx), actorFor(scope));

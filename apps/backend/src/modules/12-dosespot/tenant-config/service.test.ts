@@ -4,6 +4,7 @@
 // may rotate a Subscription-Key but never introduce one.
 import { randomBytes } from "node:crypto";
 import type { ConnectionProbeOutcome, DoseSpotTenantConfig } from "@chartwarden/dosespot";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryConfigStore } from "./config-store-memory";
 import { buildClinicSecretCipher } from "./secret-cipher";
@@ -663,6 +664,33 @@ describe("activate and deactivate", () => {
     expect((await h.service.activate(h.store, TENANT)).view.status).toBe("active");
   });
 
+  it("a platform operator may not activate: 403 DOSESPOT_ACTIVATION_TENANT_ONLY, even for a verified registration and even over an active one; the tenant's own administrator still can", async () => {
+    const h = build({ env: withPlatformKey });
+    await putFull(h, {}, OPS);
+    await verifyFully(h, OPS);
+    // everything an activation needs is in place (verified, latest test passed, sandbox enabled): only the lane is wrong
+    const refused = await h.service.activate(h.store, OPS).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ChartWardenError);
+    expect(refused).toMatchObject({ code: "DOSESPOT_ACTIVATION_TENANT_ONLY", statusCode: 403 });
+    expect((await h.service.view(h.store, ORG)).status).toBe("verified");
+    expect(h.store.rows()[0]).toMatchObject({ activatedAt: null, activatedByMembershipId: null });
+    expect(await h.service.activate(h.store, TENANT)).toMatchObject({
+      changed: true,
+      view: { status: "active" },
+    });
+    expect(h.store.rows()[0]).toMatchObject({ activatedByMembershipId: MEMBER });
+    // an operator cannot re-run it over an active registration either: a refusal, not an idempotent success
+    await expect(h.service.activate(h.store, OPS)).rejects.toMatchObject({
+      code: "DOSESPOT_ACTIVATION_TENANT_ONLY",
+      statusCode: 403,
+    });
+    // and the refusal comes before the not-configured check: an operator learns nothing from it about a tenant with no registration
+    const empty = build();
+    await expect(empty.service.activate(empty.store, OPS)).rejects.toMatchObject({
+      code: "DOSESPOT_ACTIVATION_TENANT_ONLY",
+    });
+  });
+
   it("deactivation returns to `verified` (no new test owed); deactivating a verified one is a no-op; a registered one is a 409", async () => {
     const h = build({ env: withPlatformKey });
     await putFull(h);
@@ -707,19 +735,19 @@ describe("sandbox activation is gated by DOSESPOT_SANDBOX_ENABLED", () => {
     expect((await h.service.view(h.store, ORG)).status).toBe("verified");
   });
 
-  it("only an exact 'true' enables it; the ops lane is held to the same gate", async () => {
+  it("only an exact 'true' enables it", async () => {
     for (const flag of ["TRUE", "1", "yes", ""]) {
       const h = build({ env: { ...SUBSCRIPTION_KEY_ONLY, DOSESPOT_SANDBOX_ENABLED: flag } });
       await putFull(h);
       await verifyFully(h);
-      await expect(h.service.activate(h.store, OPS)).rejects.toMatchObject({
+      await expect(h.service.activate(h.store, TENANT)).rejects.toMatchObject({
         code: "DOSESPOT_SANDBOX_NOT_ENABLED",
       });
     }
     const on = build({ env: withPlatformKey });
     await putFull(on);
     await verifyFully(on);
-    expect((await on.service.activate(on.store, OPS)).view.status).toBe("active");
+    expect((await on.service.activate(on.store, TENANT)).view.status).toBe("active");
   });
 
   it("a deactivation and a re-test never need the flag (a live row can always be taken out of service)", async () => {

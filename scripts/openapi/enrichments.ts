@@ -16073,12 +16073,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M34OnboardingDoseSpotVerifyResponseSchema,
   },
-  "POST /api/v1/platform/tenants/:orgSlug/dosespot/activate": {
-    summary: `Activate a tenant's verified DoseSpot registration; settles wizard step 10 once every earlier step allows it. ${M34_DOSESPOT_WRITE_NOTE}`,
-    body: M34OnboardingReasonSchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
-    response: M34OnboardingDoseSpotViewSchema,
-  },
   "POST /api/v1/platform/tenants/:orgSlug/dosespot/deactivate": {
     summary: `Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a \`reason\` are required; an AI actor is refused`,
     body: M34OnboardingReasonSchema,

@@ -44,8 +44,10 @@ export interface DoseSpotLaneMethods {
     orgSlug: string,
     reason: string,
   ): Promise<{ readonly config: unknown; readonly test: unknown }>;
-  activateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
-  /** NOT gated on the tenant's onboarding status: a live tenant needs it too. */
+  /**
+   * NOT gated on the tenant's onboarding status: a live tenant needs it too. There is no `activateDoseSpot`: activation is the
+   * tenant's own administrator's alone (CW-AC-21), so the platform lane can register, test and stop a clinic, never start one.
+   */
   deactivateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
   listDoseSpotPrescribers(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   enrollDoseSpotPrescriber(
@@ -193,21 +195,6 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
         },
       );
       return h.settle(organizationId, result);
-    },
-
-    async activateDoseSpot(op, orgSlug, reason) {
-      let organizationId = "";
-      const view = await h.write(
-        op,
-        orgSlug,
-        { event: EVENTS.dosespotActivated, resourceKind: KIND, reason },
-        async (tx, t) => {
-          organizationId = t.organizationId;
-          const done = await port().activate(tx, h.scopeOf(op, t.organizationId));
-          return { value: done.view, resourceId: done.resourceId };
-        },
-      );
-      return h.settle(organizationId, view);
     },
 
     async deactivateDoseSpot(op, orgSlug, reason) {

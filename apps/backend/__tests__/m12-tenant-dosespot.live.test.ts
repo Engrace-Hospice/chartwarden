@@ -21,7 +21,9 @@
  *   - a prescriber's vendor enrolment is create-then-record (the vendor call has no transaction open), records the vendor id,
  *     publishes it, and is idempotent;
  *   - the operator lane: only while the tenant is provisioning / onboarding (409 TENANT_NOT_ONBOARDING otherwise, audited), a
- *     deactivation excepted; every success leaves an audit row naming operator, org and reason;
+ *     deactivation excepted; every success leaves an audit row naming operator, org and reason; the operator registers, tests and
+ *     deactivates but NEVER activates (CW-AC-21: the lane has no activation, the service refuses it with 403
+ *     DOSESPOT_ACTIVATION_TENANT_ONLY), so the registration goes live, and wizard step 10 settles, when the TENANT activates;
  *   - the wizard fact: the migration-seeded precondition of step 10 is `context.dosespotSettled == true`, true exactly while the
  *     registration is `active`;
  *   - the enrolment claim on the real row lock and unique index (two concurrent enrolments: one vendor call, the loser a 409), the
@@ -67,6 +69,7 @@ import {
   buildDoseSpotSettledReader,
   buildDrizzleDoseSpotClinicRouteService,
   createDoseSpotClinicService,
+  createDrizzleConfigStore,
   createDrizzleRosterStore,
   createDrizzleTenantConfigSource,
   createPractitionerLinkService,
@@ -2231,7 +2234,7 @@ describe.skipIf(!DB_URL)(
         ]);
       });
 
-      it("registers, tests and activates a tenant that is onboarding; every success leaves an audit row naming operator, org and reason", async () => {
+      it("registers and tests a tenant that is onboarding but cannot activate it: the tenant's own administrator makes it live; every operator success leaves an audit row naming operator, org and reason", async () => {
         platformEnv.DOSESPOT_SUBSCRIPTION_KEY_SANDBOX = "platform-sandbox-sub-key";
         const saved = await onboardingData.putDoseSpot(
           operator(),
@@ -2249,26 +2252,60 @@ describe.skipIf(!DB_URL)(
         expect(verified).toMatchObject({ config: { status: "verified" }, test: { outcome: "ok" } });
         const mint = fetchLog.filter((c) => c.url.endsWith("/connect/token")).at(-1);
         expect(mint?.headers["Subscription-Key"]).toBe(SUB_KEY); // ops set the clinic's own Subscription-Key
-        const active = await onboardingData.activateDoseSpot(operator(), "ds-b", REASON);
+        // the row trigger attributes the operator's writes to the OPERATOR, not to a NULL actor
+        const trig = await q(
+          "SELECT actor_user_id FROM audit_event WHERE organization_id=$1 AND event_type='dosespot_clinic_registration.update' ORDER BY created_at DESC LIMIT 1",
+          [ORG_B],
+        );
+        expect(trig[0]?.actor_user_id).toBe(OPERATOR);
+
+        // CW-AC-21: the operator has done everything it may; it cannot take the last step. The lane exposes no activation (neither the
+        // port nor the data service), and M12's own service refuses the platform lane, under the target org's scope, before anything else.
+        expect(Object.keys(dosespotPort).filter((k) => /^activate/i.test(k))).toEqual([]);
+        expect(Object.keys(onboardingData).filter((k) => /^activate.*dosespot/i.test(k))).toEqual(
+          [],
+        );
+        const refused = await withOrgContext(
+          tdb,
+          { organizationId: ORG_B, userId: OPERATOR },
+          (tx) =>
+            service.activate(createDrizzleConfigStore(tx as unknown as DbClient), {
+              organizationId: ORG_B,
+              userId: OPERATOR,
+              membershipId: OPS_MEMBERSHIP,
+              lane: "platform",
+            }),
+        ).catch((e: unknown) => e);
+        expect(refused).toMatchObject({ code: "DOSESPOT_ACTIVATION_TENANT_ONLY", statusCode: 403 });
+        expect(await rowOf(ORG_B)).toMatchObject({ status: "verified", activated_at: null });
+        expect(await eventsOf("m12.dosespot_config.activated", ORG_B)).toHaveLength(0);
+        expect(await auditRows(ORG_B, "m12.dosespot_clinic.activated")).toHaveLength(0);
+        expect(await auditRows(ORG_B, "m34.tenant_onboarding.dosespot_activated")).toHaveLength(0);
+
+        // the tenant's own administrator activates: its route audits it, publishes the event and runs the advance pass
+        const settledBefore = settled.length;
+        const active = await route.activate(tenantActor(ORG_B));
         expect(active).toMatchObject({ status: "active" });
+        expect(settled.slice(settledBefore)).toEqual([ORG_B]);
+        expect(await rowOf(ORG_B)).toMatchObject({
+          status: "active",
+          activated_by_membership_id: MEMBERSHIP,
+        });
+        expect(await eventsOf("m12.dosespot_config.activated", ORG_B)).toHaveLength(1);
+        expect((await auditRows(ORG_B, "m12.dosespot_clinic.activated")).at(-1)).toMatchObject({
+          actor_user_id: TENANT_ADMIN,
+          outcome: "success",
+        });
         for (const event of [
           "m34.tenant_onboarding.dosespot_set",
           "m34.tenant_onboarding.dosespot_verified",
-          "m34.tenant_onboarding.dosespot_activated",
         ]) {
           const rows = await auditRows(ORG_B, event);
           expect(rows.length, event).toBeGreaterThanOrEqual(1);
           expect(rows.at(-1)).toMatchObject({ actor_user_id: OPERATOR, outcome: "success" });
           expect(rows.at(-1)?.context.reason).toBe(REASON);
         }
-        expect(await eventsOf("m12.dosespot_config.activated", ORG_B)).toHaveLength(1);
         expect(settled).toContain(ORG_B);
-        // the row trigger attributes the write to the OPERATOR, not to a NULL actor
-        const trig = await q(
-          "SELECT actor_user_id FROM audit_event WHERE organization_id=$1 AND event_type='dosespot_clinic_registration.update' ORDER BY created_at DESC LIMIT 1",
-          [ORG_B],
-        );
-        expect(trig[0]?.actor_user_id).toBe(OPERATOR);
       });
 
       it("the operator's read is masked and audited, and the roster lists only whether each prescriber is linked", async () => {
@@ -2326,7 +2363,7 @@ describe.skipIf(!DB_URL)(
         expect((await rowOf(ORG_B))?.status).toBe("registered"); // a change clears what the old values earned
         probeStatus = 200;
         await onboardingData.verifyDoseSpot(operator(), "ds-b", REASON);
-        await onboardingData.activateDoseSpot(operator(), "ds-b", REASON);
+        await route.activate(tenantActor(ORG_B)); // the operator cannot: the tenant's administrator makes it live
       });
 
       it("an operator enrols a prescriber on the tenant's behalf (the vendor call outside any transaction)", async () => {
@@ -2479,7 +2516,7 @@ describe.skipIf(!DB_URL)(
         );
         probeStatus = 200;
         await onboardingData.verifyDoseSpot(operator(), "ds-c", REASON);
-        await onboardingData.activateDoseSpot(operator(), "ds-c", REASON);
+        await route.activate(tenantActor(ORG_C));
         await admin.query("UPDATE tenant_account SET status='active' WHERE organization_id=$1", [
           ORG_C,
         ]);
@@ -2495,13 +2532,10 @@ describe.skipIf(!DB_URL)(
             ),
           ),
         ).toBe("TENANT_NOT_ONBOARDING");
-        expect(await errorCode(onboardingData.activateDoseSpot(operator(), "ds-c", REASON))).toBe(
-          "TENANT_NOT_ONBOARDING",
-        );
         expect((await rowOf(ORG_C))?.version).toBe(before?.version);
         expect(
           (await auditRows(ORG_C, "m34.tenant_onboarding.write_refused")).length,
-        ).toBeGreaterThanOrEqual(2);
+        ).toBeGreaterThanOrEqual(1);
         // enrol and verify refuse BEFORE any work: no roster write, no vendor call, no token mint, and the refusal is audited
         const REVOKED = "99000000-0000-4000-8000-0000000000c1";
         await admin.query(
@@ -2676,8 +2710,8 @@ describe.skipIf(!DB_URL)(
         const audit = (await auditRows(ORG_B, "m34.tenant_onboarding.dosespot_set")).at(-1);
         expect(audit?.context.changedFields).toEqual(["clinicKey", "subscriptionKey"]);
         expect(JSON.stringify(audit)).not.toContain(NEW_CLINIC_KEY);
-        // leave ORG_B live and ready, as the cases after this one expect
-        await onboardingData.activateDoseSpot(operator(), "ds-b", REASON);
+        // leave ORG_B live and ready, as the cases after this one expect (the tenant activates: the operator cannot)
+        await route.activate(tenantActor(ORG_B));
       });
 
       describe("the port refuses a transaction that is not scoped to the scope's organization", () => {
@@ -2701,7 +2735,6 @@ describe.skipIf(!DB_URL)(
             "completeVerify",
             (tx: DbClient) => dosespotPort.completeVerify(tx, scopeFor(ORG_A), {}, {}),
           ],
-          ["activate", (tx: DbClient) => dosespotPort.activate(tx, scopeFor(ORG_A))],
           ["deactivate", (tx: DbClient) => dosespotPort.deactivate(tx, scopeFor(ORG_A))],
           [
             "completeEnroll",
@@ -2907,6 +2940,61 @@ describe.skipIf(!DB_URL)(
         expect(await readerFor(tdb)(ORG_A)).toBe(true);
         await advancer()({ tenantAccountId: accountOf[ORG_A] as string, orgId: ORG_A });
         expect(await taskStatus(ORG_A)).toBe("done");
+      });
+
+      // CW-AC-21: go-live must not deadlock on the operator. The step is `either` (a fact or a human's attestation: pinned above), and the
+      // fact is the registration being ACTIVE, which only the tenant's own administrator can make true. Its activation route runs the
+      // advance pass (the `onChanged` hook), so the step settles at once.
+      it("an operator's registration and test do not settle step 10 and the operator cannot activate; the tenant's own activation does, through the advance pass", async () => {
+        await admin.query(
+          `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status, due_at)
+         SELECT $1, $2, t.key, 'pending', now() FROM onboarding_task_template t WHERE t.retired_at IS NULL
+         ON CONFLICT DO NOTHING`,
+          [ORG_B, accountOf[ORG_B]],
+        );
+        await admin.query(
+          `UPDATE onboarding_task SET status='done', completed_at=now() WHERE organization_id=$1 AND template_key IN
+             (SELECT key FROM onboarding_task_template WHERE canonical_order < 10 AND retired_at IS NULL)`,
+          [ORG_B],
+        );
+        const advance = () =>
+          advancer()({ tenantAccountId: accountOf[ORG_B] as string, orgId: ORG_B });
+        // however earlier cases left ORG_B, the operator re-registers (a new key lands on `registered`) and tests it
+        await onboardingData.putDoseSpot(
+          operator(),
+          "ds-b",
+          { ...BASE, clinicKey: ROTATED_KEY },
+          REASON,
+          (await rowOf(ORG_B))?.version,
+        );
+        probeStatus = 200;
+        await onboardingData.verifyDoseSpot(operator(), "ds-b", REASON);
+        expect((await rowOf(ORG_B))?.status).toBe("verified");
+        await advance();
+        expect(await readerFor(tdb)(ORG_B)).toBe(false);
+        expect(await taskStatus(ORG_B)).toBe("pending"); // registered and tested is not live
+        // the operator's activation is refused by the service itself (the lane has no route or method for it): still pending
+        const refused = await withOrgContext(
+          tdb,
+          { organizationId: ORG_B, userId: OPERATOR },
+          (tx) =>
+            service.activate(createDrizzleConfigStore(tx as unknown as DbClient), {
+              organizationId: ORG_B,
+              userId: OPERATOR,
+              membershipId: OPS_MEMBERSHIP,
+              lane: "platform",
+            }),
+        ).catch((e: unknown) => e);
+        expect(refused).toMatchObject({ code: "DOSESPOT_ACTIVATION_TENANT_ONLY" });
+        await advance();
+        expect(await taskStatus(ORG_B)).toBe("pending");
+        // the tenant activates; its own route asks for the advance pass, and the pass settles the step
+        const settledBefore = settled.length;
+        await route.activate(tenantActor(ORG_B));
+        expect(settled.slice(settledBefore)).toEqual([ORG_B]);
+        expect(await readerFor(tdb)(ORG_B)).toBe(true);
+        await advance();
+        expect(await taskStatus(ORG_B)).toBe("done");
       });
 
       it("an org with no registration row never has the fact", async () => {
