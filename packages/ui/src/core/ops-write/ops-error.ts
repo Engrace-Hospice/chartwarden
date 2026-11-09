@@ -75,7 +75,8 @@ const CURRENT_RECORDED_AT = "currentRecordedAt";
 /**
  * The 409 codes that mean "the record moved since you read it" (a pinned write lost a race), as opposed to a 409 that refuses the change on
  * its merits (CLEARINGHOUSE_ACCOUNT_IN_USE, CLEARINGHOUSE_VENDOR_LOCKED, ...). A stale If-Match on the clearinghouse and BAA routes is a
- * 412 VERSION_CONFLICT (a missing one is a 428); these are the routes that pin with a 409 instead.
+ * 412 VERSION_CONFLICT (a missing one is a 428); these are the routes that pin with a 409 instead. STALE_VERSION is the route kit's
+ * stale write (every route that checks an integer If-Match through the kit, e.g. the MAC credential save).
  */
 const STALE_PIN_409_CODES: ReadonlySet<string> = new Set([
   "ONBOARDING_TASK_CHANGED",
@@ -86,6 +87,7 @@ const STALE_PIN_409_CODES: ReadonlySet<string> = new Set([
   "CLEARINGHOUSE_BAA_CHANGED",
   "CLEARINGHOUSE_CHANGED_DURING_VERIFY",
   "TENANT_STATUS_CHANGED",
+  "STALE_VERSION",
 ]);
 /** A 413 with no envelope is a proxy (nginx's body cap) refusing before the app saw the request; it gets a code the caller's copy can name. */
 const PAYLOAD_TOO_LARGE_CODE = "PAYLOAD_TOO_LARGE";

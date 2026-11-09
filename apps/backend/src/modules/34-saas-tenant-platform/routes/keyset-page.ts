@@ -71,6 +71,15 @@ function pageStartAfter<T extends CursorKeyset>(rows: readonly T[], key: CursorK
   return next === -1 ? rows.length : next;
 }
 
+/**
+ * Judge `cursor` (absent is fine) exactly as {@link paginate} will, WITHOUT paging: a list whose rows are read inside a database
+ * transaction calls this first, so a bad cursor (422 INVALID_CURSOR) opens no transaction at all. On a platform list that transaction is
+ * a `withPlatformContext` (a cross-tenant bypass whose entry writes an audit row), so a bad request must not get that far.
+ */
+export function assertPageCursor(scope: string, cursor: string | undefined): void {
+  decodeKeyset(scope, cursor, "text", { id: "text" });
+}
+
 /** Keyset-paginate `rows` (already DESC-sorted by `(createdAt, id)`) into a {@link CursorPage}. */
 export function paginate<T extends CursorKeyset>(
   scope: string,

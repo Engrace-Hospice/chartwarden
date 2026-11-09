@@ -51,4 +51,7 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
     "This tenant holds the most earlier clearinghouse keys it may keep. Release the ones it no longer uses at the vendor (Release earlier credentials, on the Clearinghouse card of the tenant's page), then save the new key.",
   VERSION_CONFLICT:
     "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
+  // The route kit's stale If-Match (409): the MAC credential save answers it where the clearinghouse and BAA routes answer 412.
+  STALE_VERSION:
+    "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
 };

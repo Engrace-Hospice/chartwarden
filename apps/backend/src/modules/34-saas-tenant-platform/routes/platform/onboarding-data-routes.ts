@@ -14,9 +14,15 @@
 //
 // Org and operator are server-side: the tenant is the PATH slug, the operator is the session, never the body.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { rejectAiActor } from "@chartwarden/shared/route-kit";
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import {
+  type PreHandler,
+  optionalIfMatchVersionOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
+import { ChartWardenError, ValidationError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { TENANT_BAA_MAX_BYTES } from "../../../../bootstrap/onboarding-baa-document-port";
 import type { OnboardingDataService, OnboardingOperator } from "./onboarding-data-service";
 import {
@@ -37,8 +43,6 @@ import {
   normalizeReason,
 } from "./onboarding-data-typebox";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OnboardingDataRouteDeps {
   readonly service: OnboardingDataService;
@@ -70,23 +74,9 @@ const BAA_DOCUMENT_UPLOAD_KEY = "tenant_baa_document.upload_platform";
  * the pricing key the contract routes use: the clearinghouse key alone does not let an operator change what a tenant is billed.
  */
 const PRICING_WRITE_KEY = "subscription.onboard_platform";
-const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const OPS = (key: string): PreHandler => requireAbac(key, PLATFORM_OPS) as PreHandler;
-
-/** `Idempotency-Key` presence (the 24h replay caching is the M1 global middleware; the other modules carry the same guard). */
-const requireIdempotencyKey: PreHandler = async (request) => {
-  const raw = request.headers["idempotency-key"];
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof value !== "string" || value.length < 1 || value.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
-    throw new ChartWardenError(
-      "IDEMPOTENCY_KEY_REQUIRED",
-      "an Idempotency-Key header is required on this route",
-      400,
-    );
-  }
-};
 
 const READ: readonly PreHandler[] = [P(READ_KEY), OPS(READ_KEY)];
 const WRITE: readonly PreHandler[] = [
@@ -94,7 +84,7 @@ const WRITE: readonly PreHandler[] = [
   OPS(WRITE_KEY),
   requireStepUp(WRITE_KEY) as PreHandler,
   rejectAiActor(),
-  requireIdempotencyKey,
+  requireIdempotencyKey(),
 ];
 
 const CLEARINGHOUSE_READ: readonly PreHandler[] = [
@@ -106,7 +96,7 @@ const CLEARINGHOUSE_WRITE: readonly PreHandler[] = [
   OPS(CLEARINGHOUSE_WRITE_KEY),
   requireStepUp(CLEARINGHOUSE_WRITE_KEY) as PreHandler,
   rejectAiActor(),
-  requireIdempotencyKey,
+  requireIdempotencyKey(),
 ];
 
 const CLEARINGHOUSE_VERIFY_BAA: readonly PreHandler[] = [
@@ -114,7 +104,7 @@ const CLEARINGHOUSE_VERIFY_BAA: readonly PreHandler[] = [
   OPS(CLEARINGHOUSE_VERIFY_BAA_KEY),
   requireStepUp(CLEARINGHOUSE_VERIFY_BAA_KEY) as PreHandler,
   rejectAiActor(),
-  requireIdempotencyKey,
+  requireIdempotencyKey(),
 ];
 
 const CLEARINGHOUSE_RELEASE: readonly PreHandler[] = [
@@ -122,7 +112,7 @@ const CLEARINGHOUSE_RELEASE: readonly PreHandler[] = [
   OPS(CLEARINGHOUSE_RELEASE_KEY),
   requireStepUp(CLEARINGHOUSE_RELEASE_KEY) as PreHandler,
   rejectAiActor(),
-  requireIdempotencyKey,
+  requireIdempotencyKey(),
 ];
 
 const NOTICE_WITHDRAW: readonly PreHandler[] = [
@@ -130,7 +120,7 @@ const NOTICE_WITHDRAW: readonly PreHandler[] = [
   OPS(NOTICE_WITHDRAW_KEY),
   requireStepUp(NOTICE_WITHDRAW_KEY) as PreHandler,
   rejectAiActor(),
-  requireIdempotencyKey,
+  requireIdempotencyKey(),
 ];
 
 /**
@@ -155,28 +145,25 @@ const BAA_DOCUMENT_UPLOAD: readonly PreHandler[] = [
   OPS(BAA_DOCUMENT_UPLOAD_KEY),
   requireStepUp(BAA_DOCUMENT_UPLOAD_KEY) as PreHandler,
   rejectAiActor(),
-  requireIdempotencyKey,
+  requireIdempotencyKey(),
 ];
 
-/** The operator, from the server-assembled session (never the body); 401 when the session has no membership. */
+/** The operator, from the server-assembled session (never the body); the kit's write actor: 401 without a session, 403 for a live session with no membership. */
 function operatorOf(request: FastifyRequest): OnboardingOperator {
+  const actor = writeActorOf(request);
   const ctx = request.context;
-  const membershipId = ctx?.attributes?.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
   return {
-    userId: ctx.userId,
-    membershipId,
-    organizationId: ctx.organizationId,
-    roles: ctx.roles,
-    stepUpRecent: ctx.attributes?.stepUpRecent === true,
+    userId: actor.userId,
+    membershipId: actor.membershipId,
+    organizationId: actor.organizationId,
+    roles: actor.roles,
+    stepUpRecent: actor.stepUpRecent,
     request: {
-      correlationId: ctx.correlationId ?? String(request.id),
+      correlationId: ctx?.correlationId ?? String(request.id),
       requestId: String(request.id),
       route: `${request.method} ${request.routeOptions.url ?? ""}`.trim(),
-      ...(ctx.ip ? { sourceIp: ctx.ip } : {}),
-      ...(ctx.userAgent ? { userAgent: ctx.userAgent } : {}),
+      ...(ctx?.ip ? { sourceIp: ctx.ip } : {}),
+      ...(ctx?.userAgent ? { userAgent: ctx.userAgent } : {}),
     },
   };
 }
@@ -201,28 +188,6 @@ function splitReason<B extends { reason: string }>(
     ]);
   }
   return { reason: normalized, fields };
-}
-
-/** The optional `If-Match` version of an existing MAC credential: absent on a first create, an integer on an update. */
-function optionalIfMatch(request: FastifyRequest): number | undefined {
-  const raw = request.headers["if-match"];
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof value !== "string" || value.length === 0) return undefined;
-  const unquoted = value
-    .trim()
-    .replace(/^W\//, "")
-    .replace(/^"(.*)"$/, "$1");
-  const parsed = Number.parseInt(unquoted, 10);
-  if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== unquoted) {
-    throw new ValidationError("request validation failed", [
-      {
-        field: "If-Match",
-        code: "INVALID",
-        message: "If-Match must be the credential's integer version",
-      },
-    ]);
-  }
-  return parsed;
 }
 
 /**
@@ -383,7 +348,7 @@ export function registerOnboardingDataRoutes(
       const { reason, fields } = splitReason(
         parse(OnboardingMacCredentialUpsertRequest, request.body),
       );
-      const expectedVersion = optionalIfMatch(request);
+      const expectedVersion = optionalIfMatchVersionOf(request);
       const res = await service.upsertMacCredential(
         op,
         slugOf(request),
@@ -441,7 +406,7 @@ export function registerOnboardingDataRoutes(
         slugOf(request),
         fields,
         reason,
-        optionalIfMatch(request),
+        optionalIfMatchVersionOf(request),
       );
       // A first choice answers 201, a version-checked change 200.
       // The mode the operator chose could not be confirmed after the vendor committed: said in the answer, not only in a log.

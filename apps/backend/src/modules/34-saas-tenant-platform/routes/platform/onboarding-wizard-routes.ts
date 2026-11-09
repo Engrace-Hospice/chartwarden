@@ -11,10 +11,9 @@
 //   PUT   /platform/tenants/:orgSlug/compliance-officer              assign the officer who attests go-live (a reason is required)
 //   POST  /platform/tenants/:orgSlug/go-live/approve | revoke        the second party of the two-party go-live
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { rejectAiActor } from "@chartwarden/shared/route-kit";
-import { UnauthorizedError } from "@chartwarden/types";
+import { type PreHandler, rejectAiActor, writeActorOf } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PlatformActor } from "../../onboarding/model";
 import type { OnboardingWizard } from "../../onboarding/wizard-service";
 import {
@@ -26,8 +25,6 @@ import {
 import { SkipOnboardingTaskRequest } from "../typebox";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface OnboardingWizardRouteDeps {
   readonly wizard: OnboardingWizard;
 }
@@ -37,13 +34,10 @@ const TaskParamsSchema = Type.Object({
   taskId: Type.String({ format: "uuid" }),
 });
 
-function actorOf(request: FastifyRequest): PlatformActor {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes?.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
-  return { kind: "platform", userId: ctx.userId, membershipId };
+/** The operator: the kit's write actor (401 without a session, 403 for a live session with no membership). */
+function platformActorOf(request: FastifyRequest): PlatformActor {
+  const { userId, membershipId } = writeActorOf(request);
+  return { kind: "platform", userId, membershipId };
 }
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -76,7 +70,7 @@ export function registerOnboardingWizardRoutes(
       config: { auditRead: { resourceKind: "onboarding_task", list: true } },
     },
     async (request) => {
-      actorOf(request);
+      platformActorOf(request);
       const view = await wizard.getPlatform(parse(OrgSlugParamsSchema, request.params).orgSlug);
       return { ...view, currentStep: view.currentStepKey, tasks: view.steps };
     },
@@ -86,7 +80,7 @@ export function registerOnboardingWizardRoutes(
     "/api/v1/platform/tenants/:orgSlug/onboarding/:taskId/skip",
     { preHandler: WRITE("onboarding.skip") },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = platformActorOf(request);
       const { orgSlug, taskId } = parse(TaskParamsSchema, request.params);
       const body = parse(SkipOnboardingTaskRequest, request.body);
       return wizard.skipPlatform(orgSlug, taskId, actor, body.skipRationale);
@@ -97,7 +91,7 @@ export function registerOnboardingWizardRoutes(
     "/api/v1/platform/tenants/:orgSlug/onboarding/:taskId/attest",
     { preHandler: WRITE(MANAGE) },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = platformActorOf(request);
       const { orgSlug, taskId } = parse(TaskParamsSchema, request.params);
       return wizard.attestPlatform(
         orgSlug,
@@ -112,7 +106,7 @@ export function registerOnboardingWizardRoutes(
     "/api/v1/platform/tenants/:orgSlug/onboarding/:taskId/reopen",
     { preHandler: WRITE(MANAGE) },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = platformActorOf(request);
       const { orgSlug, taskId } = parse(TaskParamsSchema, request.params);
       const body = parse(PlatformReasonRequest, request.body);
       return wizard.reopenPlatform(orgSlug, taskId, actor, body.reason);
@@ -123,7 +117,7 @@ export function registerOnboardingWizardRoutes(
     "/api/v1/platform/tenants/:orgSlug/org-profile",
     { preHandler: WRITE(MANAGE) },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = platformActorOf(request);
       const { orgSlug } = parse(OrgSlugParamsSchema, request.params);
       return wizard.setOrgProfilePlatform(orgSlug, actor, parse(OrgProfileRequest, request.body));
     },
@@ -133,7 +127,7 @@ export function registerOnboardingWizardRoutes(
     "/api/v1/platform/tenants/:orgSlug/compliance-officer",
     { preHandler: WRITE(MANAGE) },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = platformActorOf(request);
       const { orgSlug } = parse(OrgSlugParamsSchema, request.params);
       const body = parse(SetComplianceOfficerPlatformRequest, request.body);
       return wizard.setComplianceOfficerPlatform(orgSlug, actor, body.membershipId, body.reason);
@@ -144,7 +138,7 @@ export function registerOnboardingWizardRoutes(
     "/api/v1/platform/tenants/:orgSlug/go-live/approve",
     { preHandler: WRITE(APPROVE) },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = platformActorOf(request);
       const { orgSlug } = parse(OrgSlugParamsSchema, request.params);
       return wizard.approveGoLive(
         orgSlug,
@@ -158,7 +152,7 @@ export function registerOnboardingWizardRoutes(
     "/api/v1/platform/tenants/:orgSlug/go-live/revoke",
     { preHandler: WRITE(APPROVE) },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = platformActorOf(request);
       const { orgSlug } = parse(OrgSlugParamsSchema, request.params);
       return wizard.revokeGoLive(orgSlug, actor, parse(PlatformReasonRequest, request.body).reason);
     },
