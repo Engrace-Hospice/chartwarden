@@ -1,6 +1,7 @@
 // apps/backend/src/modules/36-messaging/routes/break-glass-typebox.ts - WP 5.8 (ADR-0087, PROPOSED) schemas for the break-glass routes. Wire keys
 // are camelCase (the contract in packages/types/src/messaging-break-glass.ts). Responses carry ids, closed codes, instants and counts, plus the two
 // reviewer-only free-text fields (justification, note) on the REVIEW routes only; Fastify strips anything not listed. No message body ever.
+import { Uuid, pageLimit } from "@chartwarden/shared/route-kit";
 import {
   BREAK_GLASS_JUSTIFICATION_MAX,
   BREAK_GLASS_JUSTIFICATION_MIN,
@@ -12,19 +13,20 @@ import {
   BREAK_GLASS_REVIEW_OUTCOMES,
 } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
 const NullableString = Type.Union([Type.String(), Type.Null()]);
-const NullableUuid = Type.Union([Uuid, Type.Null()]);
+const NullableUuid = Type.Union([Uuid(), Type.Null()]);
 const ReasonCode = Type.Union(BREAK_GLASS_REASON_CODES.map((c) => Type.Literal(c)));
 const Outcome = Type.Union(BREAK_GLASS_REVIEW_OUTCOMES.map((o) => Type.Literal(o)));
 
-export const BreakGlassIdParamsSchema = Type.Object({ id: Uuid }, { additionalProperties: false });
+export const BreakGlassIdParamsSchema = Type.Object(
+  { id: Uuid() },
+  { additionalProperties: false },
+);
 
 export const CreateBreakGlassBodySchema = Type.Object(
   {
-    channelId: Uuid,
+    channelId: Uuid(),
     reasonCode: ReasonCode,
     // Trimmed length is enforced again by the service and the table CHECK; the schema bounds the raw input.
     justification: Type.String({
@@ -43,7 +45,7 @@ export const ListReviewsQuerySchema = Type.Object(
     status: Type.Optional(
       Type.Union([Type.Literal("pending"), Type.Literal("reviewed"), Type.Literal("all")]),
     ),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+    limit: pageLimit(),
   },
   { additionalProperties: false },
 );
@@ -57,8 +59,8 @@ export const CompleteReviewBodySchema = Type.Object(
 );
 
 export const GrantResponseSchema = Type.Object({
-  id: Uuid,
-  channelId: Uuid,
+  id: Uuid(),
+  channelId: Uuid(),
   channelKind: Type.String(),
   reasonCode: ReasonCode,
   grantedAt: Type.String(),
@@ -70,11 +72,11 @@ export const GrantResponseSchema = Type.Object({
 export const GrantListResponseSchema = Type.Object({ grants: Type.Array(GrantResponseSchema) });
 
 const ReviewShape = {
-  reviewId: Uuid,
-  grantId: Uuid,
-  granteeUserId: Uuid,
+  reviewId: Uuid(),
+  grantId: Uuid(),
+  granteeUserId: Uuid(),
   granteeName: NullableString,
-  channelId: Uuid,
+  channelId: Uuid(),
   channelKind: Type.String(),
   channelTitle: NullableString,
   patientId: NullableUuid,
@@ -93,7 +95,7 @@ const ReviewShape = {
   overdue: Type.Boolean(),
 } as const;
 
-export const ReviewResponseSchema = Type.Object(ReviewShape);
+const ReviewResponseSchema = Type.Object(ReviewShape);
 export const ReviewListResponseSchema = Type.Object({ reviews: Type.Array(ReviewResponseSchema) });
 
 export const ReviewDetailResponseSchema = Type.Object({

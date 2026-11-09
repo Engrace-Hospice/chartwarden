@@ -1,10 +1,16 @@
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { DegradedError } from "@chartwarden/types";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { ClaimMdProtectedPayloadCipher } from "../../../bootstrap/claimmd-payload-cipher";
 import type { M25ReadActor } from "../routes/actor";
-import { type CursorPage, decodeCursor, encodeCursor } from "../routes/concurrency";
+
+/** A page of review items plus the next signed cursor (null at the end). */
+interface CursorPage<T> {
+  readonly items: T[];
+  readonly nextCursor: string | null;
+}
 import { providerEntityScopeCondition } from "../routes/scope";
 
 const STAGE = schema.claimmdEraM25Stage;
@@ -193,7 +199,7 @@ export function buildDrizzleClaimMdEraReviewService(
 ): ClaimMdEraReviewService {
   return {
     async list(actor, filters, rawCursor, requestedLimit) {
-      const cursor = decodeCursor(rawCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, rawCursor, "instant");
       const limit = Math.max(1, Math.min(PAGE_MAX, Math.floor(requestedLimit)));
       const rows = await withOrgContext(db, actor, async (tx) =>
         tx
@@ -210,8 +216,8 @@ export function buildDrizzleClaimMdEraReviewService(
               filters.state ? eq(STAGE.state, filters.state) : undefined,
               cursor
                 ? or(
-                    lt(STAGE.createdAt, new Date(cursor.createdAt)),
-                    and(eq(STAGE.createdAt, new Date(cursor.createdAt)), lt(STAGE.id, cursor.id)),
+                    lt(STAGE.createdAt, new Date(cursor.a)),
+                    and(eq(STAGE.createdAt, new Date(cursor.a)), lt(STAGE.id, cursor.id)),
                   )
                 : undefined,
             ),
@@ -227,8 +233,8 @@ export function buildDrizzleClaimMdEraReviewService(
         items,
         nextCursor:
           hasMore && last
-            ? encodeCursor({
-                createdAt:
+            ? encodeCursor(actor.organizationId, {
+                a:
                   last.createdAt instanceof Date
                     ? last.createdAt.toISOString()
                     : new Date(last.createdAt).toISOString(),

@@ -4,13 +4,11 @@
 // (the spec's route-table scope). The onboarding read/skip routes moved to ./onboarding-wizard-routes with the wizard.
 // The read is `auditRead`-declared (the cross-tenant platform-bypass anchor, F09).
 import { requireAbac, requirePermission } from "@chartwarden/auth";
-import { UnauthorizedError } from "@chartwarden/types";
+import { type PreHandler, pageQuery, writeActorOf } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { PlatformOpsService } from "./ops-service";
 import { parse } from "./platform-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface PlatformOpsRouteDeps {
   readonly service: PlatformOpsService;
@@ -29,18 +27,8 @@ export const PlatformDsarListQuerySchema = Type.Object({
   ),
   organizationId: Type.Optional(Type.String({ format: "uuid" })),
   slaBreached: Type.Optional(Type.Boolean()),
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
-
-function actorOf(request: FastifyRequest): { userId: string; membershipId: string } {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes?.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
-  return { userId: ctx.userId, membershipId };
-}
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const OPS = (key: string): PreHandler =>
@@ -57,7 +45,7 @@ export function registerPlatformOpsRoutes(app: FastifyInstance, deps: PlatformOp
       config: { auditRead: { resourceKind: "dsar_export_job", list: true } },
     },
     async (request) => {
-      actorOf(request);
+      writeActorOf(request);
       const q = parse(PlatformDsarListQuerySchema, request.query);
       return service.listDsarJobs(
         { status: q.status, organizationId: q.organizationId, slaBreached: q.slaBreached },

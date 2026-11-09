@@ -223,6 +223,9 @@ describe("catalog payload schemas", () => {
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
+  // The M12/M13 write routes require an Idempotency-Key (the web client sends one on every mutation);
+  // a case that omits it on purpose sends an empty one.
+  request.headers["idempotency-key"] ??= `test-${request.id}`;
   request.context.userId = user;
   request.context.attributes.membershipId = user;
   request.context.organizationId = ORG;

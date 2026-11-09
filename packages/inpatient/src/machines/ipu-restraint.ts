@@ -121,9 +121,3 @@ export function planReassessmentOutcome(
       };
   }
 }
-
-/**
- * §2.10 auto-closure — when an admission goes discharged/deceased/transferred, active restraints are
- * auto-closed with `released_reason='discharge_auto_close'` and a synthetic reassessment-completion row.
- */
-export const RESTRAINT_DISCHARGE_AUTO_CLOSE_REASON = "discharge_auto_close";

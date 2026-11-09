@@ -32,7 +32,7 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_IPU_ALERT_CONSUMER = "m36.ipu-alerts" as const;
+const M36_IPU_ALERT_CONSUMER = "m36.ipu-alerts" as const;
 
 export const M36_IPU_ALERT_EVENT_TYPES = [
   "m37.irc_episode.cap_approaching",

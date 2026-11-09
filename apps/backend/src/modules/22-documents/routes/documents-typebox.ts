@@ -1,15 +1,15 @@
-import { ValidationError } from "@chartwarden/types";
-import type { ExtractionReviewStatus } from "@chartwarden/types";
 // apps/backend/src/modules/22-documents/routes/documents-typebox.ts — M22-T09 TypeBox route schemas (§4.2).
 // Named `documents-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a
 // TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED
 // envelope. Schemas mirror §4.2 (abbreviated where the spec spells out only the consequential routes).
 // Optimistic concurrency / idempotency ride headers (NOT the body); the signed-URL request carries a
 // `purpose` (the §164.528 access-purpose) + optional tighter TTL (clamped to the 300s floor server-side).
+import { pageQuery } from "@chartwarden/shared/route-kit";
+import { ValidationError } from "@chartwarden/types";
+import type { ExtractionReviewStatus } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { CursorPage as ServiceCursorPage } from "./concurrency";
+import type { CursorPage as ServiceCursorPage } from "./pagination";
 import type {
   DocumentView as ServiceDocumentView,
   IntakeBatchView as ServiceIntakeBatchView,
@@ -18,17 +18,6 @@ import type {
   VersionView as ServiceVersionView,
 } from "./service";
 import type { MintedSignedUrl as ServiceMintedSignedUrl } from "./signed-url-service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("uri")) {
-  FormatRegistry.Set("uri", (v) => typeof v === "string" && v.length > 0);
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -367,8 +356,7 @@ export const RetryRenderRequest = Type.Object({});
 
 // ── Queries (cursor / keyset pagination — §4.1 SD-052) ────────────────────────────────────────────
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 export const DocumentListQuerySchema = Type.Object({

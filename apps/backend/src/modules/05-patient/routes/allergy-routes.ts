@@ -1,3 +1,5 @@
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/05-patient/routes/allergy-routes.ts — the M5 patient allergy list (F-238;
 // architecture §10.6.6 "Allergies → Module 5").
 //
@@ -14,8 +16,7 @@
 // implicitly — they need a human membership on the request context (the actor whose name the row records).
 // Writes run under `withOrgContext` as the acting user, so RLS scopes them and the M4 trigger attributes
 // them; a row of another patient or another tenant is a 404.
-import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
-import { type DbClient, schema } from "@chartwarden/db";
+import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
@@ -26,8 +27,6 @@ import {
   VerifyAllergyBodySchema,
 } from "./allergy-typebox";
 import { LooseIdParamsSchema, parse } from "./patient-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const ALG = schema.patientAllergies;
 const P = schema.patients;
@@ -45,21 +44,6 @@ const SCOPE_READ = chartScope("patient.read");
 const SCOPE_EDIT = chartScope("patient.edit");
 
 const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
-
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  membershipId: string | null;
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const m = ctx.attributes?.membershipId;
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    membershipId: typeof m === "string" && m.length > 0 ? m : null,
-  };
-}
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -138,8 +122,7 @@ export function registerPatientAllergyRoutes(
     "/api/v1/patients/:id/allergies/:allergyId/verify",
     { preHandler: [EDIT, SCOPE_EDIT] },
     async (request) => {
-      const { organizationId, userId, membershipId } = actorOf(request);
-      if (!membershipId) throw new UnauthorizedError();
+      const { organizationId, userId, membershipId } = writeActorOf(request);
       const { id, allergyId } = parse(AllergyParamsSchema, request.params);
       const body = parse(VerifyAllergyBodySchema, request.body);
       return withOrgContext(db, { organizationId, userId }, async (txRaw) => {
@@ -175,8 +158,7 @@ export function registerPatientAllergyRoutes(
     "/api/v1/patients/:id/allergies/:allergyId/entered-in-error",
     { preHandler: [EDIT, SCOPE_EDIT] },
     async (request) => {
-      const { organizationId, userId, membershipId } = actorOf(request);
-      if (!membershipId) throw new UnauthorizedError();
+      const { organizationId, userId, membershipId } = writeActorOf(request);
       const { id, allergyId } = parse(AllergyParamsSchema, request.params);
       const body = parse(EnteredInErrorAllergyBodySchema, request.body);
       return withOrgContext(db, { organizationId, userId }, async (txRaw) => {

@@ -9,7 +9,24 @@
 // #251) needed exactly that owning-module read-surface addition — `claimAssemblyRangeContextForOrg`
 // (`06-admission/seams/drizzle-store.ts`) — and this file is the adapter over it, not the read itself.
 import {
+  type AdmissionContextReader,
+  type BillableEncounterReader,
+  type BillingReferenceDataReader,
   CMS_HOSPICE_MODIFIER_VALUE_SET,
+  type CertificationReader,
+  type DateRange,
+  type DiagnosisSequenceReader,
+  type ElectionPeriodReader,
+  type EvvComplianceReader,
+  type FaceToFaceReader,
+  type LevelOfCareReader,
+  type MdmEntityProvider,
+  type MedicarePrimaryResolution,
+  type PatientPayerReader,
+  type ProviderEntityDirectoryEntry,
+  type RateLookupScope,
+  type SignedEncountersReader,
+  type TerminologyProvider,
   applyWageIndexToLaborShare,
   hasLaborShares,
   repositories,
@@ -23,25 +40,6 @@ import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
 import { resolveWageIndexForOrg } from "../routes/wage-index-service";
 import type { ProviderCcnPort } from "../routes/write-service";
-import type {
-  AdmissionContextReader,
-  BillableEncounterReader,
-  BillingReferenceDataReader,
-  CertificationReader,
-  DateRange,
-  DiagnosisSequenceReader,
-  ElectionPeriodReader,
-  EvvComplianceReader,
-  FaceToFaceReader,
-  LevelOfCareReader,
-  MdmEntityProvider,
-  MedicarePrimaryResolution,
-  PatientPayerReader,
-  ProviderEntityDirectoryEntry,
-  RateLookupScope,
-  SignedEncountersReader,
-  TerminologyProvider,
-} from "./claim-assembly";
 import { type PlaceOfServicePorts, resolvePlaceOfService } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;

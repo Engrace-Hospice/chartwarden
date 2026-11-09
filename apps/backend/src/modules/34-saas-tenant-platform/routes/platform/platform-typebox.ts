@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox.ts — M34 (§4.2).
 //
@@ -11,7 +12,6 @@ import { ValidationError } from "@chartwarden/types";
 // literals (`destroyed` is NEVER permitted via the route — only the shred worker) + a non-empty
 // `transitionReason`; provision/offboard/shred/dek-rotate carry the §4.2 inputs the worker job consumes.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   BaaRecordView as ServiceBaaRecordView,
@@ -26,17 +26,6 @@ import type {
   TenantOverview as ServiceTenantOverview,
   TenantSummaryView as ServiceTenantSummaryView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (v) => typeof v === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -84,9 +73,6 @@ export const TenantSlugParamsSchema = Type.Object({
 });
 export const InvitationParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
-});
-export const TemplateKeyParamsSchema = Type.Object({
-  key: Type.String({ minLength: 1, maxLength: 128 }),
 });
 // §4.1 — support-session / signup-intent / BAA routes key by uuid id; feature-flags by flag key.
 export const SessionParamsSchema = Type.Object({
@@ -241,8 +227,7 @@ const TENANT_EXPORT_STATUS = [
 ] as const;
 
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 // §4.1 — GET /platform/tenants filters: status, plan_label, created_after, search-by-legal-name.
@@ -308,7 +293,7 @@ const CursorPageOf = <T extends TSchema>(item: T) =>
     hasMore: Type.Boolean(),
   });
 
-export const TenantSummaryViewSchema = Type.Object({
+const TenantSummaryViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   orgSlug: Type.String(),
@@ -340,7 +325,7 @@ export const OnboardingTemplateViewSchema = Type.Object({
 });
 export const OnboardingTemplateListResponseSchema = CursorPageOf(OnboardingTemplateViewSchema);
 
-export const SupportSessionViewSchema = Type.Object({
+const SupportSessionViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   supportConsentGrantId: Type.String(),
@@ -354,7 +339,7 @@ export const SupportSessionViewSchema = Type.Object({
 });
 export const SupportSessionListResponseSchema = CursorPageOf(SupportSessionViewSchema);
 
-export const SupportSessionEventViewSchema = Type.Object({
+const SupportSessionEventViewSchema = Type.Object({
   id: Type.String(),
   supportSessionId: Type.String(),
   eventKind: Type.String(),

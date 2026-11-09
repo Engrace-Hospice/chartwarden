@@ -10,7 +10,7 @@
 // loop would make every name invisible — the M30 finding it was built for).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 
-import type { PreHandler } from "./actor";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 
 type TargetRequest = {
   readonly params?: unknown;

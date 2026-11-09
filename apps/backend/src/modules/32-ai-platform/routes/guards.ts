@@ -36,7 +36,7 @@
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import type { PreHandler } from "./actor";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 
 type TargetRequest = {
   readonly params?: unknown;

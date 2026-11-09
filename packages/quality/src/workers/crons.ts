@@ -217,7 +217,7 @@ export function riskRegisterRefreshCronProcessor(
 }
 
 /** Run one risk-register-refresh pass: enqueue a force-refresh per active org (day-bucketed dedup). */
-export async function runRiskRegisterRefreshCron(
+async function runRiskRegisterRefreshCron(
   ports: RiskRegisterRefreshCronPorts,
 ): Promise<RiskRegisterRefreshCronReport> {
   const now = ports.now();
@@ -234,7 +234,7 @@ export async function runRiskRegisterRefreshCron(
 // ── 4) m30.sra_reminders (09:00 daily) ──────────────────────────────────────────────────────────────────
 
 /** The §4.9 SRA reminder-calendar milestones (days before the anniversary the cron fires a reminder on). */
-export const SRA_REMINDER_MILESTONE_DAYS = [90, 60, 30, 7] as const;
+const SRA_REMINDER_MILESTONE_DAYS = [90, 60, 30, 7] as const;
 
 /** One open SRA cycle the platform scan returns, with its anniversary (`sra_cycle.due_at`). */
 export interface OpenSraCycle {
@@ -347,7 +347,7 @@ export function sraRemindersCronProcessor(
  * alert for the cycles that hit a milestone / are overdue. The build of the PHI-free payload is inline; the
  * actual M36 dispatch is the injected (fail-closed) alert port.
  */
-export async function runSraReminders(ports: SraRemindersCronPorts): Promise<SraRemindersReport> {
+async function runSraReminders(ports: SraRemindersCronPorts): Promise<SraRemindersReport> {
   const now = ports.now();
   const cycles = await ports.cycles.listOpenCyclesWithDue();
   const dispatched: SraReminderDisposition[] = [];

@@ -14,15 +14,19 @@
 // period (null when HETS cannot settle it). Same `billing.eligibility.read` gate as the other eligibility reads
 // (the intake roles hold it by default — INTAKE_DEFAULT_GRANTS / migration 0374), but its scope is `caseload_or_scope`
 // OR M6's `admission_intake_scope`: readmission is intake work on a patient who is on nobody's caseload yet.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { writeActorOf } from "./actor";
 import {
   CheckEligibilityBodySchema,
   HospicePeriodsQuerySchema,
   PatientQuerySchema,
-  parse,
 } from "./billing-typebox";
-import { requireIdempotencyKey } from "./concurrency";
 import { CASELOAD_OR_INTAKE_SCOPE, CASELOAD_OR_SCOPE, P } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";

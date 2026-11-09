@@ -2,6 +2,7 @@
 // the DDE work-queue routes (ADR-0052). Named `*-typebox` for the same table-ownership-heuristic reason as
 // `billing-typebox.ts`. The route handlers `parse(...)` the request schemas below; the OpenAPI enrichment reuses
 // the SAME exports. Notes are capped (and screened for MBI-shaped text by the service); NO MBI is ever stored.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 
 const uuid = () => Type.String({ format: "uuid" });
@@ -58,7 +59,8 @@ const Notes = Type.String({
 });
 const ExpectedVersion = Type.Integer({
   minimum: 0,
-  description: "The item `version` the change is applied against (a stale value → 412).",
+  description:
+    "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
 });
 const ReturnedOutcomeCode = Type.Union(
   [
@@ -81,8 +83,7 @@ const Dcn = Type.String({
 export const DdeItemIdParamsSchema = Type.Object({ id: uuid() });
 
 export const DdeItemListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
   state: Type.Optional(STATE),
   itemType: Type.Optional(ITEM_TYPE),
   assigneeMembershipId: Type.Optional(uuid()),

@@ -10,9 +10,8 @@
 // names the attesting membership the actor swears to, but the write service stamps the acting principal
 // from the actor and re-checks the two-person control. Every mutating route carries `Idempotency-Key`
 // (§4.1; the M1 `applyIdempotency` middleware does the 24h replay caching — this guard enforces PRESENCE).
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   ApproveForSubmitBodySchema,
   CostReportIdParamsSchema,
@@ -22,7 +21,6 @@ import {
   ReopenBodySchema,
   SubmitBodySchema,
   SubmitPastDeadlineBodySchema,
-  parse,
 } from "./cost-report-typebox";
 import {
   APPROVER_FOR_PROVIDER,

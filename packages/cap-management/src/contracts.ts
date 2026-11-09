@@ -97,10 +97,6 @@ export const InpatientProjectionDto = Type.Object({
   computedAt: IsoInstant,
 });
 
-export const RecomputeRequest = Type.Object({
-  patientId: Type.Optional(Uuid), // omit for an agency-wide recompute
-});
-
 // ── threshold events ─────────────────────────────────────────────────────────────────────────────
 export const AcknowledgeEventRequest = Type.Object({
   notes: Type.Optional(Type.String({ maxLength: 2000 })),

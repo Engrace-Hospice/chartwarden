@@ -1,3 +1,4 @@
+import { ifMatchVersionOf, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/library.routes.ts — M16 (ADR-0109 D10, PR 3) routes 77-81: the grief library (staff side).
 //
 // Bereavement oversight curates what the portal shows: `bereavement.library.read` lists items and previews a file, `bereavement.library.manage`
@@ -6,7 +7,6 @@
 // names nobody (its reads say so); the preview carries `resourceIdParam` so the read event names the item, and M22 records the URL mint.
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { ABAC_OVERSIGHT, P } from "./guards";
 import type { M16LibraryService } from "./library-service";
 import {
@@ -64,7 +64,7 @@ export function registerBereavementLibraryRoutes(
       const body = parse(UpdateLibraryItemBody, request.body);
       return libraryService.updateItem(writeActorOf(request), itemId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -78,7 +78,7 @@ export function registerBereavementLibraryRoutes(
       const { status } = parse(SetLibraryStatusBody, request.body);
       return libraryService.setStatus(writeActorOf(request), itemId, {
         status,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

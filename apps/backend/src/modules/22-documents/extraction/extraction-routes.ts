@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/extraction/extraction-routes.ts — M22-T08 the DocLens
 // extraction-trigger routes, gated behind `documents.doclens` (OFF → 503 EXTRACTION_DISABLED).
 //
@@ -14,7 +15,7 @@
 // Every route also rides the REAL Authorization Contract (`requirePermission` on M22's §4.6 `intake.*` keys,
 // M3). Org binding is server-side (`request.context`, never the body). The DocLens pipeline service is
 // injected (in-memory/fake in tests; the deny-stub-backed service in prod).
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { DegradedError, UnauthorizedError } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -23,9 +24,6 @@ import { type DocumentFeatureFlagReader, isDocLensEnabled } from "./feature-flag
 import type { DocLensIntakeEnqueue } from "./intake-queue";
 import { type DocLensPipelineService, extractionDisabled } from "./pipeline-service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface DocLensRouteDeps {
   /** The gated DocLens pipeline service (created over the M32 deny-stub + the flag reader). */
   pipeline: DocLensPipelineService;
@@ -33,17 +31,6 @@ export interface DocLensRouteDeps {
   flags?: DocumentFeatureFlagReader;
   /** F-236 — the intake job queue. Absent (no queue connection) ⇒ the run route answers 503. */
   intake?: DocLensIntakeEnqueue;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  // `userId` here is the acting MEMBERSHIP id — matches the sibling actorOf() in
-  // documents-routes.ts, whose `userId` writes into `reviewer_membership_id`. Neither current call
-  // site here threads `userId` downstream, but this was still the same defective raw-`ctx.userId`
-  // pattern fixed across M8-M14/M17/M22, kept consistent to avoid landmining a future caller.
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 /** F-236 — the run takes everything from the batch itself (its filed source document). The legacy
@@ -95,7 +82,7 @@ export function registerDocLensExtractionRoutes(
     "/api/v1/intake/uploads/:id/extraction/run",
     { preHandler: [INTAKE_REVIEW, requireDocLensEnabled] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = writeActorOf(request);
       const { id } = parse(BatchParams, request.params);
       parse(RunBatchRequest, request.body ?? {});
       // F-236 — the run is a background job (Docling + per-page classification + extraction can take
@@ -103,8 +90,6 @@ export function registerDocLensExtractionRoutes(
       if (!intake) {
         throw new DegradedError("doclens-intake", "no WardenLens intake job queue is configured");
       }
-      const userId = request.context.userId;
-      if (typeof userId !== "string" || userId.length === 0) throw new UnauthorizedError();
       await intake.enqueue({
         organizationId,
         batchId: id,
@@ -120,7 +105,7 @@ export function registerDocLensExtractionRoutes(
     "/api/v1/intake/jobs/:id/extraction/commit",
     { preHandler: [INTAKE_REVIEW, requireDocLensEnabled] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = writeActorOf(request);
       const { id } = parse(BatchParams, request.params);
       const body = parse(CommitReviewRequest, request.body);
       // The run snapshot is rehydrated upstream in prod; the gate alone is what T08 asserts here. With the

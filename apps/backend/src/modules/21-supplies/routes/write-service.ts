@@ -1,3 +1,4 @@
+import type { WriteActor } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/21-supplies/routes/write-service.ts — the M21 WRITE port + its command inputs
 // (§4.1's POST/PUT/DELETE rows). The Drizzle implementation is ./write-service-drizzle.ts.
 //
@@ -7,7 +8,7 @@
 // §7.2 optimistic-concurrency guard → emit the §4.5.2 outbox event on the SAME tx. No business rule lives
 // in SQL, and no event can outlive a rolled-back write (§2.11).
 //
-// THE ACTING MEMBERSHIP IS NEVER AN INPUT. Every command takes an `M21WriteActor` the route extracted from
+// THE ACTING MEMBERSHIP IS NEVER AN INPUT. Every command takes an `WriteActor` the route extracted from
 // `request.context`, and every attribution column is stamped from it. The ONE membership id a caller may
 // supply is `disposalWitnessMembershipId` — a witness is by definition a second person — and the §3.1.10
 // CHECK plus the §4.4 predicate are what keep that honest. See routes/actor.ts for the full argument.
@@ -35,7 +36,6 @@ import type {
   SupplySkuClass,
   VendorRoutingScopeKind,
 } from "@chartwarden/types";
-import type { M21WriteActor } from "./actor";
 import type {
   ComfortKitReturnDetail,
   ComfortKitTemplateView,
@@ -80,7 +80,7 @@ export interface AlertPort {
 
 /** Every state-transition command echoes the `If-Match` stamp it read (§7.2). */
 interface Versioned {
-  /** The row `updated_at` the caller read, from `If-Match`. A mismatch is 412 `M21_STALE_VERSION`. */
+  /** The row `updated_at` the caller read, from `If-Match`. A mismatch is 409 `STALE_VERSION`. */
   readonly expectedUpdatedAt?: string;
 }
 
@@ -319,32 +319,32 @@ export interface ReconcileReturnResult {
 export interface M21WriteService {
   // §2.2 supply-request lifecycle
   createSupplyRequest(
-    actor: M21WriteActor,
+    actor: WriteActor,
     input: CreateSupplyRequestInput,
   ): Promise<CreateSupplyRequestResult>;
   assignVendor(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: AssignVendorInput,
   ): Promise<SupplyRequestDetail>;
   markOrdered(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: MarkOrderedInput,
   ): Promise<SupplyRequestDetail>;
   /** GAP-063 / D16 — match the vendor's actual invoice against the accrued quote; emits `invoice_reconciled`. */
   recordVendorInvoice(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: RecordVendorInvoiceInput,
   ): Promise<SupplyRequestDetail>;
   markInTransit(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: MarkInTransitInput,
   ): Promise<SupplyRequestDetail>;
   markDelivered(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: MarkDeliveredInput,
   ): Promise<SupplyRequestDetail>;
@@ -355,7 +355,7 @@ export interface M21WriteService {
    * rather than overwriting or appending (see `../lifecycle/caregiver-signature.ts`).
    */
   captureCaregiverSignature(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: CaptureCaregiverSignatureInput,
   ): Promise<SupplyRequestDetail>;
@@ -365,99 +365,99 @@ export interface M21WriteService {
    * Emits `m21.supply_request.coverage_determination_changed` when the determination actually changes.
    */
   setCoverageDetermination(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: SetCoverageDeterminationInput,
   ): Promise<SupplyRequestDetail>;
   confirmReceived(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: ConfirmReceivedInput,
   ): Promise<SupplyRequestDetail>;
   cancelSupplyRequest(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: CancelRequestInput,
   ): Promise<SupplyRequestDetail>;
   returnSupplyRequest(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     input: ReturnRequestInput,
   ): Promise<SupplyRequestDetail>;
 
   // D11 catalog
-  createSupplyItem(actor: M21WriteActor, input: CreateSupplyItemInput): Promise<SupplyItemView>;
+  createSupplyItem(actor: WriteActor, input: CreateSupplyItemInput): Promise<SupplyItemView>;
   retireSupplyItem(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyItemId: string,
     input: RetireSupplyItemInput,
   ): Promise<SupplyItemView>;
   createTenantExtension(
-    actor: M21WriteActor,
+    actor: WriteActor,
     input: UpsertTenantSupplyItemInput,
   ): Promise<SupplyItemView>;
   updateTenantExtension(
-    actor: M21WriteActor,
+    actor: WriteActor,
     tenantItemId: string,
     input: UpsertTenantSupplyItemInput,
   ): Promise<SupplyItemView>;
 
   // §2.3 comfort-kit templates
   createComfortKitTemplate(
-    actor: M21WriteActor,
+    actor: WriteActor,
     input: CreateTemplateInput,
   ): Promise<ComfortKitTemplateView>;
   supersedeComfortKitTemplate(
-    actor: M21WriteActor,
+    actor: WriteActor,
     templateId: string,
     input: SupersedeTemplateInput,
   ): Promise<ComfortKitTemplateView>;
 
   // §2.5 dispatch
-  createDispatch(actor: M21WriteActor, input: CreateDispatchInput): Promise<DispatchDetail>;
+  createDispatch(actor: WriteActor, input: CreateDispatchInput): Promise<DispatchDetail>;
   markDeployedAtPatient(
-    actor: M21WriteActor,
+    actor: WriteActor,
     dispatchId: string,
     input: DeployAtPatientInput,
   ): Promise<DispatchDetail>;
 
   // §2.6 return + reconciliation
-  createReturn(actor: M21WriteActor, input: CreateReturnInput): Promise<ComfortKitReturnDetail>;
+  createReturn(actor: WriteActor, input: CreateReturnInput): Promise<ComfortKitReturnDetail>;
   assignRetriever(
-    actor: M21WriteActor,
+    actor: WriteActor,
     returnId: string,
     input: AssignRetrieverInput,
   ): Promise<ComfortKitReturnDetail>;
   reconcileReturn(
-    actor: M21WriteActor,
+    actor: WriteActor,
     returnId: string,
     input: ReconcileReturnInput,
   ): Promise<ReconcileReturnResult>;
   declareUnreturnable(
-    actor: M21WriteActor,
+    actor: WriteActor,
     returnId: string,
     input: DeclareUnreturnableInput,
   ): Promise<ComfortKitReturnDetail>;
 
   // §2.4 vendor routing
   createVendorRoutingRule(
-    actor: M21WriteActor,
+    actor: WriteActor,
     input: UpsertRoutingRuleInput,
   ): Promise<VendorRoutingRuleView>;
   updateVendorRoutingRule(
-    actor: M21WriteActor,
+    actor: WriteActor,
     ruleId: string,
     input: UpsertRoutingRuleInput,
   ): Promise<VendorRoutingRuleView>;
-  retireVendorRoutingRule(actor: M21WriteActor, ruleId: string): Promise<VendorRoutingRuleView>;
+  retireVendorRoutingRule(actor: WriteActor, ruleId: string): Promise<VendorRoutingRuleView>;
 
   // §2.7 par stock
   updateParStock(
-    actor: M21WriteActor,
+    actor: WriteActor,
     parStockId: string,
     input: UpdateParStockInput,
   ): Promise<ParStockView>;
-  recordObservation(actor: M21WriteActor, input: ObserveParStockInput): Promise<ParStockView>;
+  recordObservation(actor: WriteActor, input: ObserveParStockInput): Promise<ParStockView>;
 
   /**
    * §4.8 `SupplyFulfillmentProvider.createDirectSupplyRequest`. NOT a route — the seam binds this so a

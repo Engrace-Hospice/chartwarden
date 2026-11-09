@@ -1,3 +1,4 @@
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/35-subscription/routes/tenant.routes.ts — M35 (§4.1 tenant surface, `/api/v1`).
 //
 // The agency-facing subscription / payment-method / invoice / usage routes. Reads gate on the §4.7
@@ -8,7 +9,6 @@
 // sits under the read-audit-governed `/api/v1/billing` prefix, so it carries a justified no-PHI waiver.
 import type { FastifyInstance } from "fastify";
 import type { AddonService } from "../addon/addon-service";
-import { actorOf, writeActorOf } from "./actor";
 import { BILLING_SCOPE, IDEMPOTENT, P, STEP_UP } from "./guards";
 import type { M35RouteService } from "./service";
 import {

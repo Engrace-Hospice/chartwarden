@@ -3,6 +3,7 @@
 // the SAME service the tenant's own admin uses, on the caller's transaction (scoped to the target org, attributed to the
 // operator). The body is parsed here with M23's own schemas; nothing returned carries the credential.
 import type { DbClient } from "@chartwarden/db";
+import { parse } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import type {
@@ -12,7 +13,6 @@ import type {
   VerifyPlan,
 } from "../../../bootstrap/onboarding-clearinghouse-port";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
-import { parse } from "../routes/billing-typebox";
 import { createDrizzleConfigStore } from "./config-store";
 import type {
   ClearinghouseActor,

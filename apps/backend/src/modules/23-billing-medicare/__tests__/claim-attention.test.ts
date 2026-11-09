@@ -1,12 +1,12 @@
-import * as billing from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/claim-attention.test.ts — the "needs attention" facts a
 // claim carries because of how its stay ended (services/claim-attention.ts), the TOB re-derivation they use
 // (claim-discharge.ts `rederivedTypeOfBill`), and the Drizzle read service's `attention` decoration + list
 // filter over the in-memory repositories (the M6 stay-end facts arrive through the injected port).
+import { rederivedTypeOfBill } from "@chartwarden/billing";
+import * as billing from "@chartwarden/billing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDrizzleM23ReadService } from "../routes/read-service-drizzle";
 import { type ClaimStayEndFactsRow, claimAttention } from "../services/claim-attention";
-import { rederivedTypeOfBill } from "../services/claim-discharge";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 

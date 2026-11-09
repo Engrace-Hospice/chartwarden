@@ -5,8 +5,7 @@
 // rationale (the store enforces the §2.3 minimum).
 import type { FastifyInstance } from "fastify";
 
-import { writeActorOf } from "./actor";
-import { actorOf } from "./actor";
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { ABAC_INBOUND_OWNER_MATCH, ABAC_IN_ORG, P } from "./guards";
 import {
   AcceptProposalBody,

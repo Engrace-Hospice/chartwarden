@@ -27,9 +27,13 @@
 // INSIDE the transaction (§2.2.3: `submitted` is the immutability entry point) because a guard that read
 // the state would be a second place deciding when a draft stops being editable — and the one that is not
 // the transaction is the one that can be stale.
+import {
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_INCIDENT_EDIT, ABAC_INCIDENT_SUBJECT, ABAC_SUPERVISOR, P, STEP_UP } from "./guards";
 import {
   CreateIncidentBody,
@@ -129,7 +133,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
       const body = parse(PatchIncidentBody, request.body);
       return writeService.patchIncident(writeActorOf(request), incidentId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -151,7 +155,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
       const body = parse(SubmitIncidentBody, request.body);
       return writeService.submitIncident(writeActorOf(request), incidentId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -173,7 +177,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
       const body = parse(TransitionIncidentBody, request.body);
       return writeService.transitionIncident(writeActorOf(request), incidentId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -195,7 +199,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
       const body = parse(OshaSignoffBody, request.body);
       return writeService.oshaSignoff(writeActorOf(request), incidentId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

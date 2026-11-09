@@ -9,6 +9,11 @@
 // Valkey/Postgres store and the server key are supplied by the M1 backend bootstrap (M1-T10), where the HTTP
 // middleware that wraps this helper is wired too.
 import { createHash, createHmac } from "node:crypto";
+import {
+  ConflictError,
+  IdempotencyConflictError,
+  IdempotencyKeyStaleError,
+} from "@chartwarden/types";
 
 /** Marks a keyed fingerprint. A stored value without it is the pre-HMAC plain SHA-256 (see {@link idempotencyHashMatches}). */
 export const IDEMPOTENCY_HASH_PREFIX = "h1:";
@@ -109,33 +114,63 @@ export interface IdempotencyStore {
   complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
 }
 
-/** Thrown when an idempotency key is reused with a DIFFERENT request body (SEC-025). */
-export class IdempotencyConflictError extends Error {
+/** The one `Idempotency-Key`-reused-with-a-different-body error (409 IDEMPOTENCY_CONFLICT, SEC-025). */
+export { IdempotencyConflictError };
+
+/** Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 CONFLICT. */
+export class IdempotencyInFlightError extends ConflictError {
   constructor(readonly key: string) {
-    super(`idempotency_conflict: key '${key}' was already used with a different request body`);
-    this.name = "IdempotencyConflictError";
+    super("Idempotency-Key request is still being processed");
+    this.name = "IdempotencyInFlightError";
   }
+}
+
+/** The stale-key error (409 IDEMPOTENCY_KEY_STALE): a record written under another server key (the secret was rotated since). */
+export { IdempotencyKeyStaleError };
+
+/**
+ * Replay a stored record: its response when complete; a conflict on a different body; in flight otherwise. A fingerprint written
+ * under ANOTHER server key (a rotated secret) is not a different body: it is refused as stale, so the client does not hunt for one,
+ * and nothing can say whether the first request took effect. A record stored before the keyed hash (24 h TTL) still matches the same
+ * request through `legacyHash`, so a retry across the deploy replays instead of re-executing.
+ */
+function replay(
+  record: IdempotencyRecord,
+  key: string,
+  requestHash: string,
+  legacyHash: () => string,
+): IdempotentResponse {
+  if (!idempotencyHashMatches(record.requestHash, requestHash, legacyHash)) {
+    throw idempotencyKeyIsStale(record.requestHash, requestHash)
+      ? new IdempotencyKeyStaleError()
+      : new IdempotencyConflictError();
+  }
+  if (record.state === "complete") return record.response;
+  throw new IdempotencyInFlightError(key);
 }
 
 /**
- * Thrown when a record for the key exists but was written under a different server key (the secret was rotated since): the body may well
- * be the same, so it is NOT a conflict, but nothing can say whether the first request took effect either. The caller maps it to HTTP 409.
+ * Claim `(organizationId, key)` for a request fingerprinted `requestHash`. Resolves `null` when THIS caller
+ * now owns the key and must run the handler (then `store.complete` it); otherwise resolves the cached
+ * response to replay. Throws {@link IdempotencyConflictError} for a different body,
+ * {@link IdempotencyKeyStaleError} for a record under another server key, and
+ * {@link IdempotencyInFlightError} while the first request is still pending. The claim (`putPending`) is the
+ * serialization point (GAP-007): a caller that loses it never runs the handler — it reloads the winner's
+ * record, and a record that vanished in between is reported in flight so the client retries.
  */
-export class IdempotencyKeyStaleError extends Error {
-  constructor(readonly key: string) {
-    super(
-      `idempotency_key_stale: key '${key}' was recorded before the server's idempotency key changed`,
-    );
-    this.name = "IdempotencyKeyStaleError";
-  }
-}
-
-/** Thrown when a duplicate arrives while the first request is still in flight (F15). */
-export class IdempotencyInFlightError extends Error {
-  constructor(readonly key: string) {
-    super(`idempotency_in_flight: key '${key}' is still being processed by an earlier request`);
-    this.name = "IdempotencyInFlightError";
-  }
+export async function claimIdempotencyKey(
+  store: IdempotencyStore,
+  organizationId: string,
+  key: string,
+  requestHash: string,
+  legacyHash: () => string,
+): Promise<IdempotentResponse | null> {
+  const existing = await store.load(organizationId, key);
+  if (existing) return replay(existing, key, requestHash, legacyHash);
+  if (await store.putPending(organizationId, key, requestHash)) return null;
+  const winner = await store.load(organizationId, key);
+  if (winner) return replay(winner, key, requestHash, legacyHash);
+  throw new IdempotencyInFlightError(key);
 }
 
 /**
@@ -143,7 +178,7 @@ export class IdempotencyInFlightError extends Error {
  * `pending` lock, runs the handler, stores and returns the response. A later call with
  * the SAME body replays the cached response; with a DIFFERENT body it throws
  * IdempotencyConflictError; while the first is still `pending` it throws
- * IdempotencyInFlightError (the caller maps that to HTTP 409).
+ * IdempotencyInFlightError.
  */
 export async function runIdempotent(
   store: IdempotencyStore,
@@ -154,30 +189,10 @@ export async function runIdempotent(
   hmacKey: string | Uint8Array,
 ): Promise<IdempotentResponse> {
   const requestHash = computeIdempotencyHash(organizationId, key, body, hmacKey);
-  const matches = (stored: string) =>
-    idempotencyHashMatches(stored, requestHash, () =>
-      legacyIdempotencyHash(organizationId, key, body),
-    );
-
-  const mismatch = (stored: string): Error =>
-    idempotencyKeyIsStale(stored, requestHash)
-      ? new IdempotencyKeyStaleError(key)
-      : new IdempotencyConflictError(key);
-
-  const existing = await store.load(organizationId, key);
-  if (existing) {
-    if (!matches(existing.requestHash)) throw mismatch(existing.requestHash);
-    if (existing.state === "complete") return existing.response;
-    throw new IdempotencyInFlightError(key);
-  }
-
-  if (!(await store.putPending(organizationId, key, requestHash))) {
-    // Lost the claim to a concurrent duplicate: never run the handler. Reload the winner's record.
-    const winner = await store.load(organizationId, key);
-    if (winner && !matches(winner.requestHash)) throw mismatch(winner.requestHash);
-    if (winner?.state === "complete") return winner.response;
-    throw new IdempotencyInFlightError(key);
-  }
+  const cached = await claimIdempotencyKey(store, organizationId, key, requestHash, () =>
+    legacyIdempotencyHash(organizationId, key, body),
+  );
+  if (cached) return cached;
   const response = await handler();
   await store.complete(organizationId, key, response);
   return response;

@@ -61,6 +61,8 @@ product (see *Why not React Native*).
 - A small set of **capability ports** (TypeScript interfaces) is defined for each native capability the
   modules need: `GeolocationPort`, `CameraPort`, `BiometricPort`, `SecureStorePort`, `PushPort`,
   `FilesystemPort`, `NetworkStatusPort`. Screens and hooks depend **only** on these interfaces.
+  *As built (2026-11):* only `NetworkStatusPort` exists in `packages/ui/src/core/capabilities/ports.ts`; each
+  other port is added with its first caller (the native build), not ahead of it.
 - **Two adapter sets** implement them:
   - a **web adapter** (browser APIs where they exist — `navigator.geolocation`, `<input capture>`,
     WebAuthn, `localStorage`/IndexedDB — else a graceful degraded/no-op, reusing the existing

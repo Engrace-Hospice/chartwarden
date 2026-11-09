@@ -1,5 +1,6 @@
 // apps/backend/src/modules/36-messaging/routes/inbox-typebox.ts - WP 6.1 (ADR-0091) schemas for the smart work inbox. The query takes
 // only `limit` (an unknown key is a 422). The response is generic titles, codes, ids and instants: no message text, no patient name.
+import { Uuid, pageLimit } from "@chartwarden/shared/route-kit";
 import {
   SMART_INBOX_BANDS,
   SMART_INBOX_LIMIT_MAX,
@@ -12,7 +13,7 @@ const oneOf = <T extends readonly string[]>(values: T) =>
   Type.Union(values.map((v) => Type.Literal(v)));
 
 export const InboxQuerySchema = Type.Object(
-  { limit: Type.Optional(Type.Integer({ minimum: 1, maximum: SMART_INBOX_LIMIT_MAX })) },
+  { limit: pageLimit({ max: SMART_INBOX_LIMIT_MAX }) },
   { additionalProperties: false },
 );
 
@@ -24,9 +25,9 @@ const Item = Type.Object({
   reasons: Type.Array(Type.Object({ code: oneOf(SMART_INBOX_REASON_CODES), text: Type.String() })),
   since: Type.String({ format: "date-time" }),
   due_at: nullable(Type.String({ format: "date-time" })),
-  channel_id: nullable(Type.String({ format: "uuid" })),
+  channel_id: nullable(Uuid()),
   target: oneOf(["acknowledgment_request", "task", "handoff", "conversation"] as const),
-  target_id: nullable(Type.String({ format: "uuid" })),
+  target_id: nullable(Uuid()),
   restricted: Type.Boolean(),
   count: nullable(Type.Integer({ minimum: 0 })),
 });

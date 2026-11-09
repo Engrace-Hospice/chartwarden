@@ -15,6 +15,7 @@
 // concurrent double-dispatch is impossible by the SAME two guards a manual resend relies on. This file adds only WHEN to
 // call it and how many times.
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, ValidationError } from "@chartwarden/types";
 import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
@@ -132,32 +133,17 @@ export interface HeldTransmissionPage {
 const ISO_MICROS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function encodeCursor(updatedAtIso: string, id: string): string {
-  return Buffer.from(JSON.stringify({ u: updatedAtIso, i: id }), "utf8").toString("base64url");
+/** The signed keyset payload: `u` the microsecond `updated_at` instant, `i` the order id. */
+interface HeldCursor {
+  readonly u: string;
+  readonly i: string;
 }
 
-function decodeCursor(cursor: string): { readonly u: string; readonly i: string } {
-  const bad = () =>
-    new ValidationError("invalid cursor", [
-      { field: "cursor", code: "INVALID", message: "cursor is not valid" },
-    ]);
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
-      u?: unknown;
-      i?: unknown;
-    };
-    if (
-      typeof parsed.u !== "string" ||
-      typeof parsed.i !== "string" ||
-      !ISO_MICROS.test(parsed.u) ||
-      !UUID.test(parsed.i)
-    ) {
-      throw bad();
-    }
-    return { u: parsed.u, i: parsed.i };
-  } catch {
-    throw bad();
-  }
+function isHeldCursor(value: unknown): value is HeldCursor {
+  const v = value as Partial<HeldCursor> | null;
+  return (
+    typeof v?.u === "string" && typeof v.i === "string" && ISO_MICROS.test(v.u) && UUID.test(v.i)
+  );
 }
 
 /** `updated_at` at MICROSECOND precision as an ISO string — a JS `Date` would truncate to ms and break the keyset. */
@@ -440,7 +426,7 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
       const patientIds = opts.patientIds ?? null;
       if (patientIds !== null && patientIds.length === 0) return { items: [], nextCursor: null };
       const limit = Math.max(1, Math.min(opts.limit, 100));
-      const after = opts.cursor === undefined ? null : decodeCursor(opts.cursor);
+      const after = decodeCursor(organizationId, opts.cursor, isHeldCursor);
       return withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped) => {
         const tx = scoped as unknown as DbClient;
         const rows = await tx
@@ -490,7 +476,7 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
           items,
           nextCursor:
             rows.length > limit && last !== undefined
-              ? encodeCursor(last.failedAtIso, last.id)
+              ? encodeCursor(organizationId, { u: last.failedAtIso, i: last.id })
               : null,
         };
       });

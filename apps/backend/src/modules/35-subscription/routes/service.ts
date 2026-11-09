@@ -11,8 +11,20 @@
 // DTO discipline (§8.5): Stripe secrets, card PANs, DEK refs, ciphertext, and pseudonym key material are
 // NEVER projected onto a view. A payment-method view surfaces only the brand + last4 + expiry the tenant
 // already sees on their statement.
-import type { M35ReadActor, M35WriteActor } from "./actor";
-import type { CursorPage } from "./concurrency";
+import type { RouteActor, WriteActor } from "@chartwarden/shared/route-kit";
+
+/** The fields of the route-kit actor an M35 read uses (org + user + roles, all server-assembled). */
+export type M35ReadActor = Pick<RouteActor, "organizationId" | "userId" | "roles">;
+
+/** An M35 write: the read actor plus the acting membership and the §D14 step-up flag. */
+export type M35WriteActor = M35ReadActor & Pick<WriteActor, "membershipId" | "stepUpRecent">;
+
+/** One page of `items` plus the opaque `nextCursor`/`hasMore` envelope every list route returns. */
+export interface CursorPage<T> {
+  readonly items: readonly T[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
 
 // ── shared value unions (mirror the FROZEN @chartwarden/db pgEnum value lists; schema wins on conflict) ──────
 

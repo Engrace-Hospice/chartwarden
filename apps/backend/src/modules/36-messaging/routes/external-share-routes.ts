@@ -1,3 +1,4 @@
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/external-share-routes.ts - WP 6.6 (ADR-0096, PROPOSED): external partner share.
 //
 // STAFF (a workforce session; messaging.share.manage):
@@ -12,7 +13,7 @@
 //   GET  /api/v1/messaging/partner/shares/:shareId              state (enrolment or active)
 //   POST /api/v1/messaging/partner/shares/:shareId/verify       the out-of-band 8-digit code -> active (5 attempts per share)
 //   GET  /api/v1/messaging/partner/shares/:shareId/messages     the shared conversation, oldest first, active stage only; every read leaves a trail row
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   EXTERNAL_SHARE_MANAGE_PERMISSION,
   EXTERNAL_SHARE_MANAGE_STEP_UP_KEY,
@@ -36,8 +37,6 @@ import {
 } from "./external-share-typebox";
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const MANAGE = requirePermission(EXTERNAL_SHARE_MANAGE_PERMISSION) as PreHandler;
 const MANAGE_STEP_UP = requireStepUp(EXTERNAL_SHARE_MANAGE_STEP_UP_KEY) as PreHandler;

@@ -24,6 +24,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import { decodeKeysetCursor } from "@chartwarden/shared/route-kit";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -33,7 +34,6 @@ import {
 import { createDrizzleM29Store } from "../src/modules/29-external-interfaces/index";
 import {
   type CaseloadLookup,
-  decodeObservationCursor,
   resolveLabListScope,
 } from "../src/modules/29-external-interfaces/routes/lab-list-scope";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -301,7 +301,7 @@ describe.skipIf(!DB_URL)("GAP-085 M29 lab list scope — LIVE Postgres", () => {
     // limit 1 forces the cursor to land BETWEEN the two same-date rows.
     const first = await listAs(clinician(CLINICIAN), { limit: 1 });
     expect(idsOf(first)).toEqual([OBS(5)]);
-    const decoded = decodeObservationCursor(first.nextCursor);
+    const decoded = decodeKeysetCursor(ORG_A, first.nextCursor, "instant");
     expect(decoded?.id).toBe(OBS(5));
     const second = await listAs(clinician(CLINICIAN), { limit: 1, cursor: first.nextCursor });
     expect(idsOf(second)).toEqual([OBS(4)]);

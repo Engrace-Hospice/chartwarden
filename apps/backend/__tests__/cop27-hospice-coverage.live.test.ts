@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import type { WriteActor } from "@chartwarden/shared/route-kit";
 import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,7 +39,6 @@ import {
   buildDrizzleM21WriteService,
 } from "../src/modules/21-supplies/index";
 import { SupplyStateError } from "../src/modules/21-supplies/lifecycle/index";
-import type { M21WriteActor } from "../src/modules/21-supplies/routes/actor";
 import type { WriteOutboxPort } from "../src/modules/21-supplies/routes/write-service";
 import { listNonCoveredDmeSuppliesForAdmission } from "../src/modules/21-supplies/seams/non-covered-dme-supplies";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -117,12 +117,14 @@ describe.skipIf(!DB_URL)("COP27 — hospice coverage determinations — LIVE Pos
     );
     return { id: rows[0].id as string, updatedAt: (rows[0].updated_at as Date).toISOString() };
   }
-  const actor = (o: string): M21WriteActor => ({
+  const actor = (o: string): WriteActor => ({
     organizationId: o,
     userId: "",
     membershipId: org[o]!.member as never,
     roles: ["rn_case_manager"],
     locationIds: [],
+    sessionClass: "staff",
+    actorKind: "user",
     stepUpRecent: true,
   });
   const outboxRows = async (eventType: string, aggregateId: string) =>

@@ -3,12 +3,12 @@
 // denial. Every change is If-Match (409 when stale) and every mutation requires an Idempotency-Key. Org, actor and
 // provider-entity scope are server-derived. Nothing is filed or sent: a person records what happened outside ChartWarden.
 // Deadlines typed from a notice reuse the recorded-deadline service under `/payer-appeals/:id/recorded-deadlines`.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { DISPOSITION_KINDS, LEVEL_KINDS, PAYER_DECISION_OUTCOMES, PAYER_PROGRAMS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
 import type { LaterTierService } from "./later-tier-service";
 import {
@@ -18,7 +18,6 @@ import {
   RecordedDeadlineViewSchema,
   uuidParam,
 } from "./later-tier.routes";
-import { parse } from "./m25-typebox";
 import type { PayerAppealService } from "./payer-appeal-service";
 
 export interface PayerAppealRouteDeps {
@@ -227,7 +226,7 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
           writeActorOf(request),
           caseId(request),
           body.noticeDate,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -244,7 +243,7 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
           caseId(request),
           move,
           input,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -295,7 +294,7 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
           subjectOf(request),
           deadlineId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -311,7 +310,7 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
           subjectOf(request),
           deadlineId(request),
           body.satisfiedOn,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

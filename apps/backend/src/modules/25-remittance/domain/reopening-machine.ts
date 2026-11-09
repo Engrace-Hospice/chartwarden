@@ -13,7 +13,6 @@ export const REOPENING_TRANSITIONS: Readonly<Record<ReopeningState, readonly Reo
 };
 
 export const REOPENING_FILING_CHANNELS = ["mac_portal", "fax", "mail", "other"] as const;
-export type ReopeningFilingChannel = (typeof REOPENING_FILING_CHANNELS)[number];
 
 export const REOPENING_OUTCOMES = ["granted", "partial", "denied"] as const;
 export type ReopeningOutcome = (typeof REOPENING_OUTCOMES)[number];

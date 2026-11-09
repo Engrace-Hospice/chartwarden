@@ -879,11 +879,11 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ).rows[0];
     expect(saved.branding).toEqual(OVERLAY.branding);
     expect(saved.state_addendum).toEqual(OVERLAY.stateAddendum);
-    // A stale If-Match (0 again) now conflicts (412).
+    // A stale If-Match (0 again) now conflicts (409 STALE_VERSION).
     await expect(
       svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0, OVERLAY),
     ).rejects.toMatchObject({
-      statusCode: 412,
+      statusCode: 409,
     });
     // The next publish at the correct version succeeds.
     const second = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 1, OVERLAY);

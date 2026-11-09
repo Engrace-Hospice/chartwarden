@@ -8,6 +8,7 @@
 // events (nothing consumes them); the appeal_case audit trigger and appeal_case_event rows are the trail, and
 // the overdue signal is a nightly alert (jobs/qic-overdue.ts).
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, sql } from "drizzle-orm";
@@ -30,7 +31,6 @@ import {
   qicDaysOverdue,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
 import { assertNotMedicaidDenial } from "./denial-payer";
 import {
   QIC_ESCALATION_FILING_MESSAGES,
@@ -264,7 +264,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
       .set({ ...set, version: sql`${AC.version} + 1` })
       .where(and(eq(AC.id, cur.id), eq(AC.version, ifMatch), eq(AC.state, cur.state)))
       .returning({ id: AC.id, version: AC.version });
-    if (!updated[0]) throw new VersionConflictError(cur.version);
+    if (!updated[0]) throw new StaleVersionError();
     await tx.insert(AE).values({
       organizationId: actor.organizationId,
       appealCaseId: cur.id,

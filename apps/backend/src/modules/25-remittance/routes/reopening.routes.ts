@@ -1,17 +1,17 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/reopening.routes.ts — M25 milestone 3 routes: the MAC reopening
 // of a denial and the routing rules that decide a denial is reopened rather than appealed. Reads gate on
 // `reopening.read`, case writes on `reopening.manage`, the filing on `reopening.submit` + step-up, and the
 // organization's routing rules on `denial_route.manage`. Every change is If-Match (409 when stale) and every
 // mutation requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { REOPENING_FILING_CHANNELS, REOPENING_OUTCOMES } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import type { DenialRouteService } from "./denial-route-service";
 import { ASSIGNED_TO_ACTOR, P, STEP_UP } from "./guards";
-import { parse } from "./m25-typebox";
+import { clampLimit } from "./m25-typebox";
 import type { ReopeningService } from "./reopening-service";
 
 export interface ReopeningRouteDeps {
@@ -217,7 +217,7 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
           writeActorOf(request),
           reopeningId(request),
           body.dueAt,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -234,7 +234,7 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
           writeActorOf(request),
           reopeningId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -250,7 +250,7 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
           writeActorOf(request),
           reopeningId(request),
           body.outcome,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -264,7 +264,7 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
         await reopeningService.withdrawReopening(
           writeActorOf(request),
           reopeningId(request),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -277,7 +277,7 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
         await reopeningService.closeReopening(
           writeActorOf(request),
           reopeningId(request),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -304,7 +304,7 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
           writeActorOf(request),
           idOf(request, "denial case"),
           body.code,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

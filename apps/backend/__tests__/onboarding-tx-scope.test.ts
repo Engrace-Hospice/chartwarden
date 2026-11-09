@@ -82,7 +82,7 @@ describe("the ...OnTx credential writes assert the scope first", () => {
     await expect(
       service.upsertCredentialOnTx(
         txScopedTo(OTHER_ORG, touched),
-        { organizationId: ORG, userId: "u", roles: ["platform_ops"], stepUpRecent: true },
+        { organizationId: ORG, userId: "u", roles: ["platform_ops"] },
         {
           providerEntityId: "f6000000-0000-4000-8000-0000000000f6",
           serviceState: "CA",

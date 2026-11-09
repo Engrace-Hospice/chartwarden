@@ -11,9 +11,9 @@
 //
 // Org and operator are server-side: the tenant is the PATH slug, the operator is the session, never the body.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { rejectAiActor } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
 import type { OnboardingDataService, OnboardingOperator } from "./onboarding-data-service";
 import {
   ONBOARDING_REASON_MAX,

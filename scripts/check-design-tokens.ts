@@ -22,9 +22,10 @@
  *
  * Heuristic, static, import-level (same posture as check-tenancy.ts / check-ddl-legality.ts).
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { walkFiles } from "./lib/gate-scan";
 
 // Rooted off the script's own file location (not process.cwd()) so it always validates the real
 // repo regardless of the caller's working directory. `CHARTWARDEN_FITNESS_ROOT` is a test-only escape
@@ -37,10 +38,7 @@ const REPO_ROOT =
 const SCAN_DIRS = ["apps/web/src", "packages/ui/src/web"];
 
 // Token-definition files where raw color values legitimately live (exempt from rule 1).
-const ALLOW = new Set([
-  "packages/ui/src/web/theme/tokens.ts",
-  "packages/ui/src/web/theme/tailwind.config.ts",
-]);
+const ALLOW = new Set(["packages/ui/src/web/theme/tokens.ts"]);
 
 const HEX = /#[0-9a-fA-F]{3,8}\b/;
 const RGB = /\brgba?\(/;
@@ -51,25 +49,11 @@ function stripComments(src: string): string {
 }
 
 function walk(dir: string): string[] {
-  const abs = join(REPO_ROOT, dir);
-  let entries: string[];
-  try {
-    entries = readdirSync(abs);
-  } catch {
-    return [];
-  }
-  const out: string[] = [];
-  for (const e of entries) {
-    const rel = `${dir}/${e}`;
-    const full = join(REPO_ROOT, rel);
-    if (statSync(full).isDirectory()) {
-      if (e === "dist" || e === "node_modules") continue;
-      out.push(...walk(rel));
-    } else if (/\.tsx?$/.test(e) && !/\.test\.tsx?$/.test(e)) {
-      out.push(rel);
-    }
-  }
-  return out;
+  return walkFiles(dir, {
+    base: REPO_ROOT,
+    skipDirs: ["dist", "node_modules"],
+    include: (name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name),
+  });
 }
 
 type Violation = { rule: string; file: string; detail: string };
@@ -98,7 +82,7 @@ const colorsPath = "packages/ui/src/core/theme/colors.ts";
 const css = readFileSync(join(REPO_ROOT, cssPath), "utf8");
 const themeBlock = css.slice(css.indexOf("@theme"), css.indexOf("}", css.indexOf("@theme")));
 const colorsSrc = readFileSync(join(REPO_ROOT, colorsPath), "utf8");
-// brandColors hex values (skip the statusColors triad — those are not part of @theme by design).
+// brandColors hex values.
 const brandSeg = colorsSrc.slice(colorsSrc.indexOf("brandColors"));
 for (const m of brandSeg.matchAll(/"(#[0-9a-fA-F]{3,8})"/g)) {
   const hex = m[1]!;

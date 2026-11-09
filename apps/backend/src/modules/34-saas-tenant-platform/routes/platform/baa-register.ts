@@ -13,9 +13,9 @@
 // tenant surface (`POST /api/v1/tenant/baa/:id/attest`, a separate group) — this group is the platform-ops
 // register CRUD only. Org/actor binding is server-side. Mirrors the sibling tenants.ts plugin shape.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf, rejectAiActor } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   BaaParamsSchema,
   BaaRegisterListQuerySchema,
@@ -25,17 +25,9 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface BaaRegisterRouteDeps {
   /** The §4.1 platform-ops route service (in-memory slice; Drizzle under `withPlatformContext` in prod). */
   service: TenantPlatformRouteService;
-}
-
-function actorOf(request: FastifyRequest): { userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { userId: ctx.userId };
 }
 
 const baaIdOf = (request: FastifyRequest): string => parse(BaaParamsSchema, request.params).id;

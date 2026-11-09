@@ -4,7 +4,7 @@
 // version-checks the PATCH surfaces (§2.5), stamps the acting membership, and emits the §4.5 outbox event
 // through the injected {@link WriteOutboxPort} in the SAME transaction (the D2 transactional-outbox posture;
 // the composition root binds the live dispatcher port). A failed transition throws INVALID_TRANSITION; a
-// stale version throws VERSION_CONFLICT; a missing row throws NOT_FOUND.
+// stale version throws STALE_VERSION; a missing row throws NOT_FOUND.
 import type { M25WriteActor } from "./actor";
 
 /** A §4.5 `m25.*` transactional-outbox emission. PHI-free payload by construction (§3.6). */

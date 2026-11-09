@@ -6,7 +6,7 @@
 // except the injected `now()` so version/sign timestamps are deterministic in tests.
 //
 // §7.7 optimistic concurrency: every mutable element row (problem/goal/intervention) carries a
-// monotonic `version`; a PATCH that arrives with a stale `If-Match` version is refused with 412
+// monotonic `version`; a PATCH that arrives with a stale `If-Match` version is refused with 409
 // STALE_VERSION via the pure `checkOptimisticConcurrency` guard (lifecycle/validation.ts). The version
 // sign-off path reuses the pure §2.3/D5 quorum core (`decideRecordSignature` / `resolveRequiredSignerSet`).
 import type {

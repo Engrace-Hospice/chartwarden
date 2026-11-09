@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/records-request/records-request-routes.ts — F-238: request a
 // prospect's older records from a PCP / hospital, print the cover sheet that carries the request code, and
 // track the request (cancel, mark received). Records that come back are filed by the intake job when it
@@ -12,7 +13,7 @@
 // through M22's outbound-fax port (../fax/outbound-fax.ts; ./records-request-fax.ts records every attempt).
 // Sending is `intake.upload` (it is part of making the request); no step-up: it discloses exactly what the
 // printed sheet does, to the recipient the request already names or the number staff type.
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import {
   DegradedError,
   NotFoundError,
@@ -36,7 +37,6 @@ import {
   SendRecordsRequestFaxRequest,
 } from "./records-request-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const INTAKE_UPLOAD = P("intake.upload");
 const INTAKE_READ = P("intake.read");
@@ -75,12 +75,8 @@ const displayFax = (e164: string): string =>
   /^\+1\d{10}$/.test(e164) ? `(${e164.slice(2, 5)}) ${e164.slice(5, 8)}-${e164.slice(8)}` : e164;
 
 function actorOf(request: FastifyRequest): { organizationId: string; actor: RecordsRequestActor } {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
-  return { organizationId: ctx.organizationId, actor: { userId: ctx.userId, membershipId } };
+  const { organizationId, userId, membershipId } = writeActorOf(request);
+  return { organizationId, actor: { userId, membershipId } };
 }
 
 export function registerRecordsRequestRoutes(

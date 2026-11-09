@@ -23,7 +23,7 @@ import { isSeverityAtLeastModerate } from "./kinds";
 // -----------------------------------------------------------------------------
 
 /** The M30 incident-lifecycle failure-code catalog → canonical HTTP status. */
-export const M30_INCIDENT_ERROR_STATUS = {
+const M30_INCIDENT_ERROR_STATUS = {
   // §2.2 — an event from a state that does not accept it.
   ILLEGAL_INCIDENT_TRANSITION: 409,
   // §2.2 `submit` — the per-kind required `kind_data` members are not yet complete (V-14).
@@ -166,16 +166,15 @@ export type IncidentEvent =
     };
 
 /** The legal §2.2 transition graph (from → events accepted). Guards are checked separately. */
-export const INCIDENT_GRAPH: Readonly<Record<IncidentState, ReadonlyArray<IncidentEvent["type"]>>> =
-  {
-    draft: ["submit"],
-    submitted: ["triage"],
-    triaged: ["beginInvestigation"],
-    under_investigation: ["resolve"],
-    resolved: ["close"],
-    closed_followup_complete: ["reopen"],
-    reopened: ["resume"],
-  };
+const INCIDENT_GRAPH: Readonly<Record<IncidentState, ReadonlyArray<IncidentEvent["type"]>>> = {
+  draft: ["submit"],
+  submitted: ["triage"],
+  triaged: ["beginInvestigation"],
+  under_investigation: ["resolve"],
+  resolved: ["close"],
+  closed_followup_complete: ["reopen"],
+  reopened: ["resume"],
+};
 
 /**
  * Apply an incident lifecycle event (§2.2). Throws {@link IncidentStateError} `ILLEGAL_INCIDENT_TRANSITION`

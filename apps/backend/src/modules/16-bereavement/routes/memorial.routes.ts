@@ -1,3 +1,8 @@
+import {
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/memorial.routes.ts — M16 (ADR-0109 D10, PR 3) routes 67-76: memorial services.
 //
@@ -9,7 +14,6 @@ import { NotFoundError } from "@chartwarden/types";
 // their M4 read audit with `resourceIdParam`.
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_OVERSIGHT, ABAC_PROGRAM_STAFF, ABAC_WINDOW_CONTACT, P } from "./guards";
 import { ContactParams, parse, parseQuery } from "./m16-typebox";
 import type { M16MemorialService } from "./memorial-service";
@@ -89,7 +93,7 @@ export function registerBereavementMemorialRoutes(
       const body = parse(MemorialFieldsBody, request.body);
       return memorialService.updateMemorial(writeActorOf(request), serviceId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -101,7 +105,7 @@ export function registerBereavementMemorialRoutes(
     async (request) => {
       const { serviceId } = parse(MemorialParams, request.params);
       return memorialService.publishMemorial(writeActorOf(request), serviceId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -115,7 +119,7 @@ export function registerBereavementMemorialRoutes(
       const body = parse(CloseMemorialBody, request.body);
       return memorialService.closeMemorial(writeActorOf(request), serviceId, {
         status: body.status,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

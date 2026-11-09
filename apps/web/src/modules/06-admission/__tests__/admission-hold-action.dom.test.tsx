@@ -60,7 +60,7 @@ describe("AdmissionHoldAction (GAP-021 hold/resume)", () => {
   });
 
   it("shows an error and does not reload when the server refuses", async () => {
-    const client = clientWith({ error: { code: "VERSION_CONFLICT" } });
+    const client = clientWith({ error: { code: "VERSION_MISMATCH" } });
     const onChanged = renderAction(client, "on_hold");
     fireEvent.click(screen.getByRole("button", { name: "Resume admission" }));
     expect(await screen.findByRole("alert")).toBeTruthy();

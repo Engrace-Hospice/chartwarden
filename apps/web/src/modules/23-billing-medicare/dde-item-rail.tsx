@@ -1,6 +1,6 @@
 // apps/web/src/modules/23-billing-medicare — the DDE item drawer (ADR-0052): deadline, what was keyed / came back,
 // the append-only history, and only the actions the server says are allowed now. The rail is keyed by item id only,
-// so it stays mounted across reloads; its form state is reset EXPLICITLY when the item's version changes. A 412 is
+// so it stays mounted across reloads; its form state is reset EXPLICITLY when the item's version changes. A stale version (409) is
 // reported to the parent (which holds the notice in its own state, so a reload cannot wipe it). A step-up round trip
 // stashes the open form in process memory (never browser storage) and restores it on return.
 import {
@@ -145,7 +145,7 @@ export function ItemRail({
     header: { "Idempotency-Key": key },
   });
 
-  /** One POST: route auth failures (step-up included), surface the server's refusal, hand a 412 to the parent. */
+  /** One POST: route auth failures (step-up included), surface the server's refusal, hand a stale version (409 STALE_VERSION) to the parent. */
   const run = async (
     fingerprint: string,
     call: (key: string) => Promise<{ data?: unknown; error?: unknown; response?: Response }>,
@@ -173,7 +173,7 @@ export function ItemRail({
           navigate(redirect);
           return;
         }
-        if (response?.status === 412) {
+        if (errorCode(error) === "STALE_VERSION") {
           onChanged(); // clears any older notice and reloads
           onConflict("This item changed since you opened it. It has been reloaded; try again.");
           return;

@@ -27,8 +27,8 @@ import type { StatusTone } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { PATIENT_STATUS_TONE, patientStatusLabel } from "../../shell/patient-context";
 import { authClient } from "../02-identity/auth-client";
-import { STATUS_TONE, statusLabel } from "./patient-status";
 
 type Facet = "all" | "patient" | "staff";
 
@@ -216,8 +216,8 @@ export function GlobalSearchResults(): JSX.Element {
           </>
         ),
         initials: initialsOf(patient.firstName, patient.lastName),
-        status: statusLabel(patient.status),
-        tone: STATUS_TONE[patient.status] ?? "neutral",
+        status: patientStatusLabel(patient.status),
+        tone: PATIENT_STATUS_TONE[patient.status] ?? "neutral",
       })),
     [patients],
   );
@@ -229,7 +229,7 @@ export function GlobalSearchResults(): JSX.Element {
         title: member.userId.slice(0, 8),
         meta: member.isAdmin ? "Org admin" : "Member",
         initials: initialsOf(member.userId),
-        status: statusLabel(member.status),
+        status: patientStatusLabel(member.status),
         tone: member.status === "active" ? "success" : "neutral",
       })),
     [staff],

@@ -1,3 +1,8 @@
+import {
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/group.routes.ts — M16 (ADR-0109 D10, PR 3) routes 53-66: support groups.
 //
@@ -11,7 +16,6 @@ import { NotFoundError } from "@chartwarden/types";
 // declare their M4 read audit with `resourceIdParam` (they name families); the program-level reads name nobody and say so.
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import type { M16GroupService } from "./group-service";
 import {
   AddGroupSessionBody,
@@ -100,7 +104,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
         ...body,
         joinUrl: body.joinUrl,
         recurrence: body.recurrence,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -112,7 +116,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
     async (request) => {
       const { groupId } = parse(GroupParams, request.params);
       return groupService.openGroup(writeActorOf(request), groupId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -126,7 +130,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
       const body = parse(CloseGroupBody, request.body);
       return groupService.closeGroup(writeActorOf(request), groupId, {
         status: body.status,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -163,7 +167,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
     async (request) => {
       const { groupId, sessionId } = parse(GroupSessionParams, request.params);
       return groupService.cancelSession(writeActorOf(request), groupId, sessionId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

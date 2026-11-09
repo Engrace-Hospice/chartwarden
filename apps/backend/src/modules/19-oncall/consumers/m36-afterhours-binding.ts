@@ -14,16 +14,12 @@
 // loser's insert return no row and it THROWS, rolling back its whole transaction (call row, gap, outcome),
 // so exactly one outcome is ever published.
 import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type { IsoInstant, OrgId, TriageCallId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
-import {
-  CONSUMER_USER_ID,
-  type OncallTriggerConsumerDeps,
-  openMachineCall,
-  publishCoverageGap,
-} from "./bindings";
+import { type OncallTriggerConsumerDeps, openMachineCall, publishCoverageGap } from "./bindings";
 import {
   type AfterHoursAction,
   type AfterHoursOutcome,

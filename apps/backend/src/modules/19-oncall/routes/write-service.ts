@@ -79,7 +79,7 @@ export interface AlertPort {
 
 /** Every state-transition command echoes the `If-Match` version it read (§2.5). */
 interface Versioned {
-  /** The row `version` the caller read, from `If-Match`. A mismatch is 412 `STALE_VERSION`. */
+  /** The row `version` the caller read, from `If-Match`. A mismatch is 409 `STALE_VERSION`. */
   readonly expectedVersion?: number;
 }
 

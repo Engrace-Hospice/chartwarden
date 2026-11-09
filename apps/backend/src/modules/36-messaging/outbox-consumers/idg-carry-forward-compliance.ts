@@ -44,7 +44,7 @@ export const IDG_CARRY_FORWARD_COMPLIANCE_PAYLOAD_TYPE = "m14.action_item.carry_
 const THRESHOLD = 3;
 
 /** Constant, PHI-free body (M36 composes the final copy from the catalog payload; it never re-templates). */
-export const IDG_CARRY_FORWARD_COMPLIANCE_BODY =
+const IDG_CARRY_FORWARD_COMPLIANCE_BODY =
   "An IDG action item has now been carried forward into a third meeting and is still open. Review it on the IDG action-item list.";
 
 export interface IdgCarryForwardComplianceDeps {

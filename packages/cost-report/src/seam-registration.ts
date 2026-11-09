@@ -17,15 +17,14 @@
 //     ValidationContextBuilder (degrading to the deny-stub → rule `skip` when db-unbound). `DrugCostBillingReader`
 //     (M12 drug-cost basis) stays a FORWARD-SEAM RESERVATION: registered but fail-closed until M12 materializes
 //     med-order cost (no cost column today). (`CapPeriodReader` was a forward-declared guess M26 never published.)
-import {
-  type CostReportFilingStatusReader,
-  type CostReportMetricsProvider,
-  type CostReportProvider,
-  type EcrArtifactReader,
-  type GustoClientFactory,
-  M27_PUBLISHED_SEAM_NAMES,
-  type ValidationResultProvider,
-  type XeroClientFactory,
+import type {
+  CostReportFilingStatusReader,
+  CostReportMetricsProvider,
+  CostReportProvider,
+  EcrArtifactReader,
+  GustoClientFactory,
+  ValidationResultProvider,
+  XeroClientFactory,
 } from "./seams";
 
 /** The M1 SeamRegistry `registerSeam` surface, injected as a port (no apps/backend edge). */
@@ -58,9 +57,6 @@ export function registerM27PublishedSeams(
   registrar.registerSeam("CostReportMetricsProvider", impls.costReportMetricsProvider);
 }
 
-/** Sanity: the publish set matches the §4.3 published-name tuple (asserted in test). */
-export const M27_PUBLISHED_SEAMS = M27_PUBLISHED_SEAM_NAMES;
-
 /**
  * The §4.4 consumed-seam names (REQUIRED_SEAMS contract). LIVE producers: M40 / M6 / M8 / M12 / M13 /
  * M38 / M36. FORWARD-SEAM DENY-STUBS today (wire at producer lock): M23 + M26.
@@ -91,12 +87,6 @@ export const M27_REQUIRED_SEAMS = [
   // M36 — alert delivery
   "AlertDispatcher",
 ] as const;
-
-/** The forward-seam (deny-stub) consumed names — skipped validation rules surface these as `skip` while the
- *  producer is db-unbound. M26's `CapAccrualReader` + M23's `PatientDaysProvider` + M25's `ClaimSettlementProvider`
- *  are NO LONGER here (they are live producers, registered into the M1 registry at boot); only `DrugCostBillingReader`
- *  (M12) remains forward-declared — a reservation until M12 materializes med-order cost. */
-export const M27_FORWARD_SEAM_NAMES = ["DrugCostBillingReader"] as const;
 
 /** Thrown by every forward-seam deny-stub method until the producing module (M23/M26) locks. */
 export const SEAM_NOT_BOUND = "SEAM_NOT_BOUND" as const;

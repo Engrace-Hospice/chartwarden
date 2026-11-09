@@ -100,14 +100,7 @@ export {
   mutatingActorOf,
   writeActorOf,
 } from "./actor";
-export {
-  type CursorPage,
-  M16_PAGE_SIZES,
-  decodeCursor,
-  encodeCursor,
-  ifMatchVersion,
-  toCursorPage,
-} from "./concurrency";
+export { M16_PAGE_SIZES } from "./pagination";
 export {
   type BereavementDisclosureDecision,
   type BereavementDisclosurePort,

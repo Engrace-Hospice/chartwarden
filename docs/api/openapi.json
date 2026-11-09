@@ -105,6 +105,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -578,6 +579,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -585,15 +595,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -2202,6 +2203,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -2209,15 +2219,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -2719,6 +2720,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -2726,15 +2736,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -3069,6 +3070,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -3076,15 +3086,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -3575,6 +3576,15 @@
         "summary": "List NPPES sync-run history (§4.1.4)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -3582,15 +3592,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -5949,6 +5950,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -7001,6 +7003,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -7210,6 +7213,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -9439,6 +9443,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -9648,6 +9653,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -9655,15 +9669,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -10200,6 +10205,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -10207,15 +10221,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -10365,7 +10370,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Update tenant administration policy",
+        "summary": "Update tenant administration policy; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -11166,7 +11171,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22)",
+        "summary": "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -14683,7 +14688,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Update the refill-inbox SLA policy (tighten-only)",
+        "summary": "Update the refill-inbox SLA policy (tighten-only); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -16361,6 +16366,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -16368,14 +16382,6 @@
               "minimum": 1,
               "maximum": 500,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           }
         ],
@@ -17056,7 +17062,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a clinician administration (five-rights; administering_clinician_eligible ABAC)",
+        "summary": "Record a clinician administration (five-rights; administering_clinician_eligible ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "x-witness-attestation",
@@ -17804,7 +17810,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC)",
+        "summary": "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -18094,7 +18100,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Correct a committed administration (supersede)",
+        "summary": "Correct a committed administration (supersede); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -18397,7 +18403,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "RN disputes a caregiver-attested row",
+        "summary": "RN disputes a caregiver-attested row; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -18691,7 +18697,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Administrative hard-void (recorded in error)",
+        "summary": "Administrative hard-void (recorded in error); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -18985,7 +18991,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a caregiver-attested administration via the M31 portal (D10)",
+        "summary": "Record a caregiver-attested administration via the M31 portal (D10); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -19485,7 +19491,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Bulk offline-queue sync from device (D18)",
+        "summary": "Bulk offline-queue sync from device (D18); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -19977,7 +19983,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a refusal (administering_clinician_eligible ABAC)",
+        "summary": "Record a refusal (administering_clinician_eligible ABAC); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -20296,7 +20302,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Mint a single-use controlled-substance witness-attestation token (D7)",
+        "summary": "Mint a single-use controlled-substance witness-attestation token (D7); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -20396,7 +20402,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -44854,18 +44860,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -50225,6 +50230,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -51062,6 +51068,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -51230,6 +51237,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -52727,7 +52735,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Upsert a membership's weekly availability",
+        "summary": "Upsert a membership's weekly availability; Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -79447,7 +79455,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -81006,7 +81013,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -81663,7 +81670,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -82230,7 +82237,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -82356,7 +82363,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -83520,6 +83527,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -83527,16 +83543,6 @@
               "minimum": 1,
               "maximum": 100,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "minLength": 1,
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -87226,7 +87232,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -89322,7 +89327,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "assigneeMembershipId": {
@@ -89787,7 +89792,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -90248,7 +90253,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -90709,7 +90714,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -91170,7 +91175,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "macAcceptedOn": {
@@ -91665,7 +91670,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "outcome": {
@@ -92166,7 +92171,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "dcn": {
@@ -92637,7 +92642,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -93098,7 +93103,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -93559,7 +93564,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -94206,7 +94211,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -95273,7 +95278,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -97224,7 +97228,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -97444,7 +97447,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -97638,7 +97641,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -98840,7 +98843,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -100392,7 +100394,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "description": "The notice `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "reason": {
@@ -100912,7 +100914,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "description": "The notice `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "priorHospiceThroughDate": {
@@ -102035,7 +102037,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "description": "The notice `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -102597,7 +102599,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -105051,6 +105052,25 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
             }
           }
         ],
@@ -108088,7 +108108,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -108333,7 +108353,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -109132,7 +109152,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -112875,7 +112895,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Manual return acknowledgment (Phase-1 fallback)",
+        "summary": "Manual return acknowledgment (Phase-1 fallback); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -112964,7 +112984,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -115187,7 +115207,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -118597,7 +118617,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -128396,18 +128416,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -131069,6 +131088,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -132246,7 +132266,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -137307,7 +137327,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -139410,7 +139430,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -139694,7 +139714,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -140866,7 +140886,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -142186,7 +142206,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -143848,7 +143868,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -144162,7 +144182,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -145479,7 +145499,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -148137,7 +148157,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Operator-initiated cancel (from a non-terminal status)",
+        "summary": "Operator-initiated cancel (from a non-terminal status); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -148265,7 +148285,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Operator-initiated resubmit (from rejected/timeout)",
+        "summary": "Operator-initiated resubmit (from rejected/timeout); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -148389,7 +148409,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Record a check-in (§4.7 capture predicates gate)",
+        "summary": "Record a check-in (§4.7 capture predicates gate); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -148570,7 +148590,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Record a check-out",
+        "summary": "Record a check-out; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -148928,7 +148948,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Approve a pending device",
+        "summary": "Approve a pending device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -149019,7 +149039,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Reject a pending device",
+        "summary": "Reject a pending device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -149129,7 +149149,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Retire a device",
+        "summary": "Retire a device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -149235,7 +149255,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Suspend a device",
+        "summary": "Suspend a device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -149345,7 +149365,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Clinician self-registers a device (-> pending_approval)",
+        "summary": "Clinician self-registers a device (-> pending_approval); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -149839,7 +149859,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Correction-of-record (Clinical Supervisor+, fresh step-up)",
+        "summary": "Correction-of-record (Clinical Supervisor+, fresh step-up); Idempotency-Key required",
         "parameters": [
           {
             "name": "eventId",
@@ -150176,7 +150196,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Create/replace a per-address override (reason >=30 chars)",
+        "summary": "Create/replace a per-address override (reason >=30 chars); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -150283,7 +150303,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Edit tenant tighten-only policy",
+        "summary": "Edit tenant tighten-only policy; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -150585,7 +150605,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Assigned clinician self-attests (reason >=40; D6 <=24h)",
+        "summary": "Assigned clinician self-attests (reason >=40; D6 <=24h); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -150718,7 +150738,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Supervisor override (step-up; reason >=60; D6 <=7d)",
+        "summary": "Supervisor override (step-up; reason >=60; D6 <=7d); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -153657,7 +153677,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -160517,7 +160537,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -160584,7 +160604,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -160817,7 +160837,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -160863,7 +160883,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -161046,7 +161066,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -161113,7 +161133,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -161281,7 +161301,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -162759,7 +162779,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -168412,7 +168432,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -169211,7 +169231,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -169408,7 +169428,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -169688,7 +169708,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -170313,6 +170333,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -170883,7 +170904,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -171277,7 +171298,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -175329,6 +175350,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -180877,6 +180899,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -181382,7 +181405,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "description": "Offset cursor returned by the previous page",
+              "description": "Opaque cursor returned by the previous page",
               "type": "string"
             }
           },
@@ -186582,6 +186605,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -193108,7 +193132,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238)",
+        "summary": "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -193711,7 +193735,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Create a medication-order draft (prescriber_eligible ABAC)",
+        "summary": "Create a medication-order draft (prescriber_eligible ABAC); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -194754,7 +194778,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Edit a medication-order draft",
+        "summary": "Edit a medication-order draft; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -194815,7 +194839,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Complete a medication order (no-refills-no-renewal)",
+        "summary": "Complete a medication order (no-refills-no-renewal); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -194861,7 +194885,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Issue a corrected replacement order (prescriber_eligible ABAC)",
+        "summary": "Issue a corrected replacement order (prescriber_eligible ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -195020,7 +195044,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Attach a cosignature (no self-cosign)",
+        "summary": "Attach a cosignature (no self-cosign); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -195087,7 +195111,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed)",
+        "summary": "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -195591,7 +195615,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Discontinue a medication order",
+        "summary": "Discontinue a medication order; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -195661,7 +195685,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "File a clinician-initiated medication-error report against an order (F-205, #248)",
+        "summary": "File a clinician-initiated medication-error report against an order (F-205, #248); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -195741,7 +195765,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Move a draft to pending_signature",
+        "summary": "Move a draft to pending_signature; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -195917,7 +195941,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Retransmit a transmission_failed order (mints a corrected order)",
+        "summary": "Retransmit a transmission_failed order (mints a corrected order); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -195962,7 +195986,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Standard sign a medication order",
+        "summary": "Standard sign a medication order; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -196011,7 +196035,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Complete an EPCS controlled-substance sign (second factor)",
+        "summary": "Complete an EPCS controlled-substance sign (second factor); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -196093,7 +196117,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC)",
+        "summary": "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -196243,7 +196267,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Record a medication order as verbal",
+        "summary": "Record a medication order as verbal; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -196720,7 +196744,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-093: grant a clinical-license/certification credential (201)",
+        "summary": "GAP-093: grant a clinical-license/certification credential (201); Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -196965,7 +196989,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-093: revoke a credential (204)",
+        "summary": "GAP-093: revoke a credential (204); Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -197396,7 +197420,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "name": {
@@ -197560,7 +197584,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -197806,7 +197830,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -197978,7 +198002,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -199555,7 +199579,7 @@
                 ],
                 "properties": {
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "fileName": {
@@ -199611,11 +199635,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -199699,7 +199723,7 @@
                 ],
                 "properties": {
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "reasonCode": {
@@ -199775,11 +199799,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -199886,11 +199910,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelKind": {
@@ -200045,15 +200069,15 @@
                         ],
                         "properties": {
                           "reviewId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "grantId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "granteeUserId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "granteeName": {
@@ -200067,7 +200091,7 @@
                             ]
                           },
                           "channelId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelKind": {
@@ -200086,7 +200110,7 @@
                           "patientId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -200174,7 +200198,7 @@
                           "reviewerUserId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -200266,15 +200290,15 @@
                   ],
                   "properties": {
                     "reviewId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "grantId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeUserId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeName": {
@@ -200288,7 +200312,7 @@
                       ]
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -200307,7 +200331,7 @@
                     "patientId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -200395,7 +200419,7 @@
                     "reviewerUserId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -200472,7 +200496,7 @@
                           "resourceId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -200562,15 +200586,15 @@
                   ],
                   "properties": {
                     "reviewId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "grantId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeUserId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeName": {
@@ -200584,7 +200608,7 @@
                       ]
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -200603,7 +200627,7 @@
                     "patientId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -200691,7 +200715,7 @@
                     "reviewerUserId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -200768,7 +200792,7 @@
                           "resourceId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -201435,7 +201459,7 @@
                 ],
                 "properties": {
                   "invocation_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "invoked_at": {
@@ -201517,7 +201541,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -201554,7 +201578,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -201931,7 +201955,7 @@
                 ],
                 "properties": {
                   "parentMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "body": {
@@ -202101,7 +202125,7 @@
                       "type": "string"
                     },
                     "invocation_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "invoked_at": {
@@ -202149,7 +202173,7 @@
                 "type": "object",
                 "properties": {
                   "thread_root_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -203202,18 +203226,18 @@
                     "type": "string"
                   },
                   "medication_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "assignee_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "allow_unrouted": {
                     "type": "boolean"
                   },
                   "client_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -203768,6 +203792,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -204402,7 +204427,7 @@
                     "type": "string"
                   },
                   "clientMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "attachments": {
@@ -204415,7 +204440,7 @@
                       ],
                       "properties": {
                         "attachmentId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         }
                       }
@@ -205054,7 +205079,7 @@
                     ]
                   },
                   "suggested_target_ref": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -205542,7 +205567,7 @@
                 ],
                 "properties": {
                   "optionId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -206016,7 +206041,7 @@
                 ],
                 "properties": {
                   "assignee_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "due_at": {
@@ -206070,6 +206095,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -207845,11 +207871,11 @@
                     ]
                   },
                   "patient_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "recipient_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "body_doc": {
@@ -207884,7 +207910,7 @@
                     }
                   },
                   "client_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -207932,7 +207958,7 @@
             "in": "query",
             "required": true,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -208219,7 +208245,7 @@
                     "type": "string"
                   },
                   "parentMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "scheduledFor": {
@@ -208232,7 +208258,7 @@
                     "type": "string"
                   },
                   "clientMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -208307,7 +208333,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -209036,7 +209062,7 @@
                     "invocation_id": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -209110,7 +209136,7 @@
                                   "type": "integer"
                                 },
                                 "message_id": {
-                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "format": "uuid",
                                   "type": "string"
                                 },
                                 "sent_at": {
@@ -209159,7 +209185,7 @@
                 "type": "object",
                 "properties": {
                   "thread_root_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -209316,11 +209342,11 @@
                     }
                   },
                   "recipient_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "client_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -210417,7 +210443,7 @@
                       ],
                       "properties": {
                         "id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "item_key": {
@@ -210464,7 +210490,7 @@
                           ]
                         },
                         "owner_user_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "owner_display_name": {
@@ -210501,7 +210527,7 @@
                         "completed_by_user_id": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -210584,7 +210610,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "event_type": {
@@ -210622,7 +210648,7 @@
                           "actor_user_id": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -210633,7 +210659,7 @@
                           "from_owner_user_id": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -210644,7 +210670,7 @@
                           "to_owner_user_id": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -210750,7 +210776,7 @@
                       ],
                       "properties": {
                         "id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "item_key": {
@@ -210797,7 +210823,7 @@
                           ]
                         },
                         "owner_user_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "owner_display_name": {
@@ -210834,7 +210860,7 @@
                         "completed_by_user_id": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -210883,7 +210909,7 @@
                 ],
                 "properties": {
                   "to_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -210942,11 +210968,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patient_id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patient_display_name": {
@@ -210996,7 +211022,7 @@
                               ],
                               "properties": {
                                 "id": {
-                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "format": "uuid",
                                   "type": "string"
                                 },
                                 "item_key": {
@@ -211043,7 +211069,7 @@
                                   ]
                                 },
                                 "owner_user_id": {
-                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "format": "uuid",
                                   "type": "string"
                                 },
                                 "owner_display_name": {
@@ -211080,7 +211106,7 @@
                                 "completed_by_user_id": {
                                   "anyOf": [
                                     {
-                                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                      "format": "uuid",
                                       "type": "string"
                                     },
                                     {
@@ -211164,11 +211190,11 @@
                       ],
                       "properties": {
                         "id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patient_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patient_display_name": {
@@ -211218,7 +211244,7 @@
                             ],
                             "properties": {
                               "id": {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               "item_key": {
@@ -211265,7 +211291,7 @@
                                 ]
                               },
                               "owner_user_id": {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               "owner_display_name": {
@@ -211302,7 +211328,7 @@
                               "completed_by_user_id": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -211469,7 +211495,7 @@
                     ]
                   },
                   "subjectId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "title": {
@@ -212103,11 +212129,11 @@
                 ],
                 "properties": {
                   "message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "assigned_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -213151,7 +213177,7 @@
                 ],
                 "properties": {
                   "assigned_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -213585,7 +213611,7 @@
                 ],
                 "properties": {
                   "assigned_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "reason_code": {
@@ -213697,7 +213723,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+        "summary": "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 422 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
         "parameters": [
           {
             "name": "status",
@@ -213733,8 +213759,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
-              "maxLength": 200,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -214075,7 +214100,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -214115,7 +214140,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -214156,7 +214181,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -214167,7 +214192,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -214200,7 +214225,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -214369,11 +214394,11 @@
                     ]
                   },
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "patientId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "dateFrom": {
@@ -214445,7 +214470,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -214485,7 +214510,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -214526,7 +214551,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -214537,7 +214562,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -214570,7 +214595,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -214765,7 +214790,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -214805,7 +214830,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -214846,7 +214871,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -214857,7 +214882,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -214890,7 +214915,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -215102,7 +215127,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -215142,7 +215167,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -215183,7 +215208,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -215194,7 +215219,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -215227,7 +215252,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -215452,7 +215477,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -215492,7 +215517,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -215533,7 +215558,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -215544,7 +215569,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -215577,7 +215602,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -215782,7 +215807,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "status": {
@@ -215822,7 +215847,7 @@
                             ]
                           },
                           "requestedBy": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "requestedByName": {
@@ -215863,7 +215888,7 @@
                               "channelId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -215874,7 +215899,7 @@
                               "patientId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -215907,7 +215932,7 @@
                           "decidedBy": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -216051,7 +216076,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "status": {
@@ -216091,7 +216116,7 @@
                             ]
                           },
                           "requestedBy": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "requestedByName": {
@@ -216132,7 +216157,7 @@
                               "channelId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -216143,7 +216168,7 @@
                               "patientId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -216176,7 +216201,7 @@
                           "decidedBy": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -216318,11 +216343,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelTitle": {
@@ -216383,7 +216408,7 @@
                             "type": "string"
                           },
                           "createdBy": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "revokedAt": {
@@ -216453,11 +216478,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelTitle": {
@@ -216518,7 +216543,7 @@
                       "type": "string"
                     },
                     "createdBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "revokedAt": {
@@ -216539,7 +216564,7 @@
                       "type": "boolean"
                     },
                     "organizationId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "inviteToken": {
@@ -216576,7 +216601,7 @@
                 ],
                 "properties": {
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "partnerName": {
@@ -216662,11 +216687,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelTitle": {
@@ -216727,7 +216752,7 @@
                       "type": "string"
                     },
                     "createdBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "revokedAt": {
@@ -216805,11 +216830,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelTitle": {
@@ -216870,7 +216895,7 @@
                       "type": "string"
                     },
                     "createdBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "revokedAt": {
@@ -216891,7 +216916,7 @@
                       "type": "boolean"
                     },
                     "organizationId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "inviteToken": {
@@ -216947,7 +216972,7 @@
                         ],
                         "properties": {
                           "messageId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "from": {
@@ -217018,7 +217043,7 @@
                   ],
                   "properties": {
                     "messageId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "createdAt": {
@@ -217116,7 +217141,7 @@
                 ],
                 "properties": {
                   "organizationId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "token": {
@@ -217426,15 +217451,15 @@
                         ],
                         "properties": {
                           "contactId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patientId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patientCaregiverId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patientName": {
@@ -217541,7 +217566,7 @@
                           "channelId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -217635,15 +217660,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -217750,7 +217775,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -217841,15 +217866,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -217956,7 +217981,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -218047,15 +218072,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -218162,7 +218187,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -218253,15 +218278,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -218368,7 +218393,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -218448,7 +218473,7 @@
                   ],
                   "properties": {
                     "messageId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "from": {
@@ -218558,15 +218583,15 @@
                       ],
                       "properties": {
                         "contactId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patientId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patientCaregiverId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patientName": {
@@ -218673,7 +218698,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -218721,7 +218746,7 @@
                         ],
                         "properties": {
                           "messageId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "from": {
@@ -218814,15 +218839,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -218929,7 +218954,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -219001,11 +219026,11 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "organizationId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "inviteToken": {
@@ -219047,11 +219072,11 @@
                 ],
                 "properties": {
                   "patientId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "patientCaregiverId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "expiresInDays": {
@@ -219113,7 +219138,7 @@
                         ],
                         "properties": {
                           "patientCaregiverId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "displayName": {
@@ -219857,7 +219882,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "name": {
@@ -219980,7 +220005,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -220098,7 +220123,7 @@
                     "maxItems": 200,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -220106,7 +220131,7 @@
                     "maxItems": 200,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -220114,7 +220139,7 @@
                     "maxItems": 200,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -220165,7 +220190,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -220316,7 +220341,7 @@
                   ],
                   "properties": {
                     "hold_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "held_messages": {
@@ -220813,11 +220838,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "message_id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "status": {
@@ -220973,11 +220998,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -221107,7 +221132,7 @@
                 ],
                 "properties": {
                   "message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "reason": {
@@ -221164,11 +221189,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -221329,11 +221354,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -221494,11 +221519,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -221782,7 +221807,7 @@
             "in": "query",
             "required": true,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -221963,7 +221988,7 @@
                     "uniqueItems": true,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -222837,7 +222862,7 @@
                 ],
                 "properties": {
                   "to_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "items": {
@@ -222877,11 +222902,11 @@
                           ]
                         },
                         "ref_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patient_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         }
                       }
@@ -223720,7 +223745,7 @@
                     "maxItems": 250,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -224554,7 +224579,7 @@
                     "maxItems": 250,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -224809,7 +224834,7 @@
                     "maxItems": 50,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -225712,7 +225737,7 @@
             "in": "query",
             "required": true,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -225886,7 +225911,7 @@
                       "type": "string"
                     },
                     "shareId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "stage": {
@@ -225922,7 +225947,7 @@
                 ],
                 "properties": {
                   "organizationId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "token": {
@@ -225968,7 +225993,7 @@
                   ],
                   "properties": {
                     "shareId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "stage": {
@@ -226046,7 +226071,7 @@
                         ],
                         "properties": {
                           "messageId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "authorName": {
@@ -226129,7 +226154,7 @@
                   ],
                   "properties": {
                     "shareId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "stage": {
@@ -227900,7 +227925,7 @@
                 ],
                 "properties": {
                   "to_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -228015,7 +228040,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -228349,7 +228374,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -230520,7 +230545,7 @@
                 ],
                 "properties": {
                   "assignee_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -232299,7 +232324,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Case manager acknowledges a missed dose",
+        "summary": "Case manager acknowledges a missed dose; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -232378,7 +232403,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -234959,7 +234983,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -237073,7 +237096,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-029: add an on-call rotation entry (201)",
+        "summary": "GAP-029: add an on-call rotation entry (201); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -237216,7 +237239,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-029: cancel an on-call rotation entry (204)",
+        "summary": "GAP-029: cancel an on-call rotation entry (204); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -239630,7 +239653,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "On-demand route optimisation (degraded when flag OFF)",
+        "summary": "On-demand route optimisation (degraded when flag OFF); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -248341,6 +248364,15 @@
         "summary": "Held lab-order worklist — orders that failed AFTER their HL7 message was built (dlq_exhausted / application_reject / recovery_blocked:*) and wait for an operator to verify with the lab; oldest first, cursor-paginated, with age + escalation stage (orders.amend)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -248349,16 +248381,6 @@
               "maximum": 100,
               "default": 50,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "minLength": 1,
-              "maxLength": 300,
-              "type": "string"
             }
           }
         ],
@@ -251794,7 +251816,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -256642,7 +256664,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -257390,7 +257412,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -260471,7 +260493,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -262442,7 +262464,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Enqueue a DoseSpot MedHx refresh",
+        "summary": "Enqueue a DoseSpot MedHx refresh; Idempotency-Key required",
         "parameters": [
           {
             "name": "patientId",
@@ -266131,7 +266153,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -266934,7 +266956,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -267100,7 +267122,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -267611,7 +267633,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -267962,7 +267984,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -268326,7 +268348,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -268669,7 +268691,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -268843,7 +268865,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -269114,7 +269136,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -269480,7 +269502,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -281941,6 +281963,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -284121,7 +284144,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 16,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -284345,7 +284368,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "description": "Offset cursor returned by the previous page",
+              "description": "Opaque cursor returned by the previous page",
               "type": "string"
             }
           },
@@ -294523,7 +294546,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Add a caregiver-reported home-med line",
+        "summary": "Add a caregiver-reported home-med line; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -294709,7 +294732,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC)",
+        "summary": "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -295030,7 +295053,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Update a per-line decision before finalization",
+        "summary": "Update a per-line decision before finalization; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -295243,7 +295266,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Finalize the worksheet (emits m13.reconciliation.completed)",
+        "summary": "Finalize the worksheet (emits m13.reconciliation.completed); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -295421,7 +295444,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Void a reconciliation worksheet",
+        "summary": "Void a reconciliation worksheet; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -295793,7 +295816,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Create a recurring policy (validates RRULE subset; 201)",
+        "summary": "Create a recurring policy (validates RRULE subset; 201); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -296162,7 +296185,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Discontinue a recurring policy (cascade-cancels future)",
+        "summary": "Discontinue a recurring policy (cascade-cancels future); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -296456,7 +296479,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -300819,7 +300842,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Approve a refill (mints a new medication order)",
+        "summary": "Approve a refill (mints a new medication order); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -300893,7 +300916,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Deny a refill request",
+        "summary": "Deny a refill request; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -301069,18 +301092,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -301398,18 +301420,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -301745,18 +301766,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -303096,7 +303116,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -303311,7 +303331,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -303597,7 +303617,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -303979,7 +303999,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -304251,7 +304271,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -305135,7 +305155,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -306290,7 +306310,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -306608,7 +306628,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -307770,7 +307790,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -308411,7 +308431,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -311906,7 +311926,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Cached RxBenefit coverage lookup",
+        "summary": "Cached RxBenefit coverage lookup; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -312716,6 +312736,15 @@
         "summary": "The clinician's own day: obligations + posted check-ins",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -312723,15 +312752,6 @@
               "minimum": 1,
               "maximum": 100,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -313840,6 +313860,15 @@
         "summary": "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -313847,15 +313876,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -314499,6 +314519,15 @@
         "summary": "The review queue (narrowed to own incidents without oversight)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -314506,15 +314535,6 @@
               "minimum": 1,
               "maximum": 100,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -320043,6 +320063,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -320050,15 +320079,6 @@
               "minimum": 1,
               "maximum": 500,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -321016,6 +321036,15 @@
         "summary": "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -321023,15 +321052,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -321832,7 +321852,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record an intentional hold before the grace window expires",
+        "summary": "Record an intentional hold before the grace window expires; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -343187,7 +343207,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -343404,7 +343424,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -347010,7 +347030,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -348745,7 +348765,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -351465,7 +351485,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -351879,7 +351899,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -353413,6 +353433,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -354055,7 +354076,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Request PTO (201)",
+        "summary": "Request PTO (201); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -354215,7 +354236,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Approve PTO (triggers reassignment scan)",
+        "summary": "Approve PTO (triggers reassignment scan); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -354337,7 +354358,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Cancel own pre-start PTO",
+        "summary": "Cancel own pre-start PTO; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -354459,7 +354480,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Deny PTO (reason)",
+        "summary": "Deny PTO (reason); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -373585,6 +373606,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -374388,7 +374410,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Dismiss a scheduler proposal",
+        "summary": "Dismiss a scheduler proposal; Idempotency-Key required",
         "parameters": [
           {
             "name": "proposalId",
@@ -374584,7 +374606,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Publish a proposal as a real visit (201)",
+        "summary": "Publish a proposal as a real visit (201); Idempotency-Key required",
         "parameters": [
           {
             "name": "proposalId",
@@ -375116,7 +375138,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Manual visit create (runs the D8 pre-schedule gate)",
+        "summary": "Manual visit create (runs the D8 pre-schedule gate); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -375755,7 +375777,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Edit times / discipline / assignment (reruns D8 gate)",
+        "summary": "Edit times / discipline / assignment (reruns D8 gate); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -376110,7 +376132,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Record arrival/check-in (EVV-missing path; step-up-fresh)",
+        "summary": "Record arrival/check-in (EVV-missing path; step-up-fresh); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -376377,7 +376399,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Cancel a visit (reason + reason code)",
+        "summary": "Cancel a visit (reason + reason code); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -376650,7 +376672,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Mark no-show (triggers reassign-or-followup)",
+        "summary": "Mark no-show (triggers reassign-or-followup); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -376917,7 +376939,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Reassign-only (reruns the D8 gate)",
+        "summary": "Reassign-only (reruns the D8 gate); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -377187,7 +377209,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Reschedule (returns the newly-created visit, 201)",
+        "summary": "Reschedule (returns the newly-created visit, 201); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -377690,7 +377712,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Self-attest start (EVV-missing path; step-up-fresh)",
+        "summary": "Self-attest start (EVV-missing path; step-up-fresh); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",

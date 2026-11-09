@@ -1,3 +1,4 @@
+import { requirePermission, requireStepUp, resolveActorPermissions } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/break-glass-routes.ts - WP 5.8 (ADR-0087, PROPOSED): break-glass, a self-requested, time-limited,
 // read-only grant on ONE channel that is always reviewed afterwards.
 //
@@ -12,7 +13,7 @@
 // Ending a grant and reviewing one never depend on it: accountability for a grant that exists must not stall because the feature was switched
 // off. Org and user are the server-side request context, never the body. Nothing returned is a message body; the justification and a review
 // note are reviewer-only text returned by the review routes alone.
-import { requirePermission, requireStepUp, resolveActorPermissions } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import {
   BREAK_GLASS_INVOKE_STEP_UP_KEY,
   ForbiddenError,
@@ -37,20 +38,12 @@ import {
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const INVOKE = requirePermission(MESSAGING_BREAK_GLASS_INVOKE_PERMISSION) as PreHandler;
 const REVIEW = requirePermission(MESSAGING_BREAK_GLASS_REVIEW_PERMISSION) as PreHandler;
 const INVOKE_STEP_UP = requireStepUp(BREAK_GLASS_INVOKE_STEP_UP_KEY) as PreHandler;
 
 export interface BreakGlassRouteDeps {
   readonly service: BreakGlassService;
-}
-
-function actorOf(request: FastifyRequest): BreakGlassActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerBreakGlassRoutes(app: FastifyInstance, deps: BreakGlassRouteDeps): void {

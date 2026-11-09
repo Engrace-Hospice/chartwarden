@@ -20,10 +20,10 @@ import type {
   PlatformOutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_ACCESS_REVOCATION_CONSUMER = "m36.access-revocation" as const;
-export const M36_ACCESS_REVOCATION_PLATFORM_CONSUMER = "m36.access-revocation.platform" as const;
+const M36_ACCESS_REVOCATION_CONSUMER = "m36.access-revocation" as const;
+const M36_ACCESS_REVOCATION_PLATFORM_CONSUMER = "m36.access-revocation.platform" as const;
 
-export const M36_ACCESS_REVOCATION_EVENT_TYPES = [
+const M36_ACCESS_REVOCATION_EVENT_TYPES = [
   "m2.membership.suspended",
   "m2.membership.revoked",
   "m2.user.deactivated",

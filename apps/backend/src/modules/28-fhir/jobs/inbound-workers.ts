@@ -17,6 +17,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 // re-run or a concurrent run touches nothing twice), per-org (the tenant is the loop variable, never read from
 // a row), and one org's failure does not stop the others (collected, re-thrown as an AggregateError at the end).
 import { planInboundExpiry } from "@chartwarden/fhir";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { FhirInboundOwnerModule, FhirInboundResourceId } from "@chartwarden/types";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
@@ -28,7 +29,6 @@ const INBOUND = schema.fhirInboundResource;
 const CONFIG = schema.tenantFhirConfig;
 const CLIENT = schema.fhirClient;
 
-const SYSTEM_USER_ID = "";
 const MS_PER_DAY = 86_400_000;
 /** Spec §2.2 / tenant default when an org has not configured `inbound_review_sla_hours`. */
 const DEFAULT_INBOUND_SLA_HOURS = 72;
@@ -59,7 +59,7 @@ interface PendingProposal {
 }
 
 async function slaHoursFor(db: DbClient, organizationId: string): Promise<number> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const [row] = await asTx(tx)
       .select({ hours: CONFIG.inboundReviewSlaHours })
       .from(CONFIG)
@@ -74,7 +74,7 @@ async function overdueProposals(
   organizationId: string,
   cutoff: Date,
 ): Promise<readonly PendingProposal[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const rows = await asTx(tx)
       .select({
         id: INBOUND.id,
@@ -124,7 +124,7 @@ async function expireOne(
   );
   if (!plan.ok) return null;
   const eraseAt = new Date(at.getTime() + INBOUND_PAYLOAD_RETENTION_DAYS * MS_PER_DAY);
-  return withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const t = asTx(tx);
     // The status predicate IS the idempotency: a proposal decided (or expired by a concurrent tick) between
     // the list and this statement matches nothing and is left alone.
@@ -209,7 +209,7 @@ async function dueForDestruction(
   organizationId: string,
   at: Date,
 ): Promise<readonly string[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const retentionInterval = sql`make_interval(days => ${INBOUND_PAYLOAD_RETENTION_DAYS})`;
     const rows = await asTx(tx)
       .select({ id: INBOUND.id })
@@ -241,7 +241,7 @@ export async function runInboundPayloadDestruction(
       if (ids.length === 0) continue;
       destroyed += await withOrgContext(
         deps.db,
-        { organizationId, userId: SYSTEM_USER_ID },
+        { organizationId, userId: CONSUMER_USER_ID },
         async (tx) => {
           // Re-asserting status + sentinel inside the UPDATE keeps a concurrent run, or a row that was
           // meanwhile destroyed, from being counted twice.

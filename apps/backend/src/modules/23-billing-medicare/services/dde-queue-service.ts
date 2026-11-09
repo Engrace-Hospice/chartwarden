@@ -1,10 +1,9 @@
-import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/23-billing-medicare/services/dde-queue-service.ts — the M23 DDE work-queue service
 // (ADR-0052): HUMAN WORK TRACKING for Medicare Direct Data Entry (FISS). ChartWarden holds no DDE credential and
 // performs no DDE call; `record submission` is an operator attestation, never a verified fact.
 //
 // Every write runs in ONE `withOrgContext` unit of work (RLS on `app.org_id`), drives the pure
-// `ddeWorkItemMachine`, is version-checked (§2.5 -> 412), appends a `dde_work_event` row (the item's append-only
+// `ddeWorkItemMachine`, is version-checked (§2.5 -> 409 STALE_VERSION), appends a `dde_work_event` row (the item's append-only
 // history) and emits its `m23.dde_item.*` event through the injected catalog-validating outbox in the same
 // transaction. The M4 write-audit trigger on both tables records who changed what (notes are scrubbed).
 //
@@ -13,6 +12,7 @@ import { randomUUID } from "node:crypto";
 // notice's EXISTING acceptance transition (`applyDdeNoticeAcceptance`) and stores the operator-entered date as
 // `payer_status_date` with source `dde_manual`. No MBI is stored: notes are capped and refused when MBI-shaped, and
 // are never copied into an event or log.
+import { randomUUID } from "node:crypto";
 import {
   DDE_AGING_AT_RISK_BUSINESS_DAYS,
   DDE_AGING_OVERDUE_BUSINESS_DAYS,
@@ -29,9 +29,10 @@ import {
   validateDdeCodes,
   validateDdeNotes,
 } from "@chartwarden/billing";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
-  ChartWardenError,
+  type ChartWardenError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -392,10 +393,8 @@ export function buildDdeQueueService(
       { ...patch, attemptNumber },
     );
     if (!versioned.ok) {
-      throw new ChartWardenError(
-        "VERSION_CONFLICT",
+      throw new StaleVersionError(
         `the DDE item was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
-        412,
       );
     }
     const updated = versioned.row;
@@ -583,10 +582,8 @@ export function buildDdeQueueService(
 
   const staleVersion = (item: Item, expectedVersion: number): void => {
     if (item.version === expectedVersion) return;
-    throw new ChartWardenError(
-      "VERSION_CONFLICT",
+    throw new StaleVersionError(
       `the DDE item was modified concurrently (current version ${item.version})`,
-      412,
     );
   };
 

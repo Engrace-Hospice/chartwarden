@@ -8,10 +8,7 @@
 // `arch:abac-predicates` sees it (the gate scans for the literal second argument; a `names: string[]` loop
 // would make every name invisible — the M30 finding it was built for).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { FastifyReply, FastifyRequest } from "fastify";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 
 type TargetRequest = {
   readonly params?: unknown;

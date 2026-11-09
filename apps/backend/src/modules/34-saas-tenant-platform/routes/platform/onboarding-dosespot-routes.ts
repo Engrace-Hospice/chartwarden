@@ -8,8 +8,8 @@
 // one write a live tenant also needs, so it is not status-gated. A first PUT omits `If-Match`; a change carries the version last
 // read (428 / 412). Credentials are write-only and never returned.
 import { requireStepUp } from "@chartwarden/auth";
+import { rejectAiActor } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
 import {
   OPS,
   P,

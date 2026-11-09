@@ -36,7 +36,7 @@ import {
   resolveActorPermissions,
 } from "@chartwarden/auth";
 import { CredentialThrottleError } from "@chartwarden/auth";
-import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   type SessionUnlockOutcome,
@@ -981,7 +981,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     }
     // The granter is a MEMBERSHIP, not a user: the FK targets `membership`, and an authority granted by
     // "some user" would not say which of their org memberships acted.
-    if (!actor.membershipId) throw new UnauthorizedError();
+    if (!actor.membershipId)
+      throw new ForbiddenError("A session without an organization membership cannot act");
     const grant = await service.grant({
       organizationId: orgId,
       membershipId: mId,
@@ -1016,7 +1017,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         },
       ]);
     }
-    if (!actor.membershipId) throw new UnauthorizedError();
+    if (!actor.membershipId)
+      throw new ForbiddenError("A session without an organization membership cannot act");
     const revoked = await service.revoke({
       organizationId: orgId,
       membershipId: mId,

@@ -23,7 +23,7 @@ import {
   latestSubscriptionWindow,
 } from "../billing-runtime/census";
 import { usageWindowFor } from "../billing-runtime/jobs";
-import type { M35WriteActor } from "../routes/actor";
+import type { M35WriteActor } from "../routes/service";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
 import { addonIsLive, latestClaimsBillingAddon } from "./entitlement";
 

@@ -244,7 +244,7 @@ export class DdeWorkItemRepository {
               : undefined,
           )
         : undefined,
-      keysetBefore(I.createdAt, I.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(I.createdAt, I.id, decodeCursor(organizationId, cursor)),
     ];
     const rows = await this.db
       .select()
@@ -252,7 +252,10 @@ export class DdeWorkItemRepository {
       .where(and(...conditions))
       .orderBy(desc(I.createdAt), desc(I.id))
       .limit(size + 1);
-    return buildCursorPage(rows, size, (r) => ({ createdAt: r.createdAt.toISOString(), id: r.id }));
+    return buildCursorPage(organizationId, rows, size, (r) => ({
+      createdAt: r.createdAt.toISOString(),
+      id: r.id,
+    }));
   }
 
   /**

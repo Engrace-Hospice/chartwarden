@@ -342,11 +342,6 @@ export function effectsForTopic(topic: string): readonly M23SubscriptionEffect[]
   return M23_OUTBOX_SUBSCRIPTIONS[topic]?.effects ?? [];
 }
 
-/** The LIVE/DENY-STUB status of a subscribed topic (`undefined` for an unsubscribed topic). */
-export function statusForTopic(topic: string): M23SubscriptionStatus | undefined {
-  return M23_OUTBOX_SUBSCRIPTIONS[topic]?.status;
-}
-
 // ── forward-declared subscription bindings (the boot dispatcher wires these; RULE 3(d) defers the rail) ──
 
 /** The shared consumer name every M23 upstream binding registers under. Consumer dedup is keyed

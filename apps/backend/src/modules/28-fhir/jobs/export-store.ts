@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/28-fhir/jobs/export-store.ts — the Drizzle reads/writes the bulk-export worker and
 // its sweeper run (GAP-084). Only M28's OWN tables: `fhir_bulk_export_job`, `fhir_bulk_export_artifact`,
 // `fhir_client`, `tenant_fhir_config`.
@@ -5,7 +6,7 @@
 // Workers are not requests: every function opens its own `withOrgContext` for the org it was handed (RLS is
 // the wall) and keeps the explicit `organization_id` predicate as the second one. `userId: ""` is the system
 // actor (the audit trigger maps it to NULL).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 
@@ -14,7 +15,6 @@ const ARTIFACT = schema.fhirBulkExportArtifact;
 const CLIENT = schema.fhirClient;
 const CONFIG = schema.tenantFhirConfig;
 
-const SYSTEM_USER_ID = "";
 const asTx = (tx: unknown): DbClient => tx as DbClient;
 
 /** The job as the worker needs it — the request, frozen at accept time. */
@@ -68,7 +68,7 @@ export async function claimExportJob(
   jobId: string,
   at: Date,
 ): Promise<ExportJobRecord | null> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const [row] = await asTx(tx)
       .update(JOB)
       .set({ status: "in_progress", startedAt: at })
@@ -85,7 +85,7 @@ export async function loadExportClient(
   organizationId: string,
   clientId: string,
 ): Promise<ExportClientRecord | null> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const [row] = await asTx(tx)
       .select()
       .from(CLIENT)
@@ -106,7 +106,7 @@ export async function loadExportConfig(
   db: DbClient,
   organizationId: string,
 ): Promise<{ tenantFhirHost: string; identifierUriBase: string } | null> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const [row] = await asTx(tx)
       .select({ host: CONFIG.tenantFhirHost, base: CONFIG.identifierUriBase })
       .from(CONFIG)
@@ -121,7 +121,7 @@ export async function exportJobStatus(
   organizationId: string,
   jobId: string,
 ): Promise<string | null> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const [row] = await asTx(tx)
       .select({ status: JOB.status })
       .from(JOB)
@@ -157,7 +157,7 @@ export async function completeExportJob(
   },
   publish: TxPublisher,
 ): Promise<boolean> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const t = asTx(tx);
     const [done] = await t
       .update(JOB)
@@ -205,7 +205,7 @@ export async function failExportJob(
   event: ExportOutboxEvent,
   publish: TxPublisher,
 ): Promise<boolean> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const t = asTx(tx);
     const [row] = await t
       .update(JOB)
@@ -229,7 +229,7 @@ export async function listJobArtifacts(
   organizationId: string,
   jobId: string,
 ): Promise<readonly ExportArtifactRecord[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const rows = await asTx(tx)
       .select()
       .from(ARTIFACT)
@@ -252,7 +252,7 @@ export async function dueExpiredJobIds(
   now: Date,
   limit: number,
 ): Promise<readonly string[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const rows = await asTx(tx)
       .select({ id: JOB.id })
       .from(JOB)
@@ -275,7 +275,7 @@ export async function markJobExpired(
   organizationId: string,
   jobId: string,
 ): Promise<boolean> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const rows = await asTx(tx)
       .update(JOB)
       .set({ status: "expired" })
@@ -297,7 +297,7 @@ export async function orphanedAcceptedJobIds(
   window: { readonly olderThan: Date; readonly newerThan: Date },
   limit: number,
 ): Promise<readonly string[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const rows = await asTx(tx)
       .select({ id: JOB.id })
       .from(JOB)
@@ -323,7 +323,7 @@ export async function abandonedAcceptedJobs(
   olderThan: Date,
   limit: number,
 ): Promise<readonly { id: string; clientId: string }[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     return asTx(tx)
       .select({ id: JOB.id, clientId: JOB.clientId })
       .from(JOB)
@@ -347,7 +347,7 @@ export async function cancelAbandonedJob(
   event: ExportOutboxEvent,
   publish: TxPublisher,
 ): Promise<boolean> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const t = asTx(tx);
     const [row] = await t
       .update(JOB)
@@ -369,7 +369,7 @@ export async function stalledInProgressJobs(
   startedBefore: Date,
   limit: number,
 ): Promise<readonly { id: string; clientId: string }[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const rows = await asTx(tx)
       .select({ id: JOB.id, clientId: JOB.clientId })
       .from(JOB)
@@ -396,7 +396,7 @@ export async function expiredJobIdsWithLiveArtifacts(
   organizationId: string,
   limit: number,
 ): Promise<readonly string[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const rows = await asTx(tx)
       .selectDistinct({ id: ARTIFACT.jobId })
       .from(ARTIFACT)
@@ -424,7 +424,7 @@ export async function markArtifactPurged(
   jobId: string,
   objectKey: string,
 ): Promise<void> {
-  await withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  await withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     await asTx(tx)
       .update(ARTIFACT)
       .set({ minioObjectKey: "" })

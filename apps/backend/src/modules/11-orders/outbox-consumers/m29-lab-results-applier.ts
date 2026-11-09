@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/11-orders/outbox-consumers/m29-lab-results-applier.ts — `LabResultsApplier`
 // (GAP-016): M11's consumer for `m29.lab_observation.attached`, the other half of the M29 -> M11 lab handshake
 // (the outbound half, `LabTransmissionApplier`, is `m29-lab-transmission-applier.ts`).
@@ -27,16 +28,13 @@
 // is quarantined in `critical_lab_result` (visible queue + response clock, #910) and never dropped. An id that names no
 // lab order in this tenant is skipped. A result on an UNSIGNED order (e.g. a verbal order) still flips state and still
 // emits both events (#910); the M36 critical-lab alert then also reaches the medical director.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import { recordCriticalLabResult, supersedeCriticalLabResults } from "../critical-lab-result";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 
 const ORDER = schema.orderRecords;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M11_LAB_RESULTS_APPLIER_CONSUMER = {
   eventNames: ["m29.lab_observation.attached"] as const,

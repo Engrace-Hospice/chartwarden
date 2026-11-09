@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/19-oncall/routes/guards.ts — M19-T07 (§4.1 / §4.7) route-guard builders.
 //
 // The shared `requirePermission` / `requireAbac` / `requireStepUp` preHandler factories every M19 route
@@ -30,10 +31,9 @@
 //      order is DELIBERATELY not among them: its step-up is asserted at the M11 seam call
 //      (`../clinical/verbal-order.ts`), because the gate must hold for the seam invocation and not merely
 //      for the HTTP request that started it — a worker retry path would otherwise carry no gate at all.
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyRequest } from "fastify";
 import { VENDOR_SESSION_CLASSES } from "../abac-predicates";
-import type { PreHandler } from "./actor";
 
 type TargetRequest = {
   readonly params?: unknown;

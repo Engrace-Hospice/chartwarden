@@ -9,10 +9,15 @@
 // never returned). Org and membership binding is server-side. A tenant admin may keep editing after go-live (like every other
 // billing setting); vendor and mode lock once a production submission exists (409). The tenant records its own vendor BAA
 // (`POST …/baa`); a platform operator verifies it, and activation refuses until then.
+import {
+  actorOf,
+  optionalIfMatchVersionOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "../routes/actor";
-import { parse } from "../routes/billing-typebox";
-import { parseIfMatch, requireIdempotencyKey } from "../routes/concurrency";
+import { writeActorOf } from "../routes/actor";
 import { P, STEP_UP } from "../routes/guards";
 import type { TenantClearinghouseRouteService } from "./tenant-service";
 import {
@@ -38,13 +43,6 @@ const ADMIN_STEPUP = STEP_UP("billing.clearinghouse.admin");
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 const WRITE = [ADMIN, ADMIN_STEPUP, NO_AI, IDEMPOTENT];
-
-/** The optional `If-Match` version (present only when changing an existing config). */
-function optionalIfMatch(request: Parameters<typeof parseIfMatch>[0]): number | undefined {
-  const raw = request.headers["if-match"];
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  return typeof value === "string" && value.length > 0 ? parseIfMatch(request) : undefined;
-}
 
 export function registerTenantClearinghouseRoutes(
   app: FastifyInstance,
@@ -73,7 +71,7 @@ export function registerTenantClearinghouseRoutes(
   app.put("/api/v1/tenant/clearinghouse", { preHandler: PUT }, async (request, reply) => {
     const actor = writeActorOf(request);
     const body = parse(PutClearinghouseBodySchema, request.body);
-    const { created, view } = await service.put(actor, body, optionalIfMatch(request));
+    const { created, view } = await service.put(actor, body, optionalIfMatchVersionOf(request));
     return reply.code(created ? 201 : 200).send(view);
   });
 

@@ -85,7 +85,7 @@ export function checkExternalSourceFirstContactGate(
 }
 
 /** §2.5 — the `If-Match` optimistic-concurrency check on `bereavement_plan` / `bereaved_contact`. A
- *  mismatch answers 412 with the current row (the M7 §7.7 / M15 pattern verbatim). */
+ *  mismatch answers 409 STALE_VERSION with the current row (the M7 §7.7 / M15 pattern verbatim). */
 export function checkVersion(expected: number | undefined, actual: number): void {
   require_(
     expected === undefined || expected === actual,

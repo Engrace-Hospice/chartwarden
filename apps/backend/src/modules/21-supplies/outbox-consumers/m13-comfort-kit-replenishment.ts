@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/21-supplies/outbox-consumers/m13-comfort-kit-replenishment.ts — M21's live
 // binding for the third of the four `../consumers/m13-comfort-kit.ts` deciders (F-153/#248's m21 group,
 // this pass): `decideReplenishmentIntake` (§2.1 / §4.5.1).
@@ -39,7 +40,7 @@
 // — `created_from_external`'s own payload requires a real `createdByMembershipId`, which a system cascade
 // cannot honestly supply (the same reasoning `write-service.ts`'s `createDirect` doc-comment already
 // states for the M11 cascade case).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { SUPPLY_REQUEST_TERMINAL_STATUSES } from "@chartwarden/supplies";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
@@ -58,9 +59,6 @@ const DISPATCH = schema.comfortKitDispatch;
 const DISPATCHED = schema.comfortKitDispatchedContent;
 const TEMPLATE_MED = schema.comfortKitTemplateMedication;
 const REQUEST = schema.supplyRequest;
-
-/** A consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 const TERMINAL_STATUSES: readonly string[] = SUPPLY_REQUEST_TERMINAL_STATUSES;
 

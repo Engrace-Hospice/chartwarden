@@ -9,7 +9,7 @@
 //     id DESC)` with `keysetBefore` + `buildCursorPage`.
 //   * OPTIMISTIC CONCURRENCY (§2.5) — `transitionToState` is the REDUCER-DRIVEN, version-checked update:
 //     the service runs `reduce(state, event)` from `machines/claim` to obtain `nextState`, then calls this
-//     with the If-Match `expectedVersion`; a stale version returns `VERSION_CONFLICT` (the service → 412).
+//     with the If-Match `expectedVersion`; a stale version returns `VERSION_CONFLICT` (the service → 409 STALE_VERSION).
 //
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@chartwarden/db/schema";
@@ -276,7 +276,7 @@ export class ClaimRepository {
       filter.providerEntityId ? eq(C.providerEntityId, filter.providerEntityId) : undefined,
       filter.patientId ? eq(C.patientId, filter.patientId) : undefined,
       filter.state ? eq(C.state, claimStateCodec.toDb(filter.state)) : undefined,
-      keysetBefore(C.createdAt, C.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(C.createdAt, C.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -284,7 +284,7 @@ export class ClaimRepository {
       .where(where)
       .orderBy(desc(C.createdAt), desc(C.id))
       .limit(size + 1);
-    return buildCursorPage(rows.map(toClaimRecord), size, (r) => ({
+    return buildCursorPage(organizationId, rows.map(toClaimRecord), size, (r) => ({
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));
@@ -295,7 +295,7 @@ export class ClaimRepository {
    * `reduce(state, event)` (machines/claim) and passes the current `expectedVersion` (If-Match); this
    * applies `state = nextState` + `patch` only when the persisted version matches, bumping `version` +
    * `updated_at`. On a version mismatch returns `VERSION_CONFLICT` carrying the current persisted version
-   * (or `null` when the row vanished) so the service can surface a 412. The state value is mapped to the
+   * (or `null` when the row vanished) so the service can surface a 409 STALE_VERSION. The state value is mapped to the
    * DB enum here — the caller speaks only the lowercase domain `ClaimState`.
    */
   async transitionToState(

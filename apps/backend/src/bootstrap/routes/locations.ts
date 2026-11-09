@@ -14,6 +14,7 @@
 // Non-PHI tenancy metadata only (name / address / timezone / status), so the read is audited as `none`
 // like its `provider-entities.ts` sibling, whose shape this mirrors deliberately.
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { UnauthorizedError } from "@chartwarden/types";
 import { and, asc, eq, ilike, or } from "drizzle-orm";
@@ -26,12 +27,6 @@ function limitOf(value: unknown): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_LIMIT;
   return Math.min(MAX_LIMIT, Math.max(1, Math.floor(parsed)));
-}
-
-function cursorOf(value: unknown): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.floor(parsed));
 }
 
 /**
@@ -68,7 +63,7 @@ export function registerLocationLookupRoutes(app: FastifyInstance, db: DbClient)
           : "";
       const q = typeof query.q === "string" ? query.q.trim() : "";
       const limit = limitOf(query.limit);
-      const offset = cursorOf(query.cursor);
+      const offset = decodeOffsetCursor(organizationId, query.cursor);
       const status =
         typeof query.status === "string" && query.status.length > 0 ? query.status : null;
       return withOrgContext(db, { organizationId, userId: request.context.userId }, async (tx) => {
@@ -111,7 +106,8 @@ export function registerLocationLookupRoutes(app: FastifyInstance, db: DbClient)
           .offset(offset);
         return {
           items: rows.slice(0, limit),
-          nextCursor: rows.length > limit ? String(offset + limit) : null,
+          nextCursor:
+            rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
         };
       });
     },

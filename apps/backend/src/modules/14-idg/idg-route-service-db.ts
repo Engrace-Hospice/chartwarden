@@ -2002,7 +2002,7 @@ export function createDbIdgBackend(
         assertNoteVersion(ifMatchVersion, cur.version);
         const at = new Date();
         // Compare-and-set on the version: a concurrent edit that slipped between the read and this UPDATE
-        // matches no row (=> 412), so the If-Match precondition holds under the race too.
+        // matches no row (=> 409), so the If-Match precondition holds under the race too.
         const [row] = await tx
           .update(NOTE)
           .set({
@@ -2208,7 +2208,7 @@ export function createDbIdgBackend(
         planDecisionUpdate({ status: cur.status, meetingIsLive: m.status === "live" });
         assertNoteVersion(ifMatchVersion, cur.version);
         // Optimistic concurrency (§7.7): compare-and-set on BOTH status and the version the caller read, so two
-        // concurrent edits of an open decision cannot silently overwrite each other (the loser gets a 412).
+        // concurrent edits of an open decision cannot silently overwrite each other (the loser gets a 409).
         const [updated] = await tx
           .update(DEC)
           .set({
@@ -2221,7 +2221,7 @@ export function createDbIdgBackend(
           .where(and(eq(DEC.id, id), eq(DEC.status, "open"), eq(DEC.version, cur.version)))
           .returning();
         if (!updated) {
-          // Lost the race: re-derive the precise 409 (no longer open) or 412 (version moved) from the row now.
+          // Lost the race: re-derive the precise 409 (no longer open) or 409 STALE_VERSION (version moved) from the row now.
           const [current] = await tx.select().from(DEC).where(eq(DEC.id, id)).limit(1);
           if (!current) throw new NotFoundError("idg_decision");
           planDecisionUpdate({ status: current.status, meetingIsLive: true });

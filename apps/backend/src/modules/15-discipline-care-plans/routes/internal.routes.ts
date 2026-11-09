@@ -10,9 +10,9 @@
 // The confidential categories are excluded UNCONDITIONALLY on these routes: a system principal carries no
 // consent context of its own, so a downstream module that needs SUD or family-violence content must go
 // through its own consented read path rather than borrowing M15's seam surface (§7.8 / §7.9).
+import { actorOf, rejectOffsetPagination } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, requireSystemPrincipal } from "./actor";
-import { rejectOffsetPagination } from "./concurrency";
+import { requireSystemPrincipal } from "./actor";
 import { P } from "./guards";
 import {
   RelevantElementsQuerySchema,

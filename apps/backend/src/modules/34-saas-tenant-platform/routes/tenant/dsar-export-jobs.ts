@@ -11,8 +11,8 @@
 // in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { GuardRequest } from "@chartwarden/auth";
+import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";
 import {
   DsarDenyRequest,
@@ -79,7 +79,7 @@ export function registerDsarExportRoutes(app: FastifyInstance, deps: DsarExportR
     "/api/v1/tenant/dsar-export-jobs",
     { preHandler: [REQUEST, ABAC_REQUEST] },
     async (request, reply) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const body = parse(DsarExportRequest, request.body);
       const res = await service.requestDsarExport(organizationId, membershipId, {
         patientId: body.patientId,
@@ -146,7 +146,7 @@ export function registerDsarExportRoutes(app: FastifyInstance, deps: DsarExportR
     "/api/v1/tenant/dsar-export-jobs/:id/download",
     { preHandler: [DOWNLOAD, ABAC_DOWNLOAD] },
     async (request) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const { id } = parse(DsarJobParamsSchema, request.params);
       return service.dsarDownloadUrl(organizationId, id, membershipId);
     },

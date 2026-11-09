@@ -44,7 +44,7 @@ export const M8_ERROR_STATUS = {
   LATE_ENTRY_TIER_MISMATCH: 409,
   // §2.7 repository / immutability rules
   PARENT_VOIDED: 409,
-  VERSION_MISMATCH: 412,
+  STALE_VERSION: 409,
   IMMUTABLE_AFTER_SIGN: 409,
   // §2.6 HearthNote Layer-1 assembly (#114). `@chartwarden/hearthnote` documents its own error codes as
   // "mapped to HTTP by the M8 service in T09" — this is that mapping, which was never written because

@@ -17,8 +17,8 @@
 // `requireAbac` change touching every one of M3's 168 predicates) or an in-process cache the
 // `rn-coverage-watchdog` cron keeps warm — either is a real feature, not a bug fix, and neither exists today.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError } from "@chartwarden/types";
-import type { PreHandler } from "./actor";
 
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.6 key catalog M37 contributes). */
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;

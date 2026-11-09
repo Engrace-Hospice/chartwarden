@@ -323,13 +323,13 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     expect(await screen.findByText(/Complete Assessment before finalization/i)).toBeTruthy();
   });
 
-  it("a 412 reads as a concurrent save, not as a generic error", async () => {
-    writeFailure = { status: 412, body: { error: { code: "VERSION_CONFLICT", message: "stale" } } };
+  it("a 409 STALE_VERSION reads as a concurrent save, not as a generic error", async () => {
+    writeFailure = { status: 409, body: { error: { code: "STALE_VERSION", message: "stale" } } };
     mountCompose();
     fireEvent.click(await waitFor(() => screen.getByLabelText(/Dyspnea at rest/i)));
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    expect((await screen.findByText(/Someone else saved this note/i)).textContent).toMatch(
-      /discard/i,
+    expect((await screen.findByText(/updated after you opened it/i)).textContent).toMatch(
+      /Reload the latest version/i,
     );
   });
 

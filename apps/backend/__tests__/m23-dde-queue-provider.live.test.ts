@@ -255,7 +255,7 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
   it("a stale version is refused before the provider is called", async () => {
     const { id } = await inProgress();
     const res = await submitProvider(id, 1);
-    expect(res.statusCode).toBe(412);
+    expect(res.statusCode).toBe(409);
     expect(spy.submits).toHaveLength(0);
   });
 
@@ -584,7 +584,7 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
   it("a double click still keys one operation (the marker write is version-checked)", async () => {
     const { id } = await inProgress();
     const [a, b] = await Promise.all([submitProvider(id, 2), submitProvider(id, 2)]);
-    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 412]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
     expect(spy.submits).toHaveLength(1);
   });
 

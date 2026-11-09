@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/22-documents — PRODUCTION Document backend (M22L reads + the write lifecycle over
 // Drizzle+RLS). No route is left at 501.
 //
@@ -9,7 +11,7 @@
 // tenant read them). The metadata/review WRITE lifecycle is live: tag / patch (legal-hold-aware, 409),
 // intake batch upload + classify-confirm + the extraction review machine
 // (open / record-decision / bulk-approve / resolve-discrepancy / complete / abandon / discard), tenant overlay
-// publish (§2.5 optimistic concurrency, 412; persists branding + state addendum), and render retry (a
+// publish (§2.5 optimistic concurrency, 409; persists branding + state addendum), and render retry (a
 // `failed` fill only — the `form-render` worker, workers/form-render-worker.ts, consumes the `queued` fills). Binary upload/version creation (GAP-068) runs
 // through ./routes/server-upload.ts over the bound object store (verified size/SHA-256, one transaction); it
 // returns a typed 503 only when no object store is configured. One route write emits a producer outbox
@@ -28,8 +30,7 @@
 // The signed-URL STORAGE PRESIGNER is not built here — the barrel (`index.ts`) binds the S3 adapter's
 // presigner (or a typed `DegradedError` when MINIO_* is unset). This module supplies only the read
 // resolvers (`abacResolver` over document owner-facts, `objectResolver` over version object-keys).
-import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@chartwarden/db";
+import { assertVersion } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -55,7 +56,7 @@ import {
   assertNotOrgLibraryForEdit,
 } from "./internal-documents";
 import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
-import { type CursorPage, paginate } from "./routes/concurrency";
+import { type CursorPage, paginate } from "./routes/pagination";
 import type { ServerUploadService } from "./routes/server-upload";
 import type {
   DocumentRouteService,
@@ -409,7 +410,7 @@ export function createDbDocumentRouteService(
           createdAt: iso(d.createdAt),
           updatedAt: iso(d.updatedAt),
         }));
-        return paginate(items, cursor, limit);
+        return paginate(organizationId, items, cursor, limit);
       });
     },
 
@@ -444,7 +445,7 @@ export function createDbDocumentRouteService(
           uploadedAt: iso(v.createdAt),
           createdAt: iso(v.createdAt),
         }));
-        return paginate(items, cursor, limit);
+        return paginate(organizationId, items, cursor, limit);
       });
     },
     async getVersion(organizationId, documentId, versionId) {
@@ -498,7 +499,7 @@ export function createDbDocumentRouteService(
           .where(eq(BATCH.referralId, referralId))
           .orderBy(desc(BATCH.uploadedAt), desc(BATCH.id))
           .limit(READ_WINDOW);
-        if (batches.length === 0) return paginate([], cursor, limit);
+        if (batches.length === 0) return paginate(organizationId, [], cursor, limit);
         const ids = batches.map((b) => b.id);
         const conflicts = await recordsRequestConflicts(tx, batches);
         const segments = await tx
@@ -559,7 +560,7 @@ export function createDbDocumentRouteService(
             createdAt: iso(b.uploadedAt),
           };
         });
-        return paginate(items, cursor, limit);
+        return paginate(organizationId, items, cursor, limit);
       });
     },
     async getBatch(organizationId, batchId): Promise<IntakeBatchView> {
@@ -601,6 +602,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(CP.classifiedAt), desc(CP.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((r) => ({ id: r.id, createdAt: iso(r.createdAt), docType: String(r.docType) })),
           cursor,
           limit,
@@ -618,6 +620,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(EJ.queuedAt), desc(EJ.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((r) => ({ id: r.id, createdAt: iso(r.createdAt), status: String(r.status) })),
           cursor,
           limit,
@@ -633,6 +636,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(EC.extractedAt), desc(EC.id))
           .limit(READ_WINDOW);
         const candidates = paginate(
+          organizationId,
           rows.map((r) => ({
             id: r.id,
             createdAt: iso(r.createdAt),
@@ -659,6 +663,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(ED.decidedAt), desc(ED.id))
           .limit(READ_WINDOW);
         const decisions = paginate(
+          organizationId,
           rows.map((d) => ({ id: d.id, createdAt: iso(d.createdAt) })),
           cursor,
           limit,
@@ -676,6 +681,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(FT.createdAt), desc(FT.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((r) => ({ id: r.id, key: r.key, createdAt: iso(r.createdAt) })),
           cursor,
           limit,
@@ -807,6 +813,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(TAG.addedAt), desc(TAG.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((t) => ({
             id: t.id,
             tagKind: t.tagKind,
@@ -1283,16 +1290,10 @@ export function createDbDocumentRouteService(
           .limit(1);
         if (!t) throw new NotFoundError("form template");
         // §2.5 optimistic concurrency: the current version is the count of overlay rows for this template;
-        // the caller's If-Match `ifVersion` must match it, else 412.
+        // the caller's If-Match `ifVersion` must match it, else 409 STALE_VERSION.
         const existing = await tx.select({ id: OVL.id }).from(OVL).where(eq(OVL.templateId, t.id));
         const current = existing.length;
-        if (ifVersion !== current) {
-          throw new ChartWardenError(
-            "VERSION_MISMATCH",
-            "the overlay was modified since you read it",
-            412,
-          );
-        }
+        assertVersion(current, ifVersion, "the overlay was modified since you read it");
         await tx
           .update(OVL)
           .set({ isActive: false })

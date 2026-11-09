@@ -25,7 +25,7 @@ import {
   createDrizzleSubscriptionWorkBlockReader,
 } from "../src/modules/35-subscription/addon/entitlement";
 import { M35_OUTBOX_EVENTS } from "../src/modules/35-subscription/events-by-m35";
-import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
+import type { M35WriteActor } from "../src/modules/35-subscription/routes/service";
 import type {
   PlatformRunner,
   WriteOutboxPort,

@@ -1,4 +1,5 @@
 import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -9,21 +10,6 @@ import {
 } from "./documents-typebox";
 import type { VerifiedUploadService } from "./verified-upload";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  membershipId: string;
-} {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes?.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
-  return { organizationId: ctx.organizationId, userId: ctx.userId, membershipId };
-}
-
 const UPLOAD = requirePermission("documents.upload") as PreHandler;
 
 export function registerVerifiedUploadRoutes(
@@ -31,7 +17,7 @@ export function registerVerifiedUploadRoutes(
   service: VerifiedUploadService,
 ): void {
   app.post("/api/v1/document-uploads", { preHandler: [UPLOAD] }, async (request, reply) => {
-    const actor = actorOf(request);
+    const actor = writeActorOf(request);
     const body = parse(InitiateVerifiedUploadRequest, request.body);
     const result = await service.initiate({
       ...actor,
@@ -55,14 +41,14 @@ export function registerVerifiedUploadRoutes(
   });
 
   app.post("/api/v1/document-uploads/:id/complete", { preHandler: [UPLOAD] }, async (request) => {
-    const actor = actorOf(request);
+    const actor = writeActorOf(request);
     const { id } = parse(VerifiedUploadParamsSchema, request.params);
     parse(CompleteVerifiedUploadRequest, request.body ?? {});
     return service.complete({ ...actor, uploadId: id });
   });
 
   app.delete("/api/v1/document-uploads/:id", { preHandler: [UPLOAD] }, async (request, reply) => {
-    const actor = actorOf(request);
+    const actor = writeActorOf(request);
     const { id } = parse(VerifiedUploadParamsSchema, request.params);
     await service.abort({ ...actor, uploadId: id });
     return reply.code(200).send({ aborted: true });

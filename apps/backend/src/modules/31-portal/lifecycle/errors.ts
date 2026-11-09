@@ -17,7 +17,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §7 / §8.1 machine-readable failure-code catalog → HTTP status. */
-export const M31_ERROR_STATUS = {
+const M31_ERROR_STATUS = {
   // ── §2.2.4 / §7.1 magic-link invitation ────────────────────────────────────────────────────────────
   /** §7.1 VERBATIM — `410 Gone`. The invite token's TTL (72h platform floor / 7-day ceiling) has elapsed.
    *  A `410` (not `404`) tells the caregiver the link WAS real and is now dead, which is the message the

@@ -22,7 +22,7 @@ import { ChartWardenError } from "@chartwarden/types";
  * is unanswerable by the chosen base); `BASE_NOT_ACTIVE` is 409 (the base exists but is not in a state
  * a tenant may bind); `ROW_LIMIT_EXCEEDED` is 422.
  */
-export const TRANSLATOR_ERROR_STATUS = {
+const TRANSLATOR_ERROR_STATUS = {
   BASE_NOT_ACTIVE: 409,
   DIMENSION_NOT_IN_BASE: 422,
   MEASURE_NOT_IN_BASE: 422,
@@ -59,7 +59,7 @@ type Comparator = schema.FilterComparator;
  * are universal. Ordering comparators (lt/le/gt/ge) apply only to ordered types (number/date). A filter
  * whose comparator is absent from its dimension's row is rejected with `FILTER_TYPE_MISMATCH`.
  */
-export const COMPARATORS_BY_TYPE: Readonly<Record<DataType, ReadonlySet<Comparator>>> = {
+const COMPARATORS_BY_TYPE: Readonly<Record<DataType, ReadonlySet<Comparator>>> = {
   string: new Set<Comparator>(["eq", "ne", "in", "not_in", "is_null", "is_not_null"]),
   uuid: new Set<Comparator>(["eq", "ne", "in", "not_in", "is_null", "is_not_null"]),
   boolean: new Set<Comparator>(["eq", "ne", "is_null", "is_not_null"]),
@@ -97,7 +97,7 @@ export const COMPARATORS_BY_TYPE: Readonly<Record<DataType, ReadonlySet<Comparat
  * translator NEVER interpolates a tenant VALUE (those bind as `$n`), the only strings that reach the SQL
  * text are identifiers, and every one passes through `quoteIdent`.
  */
-export const IDENT_RE = /^[a-z_][a-z0-9_]*$/;
+const IDENT_RE = /^[a-z_][a-z0-9_]*$/;
 
 /** Asserts `raw` is a safe identifier and returns it double-quoted. Throws `UNSAFE_IDENTIFIER` otherwise. */
 export function quoteIdent(raw: string): string {

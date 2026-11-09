@@ -7,8 +7,8 @@
 // where every prescription of the organization goes. A first PUT omits `If-Match`; a change carries the version last read
 // (428 / 412). The credential is write-only (sealed, never returned). Org and membership binding is server-side.
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { rejectAiActor } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
 import { MembershipParamsSchema, OrderParamsSchema, parse } from "../routes/dosespot-typebox";
 import type { PractitionerLinkService } from "./practitioner-link";
 import type { PrescriberEnrollmentService } from "./prescriber-enrollment";

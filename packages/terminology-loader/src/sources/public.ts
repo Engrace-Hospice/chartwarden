@@ -25,7 +25,7 @@ const CVX_URL = "https://www2a.cdc.gov/vaccines/iis/iisstandards/downloads/cvx.t
 const STATIC_REVENUE_VERSION = "hospice-subset-2026-10";
 
 /** The federal fiscal year a run targets: Sep–Dec runs target the NEXT October's release. */
-export function icd10cmFiscalYear(now: Date, mode: FetchContext["mode"]): number {
+function icd10cmFiscalYear(now: Date, mode: FetchContext["mode"]): number {
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth() + 1;
   if (mode === "dry_run") return month >= 9 ? year + 1 : year;
@@ -33,7 +33,7 @@ export function icd10cmFiscalYear(now: Date, mode: FetchContext["mode"]): number
 }
 
 /** CMS/NCHS file-name spellings for a fiscal year's Code Descriptions zip. */
-export function icd10cmCandidateUrls(fy: number): string[] {
+function icd10cmCandidateUrls(fy: number): string[] {
   return [
     `${NCHS}/${fy}/icd10cm-code-descriptions-${fy}.zip`,
     `${NCHS}/${fy}/icd10cm-Code%20Descriptions-${fy}.zip`,

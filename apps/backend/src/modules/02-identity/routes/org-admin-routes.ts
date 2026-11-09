@@ -28,6 +28,7 @@
 // The envelope cipher is an injected port; until the KMS-backed key ring binds it, POST /provider-entities
 // refuses with 503 `TAX_ID_CIPHER_UNBOUND` (the M8/M20/M32 `*_CIPHER_UNBOUND` posture) — everything else works.
 import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@chartwarden/auth";
+import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
@@ -129,12 +130,14 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       MAX_LIMIT,
       Math.max(1, Math.floor(Number(query.limit) || DEFAULT_LIMIT)),
     );
-    const offset = Math.max(0, Math.floor(Number(query.cursor) || 0));
+    // the listing spans tenants, so the cursor is signed with the operator's own org id
+    const orgId = request.context.organizationId;
+    const offset = decodeOffsetCursor(orgId, query.cursor);
     const q = typeof query.q === "string" && query.q.trim() ? query.q.trim() : undefined;
     const rows = await store.listOrganizations({ ...(q ? { q } : {}), limit: limit + 1, offset });
     return {
       items: rows.slice(0, limit),
-      nextCursor: rows.length > limit ? String(offset + limit) : null,
+      nextCursor: rows.length > limit ? encodeOffsetCursor(orgId, offset + limit) : null,
     };
   });
 

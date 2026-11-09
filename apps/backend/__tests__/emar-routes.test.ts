@@ -30,8 +30,11 @@ import {
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
+  // The M12/M13 write routes require an Idempotency-Key (the web client sends one on every mutation);
+  // a case that omits it on purpose sends an empty one.
+  request.headers["idempotency-key"] ??= `test-${request.id}`;
   request.context.userId = user;
-  // emar-routes.ts's actorOf() reads the acting MEMBERSHIP id from here (not ctx.userId).
+  // emar-routes.ts's membershipActorOf() reads the acting MEMBERSHIP id from here (not ctx.userId).
   request.context.attributes.membershipId = user;
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
@@ -863,6 +866,14 @@ describe("PUT /api/v1/admin/administration-policy — step-up (spec §4.1 route 
     const { app } = makeServer({});
     const res = await policyReq(app, { ...MD, "x-test-stepup": "fresh" });
     expect(res.statusCode, res.body).toBe(200);
+    await app.close();
+  });
+
+  it("refuses a policy update without an Idempotency-Key (400)", async () => {
+    const { app } = makeServer({});
+    const res = await policyReq(app, { ...MD, "x-test-stepup": "fresh", "idempotency-key": "" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
     await app.close();
   });
 });

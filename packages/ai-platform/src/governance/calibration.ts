@@ -68,9 +68,7 @@ export type AiCalibrationDecision =
   | AiGovernanceRefusal;
 
 /** The backends a capability may route to — `allowed_backend_keys` plus its own default. */
-export function aiRoutableBackendKeys(
-  capability: AiCalibrationCapabilitySnapshot,
-): readonly string[] {
+function aiRoutableBackendKeys(capability: AiCalibrationCapabilitySnapshot): readonly string[] {
   return capability.allowedBackendKeys.includes(capability.defaultBackendKey)
     ? capability.allowedBackendKeys
     : [capability.defaultBackendKey, ...capability.allowedBackendKeys];

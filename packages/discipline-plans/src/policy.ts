@@ -159,7 +159,7 @@ export function volunteerRatioStatus(ratio: number | null): VolunteerRatioStatus
 }
 
 /** §2.5 — every mutable M15 table carries `version bigint`; PATCH routes require `If-Match: <version>` and
- *  answer a mismatch with 412 + the current row state (M7 §7.7 / M9 D11 verbatim). */
+ *  answer a mismatch with 409 STALE_VERSION + the current row state (M7 §7.7 / M9 D11 verbatim). */
 export const OPTIMISTIC_CONCURRENCY_HEADER = "If-Match" as const;
 
 /** §2.4 — the `payloadSchemaVersion` stamped on every M15 outbox envelope; a consumer refusing an unknown

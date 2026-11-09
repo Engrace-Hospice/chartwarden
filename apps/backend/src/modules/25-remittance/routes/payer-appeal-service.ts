@@ -5,6 +5,7 @@
 // moves a deadline; a deadline is computed only from a complete window and a notice date a person typed, otherwise the case
 // shows "No due date" until one is recorded. Every transition is a conditional UPDATE (version and state in the WHERE).
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
@@ -34,8 +35,6 @@ import {
 import type { M25ReadActor, M25WriteActor } from "./actor";
 import type { AppealSourcePorts } from "./appeal-packet-sources";
 import { patientOfClaim } from "./claim-patient";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation } from "./denial-route-service";
 import { type PayerSeam, buildSeamPayerSeam } from "./payer-seam";
 import { type RecordedDeadlineView, viewRecordedDeadline } from "./recorded-deadline-view";
 import { providerEntityScopeCondition } from "./scope";
@@ -728,7 +727,7 @@ export function buildDrizzlePayerAppealService(
             ),
           )
           .returning({ id: PC.id, version: PC.version, deadlineSource: PC.deadlineSource });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await event(tx, actor, id, "notice_recorded", {
           deadlineSource: updated[0].deadlineSource,
         });
@@ -786,7 +785,7 @@ export function buildDrizzlePayerAppealService(
           })
           .where(and(eq(PC.id, id), eq(PC.version, ifMatch), eq(PC.state, cur.state)))
           .returning({ id: PC.id, version: PC.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await event(tx, actor, id, to, move === "decide" ? { outcome: input.outcome } : undefined);
         return updated[0];
       });

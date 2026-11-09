@@ -10,7 +10,7 @@
 //
 // Two server contracts every write helper honours (§F08 / §2.5): a mutating route requires an
 // `Idempotency-Key`, and a PATCH / state transition requires `If-Match` carrying the row `version` the
-// caller READ (a 412 means the row moved under you — reload, never retry blind). The server stays the only
+// caller READ (a 409 STALE_VERSION means the row moved under you — reload, never retry blind). The server stays the only
 // authorization point: nothing here decides what a caller may see.
 import { envelopeErrorMessage } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
@@ -241,7 +241,7 @@ export function writeHeaders(version?: number | null): Record<string, string> {
 /**
  * Turn a failed response into the sentence a clinician can act on. The server's problem+json body is the
  * source of truth; the status-derived fallbacks name the two contracts a screen can actually violate
- * (412 = the row moved, 428 = a blind write) rather than a generic "something went wrong".
+ * (409 STALE_VERSION = the row moved, 428 = a blind write) rather than a generic "something went wrong".
  */
 export function errorMessage(error: unknown, fallback: string): string {
   const body = error as { title?: string; detail?: string; code?: string; status?: number } | null;
@@ -249,7 +249,7 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
-  if (body?.status === 412)
+  if (body?.code === "STALE_VERSION")
     return "This record changed while you were working on it. Reload and re-apply your edit.";
   if (body?.status === 428)
     return "This edit is missing its version. Reload the record and try again.";

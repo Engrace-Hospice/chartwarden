@@ -7,12 +7,12 @@
 // holder of the key cannot reach a patient off their caseload. For void the patient is read from the request row server-side, never the body.
 // Template key and version are stamped from the server registry. An M06 document must name the M06 record it will sign into, checked here so a
 // mistaken target fails at send time, not when the patient tries to sign.
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { M06_DOC_KINDS, SIGNATURE_TEMPLATES, portalSigningBlocker } from "../signature-templates";
 import { type AcceptDenyCode, acceptUploadedCopy } from "../write-paths/accept-uploaded-copy";
-import { type PreHandler, actorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { actorOf } from "./actor";
 import { P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
 import { invitationPatientScope } from "./invitation-scope";

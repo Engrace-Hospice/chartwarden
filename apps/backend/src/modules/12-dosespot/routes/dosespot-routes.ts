@@ -31,13 +31,19 @@ import {
   requirePermission,
   requireStepUp,
 } from "@chartwarden/auth";
-import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import {
+  type PreHandler,
+  membershipActorOf,
+  orgOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
-import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
 import { prescriberDisciplinesOf } from "../abac-predicates";
 import { assertDisciplineHeld, resolveDraftingDiscipline } from "../prescriber-eligibility";
-import { requireIdempotencyKey } from "../tenant-config/route-guards";
 import {
   ApproveRefillRequest,
   CompleteRequest,
@@ -70,27 +76,13 @@ import {
 } from "./dosespot-typebox";
 import type { DoseSpotAbacActor, MedicationOrderRouteService, OrderListScope } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface DoseSpotRouteDeps {
   service: MedicationOrderRouteService;
 }
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" — same bug/fix as
-  // M7/M8/M9/M10/M11: this used to read `ctx.userId` (the raw Better Auth user id, a DIFFERENT id
-  // from the org membership), FK-violating
-  // `medication_order_prescriber_membership_id_membership_id_fk`.
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId };
-}
-
 /**
  * The §2.7 refill inbox needs BOTH ids (GAP-026): the named-prescriber axis keys on the membership id
- * {@link actorOf} resolves, and the caseload axis goes through M5's `CaseloadProvider`, which reads
+ * {@link membershipActorOf} resolves, and the caseload axis goes through M5's `CaseloadProvider`, which reads
  * `patient_assignment.clinician_user_id` — the M2 USER id. Everything else on this router keys on one
  * axis only, so only the inbox route uses this.
  */
@@ -98,15 +90,14 @@ function refillActorOf(request: FastifyRequest): {
   organizationId: string;
   actor: DoseSpotAbacActor;
 } {
-  const { organizationId, userId: membershipId } = actorOf(request);
-  return {
-    organizationId,
-    actor: { userId: request.context?.userId ?? "", membershipId },
-  };
+  const { organizationId, userId, membershipId } = writeActorOf(request);
+  return { organizationId, actor: { userId, membershipId } };
 }
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
+/** Every mutating route requires a client-supplied Idempotency-Key (the M1 middleware replays it). */
+const IDEMPOTENT = requireIdempotencyKey();
 const READ = P("prescribing.read");
 /** GAP-036 — step-up operation key for acknowledging an allergy conflict (tenants may only tighten it). */
 const ALLERGY_OVERRIDE_STEP_UP_OPERATION = "prescribing.allergy_override";
@@ -209,8 +200,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       mutating: boolean,
     ) =>
     async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-      const organizationId = request.context?.organizationId;
-      if (!organizationId) throw new UnauthorizedError();
+      const organizationId = orgOf(request);
       const id = (request.params as { id?: unknown } | undefined)?.id;
       const patientId = typeof id === "string" ? await resolve(organizationId, id) : null;
       if (!patientId) throw new NotFoundError("resource");
@@ -230,7 +220,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "medication_order", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(MedicationOrderListQuerySchema, request.query);
       return service.listOrders(organizationId, {
         patientId: q.patientId,
@@ -245,9 +235,16 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 3 — create draft (prescriber_eligible ABAC floor on the body's medClass).
   app.post(
     "/api/v1/medication-orders",
-    { preHandler: [DRAFT, ABAC_DRAFT, chartScope("prescribing.draft", bodyPatientId, true)] },
+    {
+      preHandler: [
+        DRAFT,
+        ABAC_DRAFT,
+        chartScope("prescribing.draft", bodyPatientId, true),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(CreateMedicationOrderRequest, request.body);
       // GAP-034 follow-up — the drafting discipline is persisted and later decides the cosign requirement, so it
       // is resolved from the SESSION (an RN who claims "physician" is recorded as the RN and owes the cosign).
@@ -288,7 +285,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "medication_order", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       // `viewerMayRetransmit` — the retransmit route's own standing inputs (acting membership + session
       // disciplines), so the UI offers Retransmit only to a caller the write would accept.
@@ -302,9 +299,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 4 — edit a draft.
   app.patch(
     "/api/v1/medication-orders/:id",
-    { preHandler: [DRAFT, orderScope("prescribing.draft")] },
+    { preHandler: [DRAFT, orderScope("prescribing.draft"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(UpdateMedicationOrderRequest, request.body);
       return service.editDraft(organizationId, id, {
@@ -319,9 +316,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 5 — draft → pending_signature.
   app.post(
     "/api/v1/medication-orders/:id/request-signature",
-    { preHandler: [DRAFT, orderScope("prescribing.draft")] },
+    { preHandler: [DRAFT, orderScope("prescribing.draft"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(RequestSignatureRequest, request.body);
       // The body still names a discipline (the API contract) but it must be one the SESSION holds.
@@ -352,9 +349,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 6 — standard sign (→ signed).
   app.post(
     "/api/v1/medication-orders/:id/sign",
-    { preHandler: [SIGN, orderScope("prescribing.sign"), ABAC_SIGN_ELIGIBLE] },
+    { preHandler: [SIGN, orderScope("prescribing.sign"), ABAC_SIGN_ELIGIBLE, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(SignMedicationOrderRequest, request.body);
       // GAP-035 — discipline comes from the session, the ordering-physician standing from the stored
@@ -375,10 +372,11 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         SIGN_CONTROLLED,
         orderScope("prescribing.sign_controlled_substance"),
         ABAC_SIGN_CONTROLLED,
+        IDEMPOTENT,
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(SignControlledInitiateRequest, request.body);
       const held = prescriberDisciplinesOf(request.context);
@@ -393,9 +391,15 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 8 — controlled sign complete (2FA → signed).
   app.post(
     "/api/v1/medication-orders/:id/sign-controlled/complete",
-    { preHandler: [SIGN_CONTROLLED, orderScope("prescribing.sign_controlled_substance")] },
+    {
+      preHandler: [
+        SIGN_CONTROLLED,
+        orderScope("prescribing.sign_controlled_substance"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       parse(SignControlledCompleteRequest, request.body);
       return service.signControlledComplete(organizationId, userId, id, {
@@ -407,9 +411,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 9 — record as verbal (→ verbal_pending; controlled is Phase-1-OFF per D18).
   app.post(
     "/api/v1/medication-orders/:id/verbal",
-    { preHandler: [VERBAL, orderScope("prescribing.verbal.record")] },
+    { preHandler: [VERBAL, orderScope("prescribing.verbal.record"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(RecordVerbalRequest, request.body);
       const held = prescriberDisciplinesOf(request.context);
@@ -427,9 +431,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 10 — attach a cosignature (service enforces status, session role, no self-cosign, M11 seam record).
   app.post(
     "/api/v1/medication-orders/:id/cosign",
-    { preHandler: [COSIGN, orderScope("prescribing.cosign")] },
+    { preHandler: [COSIGN, orderScope("prescribing.cosign"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(CosignRequest, request.body);
       return service.cosignOrder(organizationId, userId, id, {
@@ -444,9 +448,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 11 — discontinue.
   app.post(
     "/api/v1/medication-orders/:id/discontinue",
-    { preHandler: [DISCONTINUE, orderScope("prescribing.discontinue")] },
+    { preHandler: [DISCONTINUE, orderScope("prescribing.discontinue"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(DiscontinueRequest, request.body);
       return service.discontinueOrder(organizationId, userId, id, {
@@ -462,9 +466,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // M30's auto-incident-draft consumer.
   app.post(
     "/api/v1/medication-orders/:id/report-error",
-    { preHandler: [REPORT_ERROR, orderScope("prescribing.report_error")] },
+    { preHandler: [REPORT_ERROR, orderScope("prescribing.report_error"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(ReportMedicationErrorRequest, request.body);
       return service.reportMedicationError(organizationId, userId, id, {
@@ -479,9 +483,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // never break-glass-bypassable like every other write. The determining membership is the SESSION's.
   app.put(
     "/api/v1/medication-orders/:id/coverage-determination",
-    { preHandler: [COVERAGE, orderScope("prescribing.coverage_determine")] },
+    { preHandler: [COVERAGE, orderScope("prescribing.coverage_determine"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(SetCoverageDeterminationRequest, request.body);
       return service.setCoverageDetermination(organizationId, userId, id, {
@@ -494,9 +498,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 12 — complete (one-shot / no-refills-no-renewal).
   app.post(
     "/api/v1/medication-orders/:id/complete",
-    { preHandler: [DISCONTINUE, orderScope("prescribing.discontinue")] },
+    { preHandler: [DISCONTINUE, orderScope("prescribing.discontinue"), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(CompleteRequest, request.body);
       return service.completeOrder(organizationId, userId, id, b.reason);
@@ -506,9 +510,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 13 — corrected order (replaces_medication_order_id; prescriber_eligible ABAC).
   app.post(
     "/api/v1/medication-orders/:id/correct",
-    { preHandler: [DRAFT, ABAC_DRAFT, orderScope("prescribing.draft")] },
+    { preHandler: [DRAFT, ABAC_DRAFT, orderScope("prescribing.draft"), IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(CorrectMedicationOrderRequest, request.body);
       const draftingDiscipline = resolveDraftingDiscipline(
@@ -542,9 +546,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
     "/api/v1/medication-orders/:id/retransmit",
     // scope first (404 off-caseload), then the signer ABAC (session disciplines); the service decides the
     // authoring-prescriber / named-physician standing from the stored order + roster.
-    { preHandler: [SIGN, orderScope("prescribing.sign"), ABAC_SIGN_ELIGIBLE] },
+    { preHandler: [SIGN, orderScope("prescribing.sign"), ABAC_SIGN_ELIGIBLE, IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const res = await service.retransmit(organizationId, userId, id, {
         signerDisciplines: prescriberDisciplinesOf(request.context),
@@ -561,7 +565,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "medication_order", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       return service.getTransmission(organizationId, id);
     },
@@ -575,7 +579,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "medication_order", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.activeMedications(organizationId, patientId);
     },
@@ -589,7 +593,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "medication_order", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.medicationHistory(organizationId, patientId);
     },
@@ -598,9 +602,15 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 18 — enqueue a medication-history refresh (DoseSpot MedHx pull).
   app.post(
     "/api/v1/patients/:patientId/medications/history/refresh",
-    { preHandler: [HISTORY_READ, chartScope("prescribing.history.read", paramPatientId, true)] },
+    {
+      preHandler: [
+        HISTORY_READ,
+        chartScope("prescribing.history.read", paramPatientId, true),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.refreshHistory(organizationId, patientId);
     },
@@ -609,9 +619,15 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 19 — reconcile a medication-history record.
   app.post(
     "/api/v1/medication-history-records/:id/reconcile",
-    { preHandler: [HISTORY_RECONCILE, historyRecordScope("prescribing.history.reconcile")] },
+    {
+      preHandler: [
+        HISTORY_RECONCILE,
+        historyRecordScope("prescribing.history.reconcile"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(HistoryRecordParamsSchema, request.params);
       const b = parse(ReconcileRequest, request.body);
       return service.reconcileHistory(organizationId, userId, id, b.decision);
@@ -639,7 +655,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "refill", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(RefillParamsSchema, request.params);
       return service.getRefill(organizationId, id);
     },
@@ -648,9 +664,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 22 — approve a refill (mints a new medication_order).
   app.post(
     "/api/v1/refills/:id/approve",
-    { preHandler: [REFILL_DECIDE, ABAC_REFILL_DECIDE] },
+    { preHandler: [REFILL_DECIDE, ABAC_REFILL_DECIDE, IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(RefillParamsSchema, request.params);
       const b = parse(ApproveRefillRequest, request.body);
       const res = await service.approveRefill(organizationId, userId, id, {
@@ -665,9 +681,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 23 — deny a refill.
   app.post(
     "/api/v1/refills/:id/deny",
-    { preHandler: [REFILL_DECIDE, ABAC_REFILL_DECIDE] },
+    { preHandler: [REFILL_DECIDE, ABAC_REFILL_DECIDE, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(RefillParamsSchema, request.params);
       const b = parse(DenyRefillRequest, request.body);
       return service.denyRefill(organizationId, userId, id, {
@@ -680,9 +696,15 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 24 — RxBenefit cached lookup.
   app.post(
     "/api/v1/rx-benefit/lookup",
-    { preHandler: [RX_BENEFIT, chartScope("prescribing.rx_benefit.lookup", bodyPatientId, true)] },
+    {
+      preHandler: [
+        RX_BENEFIT,
+        chartScope("prescribing.rx_benefit.lookup", bodyPatientId, true),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const b = parse(RxBenefitLookupRequest, request.body);
       return service.rxBenefitLookup(organizationId, b.patientId, b.rxnormRxcui);
     },
@@ -698,7 +720,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.listPrescribers(organizationId);
     },
   );
@@ -714,7 +736,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.listNamedPrescribers(organizationId);
     },
   );
@@ -725,7 +747,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
     "/api/v1/admin/dosespot-prescribers/:membershipId/enroll",
     { preHandler: [...ROSTER_WRITE] },
     async (request, reply) => {
-      const { organizationId, userId: actingMembershipId } = actorOf(request);
+      const { organizationId, userId: actingMembershipId } = membershipActorOf(request);
       const { membershipId } = parse(MembershipParamsSchema, request.params);
       const b = parse(EnrollPrescriberRequest, request.body);
       const res = await service.enrollPrescriber(
@@ -744,7 +766,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
     "/api/v1/admin/dosespot-prescribers/:membershipId/revoke",
     { preHandler: [...ROSTER_WRITE] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { membershipId } = parse(MembershipParamsSchema, request.params);
       const b = parse(RevokePrescriberRequest, request.body);
       return service.revokePrescriber(organizationId, membershipId, b.reason);
@@ -761,20 +783,24 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.getRefillInboxPolicy(organizationId);
     },
   );
 
   // 29 — refill-inbox policy update (tighten-only).
-  app.patch("/api/v1/admin/refill-inbox-policy", { preHandler: [POLICY] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const b = parse(RefillInboxPolicyRequest, request.body);
-    return service.putRefillInboxPolicy(organizationId, {
-      slaWarnHours: b.slaWarnHours,
-      slaCriticalHours: b.slaCriticalHours,
-    });
-  });
+  app.patch(
+    "/api/v1/admin/refill-inbox-policy",
+    { preHandler: [POLICY, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId } = membershipActorOf(request);
+      const b = parse(RefillInboxPolicyRequest, request.body);
+      return service.putRefillInboxPolicy(organizationId, {
+        slaWarnHours: b.slaWarnHours,
+        slaCriticalHours: b.slaCriticalHours,
+      });
+    },
+  );
 
   // 30 — controlled-substance policy read.
   app.get(
@@ -788,7 +814,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.getControlledSubstancePolicy(organizationId);
     },
   );
@@ -796,9 +822,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 31 — controlled-substance policy update (tighten-only, 21 CFR 1306.22).
   app.patch(
     "/api/v1/admin/controlled-substance-policy",
-    { preHandler: [POLICY] },
+    { preHandler: [POLICY, IDEMPOTENT] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const b = parse(ControlledSubstancePolicyRequest, request.body);
       return service.putControlledSubstancePolicy(organizationId, {
         scheduleIiiToVMaxRefills: b.scheduleIiiToVMaxRefills,

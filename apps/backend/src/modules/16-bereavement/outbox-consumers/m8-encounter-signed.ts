@@ -1,3 +1,5 @@
+import { isClosedPlanStatus } from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m8-encounter-signed.ts — GAP-130, the §4.5
 // `m8.encounter.signed` → `handleEncounterSigned` binding (D15, §7.5).
 //
@@ -24,8 +26,7 @@
 // RELAY TICKS ARE NOT REQUESTS: everything runs inside `withOrgContext` with the event's own org (the F-102
 // `CONSUMER_USER_ID` convention); no ambient-scope seam is called. The two M16 events it can publish
 // (`outreach_completed`) go through the bound, catalog-validating `m16` publisher on the same tx.
-import { isClosedPlanStatus } from "@chartwarden/bereavement";
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavementOutreachStatus, EncounterId, IsoInstant } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -36,9 +37,6 @@ import type { WriteOutboxPort } from "../routes/write-service";
 const PLAN = schema.bereavementPlan;
 const OUTREACH = schema.bereavementOutreach;
 const LOG = schema.bereavementContactLog;
-
-/** F-102 — a consumer-driven write names no acting membership in the tenancy scope. */
-const CONSUMER_USER_ID = "";
 
 /** M8's literal for the bereavement encounter type (`encounter_type` enum, M8 §2.2). */
 const BEREAVEMENT_CONTACT_ENCOUNTER_TYPE = "bereavement_contact";
@@ -293,7 +291,7 @@ async function completeFromEncounter(
       status: completed.to,
       startedAt: outreach.startedAt ?? new Date(at),
       completedAt: new Date(at),
-      // §2.5 (GAP-194) — bump the row version so a counselor holding the pre-completion version gets 412.
+      // §2.5 (GAP-194) — bump the row version so a counselor holding the pre-completion version gets 409 STALE_VERSION.
       version: sql`${OUTREACH.version} + 1`,
       updatedAt: new Date(),
     })

@@ -6,13 +6,12 @@
 // own (assigned acks, assigned tasks, incoming handoffs, their conversations), so there is no org-wide read here and the supervisor
 // permission is not involved. The tenant flag `messaging.smart_inbox` off answers 200 `{enabled:false}` so the web hides the screen.
 // Responses are never cached. Org and actor come from the request context.
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SmartInboxService } from "../inbox/inbox-service";
 import { InboxQuerySchema, InboxResponseSchema } from "./inbox-typebox";
 import { parse } from "./messaging-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface InboxRouteDeps {
   readonly service: SmartInboxService;

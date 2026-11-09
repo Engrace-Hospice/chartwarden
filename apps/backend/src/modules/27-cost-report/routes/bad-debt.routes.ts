@@ -5,15 +5,13 @@
 // every mutation gates the higher-bar `cost_report.edit_bad_debt` + the editor predicate (§4.7) over the
 // `:id`. The acting principal stamped onto `added_by_membership_id` comes from the actor, NEVER the body.
 // Mutations carry `Idempotency-Key` (§4.1). M27 carries NO PHI (D18). Org/actor binding server-side.
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   AddBadDebtBodySchema,
   BadDebtRecordParamsSchema,
   CostReportIdParamsSchema,
   UpdateBadDebtBodySchema,
-  parse,
 } from "./cost-report-typebox";
 import { EDITOR_FOR_PROVIDER, P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";

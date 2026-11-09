@@ -1,3 +1,4 @@
+import { type CursorPage as _CursorPage, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/20-field-safety/routes/m20-typebox.ts — M20-T06 (§4.2) request schemas.
 //
@@ -31,19 +32,8 @@ import { ValidationError } from "@chartwarden/types";
 // what makes §8.3's spoofing controls structural. `oshaReportable` is absent from `CreateIncidentBody` for
 // the same class of reason: D9 makes the sign-off a SEPARATE, step-up'd act by a supervisor, so a create
 // body that could assert it would file with a state agency on the clinician's own say-so.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -250,8 +240,7 @@ export const AmendCheckInBody = Type.Object({
 });
 
 export const CheckInListQuery = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
+  ...pageQuery({ max: 100 }),
   from: InstantOpt,
   to: InstantOpt,
 });
@@ -304,14 +293,12 @@ export const ResolveSosBody = Type.Object({
 });
 
 export const SosListQuery = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
+  ...pageQuery({ max: 100 }),
 });
 
 /** §4.1 row 10 — the D6 stream read. Paged, because a 4-hour stream at 30 s is ~480 samples. */
 export const LocationStreamQuery = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
+  ...pageQuery({ max: 500 }),
   /**
    * §6's "Coordinate read post-SOS" workflow — the Compliance-Officer escalation requires "an audit-event
    * narrative ≥40 chars explaining the reason", reviewable by the poster on her self-service surface.
@@ -392,8 +379,7 @@ export const OshaSignoffBody = Type.Object({
 });
 
 export const IncidentListQuery = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
+  ...pageQuery({ max: 100 }),
   lifecycleState: Type.Optional(
     Type.Union([
       Type.Literal("draft"),
@@ -477,8 +463,7 @@ export const CreateSubscriptionBody = Type.Object({
 });
 
 export const SubscriptionListQuery = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
+  ...pageQuery(),
   clinicianMembershipId: UuidOpt,
   supervisorMembershipId: UuidOpt,
 });
@@ -522,8 +507,7 @@ export const PatchHighRiskAreaBody = Type.Object({
 });
 
 export const HighRiskAreaListQuery = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
+  ...pageQuery(),
   /** Default false — the editor wants history, the pre-visit advisory wants only what is in force. */
   includeExpired: Type.Optional(Type.Boolean()),
 });
@@ -593,7 +577,6 @@ import type {
   SafetyDashboardSnapshot as _SafetyDashboardSnapshot,
   SafetyPolicyEffectiveDto as _SafetyPolicyEffectiveDto,
 } from "@chartwarden/types";
-import type { CursorPage as _CursorPage } from "./concurrency";
 import type {
   ActiveSosView as _ActiveSosView,
   SafetyCheckInView as _SafetyCheckInView,

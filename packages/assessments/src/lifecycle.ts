@@ -32,7 +32,7 @@ export interface CorrectionCandidate {
   readonly scaleType: ScaleType;
   readonly patientId: PatientId;
   readonly admissionId: AdmissionId;
-  /** The parent `version` the caller read (optimistic concurrency, §2.3 → 412 `STALE_VERSION`). */
+  /** The parent `version` the caller read (optimistic concurrency, §2.3 → 409 `STALE_VERSION`). */
   readonly expectedTargetVersion: number;
 }
 
@@ -49,7 +49,7 @@ export interface CorrectionPlan {
  * the §4.4 order the route surfaces them:
  *   - target must be `active`            → 409 `CORRECTION_TARGET_NOT_ACTIVE` (cannot correct a superseded row)
  *   - same scale_type / patient / admission → 422 `CORRECTION_MISMATCH`
- *   - caller's read of the parent `version` is current → 412 `STALE_VERSION`
+ *   - caller's read of the parent `version` is current → 409 `STALE_VERSION`
  * Pure: the DB `correction-supersede` trigger repeats the supersede at the schema layer (defense in depth).
  */
 export function planCorrection(

@@ -6,20 +6,20 @@ import { createHash } from "node:crypto";
 import type { AlertEmitter } from "@chartwarden/messaging";
 
 /** Alert types that are alert-rule keys only (seeded in PLATFORM_DEFAULT_ALERT_RULES). */
-export const DEATH_BOARD_ASSIGNED_ALERT = "m36.death_board.assigned" as const;
-export const DEATH_BOARD_NEEDS_OWNER_ALERT = "m36.death_board.needs_owner" as const;
+const DEATH_BOARD_ASSIGNED_ALERT = "m36.death_board.assigned" as const;
+const DEATH_BOARD_NEEDS_OWNER_ALERT = "m36.death_board.needs_owner" as const;
 
 export const DEATH_BOARD_ALERT_TEXT = {
   assigned: "A follow-up checklist item has been assigned to you.",
   needsOwner: "A follow-up checklist item has no available owner. A supervisor must assign it.",
 } as const;
 
-export const DEATH_BOARD_DEEP_LINK = "/messaging/death-board";
+const DEATH_BOARD_DEEP_LINK = "/messaging/death-board";
 
 export type DeathBoardWarn = (message: string, context: Record<string, string>) => void;
 
 /** A short hash that dedupes redeliveries; it never carries the raw id. */
-export function deathBoardCorrelationKey(...parts: readonly string[]): string {
+function deathBoardCorrelationKey(...parts: readonly string[]): string {
   return createHash("sha256").update(parts.join(":")).digest("hex").slice(0, 32);
 }
 

@@ -42,6 +42,9 @@ import {
   registerSchedulingRoutes,
 } from "../src/modules/17-scheduling/index";
 
+/** A fresh Idempotency-Key — every M17/M18 mutating route requires one (ADR-0021). */
+const idem = () => ({ "idempotency-key": randomUUID() });
+
 /** GAP-132 — flips the stubbed grant+consent predicate; reset after every use. */
 const portalConsentLive = { value: true };
 
@@ -231,10 +234,23 @@ describe("M17-T07 — §4.2 TypeBox validation", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/recurring-visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {},
     });
     expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("a write without an Idempotency-Key → 400 IDEMPOTENCY_KEY_REQUIRED", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/recurring-visits",
+      headers: SCHED,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
     await app.close();
   });
 });
@@ -246,7 +262,7 @@ describe("M17-T07 — routes 1-4: list / get / create / edit a visit", () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: visitBody(),
     });
     expect(created.statusCode).toBe(201);
@@ -265,7 +281,7 @@ describe("M17-T07 — routes 1-4: list / get / create / edit a visit", () => {
     const edited = await app.inject({
       method: "PATCH",
       url: `/api/v1/visits/${id}`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: { visitSetting: "facility" },
     });
     expect(edited.statusCode).toBe(200);
@@ -282,7 +298,7 @@ describe("M17-T07 — route 5: self-attest EVV start", () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: visitBody({
         scheduledStartedAt: "2026-07-02T11:00:00.000Z",
         scheduledEndedAt: "2026-07-02T12:00:00.000Z",
@@ -292,7 +308,7 @@ describe("M17-T07 — route 5: self-attest EVV start", () => {
     const started = await app.inject({
       method: "POST",
       url: `/api/v1/visits/${id}/start`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: { evvMissingReason: "x".repeat(40) },
     });
     expect(started.statusCode).toBe(403);
@@ -326,7 +342,7 @@ describe("M17-T07 — route 6: cancel", () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: visitBody({
         scheduledStartedAt: "2026-07-02T13:00:00.000Z",
         scheduledEndedAt: "2026-07-02T14:00:00.000Z",
@@ -336,7 +352,7 @@ describe("M17-T07 — route 6: cancel", () => {
     const cancelled = await app.inject({
       method: "POST",
       url: `/api/v1/visits/${id}/cancel`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {
         reason: "Patient declined the visit due to a change in condition.",
         reasonCode: "clinical_status_change",
@@ -361,7 +377,7 @@ describe("M17-T07 — route 7: reschedule", () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: visitBody({
         scheduledStartedAt: "2026-07-02T15:00:00.000Z",
         scheduledEndedAt: "2026-07-02T16:00:00.000Z",
@@ -371,7 +387,7 @@ describe("M17-T07 — route 7: reschedule", () => {
     const rescheduled = await app.inject({
       method: "POST",
       url: `/api/v1/visits/${id}/reschedule`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {
         newScheduledStartedAt: "2026-07-03T15:00:00.000Z",
         newScheduledEndedAt: "2026-07-03T16:00:00.000Z",
@@ -391,7 +407,7 @@ describe("M17-T07 — route 8: no-show", () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: visitBody({
         scheduledStartedAt: "2026-07-02T17:00:00.000Z",
         scheduledEndedAt: "2026-07-02T18:00:00.000Z",
@@ -401,7 +417,7 @@ describe("M17-T07 — route 8: no-show", () => {
     const noShow = await app.inject({
       method: "POST",
       url: `/api/v1/visits/${id}/no-show`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: { reason: "Clinician arrived; no answer at the door after two attempts." },
     });
     expect(noShow.statusCode).toBe(200);
@@ -416,7 +432,7 @@ describe("M17-T07 — route 9: reassign", () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: visitBody({
         scheduledStartedAt: "2026-07-02T19:00:00.000Z",
         scheduledEndedAt: "2026-07-02T20:00:00.000Z",
@@ -426,7 +442,7 @@ describe("M17-T07 — route 9: reassign", () => {
     const reassigned = await app.inject({
       method: "POST",
       url: `/api/v1/visits/${id}/reassign`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: { newAssignedMembershipId: RN_MEMBERSHIP_2 },
     });
     expect(reassigned.statusCode).toBe(200);
@@ -461,7 +477,7 @@ describe("M17-T07 — routes 10-11: proposal inbox + publish", () => {
     const published = await app.inject({
       method: "POST",
       url: `/api/v1/visit-proposals/${PUBLISHABLE_PROPOSAL_ID}/publish`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
     });
     expect(published.statusCode).toBe(201);
     expect(published.json().status).toBe("published");
@@ -485,7 +501,7 @@ describe("M17-T07 — route 12: dismiss proposal", () => {
     const dismissed = await app.inject({
       method: "POST",
       url: `/api/v1/visit-proposals/${proposalId}/dismiss`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: { reason: "No longer needed per updated care plan." },
     });
     expect(dismissed.statusCode).toBe(200);
@@ -512,7 +528,7 @@ describe("M17-T07 — routes 13-15: recurring visit policy", () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/recurring-visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: recurringBody,
     });
     expect(created.statusCode).toBe(201);
@@ -529,7 +545,7 @@ describe("M17-T07 — routes 13-15: recurring visit policy", () => {
     const discontinued = await app.inject({
       method: "POST",
       url: `/api/v1/recurring-visits/${id}/discontinue`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {},
     });
     expect(discontinued.statusCode).toBe(200);
@@ -544,7 +560,7 @@ describe("M17-T07 — routes 16-17: clinician availability", () => {
     const upserted = await app.inject({
       method: "PUT",
       url: `/api/v1/availability/${RN_MEMBERSHIP}`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {
         timeZone: "America/New_York",
         slots: [{ weekday: 1, startTime: "08:00", endTime: "16:00" }],
@@ -570,7 +586,7 @@ describe("M17-T07 — routes 18-20: time-off request, list, approve", () => {
     const requested = await app.inject({
       method: "POST",
       url: "/api/v1/time-off",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {
         membershipId: RN_MEMBERSHIP,
         kind: "pto",
@@ -593,7 +609,7 @@ describe("M17-T07 — routes 18-20: time-off request, list, approve", () => {
     const approved = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${id}/approve`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {},
     });
     expect(approved.statusCode).toBe(200);
@@ -608,7 +624,7 @@ describe("M17-T07 — route 21: deny time-off", () => {
     const requested = await app.inject({
       method: "POST",
       url: "/api/v1/time-off",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {
         membershipId: RN_MEMBERSHIP,
         kind: "sick",
@@ -620,7 +636,7 @@ describe("M17-T07 — route 21: deny time-off", () => {
     const denied = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${id}/deny`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: { reason: "Coverage is unavailable for the requested window." },
     });
     expect(denied.statusCode).toBe(200);
@@ -635,7 +651,7 @@ describe("M17-T07 — route 22: cancel own time-off", () => {
     const requested = await app.inject({
       method: "POST",
       url: "/api/v1/time-off",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {
         membershipId: RN_MEMBERSHIP,
         kind: "training",
@@ -647,7 +663,7 @@ describe("M17-T07 — route 22: cancel own time-off", () => {
     const cancelled = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${id}/cancel`,
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: {},
     });
     expect(cancelled.statusCode).toBe(200);
@@ -662,7 +678,7 @@ describe("M17-T07 — routes 23-25 & 27: day/week/map views + portal upcoming", 
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: visitBody({
         scheduledStartedAt: "2026-07-01T09:00:00.000Z",
         scheduledEndedAt: "2026-07-01T10:00:00.000Z",
@@ -748,7 +764,7 @@ describe("M17-T07 — route 26: on-demand route optimisation", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/optimize-day",
-      headers: SCHED,
+      headers: { ...SCHED, ...idem() },
       payload: { membershipId: RN_MEMBERSHIP, serviceDate: "2026-07-02" },
     });
     expect(res.statusCode).toBe(200);

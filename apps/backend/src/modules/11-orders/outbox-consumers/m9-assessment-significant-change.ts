@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/11-orders/outbox-consumers/m9-assessment-significant-change.ts — the §2.7 D7
 // M9 significant-change order-suggestion banner consumer (F-15x, #248).
 //
@@ -22,7 +23,7 @@
 // The event name is a STRING literal only (no M9 schema import): M11 reads M9 solely through the
 // foundation outbox, never via a `dependsOn` edge (§4 boundary rule) — `SignificantChangePayload` is
 // `assessment-trigger.ts`'s own leaf-typed projection of the wire payload.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, or } from "drizzle-orm";
 import type Redis from "ioredis";
@@ -34,9 +35,6 @@ import type { OrderSuggestionEntry } from "../consumers/suggestion-banner";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 
 const ORDER = schema.orderRecords;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 const BANNER_KEY_PREFIX = "chartwarden:m11:orders:suggestion";
 const BANNER_TTL_SEC = 7 * 24 * 60 * 60; // 7 days, per suggestion-banner.ts's own documented TTL

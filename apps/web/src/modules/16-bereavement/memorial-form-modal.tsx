@@ -4,7 +4,7 @@
 import { useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
-import { errorMessage, isStaleWrite } from "./bereavement-api";
+import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import {
   ErrorText,
   Modal,
@@ -119,7 +119,7 @@ export function MemorialFormModal({
       const message = errorMessage(res.error, "The memorial service could not be saved.");
       if (service !== null && isStaleWrite(res.status) && onStale) {
         onStale(
-          res.status === 412
+          isStaleVersion(res.status, res.error)
             ? "This service changed while you were editing it. The page has been refreshed: check it and try again."
             : message,
         );

@@ -1,6 +1,7 @@
 // apps/backend/src/modules/36-messaging/routes/alarm-ingest-typebox.ts - WP 6.10 (ADR-0102, PROPOSED) schemas for the alarm ingest routes.
 // Wire keys are camelCase (the contract in packages/types/src/messaging-alarm-ingest.ts). No schema here carries a secret except the one-time
 // credential response; the list shape has no cipher, no hash and no secret.
+import { Uuid } from "@chartwarden/shared/route-kit";
 import {
   ALARM_INGEST_ALERT_TYPES,
   ALARM_INGEST_EVENT_STATUSES,
@@ -10,17 +11,18 @@ import {
   ALARM_SOURCE_NAME_MAX,
 } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
 // The inbound body schema lives with the module (the service validates with it); re-exported here so the route surface, and the OpenAPI contract,
 // take it from the routes directory like every other schema.
 export { AlarmEventBodySchema } from "../alarm-ingest/alarm-ingest-schema";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
 const Instant = Type.String({ format: "date-time" });
 const NullableInstant = Type.Union([Instant, Type.Null()]);
 
-export const AlarmSourceIdParamsSchema = Type.Object({ id: Uuid }, { additionalProperties: false });
+export const AlarmSourceIdParamsSchema = Type.Object(
+  { id: Uuid() },
+  { additionalProperties: false },
+);
 
 const Mapping = Type.Object(
   {
@@ -41,7 +43,7 @@ export const CreateAlarmSourceBodySchema = Type.Object(
 );
 
 const SourceShape = {
-  id: Uuid,
+  id: Uuid(),
   name: Type.String(),
   enabled: Type.Boolean(),
   secretGeneration: Type.Integer(),

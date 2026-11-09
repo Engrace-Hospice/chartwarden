@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/12-dosespot/consumers/sync-trigger-queue-adapters.ts — the real
 // `PatientSyncEnqueuePort` / `MedHxFetchEnqueuePort` implementations for `./sync-trigger-bindings.ts`,
 // backed by the durable `dosespot_sync_queue` table (`../jobs/repository.ts`) rather than a raw BullMQ
@@ -8,7 +9,7 @@
 // call for a consumer binding is not itself wrapped in the delivering transaction (see
 // `bootstrap/outbox-dispatcher.ts`), so this is the same shape `12-dosespot/jobs/worker.ts`'s drain uses,
 // not a nested-transaction hazard.
-import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { DosespotSyncQueueRepository } from "../jobs/repository";
 import type {
@@ -18,9 +19,6 @@ import type {
   PatientSyncEnqueuePort,
   PatientSyncJob,
 } from "./sync-trigger-bindings";
-
-/** §3.3 — a worker/consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** Real `PatientSyncEnqueuePort`: writes a debounced `kind: 'patient_sync'` row. */
 export function createDrizzlePatientSyncEnqueuePort(db: DbClient): PatientSyncEnqueuePort {

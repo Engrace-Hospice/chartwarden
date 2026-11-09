@@ -9,6 +9,12 @@
 //   attendance  once the service has started: `attended` writes a contact-log ACTIVITY row (`memorial_service_attendance`, outcome `attended`,
 //               contact_at = the service start, id = the invitation id) on the same transaction; `no_show` writes nothing. Attended is final.
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type KeysetCursor as Cursor,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   BereavedContactRelationship,
@@ -22,7 +28,6 @@ import { BereavementStateError, checkVersion } from "../lifecycle/index";
 import { cancelUnmailedMemorialRun, inviteForMemorial } from "../memorials/publish-drizzle";
 import { applyMemorialRsvp } from "../memorials/rsvp-drizzle";
 import type { M16ReadActor } from "./actor";
-import { type Cursor, clampLimit, decodeCheckedCursor, toCursorPage } from "./concurrency";
 import type {
   ContactMemorialInvitationView,
   M16MemorialService,
@@ -234,7 +239,11 @@ export function buildDrizzleM16MemorialService(
   return {
     async listMemorials(actor, input) {
       const limit = clampLimit(input.limit, PAGE);
-      const after: Cursor | null = decodeCheckedCursor(input.cursor, "instant");
+      const after: Cursor | null = decodeKeysetCursor(
+        actor.organizationId,
+        input.cursor,
+        "instant",
+      );
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const rows = await tx
@@ -258,6 +267,7 @@ export function buildDrizzleM16MemorialService(
           rows.slice(0, limit).map((r) => r.id),
         );
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ a: r.startsAt.toISOString(), id: r.id }),
