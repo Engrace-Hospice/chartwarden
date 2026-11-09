@@ -1049,8 +1049,16 @@ function interactiveInvocation(p: Parsed): boolean {
       (prog === "php" && args.some((a) => /^(?:-r|-f)(?:.+)?$/.test(a)));
     if (executesCode) return false;
     if (explicitInput || args.includes("-")) return false;
+    // Node has a large and evolving set of options that consume a following value. Guessing that
+    // an unrecognised value is a script can turn `node --some-option value` into an unchecked REPL.
+    // A script is unambiguous when it is the first argument or follows Node's `--` delimiter.
+    if (prog === "node") {
+      const delimiter = args.indexOf("--");
+      if (delimiter >= 0) return delimiter + 1 >= args.length;
+      return args.length === 0 || (args[0]?.startsWith("-") ?? true);
+    }
     const valueFlags =
-      /^(-W|-X|-I|-M|-m|-F|-C|-l|-d|--require|-r|--loader|--import|--conditions|--title|--openssl-config|--icu-data-dir|--inspect-port)$/;
+      /^(-W|-X|-I|-M|-m|-F|-C|-l|-d|--require|-r|--loader|--import|--conditions|--title|--openssl-config|--icu-data-dir)$/;
     return !hasPositional(args, valueFlags);
   }
 
