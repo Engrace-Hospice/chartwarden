@@ -7,9 +7,14 @@
 // `administrator`/`org_admin`). Both compose the §4.7 `provider_entity_billing_scope` predicate over the ProviderEntity
 // (query/body — the by-id routes carry it too and the service 404s a mismatch) + the §D13 AI-block + `Idempotency-Key`
 // on mutations. NO PHI. Org/actor/membership binding is ALWAYS server-side.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { P, PROVIDER_SCOPE, targetProviderFromBody, targetProviderFromQuery } from "./guards";
 import type { VisitChargeRouteService } from "./visit-charge-service";
 import {
@@ -20,7 +25,6 @@ import {
   VisitChargeIdParamsSchema,
   VisitChargeListQuerySchema,
   assertWholeCents,
-  parse,
 } from "./visit-charge-typebox";
 
 export interface VisitChargeRouteDeps {

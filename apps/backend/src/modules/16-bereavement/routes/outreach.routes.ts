@@ -13,9 +13,9 @@
 //
 // Route 19 (the plan's touchpoint LIST) lives in `./plans.routes.ts` because it is plan-scoped; everything
 // here addresses one `:outreachId`.
+import { ifMatchVersionOf, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { ABAC_WINDOW_OUTREACH, P } from "./guards";
 import {
   CancelOutreachBody,
@@ -75,7 +75,7 @@ export function registerBereavementOutreachRoutes(
       const body = parse(CompleteOutreachBody, request.body);
       return writeService.completeOutreach(writeActorOf(request), outreachId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -96,7 +96,7 @@ export function registerBereavementOutreachRoutes(
       const body = parse(OutreachOutcomeBody, request.body);
       return writeService.declineOutreach(writeActorOf(request), outreachId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -116,7 +116,7 @@ export function registerBereavementOutreachRoutes(
       const body = parse(OutreachOutcomeBody, request.body);
       return writeService.noResponseOutreach(writeActorOf(request), outreachId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -136,7 +136,7 @@ export function registerBereavementOutreachRoutes(
       const body = parse(CancelOutreachBody, request.body);
       return writeService.cancelOutreach(writeActorOf(request), outreachId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -157,7 +157,7 @@ export function registerBereavementOutreachRoutes(
       const { outreachId } = parse(OutreachParams, request.params);
       parse(LateAttemptBody, request.body);
       return writeService.lateAttemptOutreach(writeActorOf(request), outreachId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

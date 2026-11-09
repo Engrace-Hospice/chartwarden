@@ -3,9 +3,9 @@
 // `state_trading_partner_credential_admin` ABAC over the body PE + §D12 step-up; every secret is KMS-wrapped
 // (the route returns only masked presence flags, §8.7). Reads/list gate on RBAC + RLS (the per-PE scope is
 // enforced by the medicaid trading-partner RLS policy). The sandbox test adapter is deferred (§4.5).
+import { rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { m24ActorOf } from "./actor";
 import { ABAC_BODY_PE, P, STEP_UP } from "./guards";
 import { ProviderEntityQuery, UpsertCredentialBody, parse, parseQuery } from "./m24-typebox";
 import type { M24ReadService } from "./read-service";
@@ -16,7 +16,7 @@ export interface TradingPartnerRouteDeps {
   readonly writeService: M24WriteService;
 }
 
-const AI = rejectAiActor();
+const AI = rejectAiActor("AI principals cannot create or modify Medicaid billing records (D12)");
 const IDEMPOTENT = requireIdempotencyKey();
 const pParam = (request: { params: unknown }, key: string): string =>
   (request.params as Record<string, string>)[key] ?? "";
@@ -41,7 +41,7 @@ export function registerTradingPartnerRoutes(
     async (request, reply) =>
       reply.send(
         await readService.listTradingPartnerCredentials(
-          actorOf(request),
+          m24ActorOf(request),
           parseQuery(ProviderEntityQuery, request.query).providerEntityId,
         ),
       ),
@@ -64,7 +64,7 @@ export function registerTradingPartnerRoutes(
         .code(201)
         .send(
           await writeService.upsertCredential(
-            writeActorOf(request),
+            m24ActorOf(request),
             parse(UpsertCredentialBody, request.body),
           ),
         ),
@@ -75,6 +75,6 @@ export function registerTradingPartnerRoutes(
     "/api/v1/state-medicaid-trading-partner-credentials/:id/test",
     { preHandler: [P("medicaid.trading_partner.admin"), AI, IDEMPOTENT] },
     async (request, reply) =>
-      reply.send(await writeService.testCredential(writeActorOf(request), pParam(request, "id"))),
+      reply.send(await writeService.testCredential(m24ActorOf(request), pParam(request, "id"))),
   );
 }

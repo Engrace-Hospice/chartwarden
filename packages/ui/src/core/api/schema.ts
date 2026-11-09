@@ -1164,7 +1164,7 @@ export interface paths {
         };
         /** Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12) */
         get: operations["getApiV1AdminAdministrationpolicy"];
-        /** Update tenant administration policy */
+        /** Update tenant administration policy; Idempotency-Key required */
         put: operations["putApiV1AdminAdministrationpolicy"];
         post?: never;
         delete?: never;
@@ -1289,7 +1289,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22) */
+        /** Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22); Idempotency-Key required */
         patch: operations["patchApiV1AdminControlledsubstancepolicy"];
         trace?: never;
     };
@@ -1319,7 +1319,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Enroll a prescriber into DoseSpot */
+        /** Enroll a prescriber into DoseSpot; Idempotency-Key required */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdEnroll"];
         delete?: never;
         options?: never;
@@ -1336,7 +1336,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a prescriber */
+        /** Revoke a prescriber; Idempotency-Key required */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdRevoke"];
         delete?: never;
         options?: never;
@@ -1769,7 +1769,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update the refill-inbox SLA policy (tighten-only) */
+        /** Update the refill-inbox SLA policy (tighten-only); Idempotency-Key required */
         patch: operations["patchApiV1AdminRefillinboxpolicy"];
         trace?: never;
     };
@@ -2073,7 +2073,7 @@ export interface paths {
         /** List a patient's administrations (administered-at window) */
         get: operations["getApiV1Administrations"];
         put?: never;
-        /** Record a clinician administration (five-rights; administering_clinician_eligible ABAC) */
+        /** Record a clinician administration (five-rights; administering_clinician_eligible ABAC); Idempotency-Key required */
         post: operations["postApiV1Administrations"];
         delete?: never;
         options?: never;
@@ -2107,7 +2107,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC) */
+        /** RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC); Idempotency-Key required */
         post: operations["postApiV1AdministrationsByIdAcknowledgecaregiver"];
         delete?: never;
         options?: never;
@@ -2124,7 +2124,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Correct a committed administration (supersede) */
+        /** Correct a committed administration (supersede); Idempotency-Key required */
         post: operations["postApiV1AdministrationsByIdCorrect"];
         delete?: never;
         options?: never;
@@ -2141,7 +2141,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** RN disputes a caregiver-attested row */
+        /** RN disputes a caregiver-attested row; Idempotency-Key required */
         post: operations["postApiV1AdministrationsByIdDisputecaregiver"];
         delete?: never;
         options?: never;
@@ -2158,7 +2158,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Administrative hard-void (recorded in error) */
+        /** Administrative hard-void (recorded in error); Idempotency-Key required */
         post: operations["postApiV1AdministrationsByIdVoid"];
         delete?: never;
         options?: never;
@@ -2175,7 +2175,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a caregiver-attested administration via the M31 portal (D10) */
+        /** Record a caregiver-attested administration via the M31 portal (D10); Idempotency-Key required */
         post: operations["postApiV1AdministrationsCaregiverattested"];
         delete?: never;
         options?: never;
@@ -2209,7 +2209,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk offline-queue sync from device (D18) */
+        /** Bulk offline-queue sync from device (D18); Idempotency-Key required */
         post: operations["postApiV1AdministrationsOfflinesync"];
         delete?: never;
         options?: never;
@@ -2226,7 +2226,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a refusal (administering_clinician_eligible ABAC) */
+        /** Record a refusal (administering_clinician_eligible ABAC); Idempotency-Key required */
         post: operations["postApiV1AdministrationsRefuse"];
         delete?: never;
         options?: never;
@@ -2243,7 +2243,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mint a single-use controlled-substance witness-attestation token (D7) */
+        /** Mint a single-use controlled-substance witness-attestation token (D7); Idempotency-Key required */
         post: operations["postApiV1AdministrationsWitnessattest"];
         delete?: never;
         options?: never;
@@ -4845,7 +4845,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Upsert a membership's weekly availability */
+        /** Upsert a membership's weekly availability; Idempotency-Key required */
         put: operations["putApiV1AvailabilityByMembershipId"];
         post?: never;
         delete?: never;
@@ -8901,7 +8901,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Manual return acknowledgment (Phase-1 fallback) */
+        /** Manual return acknowledgment (Phase-1 fallback); Idempotency-Key required */
         post: operations["postApiV1ComfortkitsDeploymentsByIdAcknowledgereturn"];
         delete?: never;
         options?: never;
@@ -11850,7 +11850,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Operator-initiated cancel (from a non-terminal status) */
+        /** Operator-initiated cancel (from a non-terminal status); Idempotency-Key required */
         post: operations["postApiV1EvvAggregatorsubmissionsByIdCancel"];
         delete?: never;
         options?: never;
@@ -11867,7 +11867,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Operator-initiated resubmit (from rejected/timeout) */
+        /** Operator-initiated resubmit (from rejected/timeout); Idempotency-Key required */
         post: operations["postApiV1EvvAggregatorsubmissionsByIdResubmit"];
         delete?: never;
         options?: never;
@@ -11884,7 +11884,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a check-in (§4.7 capture predicates gate) */
+        /** Record a check-in (§4.7 capture predicates gate); Idempotency-Key required */
         post: operations["postApiV1EvvCheckin"];
         delete?: never;
         options?: never;
@@ -11901,7 +11901,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a check-out */
+        /** Record a check-out; Idempotency-Key required */
         post: operations["postApiV1EvvCheckout"];
         delete?: never;
         options?: never;
@@ -11952,7 +11952,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending device */
+        /** Approve a pending device; Idempotency-Key required */
         post: operations["postApiV1EvvDevicesByIdApprove"];
         delete?: never;
         options?: never;
@@ -11969,7 +11969,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject a pending device */
+        /** Reject a pending device; Idempotency-Key required */
         post: operations["postApiV1EvvDevicesByIdReject"];
         delete?: never;
         options?: never;
@@ -11986,7 +11986,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retire a device */
+        /** Retire a device; Idempotency-Key required */
         post: operations["postApiV1EvvDevicesByIdRetire"];
         delete?: never;
         options?: never;
@@ -12003,7 +12003,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Suspend a device */
+        /** Suspend a device; Idempotency-Key required */
         post: operations["postApiV1EvvDevicesByIdSuspend"];
         delete?: never;
         options?: never;
@@ -12020,7 +12020,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Clinician self-registers a device (-> pending_approval) */
+        /** Clinician self-registers a device (-> pending_approval); Idempotency-Key required */
         post: operations["postApiV1EvvDevicesSelfregister"];
         delete?: never;
         options?: never;
@@ -12071,7 +12071,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Correction-of-record (Clinical Supervisor+, fresh step-up) */
+        /** Correction-of-record (Clinical Supervisor+, fresh step-up); Idempotency-Key required */
         post: operations["postApiV1EvvEventsByEventIdCorrect"];
         delete?: never;
         options?: never;
@@ -12105,7 +12105,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create/replace a per-address override (reason >=30 chars) */
+        /** Create/replace a per-address override (reason >=30 chars); Idempotency-Key required */
         post: operations["postApiV1EvvGeofencepolicyPeraddress"];
         delete?: never;
         options?: never;
@@ -12126,7 +12126,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit tenant tighten-only policy */
+        /** Edit tenant tighten-only policy; Idempotency-Key required */
         patch: operations["patchApiV1EvvGeofencepolicyTenant"];
         trace?: never;
     };
@@ -12173,7 +12173,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assigned clinician self-attests (reason >=40; D6 <=24h) */
+        /** Assigned clinician self-attests (reason >=40; D6 <=24h); Idempotency-Key required */
         post: operations["postApiV1EvvMissingresolutionsByIdClinicianattest"];
         delete?: never;
         options?: never;
@@ -12190,7 +12190,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Supervisor override (step-up; reason >=60; D6 <=7d) */
+        /** Supervisor override (step-up; reason >=60; D6 <=7d); Idempotency-Key required */
         post: operations["postApiV1EvvMissingresolutionsByIdSupervisoroverride"];
         delete?: never;
         options?: never;
@@ -15830,7 +15830,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a reconciliation decision on a medication-history record (never mints a medication order; F-238) */
+        /** Record a reconciliation decision on a medication-history record (never mints a medication order; F-238); Idempotency-Key required */
         post: operations["postApiV1MedicationhistoryrecordsByIdReconcile"];
         delete?: never;
         options?: never;
@@ -15848,7 +15848,7 @@ export interface paths {
         /** List medication orders (filterable) */
         get: operations["getApiV1Medicationorders"];
         put?: never;
-        /** Create a medication-order draft (prescriber_eligible ABAC) */
+        /** Create a medication-order draft (prescriber_eligible ABAC); Idempotency-Key required */
         post: operations["postApiV1Medicationorders"];
         delete?: never;
         options?: never;
@@ -15870,7 +15870,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit a medication-order draft */
+        /** Edit a medication-order draft; Idempotency-Key required */
         patch: operations["patchApiV1MedicationordersById"];
         trace?: never;
     };
@@ -15883,7 +15883,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete a medication order (no-refills-no-renewal) */
+        /** Complete a medication order (no-refills-no-renewal); Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdComplete"];
         delete?: never;
         options?: never;
@@ -15900,7 +15900,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Issue a corrected replacement order (prescriber_eligible ABAC) */
+        /** Issue a corrected replacement order (prescriber_eligible ABAC); Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdCorrect"];
         delete?: never;
         options?: never;
@@ -15917,7 +15917,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Attach a cosignature (no self-cosign) */
+        /** Attach a cosignature (no self-cosign); Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdCosign"];
         delete?: never;
         options?: never;
@@ -15933,7 +15933,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed) */
+        /** COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed); Idempotency-Key required */
         put: operations["putApiV1MedicationordersByIdCoveragedetermination"];
         post?: never;
         delete?: never;
@@ -15951,7 +15951,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Discontinue a medication order */
+        /** Discontinue a medication order; Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdDiscontinue"];
         delete?: never;
         options?: never;
@@ -15968,7 +15968,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** File a clinician-initiated medication-error report against an order (F-205, #248) */
+        /** File a clinician-initiated medication-error report against an order (F-205, #248); Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdReporterror"];
         delete?: never;
         options?: never;
@@ -15985,7 +15985,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Move a draft to pending_signature */
+        /** Move a draft to pending_signature; Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdRequestsignature"];
         delete?: never;
         options?: never;
@@ -16002,7 +16002,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retransmit a transmission_failed order (mints a corrected order) */
+        /** Retransmit a transmission_failed order (mints a corrected order); Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdRetransmit"];
         delete?: never;
         options?: never;
@@ -16019,7 +16019,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Standard sign a medication order */
+        /** Standard sign a medication order; Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdSign"];
         delete?: never;
         options?: never;
@@ -16036,7 +16036,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete an EPCS controlled-substance sign (second factor) */
+        /** Complete an EPCS controlled-substance sign (second factor); Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdSigncontrolledComplete"];
         delete?: never;
         options?: never;
@@ -16053,7 +16053,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC) */
+        /** Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC); Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdSigncontrolledInitiate"];
         delete?: never;
         options?: never;
@@ -16087,7 +16087,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a medication order as verbal */
+        /** Record a medication order as verbal; Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdVerbal"];
         delete?: never;
         options?: never;
@@ -16140,7 +16140,7 @@ export interface paths {
         /** GAP-093: a membership's clinical-license/certification roster */
         get: operations["getApiV1MembershipsByMembershipIdCredentials"];
         put?: never;
-        /** GAP-093: grant a clinical-license/certification credential (201) */
+        /** GAP-093: grant a clinical-license/certification credential (201); Idempotency-Key required */
         post: operations["postApiV1MembershipsByMembershipIdCredentials"];
         delete?: never;
         options?: never;
@@ -16158,7 +16158,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** GAP-093: revoke a credential (204) */
+        /** GAP-093: revoke a credential (204); Idempotency-Key required */
         delete: operations["deleteApiV1MembershipsByMembershipIdCredentialsByCredentialId"];
         options?: never;
         head?: never;
@@ -17595,7 +17595,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
+        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 422 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
         get: operations["getApiV1MessagingEscalationsUnacknowledged"];
         put?: never;
         post?: never;
@@ -19109,7 +19109,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Case manager acknowledges a missed dose */
+        /** Case manager acknowledges a missed dose; Idempotency-Key required */
         post: operations["postApiV1MisseddosesByIdAcknowledge"];
         delete?: never;
         options?: never;
@@ -19367,7 +19367,7 @@ export interface paths {
         /** GAP-029: the on-call rotation M19's roster-sync reads (cancelled entries opt-in) */
         get: operations["getApiV1Oncallrotation"];
         put?: never;
-        /** GAP-029: add an on-call rotation entry (201) */
+        /** GAP-029: add an on-call rotation entry (201); Idempotency-Key required */
         post: operations["postApiV1Oncallrotation"];
         delete?: never;
         options?: never;
@@ -19385,7 +19385,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** GAP-029: cancel an on-call rotation entry (204) */
+        /** GAP-029: cancel an on-call rotation entry (204); Idempotency-Key required */
         delete: operations["deleteApiV1OncallrotationById"];
         options?: never;
         head?: never;
@@ -19608,7 +19608,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** On-demand route optimisation (degraded when flag OFF) */
+        /** On-demand route optimisation (degraded when flag OFF); Idempotency-Key required */
         post: operations["postApiV1Optimizeday"];
         delete?: never;
         options?: never;
@@ -21073,7 +21073,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Enqueue a DoseSpot MedHx refresh */
+        /** Enqueue a DoseSpot MedHx refresh; Idempotency-Key required */
         post: operations["postApiV1PatientsByPatientIdMedicationsHistoryRefresh"];
         delete?: never;
         options?: never;
@@ -24520,7 +24520,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add a caregiver-reported home-med line */
+        /** Add a caregiver-reported home-med line; Idempotency-Key required */
         post: operations["postApiV1ReconciliationWorksheetsByIdAddcaregiverreportedline"];
         delete?: never;
         options?: never;
@@ -24537,7 +24537,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC) */
+        /** Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC); Idempotency-Key required */
         post: operations["postApiV1ReconciliationWorksheetsByIdDecisions"];
         delete?: never;
         options?: never;
@@ -24558,7 +24558,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a per-line decision before finalization */
+        /** Update a per-line decision before finalization; Idempotency-Key required */
         patch: operations["patchApiV1ReconciliationWorksheetsByIdDecisionsByLineId"];
         trace?: never;
     };
@@ -24571,7 +24571,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Finalize the worksheet (emits m13.reconciliation.completed) */
+        /** Finalize the worksheet (emits m13.reconciliation.completed); Idempotency-Key required */
         post: operations["postApiV1ReconciliationWorksheetsByIdFinalize"];
         delete?: never;
         options?: never;
@@ -24588,7 +24588,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Void a reconciliation worksheet */
+        /** Void a reconciliation worksheet; Idempotency-Key required */
         post: operations["postApiV1ReconciliationWorksheetsByIdVoid"];
         delete?: never;
         options?: never;
@@ -24606,7 +24606,7 @@ export interface paths {
         /** A patient's recurring-visit policies — active/discontinued (§5.1 recurring) */
         get: operations["getApiV1Recurringvisits"];
         put?: never;
-        /** Create a recurring policy (validates RRULE subset; 201) */
+        /** Create a recurring policy (validates RRULE subset; 201); Idempotency-Key required */
         post: operations["postApiV1Recurringvisits"];
         delete?: never;
         options?: never;
@@ -24623,7 +24623,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Discontinue a recurring policy (cascade-cancels future) */
+        /** Discontinue a recurring policy (cascade-cancels future); Idempotency-Key required */
         post: operations["postApiV1RecurringvisitsByIdDiscontinue"];
         delete?: never;
         options?: never;
@@ -25086,7 +25086,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a refill (mints a new medication order) */
+        /** Approve a refill (mints a new medication order); Idempotency-Key required */
         post: operations["postApiV1RefillsByIdApprove"];
         delete?: never;
         options?: never;
@@ -25103,7 +25103,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deny a refill request */
+        /** Deny a refill request; Idempotency-Key required */
         post: operations["postApiV1RefillsByIdDeny"];
         delete?: never;
         options?: never;
@@ -26236,7 +26236,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cached RxBenefit coverage lookup */
+        /** Cached RxBenefit coverage lookup; Idempotency-Key required */
         post: operations["postApiV1RxbenefitLookup"];
         delete?: never;
         options?: never;
@@ -26752,7 +26752,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record an intentional hold before the grace window expires */
+        /** Record an intentional hold before the grace window expires; Idempotency-Key required */
         post: operations["postApiV1ScheduleddosesByIdIntentionalhold"];
         delete?: never;
         options?: never;
@@ -28468,7 +28468,7 @@ export interface paths {
         /** Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1) */
         get: operations["getApiV1Timeoff"];
         put?: never;
-        /** Request PTO (201) */
+        /** Request PTO (201); Idempotency-Key required */
         post: operations["postApiV1Timeoff"];
         delete?: never;
         options?: never;
@@ -28485,7 +28485,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve PTO (triggers reassignment scan) */
+        /** Approve PTO (triggers reassignment scan); Idempotency-Key required */
         post: operations["postApiV1TimeoffByIdApprove"];
         delete?: never;
         options?: never;
@@ -28502,7 +28502,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel own pre-start PTO */
+        /** Cancel own pre-start PTO; Idempotency-Key required */
         post: operations["postApiV1TimeoffByIdCancel"];
         delete?: never;
         options?: never;
@@ -28519,7 +28519,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deny PTO (reason) */
+        /** Deny PTO (reason); Idempotency-Key required */
         post: operations["postApiV1TimeoffByIdDeny"];
         delete?: never;
         options?: never;
@@ -29153,7 +29153,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Dismiss a scheduler proposal */
+        /** Dismiss a scheduler proposal; Idempotency-Key required */
         post: operations["postApiV1VisitproposalsByProposalIdDismiss"];
         delete?: never;
         options?: never;
@@ -29170,7 +29170,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Publish a proposal as a real visit (201) */
+        /** Publish a proposal as a real visit (201); Idempotency-Key required */
         post: operations["postApiV1VisitproposalsByProposalIdPublish"];
         delete?: never;
         options?: never;
@@ -29188,7 +29188,7 @@ export interface paths {
         /** Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1) */
         get: operations["getApiV1Visits"];
         put?: never;
-        /** Manual visit create (runs the D8 pre-schedule gate) */
+        /** Manual visit create (runs the D8 pre-schedule gate); Idempotency-Key required */
         post: operations["postApiV1Visits"];
         delete?: never;
         options?: never;
@@ -29210,7 +29210,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit times / discipline / assignment (reruns D8 gate) */
+        /** Edit times / discipline / assignment (reruns D8 gate); Idempotency-Key required */
         patch: operations["patchApiV1VisitsByVisitId"];
         trace?: never;
     };
@@ -29223,7 +29223,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record arrival/check-in (EVV-missing path; step-up-fresh) */
+        /** Record arrival/check-in (EVV-missing path; step-up-fresh); Idempotency-Key required */
         post: operations["postApiV1VisitsByVisitIdArrive"];
         delete?: never;
         options?: never;
@@ -29240,7 +29240,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel a visit (reason + reason code) */
+        /** Cancel a visit (reason + reason code); Idempotency-Key required */
         post: operations["postApiV1VisitsByVisitIdCancel"];
         delete?: never;
         options?: never;
@@ -29257,7 +29257,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark no-show (triggers reassign-or-followup) */
+        /** Mark no-show (triggers reassign-or-followup); Idempotency-Key required */
         post: operations["postApiV1VisitsByVisitIdNoshow"];
         delete?: never;
         options?: never;
@@ -29274,7 +29274,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reassign-only (reruns the D8 gate) */
+        /** Reassign-only (reruns the D8 gate); Idempotency-Key required */
         post: operations["postApiV1VisitsByVisitIdReassign"];
         delete?: never;
         options?: never;
@@ -29291,7 +29291,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reschedule (returns the newly-created visit, 201) */
+        /** Reschedule (returns the newly-created visit, 201); Idempotency-Key required */
         post: operations["postApiV1VisitsByVisitIdReschedule"];
         delete?: never;
         options?: never;
@@ -29308,7 +29308,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Self-attest start (EVV-missing path; step-up-fresh) */
+        /** Self-attest start (EVV-missing path; step-up-fresh); Idempotency-Key required */
         post: operations["postApiV1VisitsByVisitIdStart"];
         delete?: never;
         options?: never;
@@ -30119,8 +30119,8 @@ export interface operations {
             query?: {
                 kind?: "adt_inbound" | "lab_inbound" | "orm_outbound";
                 status?: "proposed" | "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -30562,8 +30562,8 @@ export interface operations {
                 ownerModule?: "m5" | "m6";
                 feedId?: string;
                 proposedForPatientId?: string;
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -30736,8 +30736,8 @@ export interface operations {
                 messageType?: string;
                 messageControlId?: string;
                 parseStatus?: "in_progress" | "parsed" | "parse_error" | "rejected";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -30861,8 +30861,8 @@ export interface operations {
                 feedId?: string;
                 placerOrderNumber?: string;
                 status?: "queued" | "in_flight" | "acked" | "naked" | "failed" | "dlq";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -31034,8 +31034,8 @@ export interface operations {
     getApiAdminExternalinterfacesNppesSyncruns: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -33098,8 +33098,8 @@ export interface operations {
                 patientId?: string;
                 loincCode?: string;
                 abnormalFlag?: "H" | "L" | "HH" | "LL" | "A" | "N";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -33272,8 +33272,8 @@ export interface operations {
                 patientId?: string;
                 loincCode?: string;
                 abnormalFlag?: "H" | "L" | "HH" | "LL" | "A" | "N";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -35279,8 +35279,8 @@ export interface operations {
                 valueSetId?: string;
                 organizationId?: string;
                 includeRemoved?: boolean;
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -41275,7 +41275,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -49036,7 +49036,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -49234,7 +49234,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -49350,7 +49350,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -49414,7 +49414,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -49822,8 +49822,8 @@ export interface operations {
                 state?: "draft" | "ready" | "submitted" | "ack_pending" | "accepted" | "rejected" | "paid" | "partially_paid" | "denied" | "void";
                 payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
                 patientId?: string;
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -51116,7 +51116,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /** Format: uuid */
                     assigneeMembershipId: string;
@@ -51192,7 +51192,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -51266,7 +51266,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -51340,7 +51340,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -51414,7 +51414,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /**
                      * Format: date
@@ -51499,7 +51499,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /** @constant */
                     outcome: "returned";
@@ -51583,7 +51583,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
                     dcn?: string;
@@ -51661,7 +51661,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -51735,7 +51735,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -51809,7 +51809,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -51986,7 +51986,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -52878,7 +52878,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -52905,7 +52905,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -53461,7 +53461,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    /** @description The notice `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     reason: string;
                 };
@@ -53556,7 +53556,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    /** @description The notice `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /**
                      * Format: date
@@ -53845,7 +53845,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    /** @description The notice `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -54685,7 +54685,10 @@ export interface operations {
     };
     getApiV1CapAccrualsPatientByPeriodIdByPatientIdLines: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 periodId: string;
@@ -55630,7 +55633,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -55702,7 +55705,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -55965,7 +55968,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -60495,7 +60498,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -63997,7 +64000,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -64655,7 +64658,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -64736,7 +64739,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -64962,7 +64965,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -68760,7 +68763,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -68794,7 +68797,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -68848,7 +68851,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -68875,7 +68878,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -68932,7 +68935,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -68966,7 +68969,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -69015,7 +69018,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -69287,7 +69290,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -70764,7 +70767,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -78619,6 +78622,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         sources: {
+                            /** Format: uuid */
                             id: string;
                             name: string;
                             enabled: boolean;
@@ -78674,6 +78678,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         enabled: boolean;
@@ -78721,6 +78726,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         enabled: boolean;
@@ -78766,6 +78772,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         enabled: boolean;
@@ -79209,6 +79216,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     channelId: string;
                     fileName: string;
                     contentType: string;
@@ -79262,6 +79270,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     channelId: string;
                     reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
                     justification: string;
@@ -79277,7 +79286,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
@@ -79310,7 +79321,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
@@ -79342,7 +79355,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         grants: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             channelId: string;
                             channelKind: string;
                             reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
@@ -79378,10 +79393,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         reviews: {
+                            /** Format: uuid */
                             reviewId: string;
+                            /** Format: uuid */
                             grantId: string;
+                            /** Format: uuid */
                             granteeUserId: string;
                             granteeName: string | null;
+                            /** Format: uuid */
                             channelId: string;
                             channelKind: string;
                             channelTitle: string | null;
@@ -79425,10 +79444,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         reviewId: string;
+                        /** Format: uuid */
                         grantId: string;
+                        /** Format: uuid */
                         granteeUserId: string;
                         granteeName: string | null;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         channelTitle: string | null;
@@ -79485,10 +79508,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         reviewId: string;
+                        /** Format: uuid */
                         grantId: string;
+                        /** Format: uuid */
                         granteeUserId: string;
                         granteeName: string | null;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         channelTitle: string | null;
@@ -79659,6 +79686,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     invocation_id: string;
                     invoked_at: string;
                     outcome: "accepted" | "edited" | "rejected";
@@ -79761,6 +79789,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     parentMessageId?: string;
                     body: string;
                     references?: {
@@ -79857,6 +79886,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     thread_root_message_id?: string;
                 };
             };
@@ -79871,6 +79901,7 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         label: "AI draft - edit before sending";
+                        /** Format: uuid */
                         invocation_id: string;
                         /** Format: date-time */
                         invoked_at: string;
@@ -80061,9 +80092,12 @@ export interface operations {
             content: {
                 "application/json": {
                     text: string;
+                    /** Format: uuid */
                     medication_id?: string;
+                    /** Format: uuid */
                     assignee_user_id?: string;
                     allow_unrouted?: boolean;
+                    /** Format: uuid */
                     client_message_id: string;
                 };
             };
@@ -80439,8 +80473,10 @@ export interface operations {
                     };
                     parentMessageId?: string;
                     quotedMessageId?: string;
+                    /** Format: uuid */
                     clientMessageId?: string;
                     attachments?: {
+                        /** Format: uuid */
                         attachmentId: string;
                     }[];
                     references?: {
@@ -80540,6 +80576,7 @@ export interface operations {
                 "application/json": {
                     target_module: "m8" | "m14";
                     target_kind: "encounter_addendum" | "idg_agenda_item";
+                    /** Format: uuid */
                     suggested_target_ref?: string;
                 };
             };
@@ -80735,6 +80772,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     optionId: string;
                 };
             };
@@ -80844,6 +80882,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assignee_user_id: string;
                     due_at?: string | null;
                     clinical_concern?: boolean;
@@ -81283,7 +81322,9 @@ export interface operations {
             content: {
                 "application/json": {
                     role: "rn" | "physician";
+                    /** Format: uuid */
                     patient_id: string;
+                    /** Format: uuid */
                     recipient_user_id: string;
                     body_doc: {
                         /** @constant */
@@ -81294,6 +81335,7 @@ export interface operations {
                             content: unknown[];
                         };
                     };
+                    /** Format: uuid */
                     client_message_id: string;
                 };
             };
@@ -81380,9 +81422,11 @@ export interface operations {
             content: {
                 "application/json": {
                     body: string;
+                    /** Format: uuid */
                     parentMessageId?: string;
                     scheduledFor: string;
                     timeZone?: string;
+                    /** Format: uuid */
                     clientMessageId?: string;
                 };
             };
@@ -81622,6 +81666,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     thread_root_message_id?: string;
                 };
             };
@@ -81644,6 +81689,7 @@ export interface operations {
                             confidence: "high" | "medium" | "low";
                             sources: {
                                 n: number;
+                                /** Format: uuid */
                                 message_id: string;
                                 /** Format: date-time */
                                 sent_at: string;
@@ -81706,7 +81752,9 @@ export interface operations {
                             content: unknown[];
                         };
                     };
+                    /** Format: uuid */
                     recipient_user_id: string;
+                    /** Format: uuid */
                     client_message_id: string;
                 };
             };
@@ -81992,10 +82040,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         item: {
+                            /** Format: uuid */
                             id: string;
                             item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                             label: string;
                             status: "open" | "done";
+                            /** Format: uuid */
                             owner_user_id: string;
                             owner_display_name: string | null;
                             needs_owner: boolean;
@@ -82032,6 +82082,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         events: {
+                            /** Format: uuid */
                             id: string;
                             event_type: "created" | "reassigned" | "completed" | "needs_owner";
                             actor_kind: "user" | "system";
@@ -82061,6 +82112,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     to_user_id: string;
                 };
             };
@@ -82074,10 +82126,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         item: {
+                            /** Format: uuid */
                             id: string;
                             item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                             label: string;
                             status: "open" | "done";
+                            /** Format: uuid */
                             owner_user_id: string;
                             owner_display_name: string | null;
                             needs_owner: boolean;
@@ -82115,7 +82169,9 @@ export interface operations {
                     "application/json": {
                         enabled: boolean;
                         boards: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             patient_id: string;
                             patient_display_name: string | null;
                             mrn_suffix: string | null;
@@ -82123,10 +82179,12 @@ export interface operations {
                             created_at: string;
                             open_count: number;
                             items: {
+                                /** Format: uuid */
                                 id: string;
                                 item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                                 label: string;
                                 status: "open" | "done";
+                                /** Format: uuid */
                                 owner_user_id: string;
                                 owner_display_name: string | null;
                                 needs_owner: boolean;
@@ -82164,7 +82222,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         board: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             patient_id: string;
                             patient_display_name: string | null;
                             mrn_suffix: string | null;
@@ -82172,10 +82232,12 @@ export interface operations {
                             created_at: string;
                             open_count: number;
                             items: {
+                                /** Format: uuid */
                                 id: string;
                                 item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                                 label: string;
                                 status: "open" | "done";
+                                /** Format: uuid */
                                 owner_user_id: string;
                                 owner_display_name: string | null;
                                 needs_owner: boolean;
@@ -82235,6 +82297,7 @@ export interface operations {
             content: {
                 "application/json": {
                     kind: "discipline" | "location";
+                    /** Format: uuid */
                     subjectId: string;
                     title?: string;
                 };
@@ -82426,7 +82489,9 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     message_id: string;
+                    /** Format: uuid */
                     assigned_user_id: string;
                 };
             };
@@ -82635,6 +82700,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assigned_user_id: string;
                 };
             };
@@ -82800,6 +82866,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assigned_user_id: string;
                     reason_code: "assignee_unreachable" | "assignee_unable_to_sign_in" | "assignee_off_shift" | "coverage_change" | "workload" | "other_operational";
                 };
@@ -82932,7 +82999,9 @@ export interface operations {
             content: {
                 "application/json": {
                     scopeKind: "channel" | "patient";
+                    /** Format: uuid */
                     channelId?: string;
+                    /** Format: uuid */
                     patientId?: string;
                     dateFrom?: string;
                     dateTo?: string;
@@ -82948,8 +83017,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -83000,8 +83071,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -83058,8 +83131,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -83110,8 +83185,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -83190,8 +83267,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -83241,8 +83320,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         jobs: {
+                            /** Format: uuid */
                             id: string;
                             status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                            /** Format: uuid */
                             requestedBy: string;
                             requestedByName: string | null;
                             requestedAt: string;
@@ -83287,8 +83368,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         jobs: {
+                            /** Format: uuid */
                             id: string;
                             status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                            /** Format: uuid */
                             requestedBy: string;
                             requestedByName: string | null;
                             requestedAt: string;
@@ -83333,7 +83416,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         shares: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             channelId: string;
                             channelTitle: string | null;
                             partnerName: string;
@@ -83345,6 +83430,7 @@ export interface operations {
                             expiresAt: string;
                             /** Format: date-time */
                             createdAt: string;
+                            /** Format: uuid */
                             createdBy: string;
                             revokedAt: string | null;
                             redeemed: boolean;
@@ -83367,6 +83453,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     channelId: string;
                     partnerName: string;
                     partnerKind: "pharmacy" | "dme" | "other";
@@ -83385,7 +83472,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelTitle: string | null;
                         partnerName: string;
@@ -83397,10 +83486,12 @@ export interface operations {
                         expiresAt: string;
                         /** Format: date-time */
                         createdAt: string;
+                        /** Format: uuid */
                         createdBy: string;
                         revokedAt: string | null;
                         redeemed: boolean;
                         codeLocked: boolean;
+                        /** Format: uuid */
                         organizationId: string;
                         inviteToken: string;
                         verificationCode: string;
@@ -83429,7 +83520,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelTitle: string | null;
                         partnerName: string;
@@ -83441,6 +83534,7 @@ export interface operations {
                         expiresAt: string;
                         /** Format: date-time */
                         createdAt: string;
+                        /** Format: uuid */
                         createdBy: string;
                         revokedAt: string | null;
                         redeemed: boolean;
@@ -83470,7 +83564,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelTitle: string | null;
                         partnerName: string;
@@ -83482,10 +83578,12 @@ export interface operations {
                         expiresAt: string;
                         /** Format: date-time */
                         createdAt: string;
+                        /** Format: uuid */
                         createdBy: string;
                         revokedAt: string | null;
                         redeemed: boolean;
                         codeLocked: boolean;
+                        /** Format: uuid */
                         organizationId: string;
                         inviteToken: string;
                         verificationCode: string;
@@ -83513,6 +83611,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         messages: {
+                            /** Format: uuid */
                             messageId: string;
                             from: "you" | "care_team";
                             body: string;
@@ -83550,6 +83649,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         messageId: string;
                         /** Format: date-time */
                         createdAt: string;
@@ -83570,6 +83670,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     organizationId: string;
                     token: string;
                 };
@@ -83683,8 +83784,11 @@ export interface operations {
                 content: {
                     "application/json": {
                         contacts: {
+                            /** Format: uuid */
                             contactId: string;
+                            /** Format: uuid */
                             patientId: string;
+                            /** Format: uuid */
                             patientCaregiverId: string;
                             patientName: string;
                             displayName: string;
@@ -83725,8 +83829,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -83766,8 +83873,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -83807,8 +83917,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -83848,8 +83961,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -83895,6 +84011,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         messageId: string;
                         /** @constant */
                         from: "staff";
@@ -83928,8 +84045,11 @@ export interface operations {
                 content: {
                     "application/json": {
                         contact: {
+                            /** Format: uuid */
                             contactId: string;
+                            /** Format: uuid */
                             patientId: string;
+                            /** Format: uuid */
                             patientCaregiverId: string;
                             patientName: string;
                             displayName: string;
@@ -83946,6 +84066,7 @@ export interface operations {
                             highVolume: boolean;
                         };
                         messages: {
+                            /** Format: uuid */
                             messageId: string;
                             from: "contact" | "staff";
                             authorName: string | null;
@@ -83978,8 +84099,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -84011,7 +84135,9 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     patientId: string;
+                    /** Format: uuid */
                     patientCaregiverId: string;
                     expiresInDays?: number;
                     /** @constant */
@@ -84027,7 +84153,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         organizationId: string;
                         inviteToken: string;
                         verificationCode: string;
@@ -84060,6 +84188,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         caregivers: {
+                            /** Format: uuid */
                             patientCaregiverId: string;
                             displayName: string;
                             relationship: string;
@@ -84263,6 +84392,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         holds: {
+                            /** Format: uuid */
                             id: string;
                             name: string;
                             status: "active" | "released";
@@ -84312,6 +84442,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         status: "active" | "released";
@@ -84358,6 +84489,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         status: "active" | "released";
@@ -84397,6 +84529,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         hold_id: string;
                         held_messages: number;
                         eligible_on_release: number;
@@ -84498,7 +84631,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         redactions: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             message_id: string;
                             status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                             requested_by: string;
@@ -84531,6 +84666,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     message_id: string;
                     reason: string;
                 };
@@ -84544,7 +84680,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -84583,7 +84721,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -84622,7 +84762,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -84661,7 +84803,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -84901,10 +85045,13 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     to_user_id: string;
                     items: {
                         kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                        /** Format: uuid */
                         ref_id: string;
+                        /** Format: uuid */
                         patient_id: string;
                     }[];
                 };
@@ -85718,6 +85865,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     organizationId: string;
                     token: string;
                 };
@@ -85732,6 +85880,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         sessionToken: string;
+                        /** Format: uuid */
                         shareId: string;
                         /** @constant */
                         stage: "enrolment";
@@ -85762,6 +85911,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         shareId: string;
                         stage: "enrolment" | "active";
                         partnerName: string;
@@ -85793,6 +85943,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         messages: {
+                            /** Format: uuid */
                             messageId: string;
                             authorName: string | null;
                             body: string;
@@ -85832,6 +85983,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         shareId: string;
                         stage: "enrolment" | "active";
                         partnerName: string;
@@ -86157,6 +86309,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     to_user_id: string;
                 };
             };
@@ -86764,6 +86917,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assignee_user_id: string;
                 };
             };
@@ -90253,8 +90407,8 @@ export interface operations {
     getApiV1OrdersHeldtransmissions: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -92877,7 +93031,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -104751,7 +104905,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -104904,7 +105058,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -105027,7 +105181,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -108003,8 +108157,8 @@ export interface operations {
     getApiV1SafetyCheckinsMeToday: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
                 from?: string;
                 to?: string;
             };
@@ -108230,8 +108384,8 @@ export interface operations {
     getApiV1SafetyHighriskareas: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
                 includeExpired?: boolean;
             };
             header?: never;
@@ -108372,8 +108526,8 @@ export interface operations {
     getApiV1SafetyIncidents: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
                 lifecycleState?: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
                 oshaReportable?: boolean;
             };
@@ -109192,8 +109346,8 @@ export interface operations {
     getApiV1SafetySosBySosAlertIdLocationstream: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
                 accessReason?: string;
             };
             header?: never;
@@ -109401,8 +109555,8 @@ export interface operations {
     getApiV1SafetySupervisorsubscriptions: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
                 clinicianMembershipId?: string;
                 supervisorMembershipId?: string;
             };
@@ -113752,7 +113906,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {

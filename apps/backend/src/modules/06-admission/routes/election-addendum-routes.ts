@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/06-admission/routes/election-addendum-routes.ts — FY2027 election statement addendum
 // routes (42 CFR 418.24(b)(6), (c), (d); CMS-1851-F). Every route hangs off the ADMISSION path, so the existing
 // `admission.scope` ABAC predicate scopes it on `:id` with no new resolver; the service binds `:addendumId` to
@@ -12,7 +13,7 @@
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/signature/uploaded-evidence  scanned signed paper copy
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/refusal/uploaded-evidence    scanned paper refusal
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required  death / revocation / discharge
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { admissionScopeAccessOf } from "../abac-predicates";
@@ -33,8 +34,6 @@ import {
 } from "./election-addendum-typebox";
 import { ResourceNotFoundError } from "./service";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const ADDENDUM_READ = P("election_addendum.read");
 const ADDENDUM_WRITE = P("election_addendum.write");
@@ -48,12 +47,6 @@ const scope = (action: string): PreHandler =>
       access: admissionScopeAccessOf(action),
     }),
   }) as PreHandler;
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 export interface ElectionAddendumRouteDeps {
   readonly service: ElectionAddendumService;

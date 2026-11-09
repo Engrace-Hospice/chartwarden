@@ -1,3 +1,4 @@
+import { X509Certificate, createPrivateKey } from "node:crypto";
 // apps/backend/src/modules/29-external-interfaces/listener/credential-loader.ts — GAP-086. Loads + decrypts the ACTIVE
 // `mllp_client_cert` credential of a feed into the `TlsCredentialMaterial` the §4.11.2 TLS listener binds with.
 //
@@ -10,7 +11,7 @@
 // an envelope that will not open (wrong org / tampered / DEK gone), or a bundle that fails validation are each a typed
 // error — the supervisor treats a thrown `loadCredential` as "this feed cannot bind" and alerts; nothing falls back to
 // plain TCP or to an unpinned listener.
-import { X509Certificate, createPrivateKey } from "node:crypto";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -21,7 +22,6 @@ import type { TlsCredentialMaterial } from "./index";
 import type { SupervisorFeedDescriptor } from "./supervisor";
 
 const CRED = schema.externalFeedCredential;
-const SYSTEM_USER_ID = "";
 
 export type CredentialLoadErrorCode =
   | "credential_missing"
@@ -111,7 +111,7 @@ export function createCredentialLoader(
   return async (feed) => {
     const rows = await withOrgContext(
       deps.db,
-      { organizationId: feed.organizationId, userId: SYSTEM_USER_ID },
+      { organizationId: feed.organizationId, userId: CONSUMER_USER_ID },
       (tx) =>
         (tx as DbClient)
           .select({ secretCipher: CRED.secretCipher })

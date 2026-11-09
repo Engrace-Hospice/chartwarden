@@ -6,6 +6,7 @@
 // Every command runs under `withOrgContext` (RLS) inside the actor's provider-entity scope; every change is If-Match.
 // The write-audit triggers (and the audit request's own event history) are the trail.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
@@ -28,8 +29,6 @@ import {
 import type { M25ReadActor, M25WriteActor } from "./actor";
 import { type AppealSourcePorts, describeEnclosures } from "./appeal-packet-sources";
 import { patientOfClaim } from "./claim-patient";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation } from "./denial-route-service";
 import { type RecordedDeadlineView, viewRecordedDeadline } from "./recorded-deadline-view";
 import { providerEntityScopeCondition } from "./scope";
 
@@ -455,7 +454,7 @@ export function buildDrizzleLaterTierService(
           await tx.select().from(TD).where(eq(TD.appealCaseId, appealCaseId)).limit(1)
         )[0];
         if (!existing) {
-          if (ifMatch !== 0) throw new VersionConflictError(null);
+          if (ifMatch !== 0) throw new StaleVersionError();
           try {
             const inserted = await tx
               .insert(TD)
@@ -469,7 +468,7 @@ export function buildDrizzleLaterTierService(
               .returning({ id: TD.id, version: TD.version });
             return inserted[0]!;
           } catch (e) {
-            if (isUniqueViolation(e)) throw new VersionConflictError(1);
+            if (isUniqueViolation(e)) throw new StaleVersionError();
             throw e;
           }
         }
@@ -478,7 +477,7 @@ export function buildDrizzleLaterTierService(
           .set({ ...values, version: sql`${TD.version} + 1`, updatedAt: new Date() })
           .where(and(eq(TD.id, existing.id), eq(TD.version, ifMatch)))
           .returning({ id: TD.id, version: TD.version });
-        if (!updated[0]) throw new VersionConflictError(existing.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },
@@ -586,7 +585,7 @@ export function buildDrizzleLaterTierService(
           })
           .where(and(eq(RD.id, deadlineId), eq(RD.version, ifMatch)))
           .returning({ id: RD.id, version: RD.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await auditEvent(tx, actor, subject, "deadline_changed", deadlineId);
         return updated[0];
       });
@@ -618,7 +617,7 @@ export function buildDrizzleLaterTierService(
           .set({ satisfiedOn: day, version: sql`${RD.version} + 1`, updatedAt: new Date() })
           .where(and(eq(RD.id, deadlineId), eq(RD.version, ifMatch)))
           .returning({ id: RD.id, version: RD.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await auditEvent(tx, actor, subject, "deadline_satisfied", deadlineId);
         return updated[0];
       });

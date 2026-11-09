@@ -9,7 +9,7 @@
 // appeal.submit / denial.close_with_write_off (the operation key is the permission key so M3-T07 resolves
 // the per-op freshness policy).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { PreHandler } from "./actor";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 
 type TargetRequest = { readonly params?: unknown; readonly body?: unknown };
 

@@ -1,3 +1,11 @@
+import {
+  AcceptedSubmissionsQuery,
+  type AcceptedSubmissionsQuery as AcceptedSubmissionsQueryType,
+  type AcceptedSubmissionsResponse,
+  ClaimDayProjectionQuery,
+  type ClaimDayProjectionQuery as ClaimDayProjectionQueryType,
+  type ClaimDayProjectionResponse,
+} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/internal.routes.ts — M23 (§4.1 internal seam plane).
 //
 // The two SERVICE-TO-SERVICE seam HTTP endpoints (routes #39/#40) other modules call with a SYSTEM principal
@@ -13,18 +21,9 @@
 // for why the previous "the calling module names the tenant it is acting for" contract was a cross-tenant
 // read primitive. The bound provider opens `withOrgContext` over (context org, system userId) so RLS scopes
 // every downstream read.
-import {
-  AcceptedSubmissionsQuery,
-  type AcceptedSubmissionsQuery as AcceptedSubmissionsQueryType,
-  type AcceptedSubmissionsResponse,
-  ClaimDayProjectionQuery,
-  type ClaimDayProjectionQuery as ClaimDayProjectionQueryType,
-  type ClaimDayProjectionResponse,
-} from "@chartwarden/billing";
+import { actorOf, parse } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, ForbiddenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
-import { actorOf } from "./actor";
-import { parse } from "./billing-typebox";
 import { requireSystemPrincipal } from "./guards";
 
 /** The org + acting principal the bound provider scopes its `withOrgContext` reads to. */

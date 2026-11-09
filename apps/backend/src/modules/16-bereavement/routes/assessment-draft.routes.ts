@@ -1,3 +1,4 @@
+import { factorsFromFullWire } from "@chartwarden/bereavement";
 // apps/backend/src/modules/16-bereavement/routes/assessment-draft.routes.ts — M16 (ADR-0109 D5) routes 35 / 36: the pre-death
 // risk-assessment draft, addressed by ADMISSION because it exists before any bereavement plan.
 //
@@ -6,11 +7,10 @@
 // are denied). The PUT replaces the whole eight-factor vector, requires `If-Match` (a first write names version 0) and an
 // `Idempotency-Key`, and answers 409 `DRAFT_LOCKED` once a plan exists for the admission. The GET declares its M4 read audit
 // with `resourceIdParam: admissionId`, so the read event carries the admission it was about.
-import { factorsFromFullWire } from "@chartwarden/bereavement";
+import { ifMatchVersionOf, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import type { M16DraftService } from "./draft-service";
 import { ABAC_PRE_DEATH_ASSESSOR, P } from "./guards";
 import { AdmissionParams, PreDeathDraftBody, parse } from "./m16-typebox";
@@ -67,7 +67,7 @@ export function registerBereavementAssessmentDraftRoutes(
       const body = parse(PreDeathDraftBody, request.body);
       return draftService.putDraft(writeActorOf(request), admissionId, {
         factors: factorsFromFullWire(body.factors),
-        expectedVersion: ifMatchVersion(request, true) ?? 0,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

@@ -54,7 +54,7 @@ type UiFeedback = {
 };
 
 function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFeedback {
-  if (result.code === "VERSION_MISMATCH")
+  if (result.code === "STALE_VERSION")
     return {
       tone: "warning",
       title: "This visit note changed",

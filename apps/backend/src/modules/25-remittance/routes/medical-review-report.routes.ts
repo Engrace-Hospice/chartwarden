@@ -4,22 +4,17 @@
 // later than today and is bounded (`REPORT_MAX_RANGE_DAYS`); the figures are narrowed by the actor's provider-entity scope
 // server-side. Drill-through goes only to the existing worklists, which enforce their own permission and read audit.
 // Responses are `Cache-Control: no-store`.
-import { FormatRegistry, Type } from "@sinclair/typebox";
+import { type PreHandler, parse } from "@chartwarden/shared/route-kit";
+import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
+import { actorOf } from "./actor";
 import { P } from "./guards";
-import { parse } from "./m25-typebox";
 import type { MedicalReviewReportService } from "./medical-review-report-service";
 
 export interface MedicalReviewReportRouteDeps {
   readonly medicalReviewReportService: MedicalReviewReportService;
   /** Optional per-route cap (a report is a live aggregate): runs after the permission check. */
   readonly rateLimit?: PreHandler;
-}
-
-const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_FORMAT.test(v));
 }
 
 const DAY = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });

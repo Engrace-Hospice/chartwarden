@@ -693,7 +693,7 @@ describe.skipIf(!DB_URL)("M25 QIC reconsideration and escalation - LIVE Postgres
       ).rejects.toThrow(/M25_QIC_CLOCK_FROZEN/);
       expect(
         await refused(qic().confirmEscalation(A(), id, { forwardedOn: daysAgo(0) }, v)),
-      ).toMatchObject({ code: "VERSION_CONFLICT", statusCode: 409 });
+      ).toMatchObject({ code: "STALE_VERSION", statusCode: 409 });
     });
 
     it("confirming moves the case to escalated and opens a linked ALJ case with no deadline alert", async () => {

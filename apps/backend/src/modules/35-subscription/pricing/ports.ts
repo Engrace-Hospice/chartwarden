@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError, type OrgId } from "@chartwarden/types";
-import type { M35WriteActor } from "../routes/actor";
+import type { M35WriteActor } from "../routes/service";
 
 /** One structured platform audit row: WHO, to WHICH organisation (null = the platform catalog), and WHY. Ids and codes only. */
 export interface PlatformAuditEntry {

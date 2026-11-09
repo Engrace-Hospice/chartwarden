@@ -1,4 +1,5 @@
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/05-patient/privacy/officer-db.ts — the Drizzle Privacy Officer service behind
 // `GET /patients/:id/privacy`, `POST /patients/:id/privacy-flags/resync` and
@@ -311,7 +312,7 @@ export function createDbPrivacyOfficerService(
 
     async listRestricted(organizationId, query) {
       const limit = query.limit ?? 50;
-      const offset = query.cursor && /^\d+$/.test(query.cursor) ? Number(query.cursor) : 0;
+      const offset = decodeOffsetCursor(organizationId, query.cursor);
       const restricted = sql`(cardinality(${PFS.flags}) > 0 OR ${PFS.invalidatedAt} IS NOT NULL)`;
       return withOrgContext(db, { organizationId, userId: "" }, async (scoped) => {
         const tx = scoped as unknown as DbClient;
@@ -357,7 +358,8 @@ export function createDbPrivacyOfficerService(
             capturedAt: r.capturedAt.toISOString(),
             stale: r.invalidatedAt !== null,
           })),
-          nextCursor: rows.length > limit ? String(offset + limit) : null,
+          nextCursor:
+            rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
           counts: {
             total: Number(c?.total ?? 0),
             consent: Number(c?.consent ?? 0),

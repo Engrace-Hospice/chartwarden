@@ -1030,7 +1030,7 @@ describe("§2.5 validation", () => {
     ).not.toThrow();
   });
 
-  it("checkVersion is the §2.5 If-Match 412", () => {
+  it("checkVersion is the §2.5 If-Match STALE_VERSION (409)", () => {
     expect(() => checkVersion(undefined, 3)).not.toThrow();
     expect(() => checkVersion(3, 3)).not.toThrow();
     expectCode(() => checkVersion(2, 3), "STALE_VERSION");

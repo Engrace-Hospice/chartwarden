@@ -15,7 +15,7 @@ import type { OutOfBandTransport } from "./transports";
 import { TransportError } from "./transports";
 import { type VendorFetch, postToVendor } from "./vendor-http";
 
-export const TWILIO_DEFAULT_BASE_URL = "https://api.twilio.com";
+const TWILIO_DEFAULT_BASE_URL = "https://api.twilio.com";
 
 /** Where Twilio sends the From identity: a verified number or a Messaging Service (SMS only). */
 export type TwilioSender =

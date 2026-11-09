@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/13-emar/outbox-consumers/m6-reconciliation-triggers.ts — the §2.8 D17
 // medication-reconciliation worksheet, opened from M6's four trigger events (F-152, #248).
 //
@@ -26,7 +27,7 @@
 // none to name here regardless: `medication_reconciliation_worksheet.finalized_by_membership_id` is the
 // only actor column on the table, and it is set later, by the clinician who actually works the worksheet,
 // never at open time.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AdmissionId,
@@ -39,9 +40,6 @@ import { M6_RECONCILIATION_TRIGGER_KIND, decideReconciliationTrigger } from "../
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 
 const WS = schema.medicationReconciliationWorksheets;
-
-/** §3.3 — a consumer-driven write names no acting membership (F-102). */
-const CONSUMER_USER_ID = "";
 
 export const M13_RECONCILIATION_TRIGGER_CONSUMER = {
   eventNames: Object.keys(M6_RECONCILIATION_TRIGGER_KIND),

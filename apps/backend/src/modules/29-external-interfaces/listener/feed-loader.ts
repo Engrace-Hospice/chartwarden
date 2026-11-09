@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/29-external-interfaces/listener/feed-loader.ts — GAP-086. The supervisor's two feed reads
 // (§4.11.1 step 1 + the `activated` hot-reload), over Drizzle.
 //
@@ -5,14 +6,13 @@
 // the tenant pool without an org context. Rather than widen the platform login role's grants, the active ORG list comes
 // from the allowlisted platform enumerator (`M29_PLATFORM_JOB_ID`) and each org's feeds are then read on the TENANT pool
 // inside that org's own `withOrgContext` — the same shape the outbound retry-sweep fan-out uses.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { type SupervisorFeedDescriptor, feedBindsInboundListener } from "./supervisor";
 
 const FEED = schema.externalFeed;
-const SYSTEM_USER_ID = "";
 
 export interface FeedLoaderDeps {
   readonly db: DbClient;
@@ -42,7 +42,7 @@ export function createDrizzleFeedLoader(deps: FeedLoaderDeps): {
   loadFeedById(feedId: string, organizationId?: string): Promise<SupervisorFeedDescriptor | null>;
 } {
   const readOrg = (organizationId: string, where: ReturnType<typeof and>) =>
-    withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, (tx) =>
+    withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, (tx) =>
       (tx as DbClient).select().from(FEED).where(where),
     );
 

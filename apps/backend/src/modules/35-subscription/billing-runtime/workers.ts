@@ -30,7 +30,7 @@ const nowOf = (jobs: { readonly now?: () => Date }): Date => (jobs.now ?? (() =>
 /** The platform job id the active-org enumeration enters `withPlatformContext` under (registered at boot). */
 export const M35_JOBS_PLATFORM_JOB_ID = "m35.jobs";
 
-export const M35_QUEUES = {
+const M35_QUEUES = {
   dunningEngine: "m35.dunning-engine",
   paymentMethodExpiry: "m35.payment-method-expiry-watch",
   usageAggregator: "m35.usage-aggregator",
@@ -45,7 +45,7 @@ export const M35_QUEUES = {
 } as const;
 
 /** Cron patterns (UTC). Sweeps that wait on Stripe-driven state run often; calendar jobs run once. */
-export const M35_SCHEDULES = {
+const M35_SCHEDULES = {
   dunningEngine: "0 * * * *",
   paymentMethodExpiry: "0 6 * * *",
   usageAggregator: "15 * * * *",

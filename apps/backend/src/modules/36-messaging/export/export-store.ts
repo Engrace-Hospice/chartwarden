@@ -16,7 +16,7 @@ const CH = schema.channels;
 const USER = schema.users;
 
 /** Jobs listed at once (mine, and the approvers' queue). */
-export const EXPORT_LIST_LIMIT = 50;
+const EXPORT_LIST_LIMIT = 50;
 
 export interface ExportActor {
   readonly organizationId: string;

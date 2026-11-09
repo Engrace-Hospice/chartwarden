@@ -8,6 +8,7 @@
 // never sees a real identity (per-participant short-TTL tokens), and the room url/token are cipher-only in
 // the row (never projected). The Record button is D9-gated by `state_two_party_recording_consent_present`
 // (+ step-up), composed in `./mount`; the webhooks verify the vendor HMAC before touching the row.
+import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { ensureTelehealthRoomForVisit } from "../telehealth/room-mint";
@@ -18,7 +19,6 @@ import {
   isTelehealthEnded,
 } from "../telehealth/visit-lifecycle";
 import { type M31Actor, actorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_GRANT,
   ABAC_IN_ORG,

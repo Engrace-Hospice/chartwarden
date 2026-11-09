@@ -50,6 +50,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 import {
   NotFoundError,
   SAFETY_SOS_TERMINAL_STATES,
@@ -69,7 +70,6 @@ import {
 import { M20_PERMISSION_KEY_LIST } from "../src/modules/20-field-safety/permission-keys";
 import type {
   ActiveSosView,
-  CursorPage,
   M20ReadService,
   M20WriteService,
   SafetyCheckInView,

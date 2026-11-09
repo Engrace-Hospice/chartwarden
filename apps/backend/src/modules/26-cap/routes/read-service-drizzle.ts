@@ -4,11 +4,12 @@
 // accrual-line paging is keyset over (posted_at DESC, id DESC). numeric() columns arrive as strings →
 // coerced to number at the edge; bigint(mode:'number') arrive as numbers.
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
-import { type CursorPage, decodeCursor, toPage } from "./concurrency";
 import type {
   AccrualLineView,
+  CursorPage,
   DashboardView,
   InpatientAccrualView,
   M26ReadService,
@@ -178,14 +179,14 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
     },
 
     async listAccrualLines(actor, periodId, patientId, cursor, limit) {
-      const c = decodeCursor(cursor);
+      const c = decodeKeysetCursor(actor.organizationId, cursor, "instant");
       return withOrgContext(db, actor, async (tx) => {
         const conds = [eq(BAL.capPeriodId, periodId), eq(BAL.patientId, patientId)];
         if (c)
           conds.push(
             or(
-              lt(BAL.postedAt, new Date(c.ts)),
-              and(eq(BAL.postedAt, new Date(c.ts)), lt(BAL.id, c.id)),
+              lt(BAL.postedAt, new Date(c.a)),
+              and(eq(BAL.postedAt, new Date(c.a)), lt(BAL.id, c.id)),
             )!,
           );
         const rows = await tx
@@ -194,11 +195,10 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
           .where(and(...conds))
           .orderBy(desc(BAL.postedAt), desc(BAL.id))
           .limit(limit + 1);
-        return toPage<(typeof rows)[number], AccrualLineView>(
-          rows,
-          limit,
-          (r) => ({ ts: iso(r.postedAt), id: r.id }),
-          (r) => ({
+        const page = rows.slice(0, limit);
+        const last = page[page.length - 1];
+        return {
+          items: page.map((r) => ({
             id: r.id,
             sourceKind: r.sourceKind,
             sourceId: r.sourceId,
@@ -206,8 +206,12 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
             serviceFrom: iso(r.serviceFrom).slice(0, 10),
             serviceTo: iso(r.serviceTo).slice(0, 10),
             postedAt: iso(r.postedAt),
-          }),
-        ) satisfies CursorPage<AccrualLineView>;
+          })),
+          nextCursor:
+            rows.length > limit && last
+              ? encodeCursor(actor.organizationId, { a: iso(last.postedAt), id: last.id })
+              : null,
+        } satisfies CursorPage<AccrualLineView>;
       });
     },
 

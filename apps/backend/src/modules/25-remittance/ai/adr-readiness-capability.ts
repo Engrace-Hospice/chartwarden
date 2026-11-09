@@ -48,9 +48,6 @@ export const denyStubAdrReadinessAssist: AdrReadinessAssistPort = {
   review: async () => ({ available: false, reason: "capability_unavailable" }),
 };
 
-/** The seam key M32 will publish the capability under (forward reference; not a member of the typed M1 union). */
-export const ADR_READINESS_CAPABILITY_SEAM = "AdrReadinessAssist" as const;
-
 /**
  * Resolve the readiness assistant. 8a-1: always the deny-stub. 8b flips this to read the M32 seam opaquely (one edit,
  * mirroring `resolveDocLensCapability`), with no M25 -> M32 dependency edge.

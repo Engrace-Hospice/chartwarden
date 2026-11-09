@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionOrder } from "@chartwarden/orders";
 // apps/backend/src/modules/11-orders/consumers/bindings.ts — the live `OutboxConsumerBinding` for M11's
 // §2.6 D13 discharge cascade (F-102 / #103).
 //
@@ -41,8 +43,7 @@
 // The read and both writes are M11-owned tables inside one `withOrgContext`, so RLS scopes them as
 // `chartwarden_app`. The consumed event name is a STRING literal and no M6 schema is imported: M11 reads M6
 // solely through the foundation outbox, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionOrder } from "@chartwarden/orders";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { OrderKind, OrderStatus } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
@@ -56,9 +57,6 @@ import {
 
 const OR = schema.orderRecords;
 const OD = schema.orderDiscontinuations;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The event M11's discharge cascade consumes, and the `(eventId, consumerName)` receipt identity. */
 export const M11_DISCHARGE_CASCADE_CONSUMER = {

@@ -12,7 +12,7 @@
 // is a non-leaking 404 — the way RLS behaves in prod), cursor pagination on every list.
 import type { OrgId } from "@chartwarden/types";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { type CursorPage, paginate } from "./concurrency";
+import { type CursorPage, paginate } from "../keyset-page";
 
 // ── enqueue port (Phase 2D worker-trigger seam) ───────────────────────────────────────────────────
 
@@ -344,7 +344,7 @@ export function createInMemoryTenantBackend(
       const rows = desc(
         [...grants.values()].filter((r) => r.organizationId === organizationId).map(strip),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async issueConsentGrant(organizationId, _actorMembershipId, args) {
       const id = uuidFromCounter("c", ++created);
@@ -399,7 +399,7 @@ export function createInMemoryTenantBackend(
           .filter((r) => (filter.status ? r.status === filter.status : true))
           .map(strip),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async getDsarExport(organizationId, jobId) {
       return strip(loadDsar(organizationId, jobId));
@@ -464,7 +464,7 @@ export function createInMemoryTenantBackend(
           .filter((r) => (filter.status ? r.status === filter.status : true))
           .map(strip),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async tenantExportDownloadUrl(organizationId, jobId, _actorMembershipId) {
       const r = loadTenantExport(organizationId, jobId);
@@ -482,7 +482,7 @@ export function createInMemoryTenantBackend(
       const rows = desc(
         [...baa.values()].filter((r) => r.organizationId === organizationId).map(strip),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async attestBaa(organizationId, baaId, _actorMembershipId) {
       const r = loadBaa(organizationId, baaId);

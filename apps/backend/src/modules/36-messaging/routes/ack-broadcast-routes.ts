@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/ack-broadcast-routes.ts - M36 WP 6.8 (ADR-0097, PROPOSED): acknowledge-required broadcast.
 //
 //   POST /api/v1/messaging/announcements/:messageId/ack-broadcast   the AUTHOR requires acknowledgment (messaging.announce; 201 / 200 already)
@@ -10,7 +11,7 @@
 // The tenant flag `messaging.ack_broadcast` (absent = off) is checked BEFORE the request is parsed: off is a uniform 404, the same answer
 // as any unknown route, so a malformed request cannot tell a flag-off tenant from a flag-on one. Org and actor are the server-side
 // request context; the acknowledgment has no user field at all (nobody acknowledges for someone else). Responses are never cached.
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AckBroadcastService } from "../ack-broadcast/ack-broadcast-service";
@@ -27,18 +28,10 @@ import {
 } from "./ack-broadcast-typebox";
 import { parse } from "./messaging-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface AckBroadcastRouteDeps {
   readonly service: AckBroadcastService;
   /** Optional per-route budget, run after the permission and before the flag (ADR-0097 D10). */
   readonly rateLimit?: PreHandler | undefined;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 const ANNOUNCE = requirePermission("messaging.announce") as PreHandler;

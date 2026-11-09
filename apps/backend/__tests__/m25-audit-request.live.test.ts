@@ -408,7 +408,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       await audit().updateAuditRequest(A(), id, { scopeNote: "one" }, 1);
       expect(
         (await fx.refused(audit().updateAuditRequest(A(), id, { scopeNote: "two" }, 1)))?.code,
-      ).toBe("VERSION_CONFLICT");
+      ).toBe("STALE_VERSION");
     });
   });
 
@@ -454,7 +454,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       const added = await audit().addClaim(A(), id, { claimId: fx.claim1b }, v1);
       expect(added.version).toBe(v1 + 1);
       expect((await fx.refused(audit().removeClaim(A(), id, fx.claim1b, v1)))?.code).toBe(
-        "VERSION_CONFLICT",
+        "STALE_VERSION",
       );
       // the refused edit changed nothing: the claim is still on the request
       expect((await audit().getAuditRequest(A(), id))?.claimCount).toBe(2);
@@ -621,7 +621,7 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
         headers: WRITE(),
         payload: { scopeNote: "x" },
       });
-      expect(noMatch.statusCode).toBe(400);
+      expect(noMatch.statusCode).toBe(428);
       const patched = await app.inject({
         method: "PATCH",
         url: `/api/v1/audit-requests/${id}`,

@@ -6,7 +6,7 @@
 import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useState } from "react";
 import type { JSX } from "react";
-import { errorMessage, isStaleWrite } from "./bereavement-api";
+import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
   Card,
@@ -240,7 +240,11 @@ function useDialogWrite<A extends unknown[], T>(
     setBusy(false);
     if (res.error || res.data === null) {
       if (isStaleWrite(res.status)) {
-        return { stale: res.status === 412 ? SESSION_MOVED : errorMessage(res.error, fallback) };
+        return {
+          stale: isStaleVersion(res.status, res.error)
+            ? SESSION_MOVED
+            : errorMessage(res.error, fallback),
+        };
       }
       setError(errorMessage(res.error, fallback));
       return null;

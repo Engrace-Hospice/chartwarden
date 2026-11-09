@@ -6,6 +6,7 @@ import {
   requirePermission,
   requireStepUp,
 } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { CredentialLifecycleStore, UserProvisioningService } from "../credential-lifecycle";
@@ -14,8 +15,6 @@ import type { ActorResolver } from "../identity-ports";
 import { assertOrgMatch, auditContextFor, resolveActor } from "./admin-route-kit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface CredentialRouteDeps {
   actors: ActorResolver;
   audit: AuditExecutor;

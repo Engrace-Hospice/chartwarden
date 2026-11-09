@@ -1,3 +1,4 @@
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/alarm-ingest-routes.ts - WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY.
 //
 // STAFF (a workforce session; messaging.alarm_ingest.manage):
@@ -11,7 +12,7 @@
 // The route reads three headers, all registered in scripts/check-request-header-auth.ts: x-wx-key-id (names WHICH secret to try; verified by the
 // signature that follows), x-wx-signature (the HMAC itself, verified) and x-wx-timestamp (replay freshness only, and it is inside the signed text).
 // The raw body is kept as a string for the HMAC and capped at ALARM_INGEST_MAX_BODY_BYTES by the framework before the handler runs.
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   ALARM_INGEST_MANAGE_PERMISSION,
   ALARM_INGEST_MANAGE_STEP_UP_KEY,
@@ -31,8 +32,6 @@ import {
 } from "./alarm-ingest-typebox";
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const MANAGE = requirePermission(ALARM_INGEST_MANAGE_PERMISSION) as PreHandler;
 const MANAGE_STEP_UP = requireStepUp(ALARM_INGEST_MANAGE_STEP_UP_KEY) as PreHandler;

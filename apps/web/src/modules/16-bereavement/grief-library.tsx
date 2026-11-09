@@ -17,7 +17,7 @@ import {
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
-import { errorMessage, isStaleWrite } from "./bereavement-api";
+import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
   ErrorText,
@@ -160,7 +160,7 @@ export function GriefLibrary(): JSX.Element | null {
           void reload();
           setConfirming(null);
           announce(
-            res.status === 412
+            isStaleVersion(res.status, res.error)
               ? "This item changed while you were working on it. The library has been refreshed: check it and try again."
               : message,
           );

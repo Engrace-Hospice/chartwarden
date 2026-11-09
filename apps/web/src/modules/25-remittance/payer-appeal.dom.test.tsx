@@ -407,7 +407,7 @@ describe("PayerAppealPanel writes", () => {
       json(200, denialView({ cases: [caseRow({ state, version, prompt: null })] }));
     handlers["POST /api/v1/payer-appeals/c1/state"] = () => {
       version = 4;
-      return json(409, { error: { code: "VERSION_CONFLICT", message: "changed" } });
+      return json(409, { error: { code: "STALE_VERSION", message: "changed" } });
     };
     const { rerenderWith } = mount(panelAt());
     await userEvent.click(await screen.findByRole("button", { name: "Record decision" }));

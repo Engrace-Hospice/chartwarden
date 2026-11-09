@@ -2,9 +2,8 @@
 // worksheet read, propose (in_settlement), and finalize (step-up, transitions period → settled). Reads gate
 // on cap.settlement.read; propose/finalize on cap.settlement.manage + the §4.7 cap_period_in_settlement ABAC;
 // finalize composes the §D12 step-up. Org/actor binding is server-side.
+import { actorOf, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import { ABAC, P, STEP_UP } from "./guards";
 import { FinalizeSettlementRequest, PeriodIdParams, parse, validateParams } from "./m26-typebox";
 import type { M26ReadService } from "./read-service";
@@ -45,9 +44,7 @@ export function registerSettlementRoutes(app: FastifyInstance, deps: SettlementR
     async (request, reply) =>
       reply
         .code(201)
-        .send(
-          await writeService.proposeSettlement(writeActorOf(request), pParam(request, "periodId")),
-        ),
+        .send(await writeService.proposeSettlement(actorOf(request), pParam(request, "periodId"))),
   );
 
   app.patch(
@@ -64,9 +61,7 @@ export function registerSettlementRoutes(app: FastifyInstance, deps: SettlementR
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(FinalizeSettlementRequest, request.body);
-      return reply.send(
-        await writeService.finalizeSettlement(writeActorOf(request), periodId, body),
-      );
+      return reply.send(await writeService.finalizeSettlement(actorOf(request), periodId, body));
     },
   );
 }

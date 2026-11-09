@@ -26,6 +26,7 @@ import type {
   MdmResolved,
   MdmRouteService,
 } from "@chartwarden/mdm";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -42,22 +43,12 @@ import {
   parse,
 } from "./mdm-typebox";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 /** The injection surface for the MDM routes. */
 export interface MdmRouteDeps {
   /** The merge-aware read surface (M40-T05; in-memory in the slice, Drizzle in prod). */
   provider: MdmEntityProvider;
   /** The write/admin surface (overlay/baa/merge/provisional/nppes). */
   service: MdmRouteService;
-}
-
-/** The org-scoped actor (org binding is server-side: the context, never the body). */
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 /** Derive the per-kind permission guard from the `:kind` route param (`mdm.<kind>.<action>`). */

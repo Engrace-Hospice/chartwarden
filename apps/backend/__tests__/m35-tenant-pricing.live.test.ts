@@ -57,8 +57,8 @@ import {
   calendarMonthOf,
   runStatementsForOrg,
 } from "../src/modules/35-subscription/pricing/statement-service";
-import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
 import type { PlatformRunner, WriteOutboxPort } from "../src/modules/35-subscription/routes/index";
+import type { M35WriteActor } from "../src/modules/35-subscription/routes/service";
 import { buildDrizzleM35RouteService } from "../src/modules/35-subscription/routes/service-drizzle";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 

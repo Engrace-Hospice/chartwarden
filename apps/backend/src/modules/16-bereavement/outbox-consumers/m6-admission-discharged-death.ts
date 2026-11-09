@@ -1,3 +1,4 @@
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m6-admission-discharged-death.ts —
 // the §4.5 "secondary verifier (redundant safety net)" on `m6.admission.discharged` (F-134/#248).
 //
@@ -29,7 +30,7 @@
 //
 // NON-DEATH DISCHARGES ARE A NO-OP BEFORE ANY SEAM READ. `reason !== 'death'` returns immediately — this
 // consumer never asks M6's death census about a discharge that was not one.
-import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { AdmissionId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -48,9 +49,6 @@ import {
 } from "./physician-letter-intake";
 
 const PLAN = schema.bereavementPlan;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M16_DISCHARGE_DEATH_SECONDARY_CONSUMER = {
   eventName: "m6.admission.discharged",

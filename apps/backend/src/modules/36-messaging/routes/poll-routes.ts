@@ -1,3 +1,5 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { AnnouncementService, MessagingRouteService } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/poll-routes.ts - WP 2.10 polls (NON-CLINICAL, single choice, named votes).
 //
 //   POST /api/v1/messaging/channels/:id/polls                            create a poll AS a message (messaging.send +
@@ -17,8 +19,7 @@
 // allows only the author or a channel manager, so a voter can never end the poll. Org and user come from the request context, never a
 // param or the body. Polls are refused in a patient-linked channel (422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL). The
 // poll detail names voters, so it is read-audited like a message read; responses are never cached.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
-import type { AnnouncementService, MessagingRouteService } from "@chartwarden/messaging";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { MessagePollService } from "../polls/poll-service-db";
@@ -33,8 +34,6 @@ import {
 } from "./poll-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const READ = requirePermission("messaging.read") as PreHandler;
 const SEND = requirePermission("messaging.send") as PreHandler;
 const VIEW_CHANNEL = requireAbac("messaging.read", CHANNEL_VISIBILITY_PREDICATE) as PreHandler;
@@ -46,12 +45,6 @@ export interface PollRouteDeps {
   readonly announcements: AnnouncementService;
   /** The existing channel-manager predicate (`channel_member_admin`) decides who besides the author may close. */
   readonly canManageMembers: MessagingRouteService["canManageMembers"];
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerPollRoutes(app: FastifyInstance, deps: PollRouteDeps): void {

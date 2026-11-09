@@ -1,3 +1,11 @@
+import type { DbClient, schema } from "@chartwarden/db";
+import {
+  type DoseSpotClient,
+  buildPatientUpsertPayload,
+  createUnboundDoseSpotClient,
+  isDegradedError,
+  patientSyncIdempotencyKey,
+} from "@chartwarden/dosespot";
 // apps/backend/src/modules/12-dosespot/jobs/worker.ts — the `dosespot_sync_queue` drain worker
 // (M12 `handlers-unbound` group, #248).
 //
@@ -50,14 +58,7 @@
 // `dosespotSyncDemographicsForOrg` seam, injected as a port (M5's `patient_address`/`patient_phone` are
 // not in `check-table-ownership.ts`'s cross-module-read exempt set, so a direct schema read here would
 // be a boundary violation even though M5 is a declared dependency) — see `./vendor-boundary.ts`'s header.
-import type { DbClient, schema } from "@chartwarden/db";
-import {
-  type DoseSpotClient,
-  buildPatientUpsertPayload,
-  createUnboundDoseSpotClient,
-  isDegradedError,
-  patientSyncIdempotencyKey,
-} from "@chartwarden/dosespot";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
@@ -84,9 +85,6 @@ export const M12_DOSESPOT_SYNC_QUEUE = "dosespot.sync_queue_drain";
  *  prescribing) rather than a nightly aggregate, but not SLA-timed like M20's SOS watchdog either. */
 export const M12_DOSESPOT_SYNC_SCHEDULE = "*/2 * * * *";
 export const M12_PLATFORM_JOB_ID_LABEL = "m12.dosespot_sync_drain";
-
-/** §3.3 — a worker-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 export interface ActiveOrgListPort {
   listActiveOrgs(): Promise<readonly { organizationId: string }[]>;
@@ -259,8 +257,7 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         ? { kind: "requeue", error: error.customerMessage }
         : { kind: "failed", error: error.customerMessage };
     } else if (error instanceof Error) {
-      // `./vendor-boundary.ts`'s `M12DosespotPatientIdUnbound` (medhx_fetch's still-deferred edge) lands
-      // here — deterministic, non-retryable, honestly reported.
+      // A plain Error is deterministic and non-retryable — reported as-is.
       outcome = { kind: "failed", error: error.message };
     } else {
       outcome = { kind: "failed", error: String(error) };

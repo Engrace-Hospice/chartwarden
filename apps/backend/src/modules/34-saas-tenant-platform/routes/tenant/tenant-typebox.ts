@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox.ts — M34 (§4.2).
 //
@@ -10,7 +11,6 @@ import { ValidationError } from "@chartwarden/types";
 // route plugins, not by these body schemas. Read responses mirror the `service.ts` view DTOs so the
 // generated client types the Phase-3 tenant screens (the M22 read-surface enrichment pattern).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   BaaRecordView as ServiceBaaRecordView,
@@ -19,14 +19,6 @@ import type {
   SupportConsentGrantView as ServiceSupportConsentGrantView,
   TenantExportJobView as ServiceTenantExportJobView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -141,8 +133,7 @@ export const BaaAttestRequest = Type.Object({
 
 // ── Queries (cursor / keyset pagination — §4.1 SD-052) ────────────────────────────────────────────
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 export const GrantListQuerySchema = Type.Object(PageQuery);

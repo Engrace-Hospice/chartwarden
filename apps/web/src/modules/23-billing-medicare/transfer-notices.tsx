@@ -312,11 +312,11 @@ function NoticeRail({
           return;
         }
         setActionError(
-          response?.status === 412
+          errorCode(error) === "STALE_VERSION"
             ? "This notice changed since you opened it. It has been reloaded; try again."
             : errorMessage(error, fallback),
         );
-        if (response?.status === 412) onChanged();
+        if (errorCode(error) === "STALE_VERSION") onChanged();
         return;
       }
       setPanel("none");

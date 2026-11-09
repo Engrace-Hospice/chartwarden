@@ -604,7 +604,8 @@ function AssignModal({
     >
       <span style={mutedStyle}>
         Plan {shortId(planId)} · read at version {version}. The assignment is applied with
-        `If-Match`; if the plan moved under you the server answers 412 and nothing is written.
+        `If-Match`; if the plan moved under you the server answers 409 STALE_VERSION and nothing is
+        written.
       </span>
       <TextField
         label={kind === "counselor" ? "Counselor membership id" : "Volunteer membership id"}

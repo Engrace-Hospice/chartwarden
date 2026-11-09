@@ -1,3 +1,4 @@
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/memorial-service.ts — the memorial-service service interface (ADR-0109 D10, PR 3, routes 67-76).
 //
 // Owner decisions (2026-11-05): a memorial invites the families of deaths within `inviteWindowMonths` (default 12) of the service, program families
@@ -14,7 +15,6 @@ import type {
   BereavementProgramModality,
 } from "@chartwarden/types";
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 export interface MemorialRsvpCounts {
   readonly invited: number;

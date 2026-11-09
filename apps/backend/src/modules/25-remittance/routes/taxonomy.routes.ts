@@ -2,11 +2,11 @@
 // taxonomy: the merged M38-catalog + per-tenant-overlay view, and the overlay edit. `category` is the M38
 // regulatory floor and is NEVER editable here (M25-F09 — the PATCH body schema has no category field). The
 // edit is optimistic-concurrency (If-Match) and idempotency-keyed.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
-import { TaxonomyOverlayPatchSchema, parse } from "./m25-typebox";
+import { TaxonomyOverlayPatchSchema } from "./m25-typebox";
 import type { M25ReadService } from "./read-service";
 import type { M25WriteService } from "./write-service";
 
@@ -54,7 +54,7 @@ export function registerTaxonomyRoutes(app: FastifyInstance, deps: TaxonomyRoute
           ownerRole: body.ownerRole,
           severity: body.severity,
         },
-        ifMatchVersion(request),
+        ifMatchVersionOf(request),
       );
       return reply.send(res);
     },

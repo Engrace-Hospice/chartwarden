@@ -1,3 +1,4 @@
+import { requirePermission, requireStepUp, resolveActorPermissions } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/export-routes.ts - WP 5.7 (ADR-0089, PROPOSED): restricted messaging export, a scoped export a
 // SECOND person approves, built into one encrypted artefact with an expiring, requester-only download.
 //
@@ -13,7 +14,7 @@
 // The tenant flag `messaging.export` gates ONLY the request (off => the uniform 404, before the step-up is asked for). Approve, reject, cancel
 // and download never depend on it: a job that exists stays decidable and an expiring artefact stays reachable. Org and user are the server-side
 // request context, never the body. The download streams the decrypted document (no presigned URL), never cached.
-import { requirePermission, requireStepUp, resolveActorPermissions } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import {
   ForbiddenError,
   MESSAGING_EXPORT_APPROVE_PERMISSION,
@@ -38,8 +39,6 @@ import {
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const REQUEST = requirePermission(MESSAGING_EXPORT_REQUEST_PERMISSION) as PreHandler;
 const APPROVE = requirePermission(MESSAGING_EXPORT_APPROVE_PERMISSION) as PreHandler;
 const DOWNLOAD = requirePermission(MESSAGING_EXPORT_DOWNLOAD_PERMISSION) as PreHandler;
@@ -49,12 +48,6 @@ const DOWNLOAD_STEP_UP = requireStepUp(MESSAGING_EXPORT_DOWNLOAD_STEP_UP_KEY) as
 
 export interface ExportRouteDeps {
   readonly service: ExportService;
-}
-
-function actorOf(request: FastifyRequest): ExportActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps): void {

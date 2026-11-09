@@ -67,14 +67,3 @@ export const DUNNING_CANCEL_STAGE: DunningStage = "day_60_cancel";
 export function isResolvableDunningStage(stage: DunningStage): boolean {
   return stage !== "none" && stage !== "resolved";
 }
-
-/**
- * §4.15 platform-floor override rule. Tenant overrides may only TIGHTEN (suspend sooner), never LOOSEN.
- * Returns the accepted override in days, or `null` if the requested override loosens the 28-day floor and
- * is rejected. (`Organization.settings.m35_dunning_override_days`; server caps with `min(override, 28)`.)
- */
-export function acceptedDunningOverrideDays(requestedDays: number): number | null {
-  if (!Number.isFinite(requestedDays) || requestedDays <= 0) return null;
-  if (requestedDays > 28) return null; // loosening — rejected
-  return Math.min(requestedDays, 28);
-}

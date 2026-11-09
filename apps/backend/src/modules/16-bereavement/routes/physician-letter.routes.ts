@@ -3,13 +3,17 @@
 //
 // The letter goes to the patient's INTERNAL attending clinician and a human approves it before anything is disclosed, so every route
 // is bereavement oversight only: `bereavement.letter.read` / `bereavement.letter.review` plus `org_scope_bereavement_oversight`. Approve
-// and decline are state transitions: `If-Match` is required (428 without it, 412 on a stale version) and so is `Idempotency-Key`.
+// and decline are state transitions: `If-Match` is required (428 without it, 409 STALE_VERSION on a stale version) and so is `Idempotency-Key`.
 // Approve may carry a personal note (at most 1000 characters, sealed at rest) and the internal clinician when the care team resolved
 // none; it emits `m16.bereavement.document_requested` in the same transaction. Every PHI read declares its M4 read audit.
+import {
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_OVERSIGHT, P } from "./guards";
 import type { M16LetterService } from "./letter-service";
 import {
@@ -83,7 +87,7 @@ export function registerBereavementPhysicianLetterRoutes(
       const body = parse(ApproveLetterBody, request.body);
       return letterService.approveLetter(writeActorOf(request), letterId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -103,7 +107,7 @@ export function registerBereavementPhysicianLetterRoutes(
       const body = parse(DeclineLetterBody, request.body);
       return letterService.declineLetter(writeActorOf(request), letterId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true) as number,
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );

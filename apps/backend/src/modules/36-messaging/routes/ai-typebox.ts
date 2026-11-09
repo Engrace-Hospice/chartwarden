@@ -1,4 +1,5 @@
 // apps/backend/src/modules/36-messaging/routes/ai-typebox.ts - WP 6.5 (ADR-0095) schemas. Wire keys are snake_case (packages/types/src/messaging-ai.ts).
+import { Uuid } from "@chartwarden/shared/route-kit";
 import {
   MESSAGING_AI_CONFIDENCES,
   MESSAGING_AI_DRAFT_LABEL,
@@ -6,9 +7,7 @@ import {
   MESSAGING_AI_SUMMARY_LABEL,
 } from "@chartwarden/types";
 import { type TSchema, Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
 const Instant = Type.String({ format: "date-time" });
 const literals = <T extends string>(values: readonly T[]) =>
   Type.Union(values.map((v) => Type.Literal(v)));
@@ -16,7 +15,7 @@ const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null
 
 /** `thread_root_message_id`: summarise one reply thread instead of the channel's recent messages. */
 export const AiRequestBodySchema = Type.Object(
-  { thread_root_message_id: Type.Optional(Uuid) },
+  { thread_root_message_id: Type.Optional(Uuid()) },
   { additionalProperties: false },
 );
 
@@ -26,17 +25,17 @@ const InstantText = Type.String({
   maxLength: 40,
 });
 export const AiOutcomeBodySchema = Type.Object(
-  { invocation_id: Uuid, invoked_at: InstantText, outcome: literals(MESSAGING_AI_OUTCOMES) },
+  { invocation_id: Uuid(), invoked_at: InstantText, outcome: literals(MESSAGING_AI_OUTCOMES) },
   { additionalProperties: false },
 );
 
 export const AiStatusResponseSchema = Type.Object({ enabled: Type.Boolean() });
 
-const Source = Type.Object({ n: Type.Integer(), message_id: Uuid, sent_at: Instant });
+const Source = Type.Object({ n: Type.Integer(), message_id: Uuid(), sent_at: Instant });
 
 export const AiSummaryResponseSchema = Type.Object({
   label: Type.Literal(MESSAGING_AI_SUMMARY_LABEL),
-  invocation_id: nullable(Uuid),
+  invocation_id: nullable(Uuid()),
   invoked_at: nullable(Instant),
   status: literals(["ok", "insufficient_context"] as const),
   points: Type.Array(
@@ -54,7 +53,7 @@ export const AiSummaryResponseSchema = Type.Object({
 
 export const AiDraftResponseSchema = Type.Object({
   label: Type.Literal(MESSAGING_AI_DRAFT_LABEL),
-  invocation_id: Uuid,
+  invocation_id: Uuid(),
   invoked_at: Instant,
   drafts: Type.Array(Type.Object({ text: Type.String() })),
   included_count: Type.Integer(),

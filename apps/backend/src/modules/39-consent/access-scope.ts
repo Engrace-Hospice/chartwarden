@@ -109,7 +109,7 @@ export const seamCaseloadPort: CaseloadPort = {
  * counts only while `active` AND `asOf` lies inside its window; a throw (unbound seam deny-stub, outage)
  * is "not on call" — fail-CLOSED.
  */
-export const seamOnCallWindowPort: OnCallWindowPort = {
+const seamOnCallWindowPort: OnCallWindowPort = {
   async isOnCallNow(input) {
     try {
       const shifts = await getSeam("OnCallProvider").activeShiftsAt(
@@ -131,15 +131,8 @@ export const seamOnCallWindowPort: OnCallWindowPort = {
   },
 };
 
-/** Deny-by-default stand-in (no schedule seam bound): nobody is on call. */
-export const denyOnCallWindowPort: OnCallWindowPort = {
-  async isOnCallNow() {
-    return false;
-  },
-};
-
 /** No bereavement-plan seam resolves a plan from a patient yet, so the assigned arm denies. */
-export const denyBereavementWindowPort: BereavementWindowPort = {
+const denyBereavementWindowPort: BereavementWindowPort = {
   async isAssignedInWindow() {
     return false;
   },
@@ -280,7 +273,7 @@ export const decideDisciplineScope = (
 ): boolean => isComplianceOrPrivacyOfficer(roles) || holdsAny(roles, DISCIPLINE_ROLES[scope]);
 
 /** §4.11 on-call window: false unless the scope allows it and the port affirms this membership. */
-export async function decideOnCallWindow(
+async function decideOnCallWindow(
   subject: ConsentAccessSubject,
   scope: ConsentDisciplineScope,
   deps: Pick<ConsentAccessDeps, "onCallWindow" | "now"> = {},

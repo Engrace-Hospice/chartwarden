@@ -24,7 +24,7 @@ import { publishHandoffEvent } from "./handoff-events";
 import { finishHandoff } from "./handoff-settle";
 import type { HandoffRow, HandoffStore } from "./handoff-store-db";
 
-export const HANDOFF_OFFBOARDING_BATCH_SIZE = 100;
+const HANDOFF_OFFBOARDING_BATCH_SIZE = 100;
 
 export interface HandoffReassignDeps {
   readonly db: DbClient;

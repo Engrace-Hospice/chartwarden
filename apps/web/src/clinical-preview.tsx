@@ -2089,7 +2089,7 @@ const idgPacketBody = (pid: string) => {
 // Discipline notes (?idg=live): default = a few notes across disciplines/patients; &notes=0 = none;
 // ADJOURNED (late addenda): &adjourned=1 (or &status=adjourned) = frozen originals + 2 addenda, composer becomes
 // "Add late addendum"; add &addwindow=closed for the closed window; &superseded=1 = Henry N. superseded by a newer IDG (composer disabled on his tab, meeting-level still open); add &notes=sud for a withheld Part 2 note+addendum.
-// &notes=sud = one Part 2 withheld note (text hidden) on Barbara P.; &note412=1 makes every edit return 412.
+// &notes=sud = one Part 2 withheld note (text hidden) on Barbara P.; &note409=1 makes every edit return 409 STALE_VERSION.
 // POST/PATCH mutate this in-memory list so the composer / edit flows can be exercised without a backend.
 const idgNoteRow = (
   n: number,
@@ -2253,11 +2253,11 @@ const idgNoteWrite = (
     });
   }
   if (p === "/api/v1/idg/discipline-notes/{id}" && method === "PATCH") {
-    if (idgQ.has("note412"))
+    if (idgQ.has("note409"))
       return Promise.resolve({
         data: undefined,
         error: { error: { code: "STALE_VERSION", message: "stale write" } },
-        response: new Response(null, { status: 412 }),
+        response: new Response(null, { status: 409 }),
       });
     const row = idgNotes.find((n) => n.id === o?.params?.path?.id);
     if (row) {

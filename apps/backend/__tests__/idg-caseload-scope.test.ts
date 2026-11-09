@@ -126,17 +126,17 @@ describe("action-item assignee and adjourn guards (GAP-127)", () => {
     );
   });
 
-  it("enforces If-Match on action-item update/remove (412 on a stale version, version bumps on write)", async () => {
+  it("enforces If-Match on action-item update/remove (409 on a stale version, version bumps on write)", async () => {
     const svc = seed("live");
     const item = await newItem(svc);
     expect(item.version).toBe(0);
     await expect(
       svc.updateActionItem(ORG, ASSIGNEE, item.id, "in_progress", false, 7),
-    ).rejects.toMatchObject({ statusCode: 412, code: "STALE_VERSION" });
+    ).rejects.toMatchObject({ statusCode: 409, code: "STALE_VERSION" });
     const moved = await svc.updateActionItem(ORG, ASSIGNEE, item.id, "in_progress", false, 0);
     expect(moved.version).toBe(1);
     await expect(svc.removeActionItem(ORG, "m_coord", item.id, 0)).rejects.toMatchObject({
-      statusCode: 412,
+      statusCode: 409,
     });
     await expect(svc.removeActionItem(ORG, "m_coord", item.id, 1)).resolves.toMatchObject({
       removed: true,
@@ -150,18 +150,18 @@ describe("action-item assignee and adjourn guards (GAP-127)", () => {
       discipline: "rn",
     } as never);
     await expect(svc.updateAttendance(ORG, "m_coord", att.id, "tardy", 3)).rejects.toMatchObject({
-      statusCode: 412,
+      statusCode: 409,
     });
     expect((await svc.updateAttendance(ORG, "m_coord", att.id, "tardy", 0)).version).toBe(1);
     await expect(svc.removeAttendance(ORG, "m_coord", att.id, 0)).rejects.toMatchObject({
-      statusCode: 412,
+      statusCode: 409,
     });
 
     const agd = await svc.addAgendaItem(ORG, "m_coord", MEETING, {
       kind: "carry_forward",
     } as never);
     await expect(svc.updateAgendaItem(ORG, "m_coord", agd.id, 9)).rejects.toMatchObject({
-      statusCode: 412,
+      statusCode: 409,
     });
     await expect(svc.removeAgendaItem(ORG, "m_coord", agd.id, 9)).rejects.toMatchObject({
       statusCode: 501,
@@ -181,7 +181,7 @@ describe("action-item assignee and adjourn guards (GAP-127)", () => {
         { locationId: "loc_1", cadenceDays: 14 } as never,
         5,
       ),
-    ).rejects.toMatchObject({ statusCode: 412 });
+    ).rejects.toMatchObject({ statusCode: 409 });
     const updated = await svc.updateRecurringPolicy(
       ORG,
       "m_coord",

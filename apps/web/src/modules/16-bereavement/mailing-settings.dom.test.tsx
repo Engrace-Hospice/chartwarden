@@ -2,7 +2,7 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 // apps/web/src/modules/16-bereavement — ADR-0109 D10: the mailing settings (routes 42-43).
 // Four mailings (never the deferred birthday one), each its own card with its own version: a save carries the version READ in
-// If-Match (0 for a never-configured mailing), a 412 prompts a reload instead of overwriting, an unsaved edit is flagged and warned
+// If-Match (0 for a never-configured mailing), a 409 STALE_VERSION prompts a reload instead of overwriting, an unsaved edit is flagged and warned
 // about, a write in flight makes every control inert, and no wording is ever supplied for the agency.
 import axe from "axe-core";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
@@ -353,7 +353,7 @@ describe("mailing settings — saving", () => {
     expect(puts(calls)[0]?.body).toMatchObject({ enabled: true, content: {} });
   });
 
-  it("a 412 says someone else saved first and offers a reload; the reload is the reader's choice", async () => {
+  it("a 409 STALE_VERSION says someone else saved first and offers a reload; the reload is the reader's choice", async () => {
     const { calls } = mount({
       reads: [
         { status: 200, body: CONFIGS },
@@ -367,7 +367,7 @@ describe("mailing settings — saving", () => {
           ],
         },
       ],
-      put: () => refused(412, "STALE_VERSION"),
+      put: () => refused(409, "STALE_VERSION"),
     });
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });

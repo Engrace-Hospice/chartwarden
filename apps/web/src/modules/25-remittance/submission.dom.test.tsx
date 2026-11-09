@@ -1,8 +1,8 @@
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — milestone 6a submission panel. Asserts on RECORDED FETCH CALLS (method, path,
 // If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires still fails. The
 // server owns every rule and its refusal is shown verbatim; the receipt form survives a step-up; "proof missing" is
 // a visible state; and "Approve and send" is disabled with its reason.
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -237,7 +237,7 @@ describe("M25 submission panel", () => {
   it("reloads on a stale-version 409 and shows the server's message", async () => {
     refusal = {
       status: 409,
-      body: { error: { code: "VERSION_CONFLICT", message: "modified by another writer" } },
+      body: { error: { code: "STALE_VERSION", message: "modified by another writer" } },
     };
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Record receipt" }));
@@ -324,7 +324,7 @@ describe("M25 submission panel", () => {
     failAfterFirst = true;
     refusal = {
       status: 409,
-      body: { error: { code: "VERSION_CONFLICT", message: "modified by another writer" } },
+      body: { error: { code: "STALE_VERSION", message: "modified by another writer" } },
     };
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Record receipt" }));

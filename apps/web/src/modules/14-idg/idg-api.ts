@@ -148,7 +148,7 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
       ? attendanceCopy
       : errCode === "STEP_UP_REQUIRED"
         ? "Adjourning is a commit point and needs a fresh re-authentication (§2.2 D13). Re-authenticate, then adjourn again."
-        : code === 412
+        : errCode === "STALE_VERSION"
           ? (detail ?? "These data changed after you opened them. Refresh before trying again.")
           : code === 403
             ? (detail ?? "Your role is not permitted to take this action on this meeting.")
@@ -511,7 +511,7 @@ const noteErrorCode = (body: unknown): string | null => {
 
 /**
  * Copy for a refused note write. The server owns every rule (ADR-0030): 403 = not present for that
- * discipline / not the author, 422 = meeting not live or patient not on the agenda, 412 = the note
+ * discipline / not the author, 422 = meeting not live or patient not on the agenda, 409 STALE_VERSION = the note
  * changed since it was read, 428 = the version precondition was missing.
  */
 function noteFailure(status: number | undefined, body: unknown): WriteResult<never> {
@@ -530,7 +530,7 @@ function noteFailure(status: number | undefined, body: unknown): WriteResult<nev
       "That patient is not on this meeting's agenda, so a note cannot be recorded for them.",
   };
   const message =
-    status === 412 || code === "STALE_VERSION"
+    code === "STALE_VERSION"
       ? "This note was changed by someone else since you opened it."
       : status === 428
         ? "The note version was missing from the request. Reload the meeting and try again."

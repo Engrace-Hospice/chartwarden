@@ -14,7 +14,7 @@
 //   • ADR-0021 — a mutating route requires an `Idempotency-Key`. Every helper mints a fresh one per attempt.
 //   • §7.2 — a state transition requires `If-Match`, and M21's ETag is the row's **`updated_at` as an ISO
 //     string**, NOT an integer version: §3.1 gives M21's tables `updated_at` and no counter (unlike M16's
-//     `bereavement_plan.version`). A 412 means the row moved under you — reload, never retry blind.
+//     `bereavement_plan.version`). A 409 STALE_VERSION means the row moved under you — reload, never retry blind.
 //   • §4.2 — every quantity that reaches a `numeric` column travels as a decimal STRING. A 0.1 mL of a CII
 //     solution that round-trips through a JS float is not the quantity the DEA perpetual log recorded, so
 //     nothing in this file types a dispatched / returned / disposed quantity as `number`.
@@ -72,8 +72,6 @@ type ComfortKitTemplatePage = Ok<operations["getApiV1SuppliesComfortkittemplates
 /** Row 17 — a comfort-kit template with its lines (the D3 floor row included when asked for). Also the
  *  shape returned by create/supersede. */
 export type ComfortKitTemplateView = ComfortKitTemplatePage["data"][number];
-/** One line of a §2.3 comfort-kit template. */
-export type TemplateMedicationView = ComfortKitTemplateView["medications"][number];
 
 type DispatchListPage = Ok<operations["getApiV1SuppliesComfortkitdispatches"]>;
 /** Rows 21 / 22 — one comfort-kit dispatch on the list. No free text (see the request note). */
@@ -93,8 +91,6 @@ export type ReturnListItem = ReturnListPage["data"][number];
  *  by `createReturn`, `assignRetriever` and `declareUnreturnable` (NOT `reconcileReturn` — see
  *  {@link ReconcileReturnResult}). */
 export type ReturnDetail = Ok<operations["getApiV1SuppliesComfortkitreturnsByReturnId"]>;
-/** One reconciled line. The three D8 quantities are TRIGGER-computed — read here, never sent back. */
-export type ReturnedLineView = ReturnDetail["lines"][number];
 
 /** Row 27's own response — deliberately NOT {@link ReturnDetail}: the reconcile route returns only the id,
  *  the pinned `state: "reconciled"`, the D8 discrepancy verdict, the per-medication accounting (as
@@ -117,17 +113,8 @@ export type PerpetualLogView = Ok<
   operations["getApiV1SuppliesComfortkitdispatchesByDispatchIdPerpetuallog"]
 >;
 export type PerpetualLogLineView = PerpetualLogView["lines"][number];
-/** §8.1 — one APPEND-ONLY entry of the DEA 21 CFR §1304 perpetual log. `balanceAfterQuantity` is the
- *  balance AS RECORDED, not one derived at read time: a recomputed balance silently absorbs a missing
- *  entry, which is the exact discrepancy the log exists to expose. */
-export type PerpetualLogEntry = PerpetualLogLineView["entries"][number];
 
 // ── request-side shapes (schema-derived) ───────────────────────────────────────────────────────────────
-
-/** D7 / §4.2.1 — the delivery-address snapshot frozen onto the request. */
-export type DeliveryAddressInput = ReqBody<
-  operations["postApiV1SuppliesSupplyrequests"]
->["deliveryAddress"];
 
 /** One dispatched line on the way IN (§4.2). `lotNumber` / `expirationDate` are optional HERE on purpose:
  *  §3.1.9's CHECK requires them on a controlled line, and the DOMAIN raises the typed refusal
@@ -208,7 +195,7 @@ export function writeHeaders(updatedAt?: string | null): Record<string, string> 
 
 /**
  * Turn a failed response into the sentence a coordinator can act on. The server's problem+json body is the
- * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (412 = the
+ * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (409 STALE_VERSION = the
  * row moved, 428 = a blind write, 403 = a §4.4 predicate refused) rather than a generic failure.
  */
 export function errorMessage(error: unknown, fallback: string): string {
@@ -217,7 +204,7 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
-  if (body?.status === 412)
+  if (body?.code === "STALE_VERSION" || body?.status === 409)
     return "This record changed while you were working on it. Reload and re-apply your edit.";
   if (body?.status === 428)
     return "This edit is missing its version stamp. Reload the record and try again.";

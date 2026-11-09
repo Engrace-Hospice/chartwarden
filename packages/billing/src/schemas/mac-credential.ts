@@ -59,6 +59,6 @@ export const MacCredentialTestResponse = Type.Object({
 export type MacCredentialTestResponse = Static<typeof MacCredentialTestResponse>;
 
 // Errors (per §4.2 patterns):
-//   412 STALE_VERSION       — If-Match / ifVersion mismatch on update
+//   409 STALE_VERSION       — If-Match / ifVersion mismatch on update
 //   403 STEP_UP_REQUIRED    — M2 session profile not satisfied (upsert)
 //   503 MAC_SANDBOX_UNREACHABLE — sandbox round-trip failed (test)

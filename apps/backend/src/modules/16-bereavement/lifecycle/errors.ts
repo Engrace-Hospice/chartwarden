@@ -158,7 +158,7 @@ export const M16_ERROR_STATUS = {
   /** No M22 org-document seam is bound: nothing can be checked or handed out. */
   LIBRARY_UNAVAILABLE: 503,
   // Optimistic concurrency (§2.5)
-  STALE_VERSION: 412,
+  STALE_VERSION: 409,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).
   ILLEGAL_TRANSITION: 409,
 } as const;

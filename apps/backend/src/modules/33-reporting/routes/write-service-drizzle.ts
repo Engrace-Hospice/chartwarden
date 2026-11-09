@@ -24,7 +24,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
-import { type CursorPage, paginate } from "./concurrency";
+import { type CursorPage, paginate } from "./pagination";
 import {
   canMutateSchedule,
   canReadSchedule,
@@ -273,7 +273,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         }),
       );
       const mapped = withKey(rows.map(mapDefinition));
-      return paginate(mapped, cursor, limit) as CursorPage<DefinitionView>;
+      return paginate(actor.organizationId, mapped, cursor, limit) as CursorPage<DefinitionView>;
     },
     async getDefinition(actor, id) {
       return inOrgCtx(actor, async (tx) => {
@@ -294,7 +294,12 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         return repo.listVersions(definitionId);
       });
       const mapped = withKey(rows.map(mapVersion));
-      return paginate(mapped, cursor, limit) as CursorPage<DefinitionVersionView>;
+      return paginate(
+        actor.organizationId,
+        mapped,
+        cursor,
+        limit,
+      ) as CursorPage<DefinitionVersionView>;
     },
     async createVersion(actor, definitionId, args: CreateVersionArgs) {
       return inOrgCtx(actor, async (tx) => {
@@ -398,7 +403,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
           : repo.listByOwner(actor.organizationId, actor.membershipId);
       });
       const mapped = withKey(rows.map(mapView));
-      return paginate(mapped, cursor, limit) as CursorPage<ViewView>;
+      return paginate(actor.organizationId, mapped, cursor, limit) as CursorPage<ViewView>;
     },
     async createView(actor, args: CreateViewArgs) {
       return inOrgCtx(actor, async (tx) => {
@@ -524,7 +529,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         ),
       );
       const mapped = withKey(rows.map(mapSchedule));
-      return paginate(mapped, cursor, limit) as CursorPage<ScheduleView>;
+      return paginate(actor.organizationId, mapped, cursor, limit) as CursorPage<ScheduleView>;
     },
     async createSchedule(actor, args: CreateScheduleArgs) {
       return inOrgCtx(actor, async (tx) => {
@@ -701,7 +706,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
       const mapped = withKey(
         rows.map((r) => ({ ...mapRun(r), createdAt: r.scheduledFor.toISOString() })),
       );
-      const page = paginate(mapped, cursor, limit);
+      const page = paginate(actor.organizationId, mapped, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...r }) => r) };
     },
     async getScheduleRun(actor, runId) {

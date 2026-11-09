@@ -32,7 +32,7 @@ import type {
 } from "../../../bootstrap/outbox-dispatcher";
 import { type FallbackWarn, emitWithRecipientFallback } from "../alert-recipient-fallback";
 
-export const M36_QUALITY_ALERT_CONSUMER = "m36.quality-alerts" as const;
+const M36_QUALITY_ALERT_CONSUMER = "m36.quality-alerts" as const;
 
 export const M36_QUALITY_ALERT_EVENT_TYPES = [
   "m30.incident.submitted",

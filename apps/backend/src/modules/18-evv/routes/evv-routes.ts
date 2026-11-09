@@ -1,3 +1,9 @@
+import {
+  type AbacTarget,
+  DEVICE_ATTESTATION_ATTRIBUTE,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/18-evv/routes/evv-routes.ts — M18-T06 the §4.1 route inventory behind the REAL
 // Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) over the §4.6 keys M18
 // registers into M3's catalog (`M18_CONTRIBUTED_PERMISSIONS`). Org binding is server-side (`request.context`,
@@ -11,19 +17,17 @@
 // resolution route likewise. The portal arrival route runs under the portal session class (per-patient via M39
 // consent, not caseload).
 import {
-  type AbacTarget,
-  DEVICE_ATTESTATION_ATTRIBUTE,
-  requireAbac,
-  requirePermission,
-} from "@chartwarden/auth";
+  type PreHandler,
+  membershipActorOf,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
   ForbiddenError,
   NotFoundError,
-  UnauthorizedError,
   ValidationError,
 } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { clinicianCapture } from "../capture-guards";
 import {
@@ -55,9 +59,6 @@ import {
 } from "./evv-typebox";
 import type { EvvRoutePort, OfflineCaptureResult } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface EvvRouteDeps {
   service: EvvRoutePort;
   /**
@@ -67,16 +68,6 @@ export interface EvvRouteDeps {
    * apply either way. The service must be built with the same value.
    */
   deviceAttestationEnforced?: boolean;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" (every FK this value
-  // feeds — posting_membership_id, approved_by_membership_id, etc. — references `membership.id`, not
-  // Better Auth's `user.id`).
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 /**
@@ -93,6 +84,11 @@ const OVERRIDE_STEP_UP_OPERATION = "evv.missing_resolution.supervisor_override";
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
+/**
+ * ADR-0021 / §4.1 — every mutating route requires a client-supplied Idempotency-Key, except the two
+ * `offline-sync` routes: the handset dedupes on `(device, localId)` and that contract carries no header.
+ */
+const IDEMPOTENT = requireIdempotencyKey();
 const CHECK_IN = P("evv.check_in");
 const CHECK_OUT = P("evv.check_out");
 const READ = P("evv.read");
@@ -184,10 +180,11 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
         ...attestationGates(CHECK_IN_ATTESTED),
         CHECK_IN_ASSIGNED,
         CHECK_IN_WINDOW,
+        IDEMPOTENT,
       ],
     },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(CheckInRequest, request.body);
       const res = await service.recordCapture(
         organizationId,
@@ -216,10 +213,11 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
         ...attestationGates(CHECK_OUT_ATTESTED),
         CHECK_OUT_ASSIGNED,
         CHECK_OUT_WINDOW,
+        IDEMPOTENT,
       ],
     },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(CheckOutRequest, request.body);
       const res = await service.recordCapture(
         organizationId,
@@ -247,7 +245,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // convention, cf. M13) — a denied event cannot slip through behind a "synced" ack. The writes themselves are
   // independent transactions, so a runtime failure on event N can still leave events 1..N-1 committed.
   app.post("/api/v1/evv/offline-sync", async (request) => {
-    const { organizationId, userId } = actorOf(request);
+    const { organizationId, userId } = membershipActorOf(request);
     const b = parse(OfflineSyncRequest, request.body);
     const authority = captureAuthorityOf(request);
     const checked = new Set<string>();
@@ -333,7 +331,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
 
   // V2 — at-least-once transport with durable, transactionally deduplicated evidence per capture.
   app.post("/api/v1/evv/offline-sync/v2", async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
+    const { organizationId, userId } = membershipActorOf(request);
     const b = parse(OfflineSyncV2Request, request.body);
     const authority = captureAuthorityOf(request);
     if (new Set(b.events.map((event) => event.localId)).size !== b.events.length)
@@ -464,7 +462,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       config: { auditRead: { resourceKind: "evv_visit_event", resourceIdParam: "eventId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { eventId } = parse(EventIdParams, request.params);
       parse(EventGetQuery, request.query);
       return service.getEvent(organizationId, eventId);
@@ -476,7 +474,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     "/api/v1/evv/events",
     { preHandler: [READ], config: { auditRead: { resourceKind: "evv_visit_event", list: true } } },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(EventListQuery, request.query);
       return service.listEvents(organizationId, {
         visit: q.visit,
@@ -494,29 +492,33 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // the ≥60-char `correctionReason` parsed and thrown away (F-068 §1) — no supersede, no link, no reason,
   // no `event_corrected` emission for M8/M17 to re-read on, no reopened resolution, and none of the four
   // refusals the machine carries.
-  app.post("/api/v1/evv/events/:eventId/correct", { preHandler: [CORRECT] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { eventId } = parse(EventIdParams, request.params);
-    const b = parse(CorrectEventRequest, request.body);
-    const e = b.newEvent;
-    // Step-up first, then the lookup: the machine checks it too, but it can only do so after the row is
-    // read, and a caller who has not re-authenticated should be refused without learning whether the
-    // event id exists. `assertStepUp` throws the same ForbiddenError the route always did.
-    const stepUpVerified = await requestStepUpFresh(request, CORRECT_STEP_UP_OPERATION);
-    service.assertStepUp(stepUpVerified);
-    return service.correctEvent(organizationId, userId, eventId, {
-      // `serviceTypeCode` is CheckInRequest's only discriminating field; a mismatch against the original
-      // is the machine's EVV_CORRECTION_KIND_MISMATCH refusal rather than a silently swapped leg.
-      kind: "serviceTypeCode" in e ? "check_in" : "check_out",
-      visitId: e.visitId,
-      coords: e.coords,
-      accuracyM: e.accuracyM,
-      capturedAt: e.capturedAt,
-      gpsQualityAttested: e.gpsQualityAttested,
-      correctionReason: b.correctionReason,
-      stepUpVerified,
-    });
-  });
+  app.post(
+    "/api/v1/evv/events/:eventId/correct",
+    { preHandler: [CORRECT, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId, userId } = membershipActorOf(request);
+      const { eventId } = parse(EventIdParams, request.params);
+      const b = parse(CorrectEventRequest, request.body);
+      const e = b.newEvent;
+      // Step-up first, then the lookup: the machine checks it too, but it can only do so after the row is
+      // read, and a caller who has not re-authenticated should be refused without learning whether the
+      // event id exists. `assertStepUp` throws the same ForbiddenError the route always did.
+      const stepUpVerified = await requestStepUpFresh(request, CORRECT_STEP_UP_OPERATION);
+      service.assertStepUp(stepUpVerified);
+      return service.correctEvent(organizationId, userId, eventId, {
+        // `serviceTypeCode` is CheckInRequest's only discriminating field; a mismatch against the original
+        // is the machine's EVV_CORRECTION_KIND_MISMATCH refusal rather than a silently swapped leg.
+        kind: "serviceTypeCode" in e ? "check_in" : "check_out",
+        visitId: e.visitId,
+        coords: e.coords,
+        accuracyM: e.accuracyM,
+        capturedAt: e.capturedAt,
+        gpsQualityAttested: e.gpsQualityAttested,
+        correctionReason: b.correctionReason,
+        stepUpVerified,
+      });
+    },
+  );
 
   // 7 — the EVV bracket for a visit (M8's EvvBracketResolver reads this).
   app.get(
@@ -526,7 +528,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       config: { auditRead: { resourceKind: "evv_visit_bracket", resourceIdParam: "visitId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { visitId } = parse(VisitIdParams, request.params);
       return service.bracketForVisit(organizationId, visitId);
     },
@@ -544,7 +546,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(MembershipIdQuery, request.query);
       return service.listDevices(organizationId, q.membership);
     },
@@ -553,9 +555,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 9 — clinician self-registers a new device (→ pending_approval).
   app.post(
     "/api/v1/evv/devices/self-register",
-    { preHandler: [DEVICE_REGISTER] },
+    { preHandler: [DEVICE_REGISTER, IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(SelfRegisterDeviceRequest, request.body);
       return reply
         .code(201)
@@ -571,35 +573,51 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   );
 
   // 10 — approve a pending device.
-  app.post("/api/v1/evv/devices/:id/approve", { preHandler: [DEVICE_APPROVE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    return service.approveDevice(organizationId, userId, id);
-  });
+  app.post(
+    "/api/v1/evv/devices/:id/approve",
+    { preHandler: [DEVICE_APPROVE, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId, userId } = membershipActorOf(request);
+      const { id } = parse(IdParams, request.params);
+      return service.approveDevice(organizationId, userId, id);
+    },
+  );
 
   // 11 — reject a pending device (reason).
-  app.post("/api/v1/evv/devices/:id/reject", { preHandler: [DEVICE_APPROVE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    const b = parse(RejectDeviceRequest, request.body);
-    return service.rejectDevice(organizationId, userId, id, b.reason);
-  });
+  app.post(
+    "/api/v1/evv/devices/:id/reject",
+    { preHandler: [DEVICE_APPROVE, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId, userId } = membershipActorOf(request);
+      const { id } = parse(IdParams, request.params);
+      const b = parse(RejectDeviceRequest, request.body);
+      return service.rejectDevice(organizationId, userId, id, b.reason);
+    },
+  );
 
   // 12 — suspend a device.
-  app.post("/api/v1/evv/devices/:id/suspend", { preHandler: [DEVICE_SUSPEND] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    const b = parse(SuspendDeviceRequest, request.body);
-    return service.suspendDevice(organizationId, userId, id, b.reason);
-  });
+  app.post(
+    "/api/v1/evv/devices/:id/suspend",
+    { preHandler: [DEVICE_SUSPEND, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId, userId } = membershipActorOf(request);
+      const { id } = parse(IdParams, request.params);
+      const b = parse(SuspendDeviceRequest, request.body);
+      return service.suspendDevice(organizationId, userId, id, b.reason);
+    },
+  );
 
   // 13 — retire a device.
-  app.post("/api/v1/evv/devices/:id/retire", { preHandler: [DEVICE_RETIRE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    const b = parse(RetireDeviceRequest, request.body);
-    return service.retireDevice(organizationId, userId, id, b.reason);
-  });
+  app.post(
+    "/api/v1/evv/devices/:id/retire",
+    { preHandler: [DEVICE_RETIRE, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId, userId } = membershipActorOf(request);
+      const { id } = parse(IdParams, request.params);
+      const b = parse(RetireDeviceRequest, request.body);
+      return service.retireDevice(organizationId, userId, id, b.reason);
+    },
+  );
 
   // 14 — read geofence policy (tenant + per-address overrides).
   app.get(
@@ -609,7 +627,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       config: { auditRead: { resourceKind: "evv_geofence_policy", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.getGeofencePolicy(organizationId);
     },
   );
@@ -617,9 +635,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 15 — edit tenant tighten-only policy.
   app.patch(
     "/api/v1/evv/geofence-policy/tenant",
-    { preHandler: [POLICY_EDIT] },
+    { preHandler: [POLICY_EDIT, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(EditTenantPolicyRequest, request.body);
       return service.editTenantPolicy(organizationId, userId, {
         radiusM: b.radiusM,
@@ -631,9 +649,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 16 — create / replace a per-address override (reason ≥30 chars).
   app.post(
     "/api/v1/evv/geofence-policy/per-address",
-    { preHandler: [POLICY_EDIT] },
+    { preHandler: [POLICY_EDIT, IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(CreatePerAddressOverrideRequest, request.body);
       return reply.code(201).send(
         await service.createPerAddressOverride(organizationId, userId, {
@@ -654,7 +672,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       config: { auditRead: { resourceKind: "evv_missing_resolution", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(MissingResolutionListQuery, request.query);
       return service.listMissingResolutions(organizationId, { status: q.status, visit: q.visit });
     },
@@ -663,9 +681,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 18 — assigned clinician self-attests (reason ≥40 chars; D6 ≤24h window).
   app.post(
     "/api/v1/evv/missing-resolutions/:id/clinician-attest",
-    { preHandler: [MR_ATTEST] },
+    { preHandler: [MR_ATTEST, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParams, request.params);
       const b = parse(ClinicianAttestResolutionRequest, request.body);
       return service.clinicianAttestResolution(organizationId, userId, id, b.reason);
@@ -675,9 +693,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 19 — supervisor override (step-up; reason ≥60 chars; D6 ≤7d window).
   app.post(
     "/api/v1/evv/missing-resolutions/:id/supervisor-override",
-    { preHandler: [MR_OVERRIDE] },
+    { preHandler: [MR_OVERRIDE, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParams, request.params);
       const b = parse(SupervisorOverrideResolutionRequest, request.body);
       return service.supervisorOverrideResolution(
@@ -698,7 +716,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       config: { auditRead: { resourceKind: "evv_aggregator_submission", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(AggregatorListQuery, request.query);
       return service.listAggregatorSubmissions(organizationId, {
         stateCode: q.stateCode,
@@ -710,9 +728,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 21 — operator-initiated resubmit (§7.9; valid from rejected/timeout).
   app.post(
     "/api/v1/evv/aggregator-submissions/:id/resubmit",
-    { preHandler: [AGG_RESUBMIT] },
+    { preHandler: [AGG_RESUBMIT, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParams, request.params);
       const b = parse(ResubmitSubmissionRequest, request.body);
       return service.resubmitSubmission(organizationId, userId, id, b.reason);
@@ -722,9 +740,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 22 — operator-initiated cancel (valid from a non-terminal status).
   app.post(
     "/api/v1/evv/aggregator-submissions/:id/cancel",
-    { preHandler: [AGG_CANCEL] },
+    { preHandler: [AGG_CANCEL, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParams, request.params);
       const b = parse(CancelSubmissionRequest, request.body);
       return service.cancelSubmission(organizationId, userId, id, b.reason);
@@ -743,7 +761,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       parse(MetricsQuery, request.query);
       return service.metrics(organizationId);
     },
@@ -757,7 +775,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       config: { auditRead: { resourceKind: "evv_clinician_location", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(MembershipIdQuery, request.query);
       return service.clinicianCurrentLocation(organizationId, q.membership);
     },
@@ -771,7 +789,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
       config: { auditRead: { resourceKind: "evv_visit_arrival", resourceIdParam: "visitId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { visitId } = parse(VisitIdParams, request.params);
       // GAP-132 — only the patient the portal session is pinned to may read a visit's arrival; the service
       // scopes the events to that patient, so another patient's visit reads as "not yet arrived".

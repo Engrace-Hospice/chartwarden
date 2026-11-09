@@ -1,3 +1,5 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { MessageDraftService } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/draft-routes.ts — M36 WP 2.5 server-side drafts.
 //
 //   GET    /api/v1/messaging/channels/:id/draft?parentMessageId=   the caller's OWN draft, or { draft: null }
@@ -9,16 +11,13 @@
 // `channel_visibility` predicate every channel route uses (read to see a draft, send to write one). The draft is the
 // caller's alone: the service keys every statement on the request-context user, never a param or body user id, and RLS
 // enforces the owner a second time. The body is sealed at rest; responses are never cached.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
-import type { MessageDraftService } from "@chartwarden/messaging";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { DraftQuerySchema, SaveDraftBodySchema } from "./draft-typebox";
 import { CHANNEL_VISIBILITY_PREDICATE } from "./messaging-routes";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const READ = requirePermission("messaging.read") as PreHandler;
 const SEND = requirePermission("messaging.send") as PreHandler;
@@ -28,12 +27,6 @@ const CHANNEL_ID = requireUuidParams("id");
 
 export interface DraftRouteDeps {
   readonly service: MessageDraftService;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps): void {

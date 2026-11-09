@@ -30,7 +30,7 @@ const DEK_INFO_PREFIX = "chartwarden-message-dek:";
  * Typed 503 code for a missing/malformed master key. It is a server misconfiguration, not a caller error, so the
  * error handler renders the standard envelope (not an untyped 500) and the web composer can say so.
  */
-export const MESSAGING_KEY_UNAVAILABLE = "MESSAGING_ENCRYPTION_UNAVAILABLE";
+const MESSAGING_KEY_UNAVAILABLE = "MESSAGING_ENCRYPTION_UNAVAILABLE";
 /** Sent to clients; names no env var and no key length. The server log carries the code and stack (error-handler logs every 5xx). */
 const MESSAGING_KEY_UNAVAILABLE_MESSAGE = "Message encryption is unavailable";
 

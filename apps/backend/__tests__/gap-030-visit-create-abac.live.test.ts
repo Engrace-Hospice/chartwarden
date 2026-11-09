@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * GAP-030 — `POST /api/v1/visits` was permanently unreachable in production: 3 of its 4 §4.7 D8
  * pre-schedule ABAC predicates (`discipline_matches_visit`, `within_caseload_or_unassigned_pool`,
@@ -50,6 +51,9 @@ import {
 } from "../src/modules/17-scheduling/index";
 import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
+
+/** A fresh Idempotency-Key — every M17/M18 mutating route requires one (ADR-0021). */
+const idem = () => ({ "idempotency-key": randomUUID() });
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -266,6 +270,7 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
       method: "POST",
       url: "/api/v1/visits",
       headers: {
+        ...idem(),
         "x-test-user": rn.userId,
         "x-test-membership": rn.membershipId,
         "x-test-org": org,
@@ -287,6 +292,7 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
       method: "POST",
       url: "/api/v1/visits",
       headers: {
+        ...idem(),
         "x-test-user": noDiscipline.userId,
         "x-test-membership": noDiscipline.membershipId,
         "x-test-org": org,
@@ -307,6 +313,7 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
       method: "POST",
       url: "/api/v1/visits",
       headers: {
+        ...idem(),
         "x-test-user": rn.userId,
         "x-test-membership": rn.membershipId,
         "x-test-org": org,

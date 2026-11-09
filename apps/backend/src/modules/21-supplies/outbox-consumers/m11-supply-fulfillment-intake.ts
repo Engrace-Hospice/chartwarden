@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { validateOrderData } from "@chartwarden/orders";
 // apps/backend/src/modules/21-supplies/outbox-consumers/m11-supply-fulfillment-intake.ts — M21's live
 // binding for `m11.order.supply_fulfillment_requested` (§7.1 / §4.5.1), the THIRD and last of the M11 cascade
 // deciders in `../consumers/m11-orders.ts` (F-232, #248; F-229 stopped here for want of an order contract).
@@ -45,8 +47,7 @@
 //
 // NO ACTING MEMBERSHIP (F-102 `CONSUMER_USER_ID`): `requestedByMembershipId: null` and
 // `emitCreatedFromExternal: false` (§7.1 acceptance 3) — a system cascade must not claim a human origin.
-import { type DbClient, schema } from "@chartwarden/db";
-import { validateOrderData } from "@chartwarden/orders";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { validateSupplyRequestData } from "@chartwarden/supplies";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type { IsoInstant, OrderRecordId, PatientAddressReader } from "@chartwarden/types";
@@ -69,9 +70,6 @@ import { getPatientAddressReader } from "../seams/consumed";
 
 const REQUEST = schema.supplyRequest;
 const SUPPLY_ITEM = schema.supplyItem;
-
-/** A consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M21_SUPPLY_FULFILLMENT_INTAKE_CONSUMER = "m21.supply-fulfillment-intake";
 

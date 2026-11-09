@@ -9,7 +9,7 @@ import {
 } from "@chartwarden/types";
 import { SBAR_DENIED_CHANNEL_KINDS } from "./sbar-policy";
 
-export const sbarNotAllowedInChannel = (): ChartWardenError =>
+const sbarNotAllowedInChannel = (): ChartWardenError =>
   new ChartWardenError(
     "SBAR_NOT_ALLOWED_IN_CHANNEL",
     "SBAR messages cannot be sent in this conversation.",

@@ -22,7 +22,7 @@ le détail, utiliser un mapping de statut fermé et conserver la pagination rée
 
 ## Vague 2 — Dashboards et scorecards
 
-Appliquer `DashboardLayout`, `MetricCard`, tendances provenant de données réelles et une table
+Appliquer `DashboardLayout`, `KpiCard`, tendances provenant de données réelles et une table
 contributrice. Toute métrique doit donner sa date/source et son dénominateur quand il est pertinent.
 
 - HQRP Quality, Quality Measures Chart Audit, Cap Management, Field Safety, Reporting & Analytics,

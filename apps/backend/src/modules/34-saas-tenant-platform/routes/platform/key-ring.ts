@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/key-ring.ts — M34 (§4.1 / §3.5).
 //
 // The platform-ops per-tenant key-ring routes (§4.1 platform-ops table): the §3.5 METADATA-ONLY read
@@ -6,23 +7,14 @@
 // (the `:orgSlug/dek-rotate` lifecycle command); this file owns the §3.5 key-ring metadata read screen.
 // Gated by the §4.5 keys + `tenant_lifecycle_platform_ops` ABAC; reads run under `withPlatformContext`
 // (F03/F09, audited) in prod. Mirrors the M22 route-plugin shape.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface TenantKeyRingRouteDeps {
   service: TenantPlatformRouteService;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 // §4.1 — the key-ring metadata read reuses the `tenant.read_platform` key (metadata view only). §4.5/§4.6.

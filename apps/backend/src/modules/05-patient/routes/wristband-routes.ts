@@ -1,3 +1,10 @@
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/05-patient/routes/wristband-routes.ts -- the M5 patient wristband (GAP-020).
 //
 //   POST /api/v1/patients/:id/wristbands                       print / reprint (returns the raw payload ONCE)
@@ -9,13 +16,7 @@
 // (`config.noIdempotencyCapture`: the shared web client sends a key on every mutation, and capturing the response
 // would copy the token into `idempotency_key.response_body`) and sets `Cache-Control: no-store`. Its double-submit
 // protection is the `expectedCurrentGeneration` precondition inside one locked transaction.
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
-import type { DbClient } from "@chartwarden/db";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -33,8 +34,6 @@ import {
   WristbandStatusSchema,
 } from "./wristband-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const READ = requirePermission("patient.read") as PreHandler;
 const ISSUE = requirePermission("patient.wristband.issue") as PreHandler;
 const VOID = requirePermission("patient.wristband.void") as PreHandler;
@@ -49,12 +48,6 @@ const chartScope = (action: string): PreHandler =>
 const SCOPE_READ = chartScope("patient.read");
 const SCOPE_ISSUE = chartScope("patient.wristband.issue");
 const SCOPE_VOID = chartScope("patient.wristband.void");
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 export interface PatientWristbandRouteDeps {
   readonly db: DbClient;

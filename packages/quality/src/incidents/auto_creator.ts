@@ -59,7 +59,7 @@ export type IncidentTriggerEvent =
     });
 
 /** A machine-readable failure when an unmapped event reaches the auto-creator. */
-export const M30_AUTO_INCIDENT_ERROR_STATUS = {
+const M30_AUTO_INCIDENT_ERROR_STATUS = {
   UNSUPPORTED_INCIDENT_TRIGGER: 422,
 } as const;
 

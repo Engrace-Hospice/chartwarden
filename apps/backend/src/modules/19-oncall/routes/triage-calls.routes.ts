@@ -1,3 +1,4 @@
+import { hasOrgWideScope } from "@chartwarden/auth";
 // apps/backend/src/modules/19-oncall/routes/triage-calls.routes.ts — M19 (§4.1) rows 1-14 plus the §2.7
 // paper-re-entry: the triage-call surface, which is the §2.2.1 call machine driven over HTTP.
 //
@@ -13,11 +14,15 @@
 // `triage.read`), the M2 step-up, and a per-access M4 audit row. §4.1's Notes name all three, and the
 // audit declaration below is an EMISSION config rather than a waiver precisely because §8.7.2 gives the
 // decrypt its own business-event row.
-import { hasOrgWideScope } from "@chartwarden/auth";
+import {
+  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_CALL_ACTOR,
   ABAC_CASELOAD_OR_SCOPE,
@@ -148,7 +153,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(IdentifyPatientBody, request.body);
       return writeService.identifyPatient(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -163,7 +168,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(ApplyProtocolBody, request.body);
       return writeService.applyProtocol(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -178,7 +183,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(RecordAnswerBody, request.body);
       const result = await writeService.recordAnswer(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
       return reply.code(201).send(result);
@@ -195,7 +200,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId, answerId } = parse(AnswerCorrectionParams, request.params);
       const body = parse(CorrectAnswerBody, request.body);
       return writeService.correctAnswer(writeActorOf(request), triageCallId, answerId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -209,7 +214,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
     async (request) => {
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       return writeService.completeProtocol(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -223,7 +228,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(AwaitingCallbackBody, request.body);
       return writeService.markAwaitingCallback(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -236,7 +241,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
     async (request) => {
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       return writeService.resumeAfterCallback(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -252,7 +257,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(SelectDispositionBody, request.body);
       return writeService.selectDisposition(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         dispositionData: body.dispositionData,
       });
     },
@@ -267,7 +272,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(DocumentCallBody, request.body);
       return writeService.documentCall(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, false),
+        expectedVersion: optionalIfMatchVersionOf(request),
         ...body,
       });
     },
@@ -288,7 +293,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(AbandonCallBody, request.body);
       return writeService.abandonCall(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },

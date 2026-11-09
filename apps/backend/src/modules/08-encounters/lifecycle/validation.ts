@@ -206,7 +206,7 @@ export function checkParentNotVoided(input: { parentStatus: EncounterStatus }): 
 export function checkVersion(input: { expected: number; actual: number }): void {
   require_(
     input.expected === input.actual,
-    "VERSION_MISMATCH",
+    "STALE_VERSION",
     `version mismatch: expected ${input.expected}, row is at ${input.actual}`,
   );
 }

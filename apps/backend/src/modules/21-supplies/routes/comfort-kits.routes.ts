@@ -14,9 +14,13 @@
 //   • The perpetual-log read has its OWN permission key (`comfort_kit.perpetual_log.read`,
 //     `compliance` category). A supply coordinator who may file requests must not thereby acquire the
 //     lot-level custody chain; a compliance officer who reads it needs no request permission at all.
+import {
+  actorOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { ifMatchStamp, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_DISPATCHER_ON_CREATE, ABAC_RECONCILER, P, STEP_UP } from "./guards";
 import {
   AssignRetrieverBody,
@@ -33,6 +37,7 @@ import {
   parseQuery,
 } from "./m21-typebox";
 import type { M21ReadService } from "./read-service";
+import { ifMatchStamp } from "./route-policy";
 import type { M21WriteService } from "./write-service";
 
 export interface ComfortKitRouteDeps {
@@ -105,7 +110,7 @@ export function registerComfortKitRoutes(app: FastifyInstance, deps: ComfortKitR
       const { dispatchId } = parse(DispatchIdParams, request.params);
       const body = parse(DeployAtPatientBody, request.body);
       return writeService.markDeployedAtPatient(writeActorOf(request), dispatchId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -176,7 +181,7 @@ export function registerComfortKitRoutes(app: FastifyInstance, deps: ComfortKitR
       const { returnId } = parse(ReturnIdParams, request.params);
       const body = parse(AssignRetrieverBody, request.body);
       return writeService.assignRetriever(writeActorOf(request), returnId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -199,7 +204,7 @@ export function registerComfortKitRoutes(app: FastifyInstance, deps: ComfortKitR
       const { returnId } = parse(ReturnIdParams, request.params);
       const body = parse(ReconcileReturnBody, request.body);
       return writeService.reconcileReturn(writeActorOf(request), returnId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         disposalMethod: body.disposalMethod,
         disposalWitnessMembershipId: body.disposalWitnessMembershipId as never,
         perMedicationReconciliation: body.perMedicationReconciliation,
@@ -226,7 +231,7 @@ export function registerComfortKitRoutes(app: FastifyInstance, deps: ComfortKitR
       const { returnId } = parse(ReturnIdParams, request.params);
       const body = parse(DeclareUnreturnableBody, request.body);
       return writeService.declareUnreturnable(writeActorOf(request), returnId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },

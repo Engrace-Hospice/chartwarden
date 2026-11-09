@@ -4,6 +4,7 @@
 // Idempotency-Key. Org, actor and provider-entity scope are server-derived; the patient comes from the claim. Every PHI read
 // emits a read-audit event keyed on its own id and attributed to the patient. Deadlines typed from a notice reuse the
 // recorded-deadline service under `/beneficiary-appeals/:id/recorded-deadlines`.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
@@ -15,7 +16,6 @@ import {
 } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
 import type { BeneficiaryAppealService } from "./beneficiary-appeal-service";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
 import type { LaterTierService } from "./later-tier-service";
 import {
@@ -25,7 +25,6 @@ import {
   RecordedDeadlineViewSchema,
   uuidParam,
 } from "./later-tier.routes";
-import { parse } from "./m25-typebox";
 
 export interface BeneficiaryAppealRouteDeps {
   readonly beneficiaryAppealService: BeneficiaryAppealService;
@@ -191,7 +190,7 @@ export function registerBeneficiaryAppealRoutes(
     async (request, reply) => {
       const body = parse(BeneficiaryAppealPatchRequestSchema, request.body);
       return reply.send(
-        await svc.update(writeActorOf(request), appealId(request), body, ifMatchVersion(request)),
+        await svc.update(writeActorOf(request), appealId(request), body, ifMatchVersionOf(request)),
       );
     },
   );
@@ -206,7 +205,7 @@ export function registerBeneficiaryAppealRoutes(
           appealId(request),
           move,
           input,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -223,7 +222,7 @@ export function registerBeneficiaryAppealRoutes(
             writeActorOf(request),
             appealId(request),
             body,
-            ifMatchVersion(request),
+            ifMatchVersionOf(request),
           ),
         );
     },
@@ -237,7 +236,7 @@ export function registerBeneficiaryAppealRoutes(
           writeActorOf(request),
           appealId(request),
           uuidParam(request, "documentId", "document"),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -287,7 +286,7 @@ export function registerBeneficiaryAppealRoutes(
           subjectOf(request),
           deadlineId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -303,7 +302,7 @@ export function registerBeneficiaryAppealRoutes(
           subjectOf(request),
           deadlineId(request),
           body.satisfiedOn,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

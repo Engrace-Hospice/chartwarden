@@ -5,7 +5,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4351 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** Worksheet F-1 — statement of changes in fund balances. */
 export const WorksheetF1 = Type.Object(
@@ -19,5 +19,3 @@ export const WorksheetF1 = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export type WorksheetF1Data = Static<typeof WorksheetF1>;

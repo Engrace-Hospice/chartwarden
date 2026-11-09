@@ -10,8 +10,8 @@ import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FhirBaaStatusView } from "../seams/index";
-import { actorOf, writeActorOf } from "./actor";
 import { assertBaaInForceForClient, parseIpAllowlist, withBaaStatus } from "./client-baa-ops";
 import { ABAC_CLIENT_ORG, ABAC_IN_ORG, P } from "./guards";
 import {

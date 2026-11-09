@@ -58,9 +58,6 @@ export function canTransitionPayerAppeal(from: PayerAppealState, to: PayerAppeal
   return PAYER_APPEAL_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-export const isPayerAppealTerminal = (state: PayerAppealState): boolean =>
-  state === "closed" || state === "withdrawn";
-
 export type PayerKindRefusal = "MEDICARE_PAYER" | "MEDICAID_PAYER" | "NO_PAYER_ADVICE";
 
 /**

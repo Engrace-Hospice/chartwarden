@@ -1,3 +1,4 @@
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/read-service.ts — the M16 READ service interface
 // (the §4.1 GET surface) + its response DTOs.
 //
@@ -41,7 +42,6 @@ import type {
   ProviderEntityId,
 } from "@chartwarden/types";
 import type { M16ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 import type { BereavementRedactedCategory } from "./disclosure";
 import type {
   CounselorDashboardQuery,

@@ -19,6 +19,13 @@ import {
   resolveActorPermissions,
 } from "@chartwarden/auth";
 import { IDG_ATTENDANCE_DISCIPLINES, attendableDisciplinesForRoleKeys } from "@chartwarden/idg";
+import {
+  type PreHandler,
+  ifMatchVersionOf,
+  membershipActorOf,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@chartwarden/types";
 import {
   ChartWardenError,
@@ -27,7 +34,7 @@ import {
   UnauthorizedError,
   ValidationError,
 } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
 import type { PacketBuildQueuePort } from "../jobs/packet-build-queue";
@@ -45,7 +52,6 @@ import {
   resolveIdgPatientIdsInScope,
   seamIdgCaseloadResolver,
 } from "./caseload-scope";
-import { ifMatchVersionOf, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import {
   type IdgRecertWindowFact,
   type IdgRouteEnrichmentPorts,
@@ -90,9 +96,6 @@ import {
 } from "./packet-disclosure";
 import type { IdgRouteService, IdgScopedChildKind } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface IdgRouteDeps {
   service: IdgRouteService;
   /**
@@ -117,17 +120,6 @@ export interface IdgRouteDeps {
   packetBuildQueue?: PacketBuildQueuePort;
   /** Optional per-route limiter (ids-only buckets) for the build route, bound at the composition root. */
   packetBuildRateLimit?: PreHandler;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  // `userId` here is the acting MEMBERSHIP id (see idg-route-service-db.ts's own header comment:
-  // "the acting membership is the passed `userId`, stored on coordinator/recorded_by/etc.") — every
-  // downstream write lands it in a `*_membership_id` column. This used to read `ctx.userId` (the
-  // raw Better Auth user id, a different id space), FK-violating every write.
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 // Static permission guards (§4.6).
@@ -194,7 +186,7 @@ const SUPERSEDE_PRIOR_SCOPE = (
   caseload: IdgCaseloadResolver,
 ): PreHandler => {
   return async (request, reply) => {
-    const { organizationId } = actorOf(request);
+    const { organizationId } = membershipActorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     const facts = await service.scopedChildFacts(organizationId, "decision", id);
     if (facts === null) throw new NotFoundError("idg_decision");
@@ -307,7 +299,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     options: { patient?: boolean; assigneeOrLocation?: boolean } = {},
   ): PreHandler => {
     return async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const facts = await service.scopedChildFacts(organizationId, kind, id);
       if (!facts) throw new NotFoundError(resource);
@@ -332,7 +324,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_meeting", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(ScheduleQuerySchema, request.query);
       assertLocationAllowed(request, q.location);
       return service.listSchedule(organizationId, { location: q.location, from: q.from, to: q.to });
@@ -341,7 +333,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
 
   // 2 — create a recurring policy (tenant-admin scope).
   app.post("/api/v1/idg/recurring-policies", { preHandler: [SCHEDULE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
+    const { organizationId, userId } = membershipActorOf(request);
     const b = parse(RecurringPolicyRequest, request.body);
     assertLocationAllowed(request, b.locationId);
     const res = await service.createRecurringPolicy(organizationId, userId, b);
@@ -353,7 +345,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/recurring-policies/:id",
     { preHandler: [SCHEDULE, IF_MATCH, IDEMPOTENCY_KEY] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecurringPolicyRequest, request.body);
       const policyLocationId = await service.recurringPolicyLocationId(organizationId, id);
@@ -374,7 +366,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // is enforced here (the create has no meeting `:id` for `idg_meeting_scope` to resolve): a location outside
   // the caller's session location memberships is a 404 (no existence oracle), same non-leak as RLS-hidden rows.
   app.post("/api/v1/idg/meetings", { preHandler: [SCHEDULE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
+    const { organizationId, userId } = membershipActorOf(request);
     const b = parse(ScheduleMeetingRequest, request.body);
     assertLocationAllowed(request, b.locationId);
     const res = await service.scheduleMeeting(organizationId, userId, b);
@@ -389,7 +381,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.getMeeting(organizationId, id);
     },
@@ -400,7 +392,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/cancel",
     { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR_CANCEL] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CancelMeetingRequest, request.body);
       return service.cancelMeeting(
@@ -418,7 +410,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/reschedule",
     { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR_RESCHEDULE] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RescheduleMeetingRequest, request.body);
       return service.rescheduleMeeting(organizationId, userId, id, {
@@ -441,7 +433,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const view = await service.buildPackets(organizationId, userId, id);
       // The flip has committed. An enqueue failure must not fail the request: the meeting is `packets_building`
@@ -473,7 +465,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/start",
     { preHandler: [COORDINATE, SCOPE("idg.coordinate")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.startMeeting(organizationId, userId, id);
     },
@@ -484,7 +476,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/adjourn",
     { preHandler: [COORDINATE, SCOPE("idg.coordinate")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(AdjournMeetingRequest, request.body);
       return service.adjournMeeting(
@@ -534,7 +526,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/attendance",
     { preHandler: [ATTEND, SCOPE("idg.attend")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecordAttendanceRequest, request.body);
       const actorIsCoordinator = (await resolveActorPermissions(request.context!)).has(
@@ -575,7 +567,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       },
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       parse(IdParamsSchema, request.params);
       const q = parse(AttendanceEligibilityQuerySchema, request.query);
       const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
@@ -619,7 +611,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(UpdateAttendanceRequest, request.body);
       return service.updateAttendance(
@@ -644,7 +636,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.removeAttendance(organizationId, userId, id, ifMatchVersionOf(request));
     },
@@ -661,7 +653,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.listAttendance(organizationId, id);
     },
@@ -675,7 +667,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_packet", resourceIdParam: "id", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return withPatientDisplay(
         patientDisplay,
@@ -699,7 +691,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_packet", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { meetingId, patientId } = parse(MeetingPacketParamsSchema, request.params);
       await assertIdgPatientInScope(
         patientScopeFactsOf(request),
@@ -747,7 +739,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_history", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
       await assertIdgPatientInScope(
         patientScopeFactsOf(request),
@@ -764,7 +756,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/agenda",
     { preHandler: [COORDINATE, SCOPE("idg.coordinate")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(AddAgendaItemRequest, request.body);
       if (b.patientId !== undefined) {
@@ -795,7 +787,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(UpdateAgendaItemRequest, request.body);
       return service.updateAgendaItem(organizationId, userId, id, ifMatchVersionOf(request));
@@ -814,7 +806,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.removeAgendaItem(organizationId, userId, id, ifMatchVersionOf(request));
     },
@@ -828,7 +820,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return withPatientDisplay(
         patientDisplay,
@@ -854,7 +846,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const reviewerUserId = reviewerUserIdOf(request);
       const { scoped } = await promotionScopeOf(request, organizationId);
@@ -902,7 +894,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/agenda/from-promotion",
     { preHandler: [COORDINATE, SCOPE("idg.coordinate"), IDEMPOTENCY_KEY] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(AddAgendaItemFromPromotionRequest, request.body);
       const { inScope } = await promotionScopeOf(request, organizationId);
@@ -921,7 +913,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/chart-promotions/:requestId/reject",
     { preHandler: [COORDINATE, SCOPE("idg.coordinate")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id, requestId } = parse(MeetingPromotionParamsSchema, request.params);
       const b = parse(RejectChartPromotionRequest, request.body);
       const { inScope } = await promotionScopeOf(request, organizationId);
@@ -938,7 +930,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/decisions",
     { preHandler: [DECIDE, SCOPE("idg.decide"), ABAC_QUORATE] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecordDecisionRequest, request.body);
       if (b.patientId !== null) {
@@ -960,7 +952,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   );
 
   // 19 — update an open decision (open status only; enforced in service).
-  // `If-Match` carries the version the caller read (428 absent, 400 malformed, 412 STALE_VERSION when stale).
+  // `If-Match` carries the version the caller read (428 absent, 400 malformed, 409 STALE_VERSION when stale).
   app.patch(
     "/api/v1/idg/decisions/:id",
     {
@@ -972,7 +964,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(UpdateDecisionRequest, request.body);
       return service.updateDecision(
@@ -998,7 +990,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(SupersedeDecisionRequest, request.body);
       // GAP-043: the successor lands in `b.meetingId` (a later, live, quorate meeting). The route gates on the
@@ -1023,7 +1015,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_decision", resourceIdParam: "id", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return withPatientDisplay(
         patientDisplay,
@@ -1044,7 +1036,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/action-items",
     { preHandler: [COORDINATE, SCOPE("idg.coordinate")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CreateActionItemRequest, request.body);
       if (b.patientId !== null) {
@@ -1099,7 +1091,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(UpdateActionItemRequest, request.body);
       const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
@@ -1126,7 +1118,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.removeActionItem(organizationId, userId, id, ifMatchVersionOf(request));
     },
@@ -1140,7 +1132,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_action_item", list: true } },
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const q = parse(ActionItemListQuerySchema, request.query);
       const granted = await resolveActorPermissions(request.context!);
       const requestedAssignee =
@@ -1189,7 +1181,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const [agenda, packets] = await Promise.all([
         service.listAgenda(organizationId, id),
@@ -1259,7 +1251,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const q = parse(DisciplineNoteListQuerySchema, request.query);
       if (q.patientId !== undefined) {
@@ -1322,7 +1314,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/meetings/:id/discipline-notes",
     { preHandler: [NOTE_WRITE, SCOPE("idg.attend"), IDEMPOTENCY_KEY] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CreateDisciplineNoteRequest, request.body);
       if (b.patientId !== undefined && b.patientId !== null) {
@@ -1350,7 +1342,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     },
   );
 
-  // 24e — edit a note's text and/or reason (If-Match = the version read; 412 on skew; no delete). Only while the meeting is
+  // 24e — edit a note's text and/or reason (If-Match = the version read; 409 on skew; no delete). Only while the meeting is
   // `live`: original notes of an adjourned meeting are frozen (422 MEETING_NOT_LIVE) and addenda are append-only
   // (422 ADDENDUM_IMMUTABLE — a correction is a further addendum). The note id carries no
   // meeting id, so the SAME `idg_meeting_scope` predicate is evaluated here against the note's OWNING meeting
@@ -1366,7 +1358,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(UpdateDisciplineNoteRequest, request.body);
       const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
@@ -1393,7 +1385,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       config: { auditRead: { resourceKind: "idg_minutes", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return withFinalizerName(
         membershipDisplay,
@@ -1409,7 +1401,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     "/api/v1/idg/minutes/:id/amendments",
     { preHandler: [AMEND, childScope("minutes", "idg_minutes")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(SubmitAmendmentRequest, request.body);
       const res = await service.submitAmendment(organizationId, userId, id, b.amendmentReason);

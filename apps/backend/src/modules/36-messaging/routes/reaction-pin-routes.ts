@@ -1,3 +1,4 @@
+import type { MessagingRouteService } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/reaction-pin-routes.ts - WP 2.4 reactions and pins.
 //
 // Channel-scoped like the thread read: the guards passed in are the channel's own (`messaging.read|send` plus the
@@ -7,14 +8,12 @@
 // other. PUT/DELETE are naturally idempotent (a repeat is a no-op), so no Idempotency-Key is required. Pin and unpin
 // are audited by the `message_pin` write-audit trigger. The pin list is a decrypted-body read, so it is read-audited
 // like the channel history (one aggregate list-read event; a single-resource read would need `resourceIdParam`).
-import type { MessagingRouteService } from "@chartwarden/messaging";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { PinParamsSchema, ReactionParamsSchema } from "./reaction-pin-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The channel guards `registerMessagingRoutes` already built; passed in to avoid an import cycle. */
 export interface ChannelGuards {
@@ -24,12 +23,6 @@ export interface ChannelGuards {
   readonly sendToChannel: PreHandler;
   /** In an announcement channel the caller needs messaging.announce; any other channel passes untouched. */
   readonly announcementOnly: PreHandler;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerReactionPinRoutes(

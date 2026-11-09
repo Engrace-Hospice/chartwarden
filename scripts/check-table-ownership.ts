@@ -26,7 +26,7 @@
  * CI:    exits 1 on any violation.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
   HELPER_ONLY_TABLES,
@@ -34,6 +34,7 @@ import {
   MODULE_BY_ID,
   type ModuleDef,
 } from "../architecture/module-manifest";
+import { parsePgTables, walkFiles } from "./lib/gate-scan";
 
 const REPO_ROOT = process.cwd();
 const SCHEMA_DIR = "packages/db/src/schema";
@@ -102,24 +103,12 @@ const CROSS_MODULE_SCHEMA_READ_EXEMPT = new Set<string>([
 // Shape we look for:  export const memberships = pgTable('membership', { ... })
 type TableRef = { constName: string; sqlName: string; file: string };
 
-function listFiles(dir: string, acc: string[] = []): string[] {
-  let entries: string[] = [];
-  try {
-    entries = readdirSync(join(REPO_ROOT, dir));
-  } catch {
-    return acc;
-  }
-  for (const e of entries) {
-    const rel = join(dir, e);
-    const abs = join(REPO_ROOT, rel);
-    if (statSync(abs).isDirectory()) {
-      if (e === "node_modules" || e === "dist" || e === ".turbo") continue;
-      listFiles(rel, acc);
-    } else if (/\.(ts|tsx)$/.test(e)) {
-      acc.push(rel);
-    }
-  }
-  return acc;
+function listFiles(dir: string): string[] {
+  return walkFiles(dir, {
+    base: REPO_ROOT,
+    skipDirs: ["node_modules", "dist", ".turbo"],
+    include: (name) => /\.(ts|tsx)$/.test(name),
+  });
 }
 
 // 1. Build the table registry from schema files.
@@ -127,10 +116,7 @@ function buildTableRegistry(): TableRef[] {
   const refs: TableRef[] = [];
   for (const file of listFiles(SCHEMA_DIR)) {
     const src = readFileSync(join(REPO_ROOT, file), "utf8");
-    const re = /export\s+const\s+(\w+)\s*=\s*pgTable\(\s*['"]([\w]+)['"]/g;
-    let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
-    while ((m = re.exec(src))) refs.push({ constName: m[1]!, sqlName: m[2]!, file });
+    for (const def of parsePgTables(src)) refs.push({ ...def, file });
   }
   return refs;
 }

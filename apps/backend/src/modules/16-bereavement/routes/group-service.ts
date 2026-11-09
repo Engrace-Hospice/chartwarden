@@ -1,3 +1,4 @@
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/group-service.ts — the support-group service interface (ADR-0109 D10, PR 3, routes 53-66).
 //
 // Owner decisions (2026-11-05): a group is recurring or drop-in, in person or virtual, for PROGRAM families only (an active plan, an active contact,
@@ -18,7 +19,6 @@ import type {
   BereavementProgramModality,
 } from "@chartwarden/types";
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 export interface GroupView {
   readonly groupId: string;

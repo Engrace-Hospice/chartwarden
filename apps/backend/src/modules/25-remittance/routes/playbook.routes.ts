@@ -6,24 +6,22 @@
 // no guard reads it.
 // (409 when stale); every mutation requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived
 // (actor.ts). Nothing here states a CMS or MAC rule: all text is the organization's own.
+import {
+  ROUTE_FORMATS,
+  ifMatchVersionOf,
+  parse,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
-import { FormatRegistry, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { PLAYBOOK_CODE_KINDS, PLAYBOOK_STEP_STATUSES } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { ASSIGNED_TO_ACTOR, P } from "./guards";
-import { parse } from "./m25-typebox";
 import type { PlaybookService } from "./playbook-service";
 
 export interface PlaybookRouteDeps {
   readonly playbookService: PlaybookService;
-}
-
-// The uuid format is a process-wide TypeBox registration other modules also make; guard so this file does not depend on them.
-const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_FORMAT.test(v));
 }
 
 const NULLABLE_STRING = Type.Union([Type.String(), Type.Null()]);
@@ -158,7 +156,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** A non-uuid can never match a row, so it is a 404 rather than a database cast error. */
 const uuidParam = (request: { params?: unknown }, name: string, what: string): string => {
   const value = (request.params as Record<string, string>)[name] ?? "";
-  if (!UUID_FORMAT.test(value)) throw new NotFoundError(what);
+  if (ROUTE_FORMATS.uuid?.(value) !== true) throw new NotFoundError(what);
   return value;
 };
 
@@ -219,7 +217,7 @@ export function registerPlaybookRoutes(app: FastifyInstance, deps: PlaybookRoute
           writeActorOf(request),
           versionId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -233,7 +231,7 @@ export function registerPlaybookRoutes(app: FastifyInstance, deps: PlaybookRoute
         await playbookService.publishVersion(
           writeActorOf(request),
           versionId(request),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -246,7 +244,7 @@ export function registerPlaybookRoutes(app: FastifyInstance, deps: PlaybookRoute
         await playbookService.retireVersion(
           writeActorOf(request),
           versionId(request),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );

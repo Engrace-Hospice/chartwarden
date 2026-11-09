@@ -19,7 +19,7 @@ import {
   type SupervisorAttentionDeps,
 } from "../ack-escalation/supervisor-attention";
 
-export const M36_ACK_DELIVERY_FAILURE_CONSUMER = "m36.ack-delivery-failure" as const;
+const M36_ACK_DELIVERY_FAILURE_CONSUMER = "m36.ack-delivery-failure" as const;
 export const M36_DELIVERY_FAILED_EVENT = "m36.notification.delivery_failed" as const;
 
 const IN_APP_FLOOR = "in_app";
@@ -32,7 +32,7 @@ const BENIGN = new Set([
   "not_waiting",
 ]);
 
-export const SUPERVISOR_PAGE_FAILED_NOTICE_SUMMARY =
+const SUPERVISOR_PAGE_FAILED_NOTICE_SUMMARY =
   "A page to a supervisor about an acknowledgment request failed on an out-of-band route; the in-app alert stands";
 
 export function buildM36AckDeliveryFailureConsumer(deps: {

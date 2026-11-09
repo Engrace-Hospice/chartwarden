@@ -1,4 +1,20 @@
+// apps/backend/src/modules/35-subscription/routes/service-drizzle.ts — the Drizzle-backed M35RouteService
+// (§4.1 tenant + §4.2 admin + §4.3 webhook-adjacent reads). Implements {@link M35RouteService}.
+//
+// TENANT methods run inside ONE `withOrgContext(db, {organizationId, userId}, …)` transaction on the
+// PRIMARY so Postgres RLS scopes each statement to `app.org_id` (the M27 write-service-drizzle precedent);
+// writes bind `userId = membershipId` so the M4 write-audit trigger stamps the acting principal. The
+// §4.11 `m35.*` events are emitted through the injected {@link WriteOutboxPort} in the SAME unit of work as
+// the mutation (transactional outbox). The outbound Stripe calls follow the §4.13 outbox-only path — a
+// mutating route persists its local state row and emits an `m35.*` event; the (deferred) stripe-dispatcher
+// worker drains the outbox and calls Stripe. M35 carries NO PHI (§8.5); money is INTEGER CENTS.
+//
+// PLATFORM-OPS methods (`admin*` / refunds / promos / revenue / webhooks) read/write ACROSS tenants under a
+// platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
+// to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
+// it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import {
   PaymentMethodRejectedError,
   type PaymentMethodVerifier,
@@ -15,21 +31,6 @@ import {
   type OrganizationReader,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
-// apps/backend/src/modules/35-subscription/routes/service-drizzle.ts — the Drizzle-backed M35RouteService
-// (§4.1 tenant + §4.2 admin + §4.3 webhook-adjacent reads). Implements {@link M35RouteService}.
-//
-// TENANT methods run inside ONE `withOrgContext(db, {organizationId, userId}, …)` transaction on the
-// PRIMARY so Postgres RLS scopes each statement to `app.org_id` (the M27 write-service-drizzle precedent);
-// writes bind `userId = membershipId` so the M4 write-audit trigger stamps the acting principal. The
-// §4.11 `m35.*` events are emitted through the injected {@link WriteOutboxPort} in the SAME unit of work as
-// the mutation (transactional outbox). The outbound Stripe calls follow the §4.13 outbox-only path — a
-// mutating route persists its local state row and emits an `m35.*` event; the (deferred) stripe-dispatcher
-// worker drains the outbox and calls Stripe. M35 carries NO PHI (§8.5); money is INTEGER CENTS.
-//
-// PLATFORM-OPS methods (`admin*` / refunds / promos / revenue / webhooks) read/write ACROSS tenants under a
-// platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
-// to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
-// it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import {
   type PlatformAuditPort,
   type PlatformRunner,
@@ -39,9 +40,7 @@ import {
 
 // The two handles live in pricing/ports (the leaf both files read); re-exported so existing importers keep this path.
 export type { PlatformRunner, WriteTx };
-import type { M35ReadActor, M35WriteActor } from "./actor";
 import { lockSubscription, refuseAdminTransition } from "./admin-transition";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
 import { redeemPromoInTx } from "./promo-redemption";
 import type {
   AckView,
@@ -54,12 +53,15 @@ import type {
   CreatePromoArgs,
   CreateSubscriptionArgs,
   CurrentRevenueView,
+  CursorPage,
   DunningListFilters,
   DunningListItemView,
   DunningView,
   InvoiceDetailView,
   InvoiceListItemView,
+  M35ReadActor,
   M35RouteService,
+  M35WriteActor,
   MeterAdminView,
   PaymentMethodView,
   PlanAdminView,
@@ -388,20 +390,29 @@ function webhookReceiptView(w: WhRow): WebhookReceiptView {
   };
 }
 
-/** Keyset page from a DESC-sorted `(createdAt, id)` row list already read from the DB. */
+/** The cursor-signing scope of the cross-tenant /api/admin lists (never a uuid, so no tenant cursor verifies). */
+const PLATFORM_CURSOR_SCOPE = "platform";
+/** The default + maximum page size for the M35 list routes (default 50, max 100). */
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+function pageSizeOf(limit: number | undefined): number {
+  return Math.max(1, Math.min(MAX_PAGE_SIZE, limit ?? DEFAULT_PAGE_SIZE));
+}
+
+/** Keyset page (cursor signed for `scope`) from a DESC-sorted `(key, id)` row list already read from the DB. */
 function pageOf<T extends { readonly id: string }>(
-  rows: T[],
+  scope: string,
+  rows: readonly T[],
   keyOf: (row: T) => string,
   cursor: string | undefined,
   limit: number | undefined,
 ): CursorPage<T> {
   const size = pageSizeOf(limit);
+  const key = decodeKeysetCursor(scope, cursor, "text");
   let start = 0;
-  if (cursor) {
-    const key = decodeCursor(cursor);
-    start = rows.findIndex(
-      (r) => keyOf(r) < key.createdAt || (keyOf(r) === key.createdAt && r.id < key.id),
-    );
+  if (key) {
+    start = rows.findIndex((r) => keyOf(r) < key.a || (keyOf(r) === key.a && r.id < key.id));
     if (start === -1) start = rows.length;
   }
   const slice = rows.slice(start, start + size);
@@ -409,7 +420,7 @@ function pageOf<T extends { readonly id: string }>(
   const last = slice[slice.length - 1];
   return {
     items: slice,
-    nextCursor: hasMore && last ? encodeCursor({ createdAt: keyOf(last), id: last.id }) : null,
+    nextCursor: hasMore && last ? encodeCursor(scope, { a: keyOf(last), id: last.id }) : null,
     hasMore,
   };
 }
@@ -581,7 +592,13 @@ export function buildDrizzleM35RouteService(
           .from(INV)
           .where(eq(INV.organizationId, actor.organizationId))
           .orderBy(desc(INV.lastSyncedAt), desc(INV.id));
-        const page = pageOf(rows, (r) => isoReq(r.lastSyncedAt), cursor, limit);
+        const page = pageOf(
+          actor.organizationId,
+          rows,
+          (r) => isoReq(r.lastSyncedAt),
+          cursor,
+          limit,
+        );
         return {
           items: page.items.map(invoiceListItemView),
           nextCursor: page.nextCursor,
@@ -700,7 +717,13 @@ export function buildDrizzleM35RouteService(
             ),
           )
           .orderBy(desc(AGG.periodStart), desc(AGG.id));
-        const page = pageOf(rows, (r) => isoReq(r.periodStart), cursor, limit);
+        const page = pageOf(
+          actor.organizationId,
+          rows,
+          (r) => isoReq(r.periodStart),
+          cursor,
+          limit,
+        );
         return {
           items: page.items.map((a: AggRow) => ({
             periodStart: isoReq(a.periodStart),
@@ -1384,7 +1407,7 @@ export function buildDrizzleM35RouteService(
           .from(S)
           .where(conds.length ? and(...conds) : undefined)
           .orderBy(desc(S.startedAt), desc(S.id));
-        const page = pageOf(rows, (r) => isoReq(r.startedAt), cursor, limit);
+        const page = pageOf(PLATFORM_CURSOR_SCOPE, rows, (r) => isoReq(r.startedAt), cursor, limit);
         const names = await orgNameMap(page.items.map((s) => s.organizationId));
         const items: SubscriptionAdminView[] = [];
         for (const sub of page.items) {
@@ -1639,7 +1662,7 @@ export function buildDrizzleM35RouteService(
           .from(DUN)
           .where(and(...conds))
           .orderBy(desc(DUN.enteredAt), desc(DUN.id));
-        const page = pageOf(rows, (r) => isoReq(r.enteredAt), cursor, limit);
+        const page = pageOf(PLATFORM_CURSOR_SCOPE, rows, (r) => isoReq(r.enteredAt), cursor, limit);
         const names = await orgNameMap(page.items.map((d) => d.organizationId));
         const items: DunningListItemView[] = [];
         for (const d of page.items) {
@@ -1812,7 +1835,13 @@ export function buildDrizzleM35RouteService(
     async listRefunds(cursor, limit) {
       return platform(async (tx) => {
         const rows = await tx.select().from(REF).orderBy(desc(REF.requestedAt), desc(REF.id));
-        const page = pageOf(rows, (r) => isoReq(r.requestedAt), cursor, limit);
+        const page = pageOf(
+          PLATFORM_CURSOR_SCOPE,
+          rows,
+          (r) => isoReq(r.requestedAt),
+          cursor,
+          limit,
+        );
         const names = await orgNameMap(page.items.map((r) => r.organizationId));
         return {
           items: page.items.map((r) => refundView(r, names.get(r.organizationId) ?? "")),
@@ -1901,7 +1930,7 @@ export function buildDrizzleM35RouteService(
     async listRevenueSnapshots(cursor, limit) {
       return platform(async (tx) => {
         const rows = await tx.select().from(SNAP).orderBy(desc(SNAP.snapshotMonth), desc(SNAP.id));
-        const page = pageOf(rows, (r) => r.snapshotMonth, cursor, limit);
+        const page = pageOf(PLATFORM_CURSOR_SCOPE, rows, (r) => r.snapshotMonth, cursor, limit);
         return {
           items: page.items.map(snapshotView),
           nextCursor: page.nextCursor,
@@ -2040,28 +2069,14 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const rows = await tx.select().from(WH).orderBy(desc(WH.receivedAt));
         // stripe_webhook_event.id is TEXT (the Stripe event id); page on (receivedAt, id).
-        const size = pageSizeOf(limit);
-        let start = 0;
-        if (cursor) {
-          const key = decodeCursor(cursor);
-          start = rows.findIndex(
-            (r) =>
-              isoReq(r.receivedAt) < key.createdAt ||
-              (isoReq(r.receivedAt) === key.createdAt && r.id < key.id),
-          );
-          if (start === -1) start = rows.length;
-        }
-        const slice = rows.slice(start, start + size);
-        const hasMore = start + size < rows.length;
-        const last = slice[slice.length - 1];
-        return {
-          items: slice.map(webhookReceiptView),
-          nextCursor:
-            hasMore && last
-              ? encodeCursor({ createdAt: isoReq(last.receivedAt), id: last.id })
-              : null,
-          hasMore,
-        };
+        const page = pageOf(
+          PLATFORM_CURSOR_SCOPE,
+          rows,
+          (r) => isoReq(r.receivedAt),
+          cursor,
+          limit,
+        );
+        return { ...page, items: page.items.map(webhookReceiptView) };
       });
     },
 

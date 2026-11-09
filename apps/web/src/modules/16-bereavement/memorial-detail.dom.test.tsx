@@ -1,7 +1,7 @@
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 // apps/web/src/modules/16-bereavement — ADR-0109 D10: one memorial service (routes 69-73, 75). Publish / close / edit carry If-Match = the
-// version read plus an Idempotency-Key, a 412 reloads, the invitation mailing run is linked once it exists, the invitation list is oversight
+// version read plus an Idempotency-Key, a 409 STALE_VERSION reloads, the invitation mailing run is linked once it exists, the invitation list is oversight
 // only, attendance once the service started; a 403 renders nothing.
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -199,11 +199,11 @@ describe("memorial service — writes", () => {
     expect(screen.getByRole("link", { name: "Invitation mailing" })).toBeTruthy();
   });
 
-  it("a 412 on close reloads the service and says it changed", async () => {
+  it("a 409 STALE_VERSION on close reloads the service and says it changed", async () => {
     let reads = 0;
     mount((req) => {
       if (req.method === "POST")
-        return { status: 412, body: { error: { code: "PRECONDITION_FAILED", message: "moved" } } };
+        return { status: 409, body: { error: { code: "STALE_VERSION", message: "moved" } } };
       if (req.path.endsWith("/invitations")) return ok([]);
       reads += 1;
       return ok(service({ status: "published" }));
@@ -300,11 +300,11 @@ describe("memorial service — invitations", () => {
 });
 
 describe("memorial service — stale edits and the join link", () => {
-  it("a 412 on edit closes the dialog, reloads the service and says why", async () => {
+  it("a 409 STALE_VERSION on edit closes the dialog, reloads the service and says why", async () => {
     let reads = 0;
     mount((req) => {
       if (req.method === "PATCH")
-        return { status: 412, body: { error: { code: "PRECONDITION_FAILED", message: "moved" } } };
+        return { status: 409, body: { error: { code: "STALE_VERSION", message: "moved" } } };
       if (req.path === SERVICE_PATH) reads += 1;
       return ok(service());
     });

@@ -1,5 +1,10 @@
 // apps/backend/__tests__/bereavement-mailing-hardening.test.ts — ADR-0109 D10 review follow-ups: the small pure guards the mailing worker and routes lean on.
 import { Buffer } from "node:buffer";
+import {
+  InvalidCursorError,
+  decodeKeysetCursor,
+  encodeCursor,
+} from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,10 +13,6 @@ import {
 } from "../src/modules/16-bereavement/bereavement-crypto";
 import { addressLinesOf } from "../src/modules/16-bereavement/jobs/mailing-workers";
 import { mailingGenerateJobId } from "../src/modules/16-bereavement/mailings/enqueue-port";
-import {
-  decodeCheckedCursor,
-  encodeCursor,
-} from "../src/modules/16-bereavement/routes/concurrency";
 import { parse } from "../src/modules/16-bereavement/routes/m16-typebox";
 import { PutMailingConfigBody } from "../src/modules/16-bereavement/routes/mailing-typebox";
 
@@ -19,26 +20,39 @@ const ORG = "a1610000-0000-4000-8000-0000000000a1";
 const ID = "10000000-0000-4000-8000-0000000000f1";
 const KEY = Buffer.alloc(32, 9);
 
-describe("decodeCheckedCursor: a crafted cursor is a validation error, never a cast error", () => {
+describe("decodeKeysetCursor: a crafted cursor is 422 INVALID_CURSOR, never a cast error", () => {
   it("accepts a cursor whose anchor and id have the shape the SQL casts them to", () => {
-    expect(decodeCheckedCursor(encodeCursor({ a: "2026-10-15", id: ID }), "date")).toEqual({
+    expect(decodeKeysetCursor(ORG, encodeCursor(ORG, { a: "2026-10-15", id: ID }), "date")).toEqual(
+      {
+        a: "2026-10-15",
+        id: ID,
+      },
+    );
+    expect(
+      decodeKeysetCursor(
+        ORG,
+        encodeCursor(ORG, { a: "2026-11-05T10:00:00.000Z", id: ID }),
+        "instant",
+      )?.id,
+    ).toBe(ID);
+    expect(decodeKeysetCursor(ORG, encodeCursor(ORG, { a: "12", id: ID }), "integer")?.a).toBe(
+      "12",
+    );
+    // the items' NULL-ordinal sentinel is int4 max itself, and is a cursor this route issues
+    expect(
+      decodeKeysetCursor(ORG, encodeCursor(ORG, { a: "2147483647", id: ID }), "integer")?.a,
+    ).toBe("2147483647");
+  });
+
+  it("treats no cursor as the start of the list and refuses an unsigned or foreign one (422)", () => {
+    expect(decodeKeysetCursor(ORG, undefined, "date")).toBeNull();
+    expect(decodeKeysetCursor(ORG, "", "date")).toBeNull();
+    expect(() => decodeKeysetCursor(ORG, "%%%not-a-cursor", "date")).toThrow(InvalidCursorError);
+    const foreign = encodeCursor("b1610000-0000-4000-8000-0000000000b1", {
       a: "2026-10-15",
       id: ID,
     });
-    expect(
-      decodeCheckedCursor(encodeCursor({ a: "2026-11-05T10:00:00.000Z", id: ID }), "instant")?.id,
-    ).toBe(ID);
-    expect(decodeCheckedCursor(encodeCursor({ a: "12", id: ID }), "integer")?.a).toBe("12");
-    // the items' NULL-ordinal sentinel is int4 max itself, and is a cursor this route issues
-    expect(decodeCheckedCursor(encodeCursor({ a: "2147483647", id: ID }), "integer")?.a).toBe(
-      "2147483647",
-    );
-  });
-
-  it("treats no cursor, and a cursor that is not base64 JSON, as the start of the list", () => {
-    expect(decodeCheckedCursor(undefined, "date")).toBeNull();
-    expect(decodeCheckedCursor("", "date")).toBeNull();
-    expect(decodeCheckedCursor("%%%not-a-cursor", "date")).toBeNull();
+    expect(() => decodeKeysetCursor(ORG, foreign, "date")).toThrow(InvalidCursorError);
   });
 
   it("refuses a well-formed cursor with a bad anchor or id (they would reach a ::uuid cast or new Date)", () => {
@@ -47,15 +61,16 @@ describe("decodeCheckedCursor: a crafted cursor is a validation error, never a c
       ["date", { a: "2026-13-45", id: ID }],
       ["instant", { a: "not a time", id: ID }],
       ["integer", { a: "1; DROP TABLE x", id: ID }],
-      // ten digits, but past a Postgres int4: it would be an out-of-range cast, not a validation error
+      // ten digits, but past a Postgres int4: it would be an out-of-range cast, not a 422
       ["integer", { a: "2147483648", id: ID }],
       ["integer", { a: "9999999999", id: ID }],
       ["date", { a: "2026-10-15", id: "not-a-uuid" }],
       ["date", { a: "2026-10-15", id: "' OR 1=1 --" }],
     ] as const) {
-      expect(() => decodeCheckedCursor(encodeCursor(bad), anchor), JSON.stringify(bad)).toThrow(
-        ValidationError,
-      );
+      expect(
+        () => decodeKeysetCursor(ORG, encodeCursor(ORG, bad), anchor),
+        JSON.stringify(bad),
+      ).toThrow(InvalidCursorError);
     }
   });
 });

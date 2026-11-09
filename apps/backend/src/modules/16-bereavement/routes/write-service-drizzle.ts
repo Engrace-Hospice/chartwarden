@@ -432,7 +432,7 @@ export function buildDrizzleM16WriteService(
   /**
    * §2.5 (GAP-194) — UPDATE one outreach row only while it is still at the version this transaction read,
    * and bump it. A row another writer moved in between (a second counselor, the miss cron, an M22 render
-   * callback) matches nothing and is refused 412 `STALE_VERSION` instead of being overwritten.
+   * callback) matches nothing and is refused 409 `STALE_VERSION` instead of being overwritten.
    */
   async function patchOutreach(
     tx: Tx,
@@ -1926,7 +1926,7 @@ export function buildDrizzleM16WriteService(
       // The D6 consent facts are read BEFORE the write transaction opens: M39's store and M5's roster each
       // take their own pooled connection, and holding ours while they do is the M21-T05 / M36 self-deadlock.
       // The row version read here is re-checked inside the transaction, so a contact that moved in between
-      // (a different consent record linked, a status change) is refused 412 rather than confirmed on facts
+      // (a different consent record linked, a status change) is refused 409 rather than confirmed on facts
       // that described an older row.
       const facts = await withOrgContext(db, scope(actor), async (tx) => {
         const contact = await contactOr404(tx, contactId);

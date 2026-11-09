@@ -435,7 +435,7 @@ describe.skipIf(!DB_URL)(
     });
 
     describe("list inputs that must not become a 500", () => {
-      it("answers a forged but well-formed cursor with a 400", async () => {
+      it("answers a forged (unsigned) cursor with a 422", async () => {
         const forge = (o: unknown) => Buffer.from(JSON.stringify(o), "utf8").toString("base64url");
         for (const cursor of [
           forge({ createdAt: "not-a-date", id: randomUUID() }),
@@ -447,7 +447,7 @@ describe.skipIf(!DB_URL)(
             url: `${BASE}?cursor=${cursor}`,
             headers: hdr(),
           });
-          expect(res.statusCode, cursor).toBe(400);
+          expect(res.statusCode, cursor).toBe(422);
         }
       });
 

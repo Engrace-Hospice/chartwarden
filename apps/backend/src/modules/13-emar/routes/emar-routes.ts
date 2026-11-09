@@ -1,3 +1,4 @@
+import { type AbacTarget, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/13-emar/routes/emar-routes.ts — M13-T08 the §4.1 route inventory behind the REAL
 // Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the §4.6 keys M13
 // registers into M3's catalog (M13_CONTRIBUTED_PERMISSIONS). Org binding is server-side (`request.context`,
@@ -17,10 +18,14 @@
 // administering clinician) — the service refuses a body patient the order is not for, and consumption on
 // the record route (itself caseload-scoped) re-verifies all three. The controlled-substance witness token
 // rides the `X-Witness-Attestation` header.
-import { type AbacTarget, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  type PreHandler,
+  membershipActorOf,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { ReconciliationDecisionKind } from "@chartwarden/types";
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { ForbiddenError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   AcknowledgeCaregiverRequest,
   AcknowledgeReturnRequest,
@@ -51,25 +56,18 @@ import {
 } from "./emar-typebox";
 import type { EmarRouteService } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface EmarRouteDeps {
   service: EmarRouteService;
 }
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" — same bug/fix as
-  // M7/M8/M9/M10/M11/M12: this used to read `ctx.userId` (the raw Better Auth user id, a DIFFERENT
-  // id from the org membership).
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId };
-}
-
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
+/**
+ * Every mutating route requires a client-supplied Idempotency-Key (the M1 middleware replays it). Unlike
+ * M18's, `offline-sync` keeps it: a row's `offlineCapture` (the `(deviceId, localId)` dedupe key) is optional,
+ * so without the header a retried batch could record a dose twice.
+ */
+const IDEMPOTENT = requireIdempotencyKey();
 const READ = P("administration.read");
 const RECORD = P("administration.record");
 const WITNESS_ATTEST = P("administration.witness_attest");
@@ -250,9 +248,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 1 — record a clinician administration (administering_clinician_eligible[:medClass] ABAC floor).
   app.post(
     "/api/v1/administrations",
-    { preHandler: [RECORD, ABAC_ADMINISTER, SCOPE("administration.record", fromBody)] },
+    { preHandler: [RECORD, ABAC_ADMINISTER, SCOPE("administration.record", fromBody), IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(RecordAdministrationRequest, request.body);
       const data = dataFieldsOf(b.data);
       const res = await service.recordAdministration(organizationId, userId, {
@@ -291,9 +289,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // is itself caseload-scoped.
   app.post(
     "/api/v1/administrations/witness-attest",
-    { preHandler: [WITNESS_ATTEST, ABAC_WITNESS] },
+    { preHandler: [WITNESS_ATTEST, ABAC_WITNESS, IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(WitnessAttestRequest, request.body);
       const res = await service.mintWitnessToken(organizationId, userId, {
         patientId: b.patientId,
@@ -309,9 +307,15 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
     "/api/v1/administrations/caregiver-attested",
     // GAP-004 — the body's patient must be the portal session's own (`sessionPatientId`) or on the
     // caller's caseload; the service then refuses an order that belongs to someone else.
-    { preHandler: [CAREGIVER_RECORD, SCOPE("administration.caregiver_record", fromBody)] },
+    {
+      preHandler: [
+        CAREGIVER_RECORD,
+        SCOPE("administration.caregiver_record", fromBody),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(RecordCaregiverAttestedRequest, request.body);
       const res = await service.recordCaregiverAttested(organizationId, {
         patientId: b.patientId,
@@ -335,10 +339,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         CAREGIVER_ACK,
         SCOPE("administration.caregiver_acknowledge", BY_ADMINISTRATION),
         ABAC_CAREGIVER_ACK,
+        IDEMPOTENT,
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(AcknowledgeCaregiverRequest, request.body);
       return service.acknowledgeCaregiver(organizationId, userId, id);
@@ -353,10 +358,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         CAREGIVER_DISPUTE,
         SCOPE("administration.caregiver_dispute", BY_ADMINISTRATION),
         ABAC_CAREGIVER_DISPUTE,
+        IDEMPOTENT,
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(DisputeCaregiverRequest, request.body);
       return service.disputeCaregiver(organizationId, userId, id, b.disputeReason);
@@ -366,9 +372,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 6 — correction of a committed administration (creates a new row, supersedes original).
   app.post(
     "/api/v1/administrations/:id/correct",
-    { preHandler: [CORRECT, SCOPE("administration.correct", BY_ADMINISTRATION)] },
+    { preHandler: [CORRECT, SCOPE("administration.correct", BY_ADMINISTRATION), IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CorrectAdministrationRequest, request.body);
       const res = await service.correctAdministration(organizationId, userId, id, b.reason);
@@ -387,10 +393,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         VOID_SUPERVISOR_FLOOR,
         VOID_STEP_UP,
         SCOPE("administration.void", BY_ADMINISTRATION),
+        IDEMPOTENT,
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(VoidAdministrationRequest, request.body);
       return service.voidAdministration(organizationId, userId, id, b.voidReason);
@@ -405,7 +412,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "administration", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.getAdministration(organizationId, id);
     },
@@ -419,7 +426,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "administration", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(AdministrationListQuerySchema, request.query);
       return service.listAdministrations(organizationId, {
         patient: q.patient,
@@ -437,7 +444,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "iv_session", resourceIdParam: "sessionId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { sessionId } = parse(SessionParamsSchema, request.params);
       return service.getIvSession(organizationId, sessionId);
     },
@@ -451,10 +458,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         RECORD_REFUSAL,
         ABAC_ADMINISTER,
         SCOPE("administration.record_refusal", fromBody),
+        IDEMPOTENT,
       ],
     },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(RecordRefusalRequest, request.body);
       const res = await service.recordRefusal(organizationId, userId, {
         patientId: b.patientId,
@@ -470,9 +478,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 12 — bulk offline-queue sync from device (per-row ABAC, enforced here once per distinct target).
   app.post(
     "/api/v1/administrations/offline-sync",
-    { preHandler: [RECORD] },
+    { preHandler: [RECORD, IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const b = parse(OfflineSyncRequest, request.body);
       // Per row, the same two gates the single-record route applies: the ORDER's class must admit the
       // caller's discipline (GAP-005) and the row's patient must be in scope (GAP-004). Checked for every
@@ -540,7 +548,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "scheduled_dose", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(ScheduledDoseQuerySchema, request.query);
       return service.listScheduledDoses(organizationId, {
         patient: q.patient,
@@ -560,10 +568,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         // Spec route 14 (§4.1) -- the same administering-clinician floor as the record route, keyed on the
         // ORDER the dose was materialized from (GAP-024).
         ABAC_ADMINISTER_HOLD,
+        IDEMPOTENT,
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(IntentionalHoldRequest, request.body);
       return service.intentionalHold(organizationId, userId, id, b.reason);
@@ -578,7 +587,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "missed_dose", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(MissedDoseQuerySchema, request.query);
       return service.listMissedDoses(organizationId, { patient: q.patient, since: q.since });
     },
@@ -591,10 +600,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       preHandler: [
         ACK_MISSED,
         SCOPE("administration.acknowledge_missed", fromParam("missedDoseId")),
+        IDEMPOTENT,
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.acknowledgeMissed(organizationId, userId, id);
     },
@@ -608,7 +618,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "reconciliation_worksheet", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(WorksheetQuerySchema, request.query);
       return service.listWorksheets(organizationId, q.patient);
     },
@@ -622,7 +632,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "reconciliation_worksheet", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.getWorksheet(organizationId, id);
     },
@@ -632,10 +642,15 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   app.post(
     "/api/v1/reconciliation/worksheets/:id/decisions",
     {
-      preHandler: [RECON_DECIDE, SCOPE("reconciliation.decide", BY_WORKSHEET), ABAC_RECON_DECIDE],
+      preHandler: [
+        RECON_DECIDE,
+        SCOPE("reconciliation.decide", BY_WORKSHEET),
+        ABAC_RECON_DECIDE,
+        IDEMPOTENT,
+      ],
     },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecordDecisionRequest, request.body);
       const res = await service.recordDecision(organizationId, userId, id, {
@@ -652,10 +667,15 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   app.patch(
     "/api/v1/reconciliation/worksheets/:id/decisions/:lineId",
     {
-      preHandler: [RECON_DECIDE, SCOPE("reconciliation.decide", BY_WORKSHEET), ABAC_RECON_DECIDE],
+      preHandler: [
+        RECON_DECIDE,
+        SCOPE("reconciliation.decide", BY_WORKSHEET),
+        ABAC_RECON_DECIDE,
+        IDEMPOTENT,
+      ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id, lineId } = parse(DecisionLineParamsSchema, request.params);
       const b = parse(UpdateDecisionRequest, request.body);
       return service.updateDecision(
@@ -672,9 +692,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 21 — add a caregiver-reported home-med line.
   app.post(
     "/api/v1/reconciliation/worksheets/:id/add-caregiver-reported-line",
-    { preHandler: [RECON_DECIDE, SCOPE("reconciliation.decide", BY_WORKSHEET)] },
+    { preHandler: [RECON_DECIDE, SCOPE("reconciliation.decide", BY_WORKSHEET), IDEMPOTENT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(AddCaregiverReportedLineRequest, request.body);
       const res = await service.addCaregiverReportedLine(organizationId, userId, id, b.drugName);
@@ -690,10 +710,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         RECON_FINALIZE,
         SCOPE("reconciliation.finalize", BY_WORKSHEET),
         ABAC_RECON_FINALIZE,
+        IDEMPOTENT,
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(FinalizeReconciliationRequest, request.body);
       return service.finalizeReconciliation(organizationId, userId, id);
@@ -703,9 +724,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 23 — void a worksheet.
   app.post(
     "/api/v1/reconciliation/worksheets/:id/void",
-    { preHandler: [RECON_VOID, SCOPE("reconciliation.void", BY_WORKSHEET)] },
+    { preHandler: [RECON_VOID, SCOPE("reconciliation.void", BY_WORKSHEET), IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(VoidReconciliationRequest, request.body);
       return service.voidWorksheet(organizationId, userId, id, b.voidReason);
@@ -720,7 +741,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "comfort_kit_deployment", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(DeploymentQuerySchema, request.query);
       return service.listDeployments(organizationId, q.patient);
     },
@@ -734,7 +755,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       config: { auditRead: { resourceKind: "comfort_kit_deployment", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.getDeployment(organizationId, id);
     },
@@ -743,9 +764,15 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 26 — manual return acknowledgment (Phase-1 fallback when M21 absent).
   app.post(
     "/api/v1/comfort-kits/deployments/:id/acknowledge-return",
-    { preHandler: [KIT_ACK_RETURN, SCOPE("comfort_kit.acknowledge_return", BY_DEPLOYMENT)] },
+    {
+      preHandler: [
+        KIT_ACK_RETURN,
+        SCOPE("comfort_kit.acknowledge_return", BY_DEPLOYMENT),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(AcknowledgeReturnRequest, request.body);
       return service.acknowledgeReturn(organizationId, userId, id);
@@ -764,7 +791,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.getPolicy(organizationId);
     },
   );
@@ -772,9 +799,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 28 — update tenant administration policy (step-up: POLICY_STEP_UP; nothing upstream enforces it).
   app.put(
     "/api/v1/admin/administration-policy",
-    { preHandler: [POLICY, POLICY_STEP_UP] },
+    { preHandler: [POLICY, POLICY_STEP_UP, IDEMPOTENT] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const b = parse(AdministrationPolicyRequest, request.body);
       return service.putPolicy(organizationId, {
         graceWindowMinutes: b.graceWindowMinutes,

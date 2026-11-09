@@ -435,10 +435,10 @@ describe("#91 — §7.7 optimistic concurrency is carried, in the dialect each r
     expect(headers[0]?.["if-match"]).toBeUndefined();
   });
 
-  it("a 412 says the plan moved under the caller, inside the dialog, and keeps it open", async () => {
+  it("a 409 STALE_VERSION says the plan moved under the caller, inside the dialog, and keeps it open", async () => {
     // The platform envelope the M7 routes actually answer a stale write with.
     writeFailure = {
-      status: 412,
+      status: 409,
       body: { error: { code: "STALE_VERSION", message: "version 4 is stale" } },
     };
     await problemsView();

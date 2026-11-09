@@ -1,3 +1,4 @@
+import { Uuid, pageLimit } from "@chartwarden/shared/route-kit";
 import {
   TASK_ACTIONS,
   TASK_ACTOR_KINDS,
@@ -10,18 +11,16 @@ import {
 // Ids are canonical uuids (a malformed id is a 422 and never reaches a uuid cast). The closing reason and the due instant
 // are transport-checked only here; the code set and the due window are the service's (typed 422s that name the field).
 import { type TSchema, Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
 const literals = <T extends string>(values: readonly T[]) =>
   Type.Union(values.map((v) => Type.Literal(v)));
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 
-export const TaskParamsSchema = Type.Object({ taskId: Uuid });
+export const TaskParamsSchema = Type.Object({ taskId: Uuid() });
 
 export const ConvertTaskBodySchema = Type.Object(
   {
-    assignee_user_id: Uuid,
+    assignee_user_id: Uuid(),
     due_at: Type.Optional(nullable(Type.String({ minLength: 1, maxLength: 40 }))),
     clinical_concern: Type.Optional(Type.Boolean()),
   },
@@ -34,23 +33,23 @@ export const CloseTaskBodySchema = Type.Object(
 );
 
 export const ReassignTaskBodySchema = Type.Object(
-  { assignee_user_id: Uuid },
+  { assignee_user_id: Uuid() },
   { additionalProperties: false },
 );
 
 export const ListTasksQuerySchema = Type.Object({
   scope: Type.Optional(literals(["assigned", "created"] as const)),
   state: Type.Optional(literals(["active", "closed", "all"] as const)),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  limit: pageLimit({ max: 100 }),
 });
 
 export const TaskSchema = Type.Object({
-  id: Type.String({ format: "uuid" }),
-  message_id: Type.String({ format: "uuid" }),
-  channel_id: Type.String({ format: "uuid" }),
-  patient_id: nullable(Type.String({ format: "uuid" })),
-  created_by: Type.String({ format: "uuid" }),
-  assignee_id: Type.String({ format: "uuid" }),
+  id: Uuid(),
+  message_id: Uuid(),
+  channel_id: Uuid(),
+  patient_id: nullable(Uuid()),
+  created_by: Uuid(),
+  assignee_id: Uuid(),
   assignee_display_name: nullable(Type.String()),
   created_by_display_name: nullable(Type.String()),
   due_at: nullable(Type.String({ format: "date-time" })),
@@ -65,16 +64,16 @@ export const TaskSchema = Type.Object({
   allowed_actions: Type.Array(literals(TASK_ACTIONS)),
 });
 
-export const TaskEventSchema = Type.Object({
-  id: Type.String({ format: "uuid" }),
-  task_id: Type.String({ format: "uuid" }),
+const TaskEventSchema = Type.Object({
+  id: Uuid(),
+  task_id: Uuid(),
   event_type: literals(TASK_EVENT_TYPES),
   actor_kind: literals(TASK_ACTOR_KINDS),
-  actor_user_id: nullable(Type.String({ format: "uuid" })),
+  actor_user_id: nullable(Uuid()),
   from_status: nullable(literals(TASK_STATUSES)),
   to_status: nullable(literals(TASK_STATUSES)),
-  from_assignee_id: nullable(Type.String({ format: "uuid" })),
-  to_assignee_id: nullable(Type.String({ format: "uuid" })),
+  from_assignee_id: nullable(Uuid()),
+  to_assignee_id: nullable(Uuid()),
   reason_code: nullable(Type.String()),
   created_at: Type.String({ format: "date-time" }),
 });
