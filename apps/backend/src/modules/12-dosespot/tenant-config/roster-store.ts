@@ -163,8 +163,8 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
             eq(P.linkConfirmedMdmId, input.expectedPhysicianMdmId ?? sql`NULL`),
             eq(P.linkConfirmedNpi, input.npi),
             eq(P.linkConfirmedByMembershipId, P.membershipId),
-            // and the confirmer is not the one who made the link
-            sql`${P.linkedByMembershipId} IS DISTINCT FROM ${P.linkConfirmedByMembershipId}`,
+            // and the link has a recorded maker, who is not the confirmer (a link with no recorded maker is never enrolled)
+            sql`${P.linkedByMembershipId} IS NOT NULL AND ${P.linkedByMembershipId} IS DISTINCT FROM ${P.linkConfirmedByMembershipId}`,
           ),
         )
         .returning();

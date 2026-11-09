@@ -33,6 +33,7 @@ const ACTOR = {
   membershipId: "44444444-4444-4444-8444-444444444444",
 };
 const NPI = "1234567893"; // passes the NPI check digit (synthetic)
+const MAKER = "77777777-7777-4777-8777-777777777777"; // the administrator who made the roster link (never the member)
 const MDM = "55555555-5555-4555-8555-555555555555"; // the M40 physician record the roster links MEMBER to
 const RECORD = { identifierValue: NPI, firstName: "Ada", lastName: "Lovelace" };
 
@@ -80,7 +81,7 @@ function build(
           linkConfirmedMdmId: MDM,
           linkConfirmedNpi: NPI,
           linkConfirmedByMembershipId: MEMBER,
-          linkedByMembershipId: null,
+          linkedByMembershipId: MAKER,
           ...opts.row,
         };
   const store: RosterStore = {
@@ -327,6 +328,7 @@ describe("prescriber vendor enrolment", () => {
       { linkConfirmedMdmId: "66666666-6666-4666-8666-666666666666" }, // confirmed another record: the link was changed since
       { linkConfirmedNpi: "1000000004" }, // confirmed another NPI: the record's NPI is no longer the one they were shown
       { linkedByMembershipId: MEMBER }, // the member made the link themself AND confirmed it: one person's word
+      { linkedByMembershipId: null }, // no recorded maker (made before the column, or outside the roster route): never confirmable
     ];
     for (const row of cases) {
       const h = build({ row });

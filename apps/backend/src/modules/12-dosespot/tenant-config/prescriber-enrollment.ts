@@ -50,6 +50,8 @@ export interface RosterRow {
 /**
  * Has the row's OWN member confirmed `physicianMdmId` and `npi`, and is that member NOT the one who made the link? The one test the claim,
  * the view and the enrolment gate share: a link one person both made and confirmed is one person's word, which the confirmation exists to rule out.
+ * A link with no recorded maker (made before migration 1433, or written outside the roster route) cannot show that its maker is someone else,
+ * so it is never confirmed here, whatever confirmation it carries; an administrator re-saving it records the maker.
  */
 export function linkConfirmedBy(
   row: Pick<
@@ -69,6 +71,7 @@ export function linkConfirmedBy(
     row.linkConfirmedMdmId === expected.physicianMdmId &&
     row.linkConfirmedNpi === expected.npi &&
     row.linkConfirmedByMembershipId === row.membershipId &&
+    row.linkedByMembershipId !== null &&
     row.linkedByMembershipId !== row.linkConfirmedByMembershipId
   );
 }
