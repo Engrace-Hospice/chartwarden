@@ -7119,6 +7119,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   getSeam("PatientCoverageReader").coveragesForPatient(q),
                 coverageForRange: (q: Parameters<PatientCoverageReader["coverageForRange"]>[0]) =>
                   getSeam("PatientCoverageReader").coverageForRange(q),
+                coverageSnapshotForRangeInTransaction: (
+                  tx: unknown,
+                  q: Parameters<PatientCoverageReader["coverageForRange"]>[0],
+                ) => getSeam("PatientCoverageReader").coverageSnapshotForRangeInTransaction(tx, q),
               },
               admission: m23Seams.admission,
               electionPeriods: m23Seams.electionPeriods,

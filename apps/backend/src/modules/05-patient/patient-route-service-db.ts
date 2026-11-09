@@ -613,7 +613,12 @@ export function createDbPatientRouteService(
             })
             .from(P)
             .where(eq(P.id, patientId))
-            .limit(1);
+            .limit(1)
+            // #877 — this is the exclusive side of the per-patient coverage namespace lock.
+            // Claim assembly holds FOR SHARE on the same stable row while it snapshots coverage
+            // and writes the claim, preventing a previously absent higher-priority rank from being
+            // inserted as a phantom before the claim commits.
+            .for("update");
 
           if (!patient) {
             throw new Error(`patient ${patientId} not found`);

@@ -539,6 +539,27 @@ export interface PatientCoverageReader {
     /** Restrict to one kind (e.g. `medicaid`); omitted, every kind competes for the top rank. */
     coverageKind?: string;
   }): Promise<CoverageForRange>;
+  /**
+   * Transaction-bound snapshot for claim writers. The M5 implementation reads and `FOR SHARE` locks
+   * the patient's coverage rows through the caller's already RLS-scoped transaction, so a coverage
+   * replacement cannot commit between payer resolution and the claim insert (#877).
+   *
+   * `transaction` is deliberately opaque here: `@chartwarden/types` is a leaf contract package and
+   * must not acquire a dependency on the concrete Drizzle/Postgres client.
+   */
+  coverageSnapshotForRangeInTransaction(
+    transaction: unknown,
+    input: {
+      organizationId: string;
+      patientId: string;
+      from: string;
+      to: string;
+      coverageKind?: string;
+    },
+  ): Promise<{
+    readonly coverages: readonly PatientCoverage[];
+    readonly resolution: CoverageForRange;
+  }>;
 }
 
 /**

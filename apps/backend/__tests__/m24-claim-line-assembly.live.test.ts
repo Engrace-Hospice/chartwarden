@@ -96,6 +96,9 @@ describe.skipIf(!DB_URL)(
       async activeMedicaidCoverage() {
         return { id: PAYER, payerId: PAYER, subscriberId: "sub-1" };
       },
+      async activeMedicaidCoverageInTransaction() {
+        return { id: PAYER, payerId: PAYER, subscriberId: "sub-1" };
+      },
     };
     const ccnReader = {
       async ccnForProviderEntity() {

@@ -242,6 +242,9 @@ export const patientCoverageReaderDenyStub: PatientCoverageReader = {
   coverageForRange() {
     throw new NotImplementedError("PatientCoverageReader");
   },
+  coverageSnapshotForRangeInTransaction() {
+    throw new NotImplementedError("PatientCoverageReader");
+  },
 };
 
 /**

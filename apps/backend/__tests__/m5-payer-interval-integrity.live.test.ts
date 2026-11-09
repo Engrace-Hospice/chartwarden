@@ -347,7 +347,87 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     );
   });
 
-  it("two concurrent replacements at one rank: one wins, the other is a typed 409, nothing overlaps", async () => {
+  it("#877: a transaction-bound coverage snapshot blocks replacement until the claim transaction ends", async () => {
+    const patientId = await seedPatient(ORG);
+    const payer = await add(patientId, 1, "medicare_ffs", "2026-05-01");
+    const updater = new Client({ connectionString: DB_URL });
+    await updater.connect();
+    try {
+      await withOrgContext(handle.db, { organizationId: ORG, userId: STAFF }, async (tx) => {
+        const snapshot = await reader.coverageSnapshotForRangeInTransaction(tx, {
+          organizationId: ORG,
+          patientId,
+          from: "2026-05-01",
+          to: "2026-05-31",
+        });
+        expect(snapshot.resolution).toMatchObject({
+          status: "uniform",
+          coverage: { id: payer.id },
+        });
+
+        await updater.query("BEGIN");
+        await updater.query("SET LOCAL lock_timeout = '250ms'");
+        await expect(
+          updater.query("UPDATE patient_payer SET effective_to='2026-05-15' WHERE id=$1", [
+            payer.id,
+          ]),
+        ).rejects.toMatchObject({ code: "55P03" });
+        await updater.query("ROLLBACK");
+      });
+
+      await updater.query("UPDATE patient_payer SET effective_to='2026-05-15' WHERE id=$1", [
+        payer.id,
+      ]);
+      expect(await datesOf(payer.id)).toEqual({ f: "2026-05-01", t: "2026-05-15" });
+    } finally {
+      await updater.end();
+    }
+  });
+
+  it("#877: the patient namespace lock blocks a higher-priority payer INSERT until the claim transaction ends", async () => {
+    const patientId = await seedPatient(ORG);
+    const secondary = await add(patientId, 2, "commercial", "2026-05-01");
+    let pendingInsert: ReturnType<typeof add> | undefined;
+
+    await withOrgContext(handle.db, { organizationId: ORG, userId: STAFF }, async (tx) => {
+      const snapshot = await reader.coverageSnapshotForRangeInTransaction(tx, {
+        organizationId: ORG,
+        patientId,
+        from: "2026-05-01",
+        to: "2026-05-31",
+      });
+      expect(snapshot.resolution).toMatchObject({
+        status: "uniform",
+        coverage: { id: secondary.id, rank: 2 },
+      });
+
+      pendingInsert = add(patientId, 1, "medicare_ffs", "2026-05-01");
+
+      // Wait for the real M5 writer to reach PostgreSQL and block on the patient-row namespace
+      // lock. This proves the production path participates, without relying on a timing-only race.
+      let blocked = false;
+      for (let attempt = 0; attempt < 100 && !blocked; attempt += 1) {
+        const waits = await admin.query(
+          "SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND locktype='transactionid'",
+        );
+        blocked = waits.rows[0].n > 0;
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true);
+    });
+
+    await expect(pendingInsert).resolves.toMatchObject({ rank: 1, coverageKind: "medicare_ffs" });
+    expect(
+      await reader.coverageForRange({
+        organizationId: ORG,
+        patientId,
+        from: "2026-05-01",
+        to: "2026-05-31",
+      }),
+    ).toMatchObject({ status: "uniform", coverage: { rank: 1, coverageKind: "medicare_ffs" } });
+  });
+
+  it("two concurrent replacements at one rank serialize safely: each applies or returns a typed 409, nothing overlaps", async () => {
     const patientId = await seedPatient(ORG);
     await add(patientId, 1, "medicare_ffs", "2026-06-01");
     const results = await Promise.allSettled([
@@ -356,17 +436,24 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     ]);
     const won = results.filter((r) => r.status === "fulfilled");
     const lost = results.filter((r) => r.status === "rejected");
-    expect(won).toHaveLength(1);
-    expect(lost).toHaveLength(1);
-    expect((lost[0] as PromiseRejectedResult).reason).toMatchObject({
-      code: "PAYER_RANK_OVERLAP",
-      statusCode: 409,
-    });
+    expect(won.length).toBeGreaterThanOrEqual(1);
+    for (const result of lost) {
+      const rejection = (result as PromiseRejectedResult).reason as {
+        code?: string;
+        statusCode?: number;
+      };
+      expect(rejection.statusCode).toBe(409);
+      // The patient namespace lock serializes both writers. If June 20 wins first, June 10 is
+      // rejected; if June 10 wins first, June 20 is a valid subsequent history row.
+      expect(["PAYER_RANK_OVERLAP", "PAYER_REPLACEMENT_NOT_AFTER_CURRENT"]).toContain(
+        rejection.code,
+      );
+    }
     const rows = await admin.query(
       "SELECT count(*)::int AS n FROM patient_payer WHERE patient_id=$1 AND rank=1",
       [patientId],
     );
-    expect(rows.rows[0].n).toBe(2);
+    expect(rows.rows[0].n).toBe(1 + won.length);
     expect(await overlappingPairs()).toBe(0);
   });
 
