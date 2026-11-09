@@ -1,7 +1,7 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { ClaimMdEraReview } from "./claimmd-era-review";
 
@@ -119,6 +119,9 @@ let failRequests = false;
 let decisionSaved = false;
 let financialDecisionSaved = false;
 let manualScenario = false;
+let postingScenario = false;
+let postingApproved = false;
+let postingExecuted = false;
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   if (failRequests) throw new Error("synthetic network failure");
   const request = new Request(input as RequestInfo, init);
@@ -148,6 +151,77 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         decisionVersion: 1,
         disposition: "reviewed",
         financialPostingAuthorized: false,
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+  if (postingScenario && path.endsWith("/posting-plan") && request.method === "POST") {
+    return new Response(
+      JSON.stringify({
+        planId: "80000000-0000-4000-8000-000000000008",
+        planDigest: "a".repeat(64),
+        stageId: STAGE,
+        providerEntityId: row.providerEntityId,
+        payer: "Synthetic Payer",
+        paymentCents: 13_000,
+        claimId: CLAIM,
+        eligible: !postingExecuted,
+        status: postingExecuted ? "already_posted" : "eligible",
+        blockers: [],
+        featureEnabled: true,
+        approval: postingExecuted ? "posted" : postingApproved ? "approved" : "not_approved",
+        createdAt: "2026-10-01T01:00:00.000Z",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+  if (postingScenario && path.endsWith("/posting-history") && request.method === "GET") {
+    return new Response(
+      JSON.stringify(
+        postingApproved
+          ? [
+              {
+                eventType: "approved",
+                planId: "80000000-0000-4000-8000-000000000008",
+                occurredAt: "2026-10-01T01:00:00.000Z",
+                reason: "Approved synthetic posting plan",
+                adviceId: null,
+                remittanceLineId: null,
+              },
+              ...(postingExecuted
+                ? [
+                    {
+                      eventType: "posted",
+                      planId: "80000000-0000-4000-8000-000000000008",
+                      occurredAt: "2026-10-01T01:01:00.000Z",
+                      reason: "Executed synthetic posting plan",
+                      adviceId: STAGE,
+                      remittanceLineId: "90000000-0000-4000-8000-000000000009",
+                    },
+                  ]
+                : []),
+            ]
+          : [],
+      ),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+  if (postingScenario && path.endsWith("/approval") && request.method === "POST") {
+    postingApproved = true;
+    return new Response(
+      JSON.stringify({ planId: "80000000-0000-4000-8000-000000000008", outcome: "approved" }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+  if (postingScenario && path.endsWith("/execution") && request.method === "POST") {
+    postingExecuted = true;
+    return new Response(
+      JSON.stringify({
+        planId: "80000000-0000-4000-8000-000000000008",
+        outcome: "posted",
+        adviceId: STAGE,
+        remittanceLineId: "90000000-0000-4000-8000-000000000009",
+        paymentCents: 13_000,
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
@@ -394,6 +468,9 @@ afterEach(() => {
   decisionSaved = false;
   financialDecisionSaved = false;
   manualScenario = false;
+  postingScenario = false;
+  postingApproved = false;
+  postingExecuted = false;
 });
 
 describe("M25 Claim.MD ERA nonposting review", () => {
@@ -491,6 +568,60 @@ describe("M25 Claim.MD ERA nonposting review", () => {
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Review posting readiness" })).toBeTruthy();
     expect(screen.getByText(/No posting approval or execution history/)).toBeTruthy();
+  });
+
+  it("completes the plan, separate approval and execution UI sequence and shows committed history", async () => {
+    postingScenario = true;
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <ApiClientProvider
+        client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
+      >
+        <SessionProvider
+          session={{
+            userId: "synthetic-user",
+            organizationId: "synthetic-org",
+            membershipId: "synthetic-membership",
+            roles: ["finance_reviewer"],
+            permissions: [
+              "remittance.read",
+              "remittance.financial_review",
+              "remittance.posting.approve",
+              "remittance.posting.execute",
+            ],
+            isAdmin: false,
+          }}
+        >
+          <ToastProvider>
+            <MemoryRouter>
+              <ClaimMdEraReview />
+            </MemoryRouter>
+          </ToastProvider>
+        </SessionProvider>
+      </ApiClientProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review remittance from Synthetic Payer" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Review posting readiness" }));
+    expect(await screen.findByText("Eligible")).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Posting action reason" }), {
+      target: { value: "Approved synthetic posting plan" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Approve plan" }));
+    expect(await screen.findByText("Approved")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Execute approved posting" }));
+    expect(await screen.findByText(/M25 remittance record created/)).toBeTruthy();
+    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/posting-plan"))).toBe(
+      true,
+    );
+    expect(
+      calls.some((call) => call.method === "POST" && call.path.endsWith("/approval")),
+    ).toBe(true);
+    expect(
+      calls.some((call) => call.method === "POST" && call.path.endsWith("/execution")),
+    ).toBe(true);
+    confirm.mockRestore();
   });
 
   it("supports evidence-based manual claim selection and reports historical lines as unavailable", async () => {

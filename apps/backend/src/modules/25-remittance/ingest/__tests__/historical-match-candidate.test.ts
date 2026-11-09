@@ -48,4 +48,13 @@ describe("historical ERA claim candidates", () => {
     expect(assessHistoricalMatchCandidate({ candidate, ...context, organizationId: "10000000-0000-4000-8000-000000000002" }).selectable).toBe(false);
     expect(assessHistoricalMatchCandidate({ candidate, ...context, serviceFrom: null }).selectable).toBe(false);
   });
+
+  it("compares immutable X12 compact dates with normalized ERA service dates", () => {
+    const result = assessHistoricalMatchCandidate({
+      candidate: { ...candidate, serviceFrom: "20260101", serviceTo: "20260131" },
+      ...context,
+    });
+    expect(result.selectable).toBe(true);
+    expect(result.supportingEvidence).toContain("service period matches");
+  });
 });

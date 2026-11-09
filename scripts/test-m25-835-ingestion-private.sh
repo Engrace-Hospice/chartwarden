@@ -36,9 +36,13 @@ cd "$ROOT"
 
 # The suite resets public and drops its application roles. This cluster is disposable and private.
 bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
+# Exercise the legacy manual 835 parser, receiveAdvice/postAdvice financial path and its real dispatcher.
+bunx vitest run apps/backend/__tests__/m25-835-golden.live.test.ts
 # Verify the existing downstream M23/M24 consumers still process M25 payment events from the durable outbox.
 bunx vitest run apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts
 # Verify the existing M23/M26 claim-payment and CAP accrual consumers from transactional outbox events.
 bunx vitest run apps/backend/__tests__/gap-038-cap-day-backfill.live.test.ts
+# Exercise the supported clearinghouse/SFTP pull adapter with synthetic transport data (no live vendor call).
+bunx vitest run apps/backend/__tests__/m25-clearinghouse-pull.test.ts
 
 echo "Private M25 835 ingestion and transaction-core suite completed."

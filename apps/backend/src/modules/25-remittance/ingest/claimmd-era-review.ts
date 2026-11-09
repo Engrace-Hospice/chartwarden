@@ -273,6 +273,12 @@ export interface HistoricalMatchCandidatePage {
   readonly complete: boolean;
 }
 
+function normalizeHistoricalServiceDate(value: string | null): string | null {
+  if (value && /^\d{8}$/.test(value))
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  return value;
+}
+
 export type HistoricalMatchCandidateReader = (input: {
   readonly tx: DbClient;
   readonly organizationId: string;
@@ -305,8 +311,10 @@ export function assessHistoricalMatchCandidate(input: {
   const samePeriod = Boolean(
     input.serviceFrom &&
       input.serviceTo &&
-      candidate.serviceFrom === input.serviceFrom &&
-      candidate.serviceTo === input.serviceTo,
+      normalizeHistoricalServiceDate(candidate.serviceFrom) ===
+        normalizeHistoricalServiceDate(input.serviceFrom) &&
+      normalizeHistoricalServiceDate(candidate.serviceTo) ===
+        normalizeHistoricalServiceDate(input.serviceTo),
   );
   const sameCharge = input.chargeCents !== null && candidate.chargeCents === input.chargeCents;
   const supportingEvidence = [
