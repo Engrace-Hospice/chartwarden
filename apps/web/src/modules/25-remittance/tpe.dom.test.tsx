@@ -1,8 +1,8 @@
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — milestone 5 TPE program tracker. Asserts on RECORDED FETCH CALLS (method, path,
 // If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires still fails. The
 // server owns every rule and its refusal is shown verbatim; a 409 reloads the panel; a missing threshold is said, never
 // assumed; risk and claim-count labels say they are advisory.
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -356,7 +356,7 @@ describe("M25 TPE program panel", () => {
       status: 409,
       body: {
         error: {
-          code: "VERSION_CONFLICT",
+          code: "STALE_VERSION",
           message: "the resource was modified by another writer; re-read and retry",
         },
       },
@@ -475,7 +475,7 @@ describe("M25 TPE program panel", () => {
     refusal = {
       status: 409,
       body: {
-        error: { code: "VERSION_CONFLICT", message: "the resource was modified by another writer" },
+        error: { code: "STALE_VERSION", message: "the resource was modified by another writer" },
       },
     };
     oneShot = true;

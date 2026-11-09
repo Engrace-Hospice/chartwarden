@@ -19,6 +19,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   BillingRuleRegistry,
+  type ClaimAssemblySeams,
   claimTotalMatchesLines,
   levelOfCareCoherence,
   placeOfServiceConsistency,
@@ -32,7 +33,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzleVisitChargeService } from "../src/modules/23-billing-medicare/routes/visit-charge-service";
 import {
   type ClaimAssemblyActor,
-  type ClaimAssemblySeams,
   buildClaimAssemblyService,
 } from "../src/modules/23-billing-medicare/services/claim-assembly";
 import { buildM23ReferenceDataAdapter } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";

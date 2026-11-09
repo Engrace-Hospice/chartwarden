@@ -19,7 +19,7 @@ import { useParams } from "react-router-dom";
 // validation outcome + step-up) and the Replace/Void builder (#10 — TOB 817/818, reason ≥40 chars + step-up).
 // Reads GET /api/v1/medicaid-claims/{id} (+ /lines); writes POST :submit / :replace / :void carrying the
 // claim version as If-Match (§2.5 optimistic concurrency). The server is the only authz point (ADR-0030):
-// a 412 (stale), 422 (validation), 503 (adapter/seam unbound — the Phase-1 ADAPTER_NOT_WIRED deferral) or
+// a 409 STALE_VERSION (stale), 422 (validation), 503 (adapter/seam unbound — the Phase-1 ADAPTER_NOT_WIRED deferral) or
 // 401/403 (step-up) surfaces INLINE (role="alert"), never a toast. Lantern: DetailPageLayout + No-Line table.
 import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import {
@@ -209,7 +209,7 @@ export function MedicaidClaimEditor(): JSX.Element {
         setActionError(
           env?.code === NO_GATEWAY_CODE && env.message
             ? env.message
-            : writeErrorMessage(response?.status),
+            : writeErrorMessage(response?.status, env?.code),
         );
         return;
       }
@@ -566,8 +566,9 @@ export function MedicaidClaimEditor(): JSX.Element {
 }
 
 /** Map a write status code to a precise, PHI-free inline message (§5.4). */
-function writeErrorMessage(status: number | undefined): string {
-  if (status === 412) return "This claim changed since you opened it — close and reopen to retry.";
+function writeErrorMessage(status: number | undefined, code?: string): string {
+  if (code === "STALE_VERSION")
+    return "This claim changed since you opened it — close and reopen to retry.";
   if (status === 422) return "Validation failed — resolve the claim's open findings first.";
   if (status === 409) return "This action is not available from the claim's current state.";
   if (status === 401 || status === 403)

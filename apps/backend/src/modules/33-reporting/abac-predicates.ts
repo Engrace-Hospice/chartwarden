@@ -1,3 +1,9 @@
+import {
+  type AbacContext,
+  type AbacTarget,
+  PLATFORM_OPS_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/abac-predicates.ts — M33 (§4.7).
 //
 // The TWO named ABAC predicate resolvers M33 OWNS and registers into M3's named-predicate registry
@@ -17,12 +23,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has` (the M34 `registerTenantPlatformAbacPredicates` precedent).
-import {
-  type AbacContext,
-  type AbacTarget,
-  PLATFORM_OPS_ROLE_KEYS,
-  registerPredicateIdempotent,
-} from "@chartwarden/auth";
+import { membershipIdOf, targetStr } from "@chartwarden/shared/route-kit";
 import { canMutateSchedule, canReadSchedule, isScheduleAdmin } from "./routes/schedule-authz";
 
 /** The §4.7 predicate names M33 owns (registered into M3). Single-owner across the platform registry. */
@@ -35,19 +36,19 @@ export const M33_ABAC_PREDICATES = [
 ] as const;
 
 /** Roles that may read the compliance drilldown-audit trail (the §4.2 `compliance_officer_scope`). */
-export const COMPLIANCE_AUDIT_ROLE_KEYS = [
+const COMPLIANCE_AUDIT_ROLE_KEYS = [
   "compliance_officer",
   "hipaa_privacy_officer",
   "hipaa_security_officer",
 ] as const;
 
 /** `platform_admin_scope` - the actor holds a role from the platform-ops catalog (the M29 / M35 single source). */
-export function isPlatformAdminActor(context: AbacContext): boolean {
+function isPlatformAdminActor(context: AbacContext): boolean {
   return context.roles.some((r) => (PLATFORM_OPS_ROLE_KEYS as readonly string[]).includes(r));
 }
 
 /** `compliance_officer_scope` - a tenant actor holding a compliance / privacy / security officer role. */
-export function isComplianceOfficerActor(context: AbacContext): boolean {
+function isComplianceOfficerActor(context: AbacContext): boolean {
   return (
     Boolean(context.organizationId) &&
     context.roles.some((r) => (COMPLIANCE_AUDIT_ROLE_KEYS as readonly string[]).includes(r))
@@ -125,20 +126,6 @@ export interface ReportingAbacDeps {
 }
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
-const targetStr = (target: AbacTarget, field: string): string | null => {
-  const value = target[field];
-  return typeof value === "string" && value.length > 0 ? value : null;
-};
-
-/**
- * Read the actor's server-assembled membership id (M2 session attribute). The route layer binds the
- * active membership into `context.attributes.membershipId`; absent → null (fail-closed where used).
- */
-function membershipIdOf(context: AbacContext): string | null {
-  const value = context.attributes.membershipId;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 /**
  * Deny-stub `ReportingAbacResolver` — every lookup fails closed (no view, no supervised members, not a
  * location supervisor). Lets the composition root register the predicates at boot BEFORE the real M2/M5

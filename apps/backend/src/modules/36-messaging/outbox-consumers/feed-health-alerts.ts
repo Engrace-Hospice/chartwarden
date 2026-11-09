@@ -19,9 +19,9 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_FEED_HEALTH_ALERT_CONSUMER = "m36.feed-health-alerts" as const;
+const M36_FEED_HEALTH_ALERT_CONSUMER = "m36.feed-health-alerts" as const;
 
-export const M36_FEED_HEALTH_ALERT_EVENT_TYPES = [
+const M36_FEED_HEALTH_ALERT_EVENT_TYPES = [
   "m29.external_feed.listener_down",
   "m29.external_feed.listener_recovered",
 ] as const;

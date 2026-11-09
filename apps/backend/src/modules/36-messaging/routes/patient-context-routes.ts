@@ -1,3 +1,9 @@
+import {
+  type GuardHandler,
+  composeGuards,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/patient-context-routes.ts — WP 3.1 patient context panel.
 //
 //   GET /api/v1/messaging/patients/:patientId/context
@@ -16,12 +22,7 @@
 // KNOWN LIMIT: `auditRead.fields` is static (the read-audit plugin takes one list per route), so the audit row names all
 // five tiles even when the caller was shown fewer, and a no-tile 200 is still audited against the param patient id.
 // That over-reports disclosure; it never under-reports.
-import {
-  type GuardHandler,
-  composeGuards,
-  requireAbac,
-  requirePermission,
-} from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -33,8 +34,6 @@ import {
 } from "../patient-context/patient-context-service";
 import { PatientConversationParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const SCOPE = "caseload_or_scope";
 const tileGuard = (permission: string): GuardHandler =>

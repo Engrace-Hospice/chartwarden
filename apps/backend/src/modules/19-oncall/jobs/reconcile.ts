@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/19-oncall/jobs/reconcile.ts — the §4.5 path 1 org-wide reconciliation the
 // `on_call_roster_sync_queue` drain worker (and, indirectly, the catch-up seeder) run per claimed row
 // (m19 `handlers-unbound` group, #248; F-155's own finding, now built).
@@ -22,7 +23,7 @@
 // `on_call_shift` rows preserved untouched, `degraded: true` reported — so a tenant that schedules shifts by
 // hand is never silently emptied. The port stays injectable so the debounce/claim/apply machinery can be
 // proven with a roster of the test's choosing.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type { IsoInstant, OncallModel, OrgId } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -36,10 +37,6 @@ import { reconcileOnCallRoster } from "../roster/shift-sync";
 
 const POLICY = schema.tenantOncallPolicy;
 const SHIFT = schema.onCallShift;
-
-/** §3.3 — a machine-driven roster sync names no acting membership (the `m17-no-show`/`m36-delivery-failed`
- *  `CONSUMER_USER_ID` convention, restated locally per this directory's own files). */
-const CONSUMER_USER_ID = "";
 
 /** The port `reconcileOrgOnCallRoster` reads the roster through — defaults to the real
  *  `readOnCallRoster`. See the file header for why this stays injectable rather than a direct import. */

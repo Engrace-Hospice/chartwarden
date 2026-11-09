@@ -14,7 +14,7 @@
 import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@chartwarden/types";
 
 /** The sliding window is one second wide (D16 ceilings are per-second). */
-export const FHIR_RATE_LIMIT_WINDOW_MS = 1000;
+const FHIR_RATE_LIMIT_WINDOW_MS = 1000;
 
 /** The `Retry-After` (seconds) a throttled request carries (W-FHIR-08 step 2). The budget refills at the
  *  next window boundary, at most one second away, so a single second is the correct advertised wait. */

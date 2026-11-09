@@ -1,4 +1,3 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/adr.routes.ts — M25 ADR routes (hospice ADR/TPE/QIC PRD
 // milestone 2a): the ADR worklist and detail, log an ADR, move it through assembly / review / closure, and the
 // organization's MAC response-window rules. Reads gate on `adr.read`, case writes on `adr.manage`, rule edits
@@ -7,14 +6,15 @@ import { NotFoundError } from "@chartwarden/types";
 // Milestone 2b adds the response packet: attach / detach documents and tick the checklist (`adr.manage`), sign off
 // (`adr.review`, a different person from whoever sent it to review) and record the filing (`adr.submit` + step-up).
 // Each packet change is If-Match so a sign-off is always on the version the reviewer saw.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { ADR_CHECKLIST_KEYS, ADR_FILING_CHANNELS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
 import type { AdrManualTarget, AdrService } from "./adr-service";
-import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP } from "./guards";
-import { parse } from "./m25-typebox";
+import { clampLimit } from "./m25-typebox";
 
 export interface AdrRouteDeps {
   readonly adrService: AdrService;
@@ -207,7 +207,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           body.to as AdrManualTarget,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -223,7 +223,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -240,7 +240,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           documentId,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -257,7 +257,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
           idOf(request),
           (request.params as { key: string }).key,
           body.state,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -268,7 +268,11 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
     { preHandler: [REVIEW, IDEMPOTENT] },
     async (request, reply) =>
       reply.send(
-        await adrService.signOffAdr(writeActorOf(request), idOf(request), ifMatchVersion(request)),
+        await adrService.signOffAdr(
+          writeActorOf(request),
+          idOf(request),
+          ifMatchVersionOf(request),
+        ),
       ),
   );
 
@@ -283,7 +287,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

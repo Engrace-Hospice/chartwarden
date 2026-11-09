@@ -16,7 +16,7 @@
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
-import { actorOf, writeActorOf } from "./actor";
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { ABAC_IN_ORG, ABAC_NPPES_PLATFORM, P, STEP_UP } from "./guards";
 import { NppesSyncRunListQuery, NppesSyncTriggerBody, parse, parseQuery } from "./m29-typebox";
 import { NPPES_NO_PHI } from "./read-audit-configs";

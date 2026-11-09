@@ -1,3 +1,15 @@
+import { randomUUID } from "node:crypto";
+import {
+  type CorrectedDates,
+  type NoticeCorrectionPlan,
+  type NoticeLink,
+  correctedNoticeDates,
+  deriveControlNumber,
+  minIso,
+  planNoticeCorrection,
+  repositories,
+  validateCorrectionReason,
+} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/services/notice-correction-service.ts — file a corrected NOE / NOTR
 // after Medicare rejected one (CMS Pub. 100-04 ch. 11 §20.1.1 / §20.1.2; M23 §2.2 "corrected NOE is its own row").
 //
@@ -17,18 +29,7 @@
 // Every write runs in one `withOrgContext` transaction (RLS on `app.org_id`, FORCEd); the row insert is captured by
 // the table's write-audit trigger and announced by `m23.noe|notr.draft_created` + `.correction_created` on the same
 // transaction (transactional outbox). The biller's reason stays on the row — never in an event (it is free text).
-import { randomUUID } from "node:crypto";
-import {
-  type CorrectedDates,
-  type NoticeCorrectionPlan,
-  type NoticeLink,
-  correctedNoticeDates,
-  deriveControlNumber,
-  minIso,
-  planNoticeCorrection,
-  repositories,
-  validateCorrectionReason,
-} from "@chartwarden/billing";
+import { uniqueViolationConstraint } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import {
@@ -82,13 +83,8 @@ export interface NoticeCorrectionService {
 type UniqueRace = "open_correction" | "live_notice" | "control_number" | null;
 
 function uniqueRaceOf(err: unknown): UniqueRace {
-  const e = err as {
-    code?: string;
-    constraint?: string;
-    cause?: { code?: string; constraint?: string };
-  };
-  if ((e?.code ?? e?.cause?.code) !== "23505") return null;
-  const constraint = e?.constraint ?? e?.cause?.constraint ?? "";
+  const constraint = uniqueViolationConstraint(err);
+  if (constraint === null) return null;
   if (constraint.endsWith("_control_number_uq")) return "control_number";
   if (constraint === "noe_record_admission_uq" || constraint === "notr_unique_by_event_uq") {
     return "live_notice";

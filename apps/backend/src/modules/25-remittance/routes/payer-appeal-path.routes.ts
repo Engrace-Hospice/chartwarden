@@ -1,8 +1,9 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes.ts - M25 milestone 12a-1 routes: the organization's
 // payer appeal PATHS (data a person writes from a contract; nothing is seeded). Reads gate on `payer_appeal_path.read`, a
 // draft is written on `payer_appeal_path.manage`, and a SECOND person activates it on `payer_appeal_path.verify`. Every
 // change is If-Match (409 when stale) and every mutation requires an Idempotency-Key. Org and actor are server-derived.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import {
@@ -16,10 +17,8 @@ import {
   WHO_FILES,
 } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
 import { uuidParam } from "./later-tier.routes";
-import { parse } from "./m25-typebox";
 import type { PayerAppealPathService } from "./payer-appeal-path-service";
 
 export interface PayerAppealPathRouteDeps {
@@ -197,7 +196,7 @@ export function registerPayerAppealPathRoutes(
     { preHandler: [VERIFY, IDEMPOTENT] },
     async (request, reply) =>
       reply.send(
-        await svc.verifyPath(writeActorOf(request), pathId(request), ifMatchVersion(request)),
+        await svc.verifyPath(writeActorOf(request), pathId(request), ifMatchVersionOf(request)),
       ),
   );
 
@@ -206,7 +205,7 @@ export function registerPayerAppealPathRoutes(
     { preHandler: [MANAGE, IDEMPOTENT] },
     async (request, reply) =>
       reply.send(
-        await svc.retirePath(writeActorOf(request), pathId(request), ifMatchVersion(request)),
+        await svc.retirePath(writeActorOf(request), pathId(request), ifMatchVersionOf(request)),
       ),
   );
 }

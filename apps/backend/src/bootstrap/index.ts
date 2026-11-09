@@ -11,7 +11,9 @@
 // the host boots and is testable with no live infra; production supplies the real adapters.
 import type { DbClient } from "@chartwarden/db";
 import type { IdempotencyStore } from "@chartwarden/shared";
+import { configureCursorSigningKey, registerRouteFormats } from "@chartwarden/shared/route-kit";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import { cursorSigningKeyFrom } from "./env";
 import { wireErasers } from "./erasers/providers";
 import { validateErasers } from "./erasers/registry";
 import { type CsrfOptions, applyCsrfProtection } from "./plugins/csrf";
@@ -285,6 +287,11 @@ export function bootSeams(
  */
 export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   bootSeams(deps.registerModuleSeams, deps.registerModuleErasers);
+  // The route kit's strict formats win over anything a module registered on import, and cursors are signed
+  // with the deployment key (production refuses to boot without one).
+  registerRouteFormats();
+  const cursorKey = cursorSigningKeyFrom(process.env);
+  if (cursorKey) configureCursorSigningKey(cursorKey);
 
   const app = Fastify({
     logger: buildLoggerOptions(), // PHI-safe: path-only URLs + redacted auth headers/cookies

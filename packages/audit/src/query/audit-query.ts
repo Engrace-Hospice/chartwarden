@@ -13,6 +13,8 @@
 // here is the reusable, infra-free implementation every consumer's tests run against; the
 // production Drizzle adapter (org-scoped by RLS inside withOrgContext) is a tracked follow-up.
 
+import { decodeKeysetCursor, encodeCursor as signCursor } from "@chartwarden/shared/route-kit";
+
 /** Read view of one `audit_event` row (a DTO — never the raw Drizzle row). */
 export interface AuditEventRecord {
   readonly id: string;
@@ -186,21 +188,15 @@ export function resolveLimit(requested?: number): number {
   return Math.min(MAX_PAGE_LIMIT, Math.max(1, Math.floor(requested)));
 }
 
-/** Encode the opaque, newest-first pagination cursor from a row's (createdAt, id). */
-export function encodeCursor(row: { createdAt: string; id: string }): string {
-  return Buffer.from(`${row.createdAt}|${row.id}`, "utf8").toString("base64url");
+/** Encode the opaque, newest-first pagination cursor from a row's (createdAt, id), signed for `orgId`. */
+export function encodeCursor(orgId: string, row: { createdAt: string; id: string }): string {
+  return signCursor(orgId, { a: row.createdAt, id: row.id });
 }
 
-/** Decode a cursor back to its (createdAt, id); returns null when malformed (treated as "start"). */
-export function decodeCursor(cursor: string): { createdAt: string; id: string } | null {
-  try {
-    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
-    const sep = decoded.lastIndexOf("|");
-    if (sep <= 0) return null;
-    return { createdAt: decoded.slice(0, sep), id: decoded.slice(sep + 1) };
-  } catch {
-    return null;
-  }
+/** Verify + decode a cursor to its (createdAt, id). A forged, foreign or malformed one is 422 INVALID_CURSOR. */
+export function decodeCursor(orgId: string, cursor: string): { createdAt: string; id: string } | null {
+  const k = decodeKeysetCursor(orgId, cursor, "instant");
+  return k ? { createdAt: k.a, id: k.id } : null;
 }
 
 /** Newest-first ordering: createdAt desc, then id desc (stable across equal timestamps). */
@@ -333,16 +329,17 @@ function matchesFilter(record: AuditEventRecord, filter: AuditEventFilter): bool
 
 /** Sort newest-first, page past the cursor, and take `limit` (+1 lookahead for `nextCursor`). */
 function paginate<T extends AuditEventRecord>(
+  orgId: string,
   records: T[],
   cursor: string | undefined,
   limit: number,
 ): { page: T[]; nextCursor: string | null } {
   const sorted = [...records].sort(compareNewestFirst);
-  const start = cursor ? decodeCursor(cursor) : null;
+  const start = cursor ? decodeCursor(orgId, cursor) : null;
   const windowed = start ? sorted.filter((r) => isAfterCursor(r, start)) : sorted;
   const page = windowed.slice(0, limit);
   const nextCursor =
-    windowed.length > limit && page.length > 0 ? encodeCursor(page[page.length - 1]!) : null;
+    windowed.length > limit && page.length > 0 ? encodeCursor(orgId, page[page.length - 1]!) : null;
   return { page, nextCursor };
 }
 
@@ -382,7 +379,7 @@ export function createInMemoryAuditQuery(seed: readonly AuditEventRecord[] = [])
   const query: AuditQuery = {
     searchEvents(orgId, filter) {
       const matched = inOrg(orgId).filter((r) => matchesFilter(r, filter));
-      const { page, nextCursor } = paginate(matched, filter.cursor, resolveLimit(filter.limit));
+      const { page, nextCursor } = paginate(orgId, matched, filter.cursor, resolveLimit(filter.limit));
       return Promise.resolve({ items: page, nextCursor });
     },
     getEvent(orgId, id) {
@@ -392,7 +389,7 @@ export function createInMemoryAuditQuery(seed: readonly AuditEventRecord[] = [])
       const matched = inOrg(orgId).filter(
         (r) => eventTouchesPatient(r, patientId) && isAccessEvent(r),
       );
-      const { page, nextCursor } = paginate(matched, filter.cursor, resolveLimit(filter.limit));
+      const { page, nextCursor } = paginate(orgId, matched, filter.cursor, resolveLimit(filter.limit));
       return Promise.resolve({ items: page.map(toPatientAccessEntry), nextCursor });
     },
     accounting(orgId, patientId, filter) {
@@ -403,7 +400,7 @@ export function createInMemoryAuditQuery(seed: readonly AuditEventRecord[] = [])
           r.createdAt >= filter.from &&
           r.createdAt <= filter.to,
       );
-      const { page, nextCursor } = paginate(matched, filter.cursor, resolveLimit(filter.limit));
+      const { page, nextCursor } = paginate(orgId, matched, filter.cursor, resolveLimit(filter.limit));
       return Promise.resolve({
         patientId,
         period: { from: filter.from, to: filter.to },

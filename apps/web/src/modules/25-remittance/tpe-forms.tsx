@@ -1,8 +1,8 @@
-import { Button, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the TPE tracker forms (hospice ADR/TPE/QIC PRD, milestone 5): open a program,
 // start a round, record a round's results, education, a sampled claim, and the outcome. Each form collects facts typed
 // from the MAC's letters and shows the server's message verbatim (ADR-0030); a 409 means the record changed under the
 // user, so the form hands the message to the panel, which reloads. Nothing here decides a threshold or a deadline.
+import { Button, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
@@ -53,7 +53,7 @@ function useSubmit<T>(props: TpeFormProps<T>) {
     }
     // Only a true version conflict means "the record moved: reload". A business 409 (a duplicate active program, a
     // previous round still open, a closed program...) is an ordinary refusal: show it here and keep what was typed.
-    if (res.code === "VERSION_CONFLICT") props.onStale(res.message);
+    if (res.code === "STALE_VERSION") props.onStale(res.message);
     else setError(res.message);
   }
   return { busy, error, run };

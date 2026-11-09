@@ -1,9 +1,8 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/27-cost-report/routes/cost-report-typebox.ts — M27 (§4.2) request schemas.
 //
 // TypeBox path-param / query / body schemas for the §4.1 cost-report routes (cost reports, worksheets,
 // cost-center mappings, imports, bad-debt, statistics, validations, ECR submissions, snapshots, compliance
-// window, validation rules) + the `parse(...)` helper. Named `cost-report-typebox` (NOT `*schema*`) so the
+// window, validation rules); `parse` is the route kit's. Named `cost-report-typebox` (NOT `*schema*`) so the
 // table-ownership import heuristic never mistakes a TypeBox import for a Drizzle one (the M30
 // `quality-typebox` / M33 `reporting-typebox` precedent). Validation runs through TypeBox `Value` → M1's
 // VALIDATION_FAILED envelope. Org/actor/membership binding is ALWAYS server-side (request.context) — no
@@ -13,16 +12,15 @@ import { ValidationError } from "@chartwarden/types";
 // VOCAB NOTE: the string-literal unions mirror the FROZEN `@chartwarden/db` pgEnum value lists
 // (packages/db/src/schema/cost-report/*) and the @chartwarden/cost-report value unions; schema wins on conflict.
 // M27 carries NO PHI (D18); every money field is INTEGER CENTS (D8).
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
-import type { CursorPage } from "./concurrency";
 import type {
   BadDebtRecordView,
   ComplianceWindowView,
   CostCenterMappingView,
   CostReportDetailView,
   CostReportSummaryView,
+  CursorPage,
   EcrSubmissionView,
   MappingPreviewView,
   SnapshotDetailView,
@@ -44,17 +42,6 @@ import type {
   StatisticsRefreshAcceptedView,
   ValidationJobAcceptedView,
 } from "./write-service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 const uuid = () => Type.String({ format: "uuid" });
@@ -106,10 +93,7 @@ const REOPEN_REASON_CATEGORY = [
 ] as const;
 
 // ── cursor / keyset page query (§4.1.2 — opaque cursor + clamp-to-100 limit) ────────────────────────────
-const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-};
+const PageQuery = pageQuery({ max: 100 });
 
 // ── path params ──────────────────────────────────────────────────────────────────────────────────────
 export const CostReportIdParamsSchema = Type.Object({ id: uuid() });
@@ -599,20 +583,3 @@ type _ValidationJobAccepted = Conforms<
   Static<typeof ValidationJobAcceptedResponseSchema>,
   ValidationJobAcceptedView
 >;
-
-/**
- * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on the
- * first error (the M30/M33 `parse(...)` precedent). The route handlers call this on params/query/body so a
- * malformed request is refused with the platform error shape before the service is reached.
- */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

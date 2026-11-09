@@ -27,10 +27,10 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { selectCapPeriodForCcn } from "./cap-period-selection";
-import type { M26ReadActor } from "./routes/actor";
+import type { M26Actor } from "./routes/read-service";
 import type { M26ReadService } from "./routes/read-service";
 
-const systemActor = (orgId: string): M26ReadActor => ({
+const systemActor = (orgId: string): M26Actor => ({
   organizationId: orgId,
   userId: "system",
   roles: [],

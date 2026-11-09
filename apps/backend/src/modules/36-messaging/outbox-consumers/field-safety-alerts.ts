@@ -39,9 +39,9 @@ import type {
 } from "../../../bootstrap/outbox-dispatcher";
 
 /** Alert-rule key (not an outbox event) of the second, `on_call`-resolved page per escalation rung. */
-export const M20_CHECK_IN_ESCALATED_ONCALL_ALERT = "m20.safety.check_in_escalated_oncall" as const;
+const M20_CHECK_IN_ESCALATED_ONCALL_ALERT = "m20.safety.check_in_escalated_oncall" as const;
 
-export const M36_FIELD_SAFETY_ALERT_CONSUMER = "m36.field-safety-alerts" as const;
+const M36_FIELD_SAFETY_ALERT_CONSUMER = "m36.field-safety-alerts" as const;
 
 export const M36_FIELD_SAFETY_ALERT_EVENT_TYPES = [
   "m20.safety.check_in_overdue",

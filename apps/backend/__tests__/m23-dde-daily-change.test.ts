@@ -295,11 +295,11 @@ describe("DDE daily change ingest", () => {
     expect(new Set(applied)).toEqual(new Set(["dde-evt-1", "dde-evt-3", "dde-evt-4"]));
   });
 
-  it("retries a VERSION_CONFLICT forever and never quarantines it (nor a 5xx)", async () => {
+  it("retries a STALE_VERSION forever and never quarantines it (nor a 5xx)", async () => {
     const provider = new InMemoryDdeProvider();
     await seeded(provider, 1);
     for (const error of [
-      new ChartWardenError("VERSION_CONFLICT", "stale", 412),
+      new ChartWardenError("STALE_VERSION", "stale", 409),
       new ChartWardenError("DB_DOWN", "x", 503),
     ]) {
       const s = fakeStore([{ providerEntityId: PE, operatorMembershipId: OP_A }]);
@@ -550,7 +550,7 @@ describe("DDE daily change ingest", () => {
     const provider = new InMemoryDdeProvider();
     await seeded(provider, 1);
     const s = fakeStore([{ providerEntityId: PE, operatorMembershipId: OP_A }]);
-    const other = new ChartWardenError("VERSION_CONFLICT", "stale", 412);
+    const other = new ChartWardenError("STALE_VERSION", "stale", 409);
     const applier: DdeChangeApplier = { applyProviderChange: async () => Promise.reject(other) };
     const r = await ingestDdeChanges(deps(provider, s.store, applier), ORG);
     expect(r.failures).toHaveLength(1);

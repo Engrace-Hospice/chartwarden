@@ -3,6 +3,7 @@
 // (request-scoped, like every other `VisitAssignmentReader` read) and M17's own rotation management routes
 // (org-explicit, the `credentials-drizzle-store` shape).
 import { type DbClient, schema } from "@chartwarden/db";
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
 import type { OnCallRosterEntry } from "@chartwarden/types";
@@ -22,7 +23,6 @@ export type OnCallRotationDiscipline = (typeof ONCALL_ROTATION_DISCIPLINES)[numb
 
 /** The most roster rows one read returns — the roster is O(clinicians × upcoming nights). */
 export const ONCALL_ROSTER_LIMIT = 1000;
-const POSTGRES_UNIQUE_VIOLATION = "23505";
 
 export interface OnCallRotationView {
   readonly id: string;
@@ -78,12 +78,6 @@ function toView(row: Row): OnCallRotationView {
     endsAt: row.endsAt.toISOString(),
     cancelledAt: row.cancelledAt ? row.cancelledAt.toISOString() : null,
   };
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string; cause?: { code?: string } } | null)?.code;
-  const causeCode = (error as { cause?: { code?: string } } | null)?.cause?.code;
-  return code === POSTGRES_UNIQUE_VIOLATION || causeCode === POSTGRES_UNIQUE_VIOLATION;
 }
 
 export function createDrizzleOnCallRotationStore(db: DbClient): OnCallRotationStore {

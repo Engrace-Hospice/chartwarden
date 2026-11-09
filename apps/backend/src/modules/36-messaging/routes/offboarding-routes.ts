@@ -1,3 +1,13 @@
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import {
+  OFFBOARDING_EXECUTE_STEP_UP_KEY,
+  OFFBOARDING_MANAGE_PERMISSION,
+  UnauthorizedError,
+} from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { OffboardingService } from "../offboarding/offboarding-service";
+import type { OffboardingActor } from "../offboarding/offboarding-types";
 // apps/backend/src/modules/36-messaging/routes/offboarding-routes.ts - WP 5.9 (ADR-0084, PROPOSED): workforce offboarding.
 //
 //   GET  /api/v1/messaging/governance/offboarding/:userId           dry run: what is left for M36 to do for a departed user (counts only)
@@ -8,19 +18,9 @@
 //
 // Org, officer and session are the server-side request context. An unknown or another tenant's user is the same 404; a user who has not left
 // is a 409. Nothing returned is a name, a message or a patient.
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
-import {
-  OFFBOARDING_EXECUTE_STEP_UP_KEY,
-  OFFBOARDING_MANAGE_PERMISSION,
-  UnauthorizedError,
-} from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { OffboardingService } from "../offboarding/offboarding-service";
-import type { OffboardingActor } from "../offboarding/offboarding-types";
+import { sessionActorOf } from "./actor";
 import { parse } from "./messaging-typebox";
 import { OffboardingParamsSchema, OffboardingResponseSchema } from "./offboarding-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const MANAGE = requirePermission(OFFBOARDING_MANAGE_PERMISSION) as PreHandler;
 // The execute step moves acknowledgment requests through the supervisor reassign, whose own route demands these two keys.
@@ -30,15 +30,6 @@ const STEP_UP = requireStepUp(OFFBOARDING_EXECUTE_STEP_UP_KEY) as PreHandler;
 
 export interface OffboardingRouteDeps {
   readonly service: OffboardingService;
-}
-
-function actorOf(request: FastifyRequest): OffboardingActor {
-  const ctx = request.context;
-  const sessionId = ctx?.attributes?.sessionId;
-  if (!ctx?.organizationId || !ctx.userId || typeof sessionId !== "string" || sessionId === "") {
-    throw new UnauthorizedError();
-  }
-  return { organizationId: ctx.organizationId, userId: ctx.userId, sessionId };
 }
 
 export function registerOffboardingRoutes(app: FastifyInstance, deps: OffboardingRouteDeps): void {
@@ -59,7 +50,7 @@ export function registerOffboardingRoutes(app: FastifyInstance, deps: Offboardin
       const { userId } = parse(OffboardingParamsSchema, request.params);
       return reply
         .header("Cache-Control", "no-store")
-        .send(await service.preview(actorOf(request), userId));
+        .send(await service.preview(sessionActorOf(request), userId));
     },
   );
 
@@ -73,7 +64,7 @@ export function registerOffboardingRoutes(app: FastifyInstance, deps: Offboardin
       const { userId } = parse(OffboardingParamsSchema, request.params);
       return reply
         .header("Cache-Control", "no-store")
-        .send(await service.execute(actorOf(request), userId));
+        .send(await service.execute(sessionActorOf(request), userId));
     },
   );
 }

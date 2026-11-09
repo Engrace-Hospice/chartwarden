@@ -11,17 +11,17 @@
 // step-up, no AI actor, an Idempotency-Key. The acting user is stamped on every m41.claim.ack_abandoned event. Org and actor come from
 // the server-assembled request context, never the body. Responses carry ids, reasons, control numbers and counts only.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { COMMERCIAL_BILLING_PERMISSIONS, ForbiddenError, NotFoundError } from "@chartwarden/types";
-import type { FastifyInstance } from "fastify";
-import { billingScopeReach } from "../../23-billing-medicare/abac-predicates";
 import {
   type PreHandler,
   actorOf,
+  parse,
   rejectAiActor,
+  requireIdempotencyKey,
   writeActorOf,
-} from "../../23-billing-medicare/routes/actor";
-import { parse } from "../../23-billing-medicare/routes/billing-typebox";
-import { requireIdempotencyKey } from "../../23-billing-medicare/routes/concurrency";
+} from "@chartwarden/shared/route-kit";
+import { COMMERCIAL_BILLING_PERMISSIONS, ForbiddenError, NotFoundError } from "@chartwarden/types";
+import type { FastifyInstance } from "fastify";
+import { billingScopeReach } from "../../23-billing-medicare/abac-predicates";
 import type { AckApplyDeps } from "../jobs/ack-apply";
 import {
   abandonForeignHeldEvents,

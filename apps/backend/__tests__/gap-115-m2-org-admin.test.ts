@@ -146,6 +146,25 @@ describe("organizations", () => {
     await app.close();
   });
 
+  it("pages the platform listing with a signed cursor; a garbage or tampered cursor is a 422, not page 1", async () => {
+    const { app } = makeServer();
+    const list = (query: string) =>
+      app.inject({ method: "GET", url: `/api/v1/orgs?${query}`, headers: PLATFORM });
+    const first = await list("limit=1");
+    expect(first.json().items.map((o: { id: string }) => o.id)).toEqual(["org_a"]);
+    const { nextCursor } = first.json() as { nextCursor: string };
+    expect(nextCursor).toContain(".");
+    const second = await list(`limit=1&cursor=${encodeURIComponent(nextCursor)}`);
+    expect(second.json().items.map((o: { id: string }) => o.id)).toEqual(["org_b"]);
+    expect(second.json().nextCursor).toBeNull();
+    for (const bad of ["garbage", "1", `x${nextCursor}`]) {
+      const res = await list(`limit=1&cursor=${encodeURIComponent(bad)}`);
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("INVALID_CURSOR");
+    }
+    await app.close();
+  });
+
   it("a tenant admin cannot read another org; org.manage is required", async () => {
     const { app } = makeServer();
     expect(

@@ -6,7 +6,7 @@
 // gate composes on methodology-lock / settlement-finalize / year-reopen (the operation key is the
 // permission key so M3 resolves the per-op freshness policy).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { PreHandler } from "./actor";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 
 type TargetRequest = { readonly params?: unknown };
 

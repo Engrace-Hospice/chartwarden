@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts - WP 4.9 (ADR-0076).
 //
 //   GET /api/v1/messaging/escalations/unacknowledged?status&overdue&cursor&limit
@@ -10,14 +11,12 @@
 // lifecycle review queue, recorded against `audit_request_id` (the first request shown in full: a restricted row has no id, so
 // "items.0.id" would be empty whenever the oldest request is one). A page that shows no request in full discloses nobody and emits
 // nothing. No request header is read here.
-import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { type AckQueueStatus, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { UnacknowledgedService } from "../ack-requests/unacknowledged-service";
 import { parse } from "./messaging-typebox";
 import { UnacknowledgedQuerySchema, UnacknowledgedResponseSchema } from "./unacknowledged-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface UnacknowledgedRouteDeps {
   readonly service: UnacknowledgedService;

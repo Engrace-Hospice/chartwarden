@@ -8,8 +8,17 @@
 // DTO discipline: audit-denylisted / cipher columns (`raw_payload_cipher`, `materialized_inputs`,
 // `worksheet_snapshot`) are NEVER projected onto a list view. The snapshot full-detail read
 // (`getSnapshot`) is the one audit-read-logged route that surfaces the materialized payloads.
-import type { M27ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
+import type { RouteActor } from "@chartwarden/shared/route-kit";
+
+/** The read actor an M27 service needs (the route kit's actor, narrowed). */
+export type M27ReadActor = Pick<RouteActor, "organizationId" | "userId" | "roles">;
+
+/** A page of items plus the opaque `nextCursor` (null at the end). */
+export interface CursorPage<T> {
+  readonly items: readonly T[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
 
 // ── shared value types ────────────────────────────────────────────────────────────────────────────────
 

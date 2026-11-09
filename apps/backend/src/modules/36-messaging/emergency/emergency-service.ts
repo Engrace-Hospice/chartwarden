@@ -73,11 +73,7 @@ const COLUMNS = {
 };
 
 /** The "past deadline" marker (pure): the deadline passed and somebody still has not acknowledged. */
-export function isEmergencyPastDeadline(
-  e: { deadlineAt: Date },
-  pending: number,
-  now: Date,
-): boolean {
+function isEmergencyPastDeadline(e: { deadlineAt: Date }, pending: number, now: Date): boolean {
   return pending > 0 && e.deadlineAt.getTime() <= now.getTime();
 }
 

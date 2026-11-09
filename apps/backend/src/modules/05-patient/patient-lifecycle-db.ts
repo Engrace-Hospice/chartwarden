@@ -3,6 +3,7 @@
 // every write publishes its spec'd `m5.patient.*` event through the m5 outbox port ON THE SAME
 // TRANSACTION, so a rejected publish rolls the write back.
 import { type DbClient, schema } from "@chartwarden/db";
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type M5OutboxPort, recordDeathFromDischarge } from "./deceased-db";
@@ -57,7 +58,6 @@ const REVIEW = schema.patientMatchReviews;
 const PM = schema.patientMerges;
 const AMEND = schema.patientAmendmentRequests;
 
-const PG_UNIQUE_VIOLATION = "23505";
 const KNOWN_PATIENT_STATUSES: ReadonlySet<string> = new Set([
   "prospective",
   "active",
@@ -66,11 +66,6 @@ const KNOWN_PATIENT_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
-
-function isUniqueViolation(e: unknown): boolean {
-  const code = (e as { code?: unknown; cause?: { code?: unknown } } | null) ?? null;
-  return code?.code === PG_UNIQUE_VIOLATION || code?.cause?.code === PG_UNIQUE_VIOLATION;
-}
 
 function toAmendment(r: typeof AMEND.$inferSelect): AmendmentRecord {
   return {

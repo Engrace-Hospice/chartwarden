@@ -59,7 +59,7 @@ const INVOICE_EVENT_STATUS: Readonly<Record<string, InvoiceStatus>> = {
 };
 
 /** Map one Stripe invoice object's lines onto M35 line inputs (+ a synthetic tax line so the sums reconcile). */
-export function invoiceLinesOf(invoice: Json): Array<{
+function invoiceLinesOf(invoice: Json): Array<{
   stripeLineId: string;
   kind: InvoiceLineKind;
   description: string;

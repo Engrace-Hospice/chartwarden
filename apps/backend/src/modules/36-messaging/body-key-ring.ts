@@ -41,7 +41,7 @@ export interface MessageBodyKeyProvider {
   dekForOrgVersion(orgId: string, version: string): Promise<RingBodyDek>;
 }
 
-export const RING_DEK_CACHE_TTL_MS = 60_000;
+const RING_DEK_CACHE_TTL_MS = 60_000;
 const RING_DEK_CACHE_MAX_ENTRIES = 4_096;
 
 export interface RingDekCache {

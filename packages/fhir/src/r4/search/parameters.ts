@@ -6,9 +6,9 @@
 // `OperationOutcome.issue.code='not-supported'` (the translator enforces this).
 
 /** `_count` bounds (D13 default 50, max 500). */
-export const FHIR_SEARCH_COUNT_DEFAULT = 50;
-export const FHIR_SEARCH_COUNT_MIN = 1;
-export const FHIR_SEARCH_COUNT_MAX = 500;
+const FHIR_SEARCH_COUNT_DEFAULT = 50;
+const FHIR_SEARCH_COUNT_MIN = 1;
+const FHIR_SEARCH_COUNT_MAX = 500;
 
 /**
  * Per-resource mandatory search parameters. Keyed by FHIR resource type; each value is the closed set of
@@ -16,21 +16,20 @@ export const FHIR_SEARCH_COUNT_MAX = 500;
  * `_include`, `_revinclude`, `_summary`, `_elements`, `_sort`) are handled by the translator itself and
  * are legal on every search, so they are NOT listed per-resource.
  */
-export const US_CORE_SEARCH_PARAMETERS: { readonly [resourceType: string]: ReadonlyArray<string> } =
-  {
-    Patient: ["_id", "identifier", "name", "family", "given", "birthdate", "gender"],
-    Encounter: ["_id", "patient", "class", "date", "status"],
-    Condition: ["_id", "patient", "category", "clinical-status", "code"],
-    Goal: ["_id", "patient", "lifecycle-status", "target-date"],
-    CarePlan: ["_id", "patient", "category", "status", "date"],
-    MedicationRequest: ["_id", "patient", "intent", "status", "authoredon"],
-    MedicationStatement: ["_id", "patient", "status", "effective"],
-    DiagnosticReport: ["_id", "patient", "category", "code", "date", "status"],
-    Observation: ["_id", "patient", "category", "code", "date", "status"],
-  };
+const US_CORE_SEARCH_PARAMETERS: { readonly [resourceType: string]: ReadonlyArray<string> } = {
+  Patient: ["_id", "identifier", "name", "family", "given", "birthdate", "gender"],
+  Encounter: ["_id", "patient", "class", "date", "status"],
+  Condition: ["_id", "patient", "category", "clinical-status", "code"],
+  Goal: ["_id", "patient", "lifecycle-status", "target-date"],
+  CarePlan: ["_id", "patient", "category", "status", "date"],
+  MedicationRequest: ["_id", "patient", "intent", "status", "authoredon"],
+  MedicationStatement: ["_id", "patient", "status", "effective"],
+  DiagnosticReport: ["_id", "patient", "category", "code", "date", "status"],
+  Observation: ["_id", "patient", "category", "code", "date", "status"],
+};
 
 /** Result parameters legal on any search (translated by the translator, not a reader-seam filter). */
-export const FHIR_RESULT_PARAMETERS: ReadonlySet<string> = new Set([
+const FHIR_RESULT_PARAMETERS: ReadonlySet<string> = new Set([
   "_count",
   "_include",
   "_revinclude",

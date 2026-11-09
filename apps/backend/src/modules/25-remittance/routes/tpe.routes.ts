@@ -1,25 +1,24 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/tpe.routes.ts — M25 milestone 5 routes: the TPE program tracker.
 // Reads gate on `tpe.read`, writes on `tpe.manage`, and the organization's per-MAC exit thresholds on
 // `tpe_rule.manage`. Every change to a program, round or sampled claim is If-Match (409 when stale), a threshold update takes an optional If-Match, and every mutation requires an Idempotency-Key. Org,
 // actor and provider-entity scope are server-derived (actor.ts). Nothing is filed and no threshold has a default.
-import { FormatRegistry, Type } from "@sinclair/typebox";
+import {
+  ROUTE_FORMATS,
+  ifMatchVersionOf,
+  parse,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
+import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { TPE_CLAIM_RESULTS, TPE_MAC_RESULTS, TPE_REFERRAL_KINDS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
-import { parse } from "./m25-typebox";
+import { clampLimit } from "./m25-typebox";
 import type { TpeService } from "./tpe-service";
 
 export interface TpeRouteDeps {
   readonly tpeService: TpeService;
-}
-
-// The uuid format is a process-wide TypeBox registration other modules also make; guard so this file does not depend on them.
-const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_FORMAT.test(v));
 }
 
 const DAY = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
@@ -177,7 +176,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** A uuid path param; a non-uuid can never match a row, so it is a 404 rather than a database cast error. */
 const uuidParam = (request: { params?: unknown }, name: string, what: string): string => {
   const value = (request.params as Record<string, string>)[name] ?? "";
-  if (!UUID_FORMAT.test(value)) throw new NotFoundError(what);
+  if (ROUTE_FORMATS.uuid?.(value) !== true) throw new NotFoundError(what);
   return value;
 };
 
@@ -232,7 +231,7 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
             writeActorOf(request),
             programId(request),
             body.noticeOn,
-            ifMatchVersion(request),
+            ifMatchVersionOf(request),
           ),
         );
     },
@@ -248,7 +247,7 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
           writeActorOf(request),
           roundId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -264,7 +263,7 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
           writeActorOf(request),
           roundId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -281,7 +280,7 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
           roundId(request),
           uuidParam(request, "claimId", "claim"),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -297,7 +296,7 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
           writeActorOf(request),
           programId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -311,7 +310,7 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
         await tpeService.closeProgram(
           writeActorOf(request),
           programId(request),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -324,7 +323,7 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
     const body = parse(TpeRuleRequestSchema, request.body);
     // If-Match is optional here: it guards an UPDATE of an existing rule; a new rule needs none.
     const raw = request.headers["if-match"];
-    const version = raw === undefined ? undefined : ifMatchVersion(request);
+    const version = raw === undefined ? undefined : ifMatchVersionOf(request);
     return reply.send(await tpeService.upsertRule(writeActorOf(request), body, version));
   });
 }

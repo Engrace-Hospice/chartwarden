@@ -482,6 +482,39 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     await app.close();
   });
 
+  it("GET /admissions pages on a signed cursor, and every offset-paged M06 list answers a garbage cursor with 422 INVALID_CURSOR (not page 1)", async () => {
+    const { app } = makeServer();
+    const get = (url: string) => app.inject({ method: "GET", url, headers: RN });
+    const first = await get("/api/v1/admissions?state=active&limit=1");
+    expect(first.statusCode).toBe(200);
+    const { nextCursor } = first.json() as { nextCursor: string };
+    expect(nextCursor).toContain(".");
+    const second = await get(
+      `/api/v1/admissions?state=active&limit=1&cursor=${encodeURIComponent(nextCursor)}`,
+    );
+    expect(second.statusCode).toBe(200);
+    expect(second.json().items.map((i: { id: string }) => i.id)).not.toEqual(
+      first.json().items.map((i: { id: string }) => i.id),
+    );
+    const readers = [
+      ["admissions", RN],
+      ["referrals", INTAKE],
+      ["compliance-windows", CO],
+    ] as const;
+    for (const [list, headers] of readers) {
+      for (const bad of ["garbage", "1", `x${nextCursor}`]) {
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/${list}?limit=1&cursor=${encodeURIComponent(bad)}`,
+          headers,
+        });
+        expect(res.statusCode, `${list} cursor ${bad}`).toBe(422);
+        expect(res.json().error.code).toBe("INVALID_CURSOR");
+      }
+    }
+    await app.close();
+  });
+
   it("GET /patients/:patientId/election-certification assembles the aggregate for a reader (200)", async () => {
     const { app } = makeServer();
     const res = await app.inject({

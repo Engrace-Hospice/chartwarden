@@ -19,17 +19,17 @@ export function isoDate(d: Date): string {
 }
 
 /** Add `n` whole months to a UTC date (clamps within the month via `Date.UTC` normalization). */
-export function addMonthsUTC(d: Date, n: number): Date {
+function addMonthsUTC(d: Date, n: number): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, d.getUTCDate()));
 }
 
 /** The 0-based calendar quarter (0 = Q1 Jan–Mar … 3 = Q4 Oct–Dec) a date falls in. */
-export function quarterOfMonth(month0: number): 0 | 1 | 2 | 3 {
+function quarterOfMonth(month0: number): 0 | 1 | 2 | 3 {
   return Math.floor(month0 / 3) as 0 | 1 | 2 | 3;
 }
 
 /** The `{ year, quarter }` (1-based quarter) containing a UTC date. */
-export function quarterContaining(d: Date): {
+function quarterContaining(d: Date): {
   readonly year: number;
   readonly quarter: 1 | 2 | 3 | 4;
 } {
@@ -38,7 +38,7 @@ export function quarterContaining(d: Date): {
 }
 
 /** First instant (UTC) of a 1-based calendar quarter — the inclusive lower bound. */
-export function startOfQuarterUTC(year: number, quarter: 1 | 2 | 3 | 4): Date {
+function startOfQuarterUTC(year: number, quarter: 1 | 2 | 3 | 4): Date {
   return new Date(Date.UTC(year, (quarter - 1) * 3, 1));
 }
 
@@ -70,7 +70,7 @@ export function rolling12MonthToQuarterWindow(asOf: Date): MeasurePeriod {
 }
 
 /** A full calendar year as a `calendar_year` window — `[YYYY-01-01, (YYYY+1)-01-01)`. */
-export function calendarYearWindow(year: number): MeasurePeriod {
+function calendarYearWindow(year: number): MeasurePeriod {
   return {
     kind: "calendar_year",
     start: isoDate(new Date(Date.UTC(year, 0, 1))),

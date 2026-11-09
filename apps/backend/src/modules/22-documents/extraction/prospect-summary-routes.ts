@@ -1,3 +1,4 @@
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/extraction/prospect-summary-routes.ts — the F-238 prospect summary:
 //
 //   GET /api/v1/intake/uploads/:id/summary   a completed review's reviewer-approved values, grouped into one
@@ -10,14 +11,12 @@
 // The batch read is gated and audited exactly like the review workspace read it summarises (`intake.review` + an `auditRead`
 // declaration, so the host's read-audit hook records who looked at which batch). 409 REVIEW_NOT_COMPLETE
 // until the review is complete. Built deterministically (`prospect-summary.ts`) — no model is involved.
-import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import type { ProspectSummaryService } from "./prospect-summary-db";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const Citation = Type.Object({
   document: Type.String(),
@@ -138,14 +137,6 @@ const PATIENT_SCOPE = requireAbac("patient.read", "caseload_or_scope", {
   notFoundOnDeny: true,
 }) as PreHandler;
 
-function organizationOf(request: FastifyRequest): string {
-  const ctx = request.context;
-  if (!ctx?.organizationId || typeof ctx.userId !== "string" || ctx.userId.length === 0) {
-    throw new UnauthorizedError();
-  }
-  return ctx.organizationId;
-}
-
 export function registerDocLensProspectSummaryRoutes(
   app: FastifyInstance,
   service: ProspectSummaryService,
@@ -157,7 +148,7 @@ export function registerDocLensProspectSummaryRoutes(
       config: { auditRead: { resourceKind: "intake_prospect_summary", resourceIdParam: "id" } },
     },
     async (request) => {
-      const organizationId = organizationOf(request);
+      const { organizationId } = actorOf(request);
       const { id } = parse(BatchParams, request.params);
       return service.getSummary(organizationId, id);
     },
@@ -172,7 +163,7 @@ export function registerDocLensProspectSummaryRoutes(
       },
     },
     async (request) => {
-      const organizationId = organizationOf(request);
+      const { organizationId } = actorOf(request);
       const { patientId } = parse(PatientParams, request.params);
       return service.listForPatient(organizationId, patientId);
     },

@@ -9,11 +9,11 @@ const PREF = schema.portalNotificationPreferences;
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 /** The channels a caregiver can toggle (CHECK-constrained in migration 0422). */
-export const PORTAL_NOTIFICATION_CHANNELS = ["email", "sms", "push"] as const;
+const PORTAL_NOTIFICATION_CHANNELS = ["email", "sms", "push"] as const;
 export type PortalNotificationChannel = (typeof PORTAL_NOTIFICATION_CHANNELS)[number];
 
 /** A channel nobody has toggled: email on (the invitation's own channel), the rest off until opted into. */
-export const DEFAULT_CHANNEL_ENABLED: Readonly<Record<PortalNotificationChannel, boolean>> = {
+const DEFAULT_CHANNEL_ENABLED: Readonly<Record<PortalNotificationChannel, boolean>> = {
   email: true,
   sms: false,
   push: false,

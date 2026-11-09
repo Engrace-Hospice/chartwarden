@@ -22,12 +22,6 @@ import type { SqlRow, Translation } from "../translator";
 /** §4.8 / W-R-08: the hard CSV row cap. A query estimated above this refuses with 413 before streaming. */
 export const CSV_EXPORT_ROW_CAP = 250_000 as const;
 
-/** The server-side cursor `FETCH` size (§4.8 / W-R-08) — the streamer pushes one CSV chunk per fetched batch. */
-export const CSV_FETCH_CHUNK_ROWS = 1_000 as const;
-
-/** The telemetry event emitted once a CSV stream completes (§4.10 — `rowCount` for the export counter). */
-export const M33_CSV_EXPORT_STREAMED = "m33.export.csv_streamed" as const;
-
 // ── injected ports ────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -116,7 +110,7 @@ export class CsvExportRowCapExceeded extends Error {
  * quotes doubled (RFC-4180). Defends against CSV-injection by NOT prefixing formula leads — these are aggregate
  * numeric/label cells (D6), never tenant free-text, but the quoting keeps a stray delimiter from breaking rows.
  */
-export function csvEscapeCell(value: unknown): string {
+function csvEscapeCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const raw = value instanceof Date ? value.toISOString() : String(value);
   if (/[",\r\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
@@ -124,7 +118,7 @@ export function csvEscapeCell(value: unknown): string {
 }
 
 /** Join already-escaped cells into one CRLF-terminated CSV line (PURE, RFC-4180 line ending). */
-export function csvLine(cells: readonly string[]): string {
+function csvLine(cells: readonly string[]): string {
   return `${cells.join(",")}\r\n`;
 }
 

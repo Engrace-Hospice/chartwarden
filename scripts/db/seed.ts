@@ -511,6 +511,10 @@ async function main(): Promise<void> {
     "| Web app | http://localhost:5173 |",
     "| Backend API | http://localhost:3000 |",
     "| Sign in | http://localhost:5173/login |",
+    "| RustFS console (object store) | http://localhost:9001/rustfs/console/ |",
+    "",
+    // Fixed dev root key from docker-compose.yml's rustfs service (also in docs/DEVELOPMENT.md), not a generated secret.
+    "**RustFS console login (local compose stack):** access key `chartwarden` / secret key `chartwarden-object-store-dev-secret`.",
     "",
     `**Organization:** ${ORG.display} (slug \`${ORG.slug}\`) — select it at login.`,
     "",

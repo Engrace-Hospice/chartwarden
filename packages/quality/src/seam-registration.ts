@@ -21,7 +21,6 @@
 //     interfaces below remain the contract those adapters and the deny-stubs implement; the whole-bundle
 //     `bindQualityConsumedSeams` itself is exercised only by tests. Do not read its existence as evidence
 //     that a measure consumes a given seam — check the worker's `resolveInput` dispatch for that.
-import { M30_PUBLISHED_SEAM_NAMES } from "./seams";
 import type {
   ComplianceStatusProvider,
   IncidentRegisterProvider,
@@ -68,9 +67,6 @@ export interface QualitySeamResolver {
 }
 
 // ── 1. PUBLISH — the FIVE seams M30 registers into the M1 SeamRegistry (§4.3) ────────────────────────
-
-/** The canonical M1-registry seam names M30 publishes (re-exported from `./seams` — single source of truth). */
-export const QUALITY_PUBLISHED_SEAM_NAMES = M30_PUBLISHED_SEAM_NAMES;
 
 /** The live published-seam implementations the caller supplies once the §3 repositories are wired (P2C). */
 export interface QualityPublishedSeams {

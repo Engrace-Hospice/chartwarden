@@ -833,10 +833,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await expect(CIPHERS.freeText.open(ORG_B, sealed)).rejects.toThrow();
   });
 
-  it("§7.7 optimistic concurrency — a stale updateSelections is 412, a fresh one bumps the version", async () => {
+  it("§7.7 optimistic concurrency — a stale updateSelections is 409 STALE_VERSION, a fresh one bumps the version", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
     await expect(svc.updateSelections(ORG_A, id, 99, EMPTY_TREE)).rejects.toMatchObject({
-      statusCode: 412,
+      statusCode: 409,
     });
     const bumped = await svc.updateSelections(ORG_A, id, 0, EMPTY_TREE);
     expect(bumped.version).toBe(1);

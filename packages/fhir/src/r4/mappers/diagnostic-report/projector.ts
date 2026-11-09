@@ -23,7 +23,7 @@ import { projectChildObservations } from "./child-observation-projector";
 import { applySudRedactionToDiagnosticReport } from "./sud-redaction-applier";
 
 /** The US Core lab DiagnosticReport profile the projection conforms to. */
-export const US_CORE_DIAGNOSTIC_REPORT_LAB_PROFILE =
+const US_CORE_DIAGNOSTIC_REPORT_LAB_PROFILE =
   "http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab";
 
 export interface DiagnosticReportProjectorDeps {

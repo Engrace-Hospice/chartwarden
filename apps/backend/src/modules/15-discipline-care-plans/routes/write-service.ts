@@ -9,7 +9,7 @@
 // the sealed snapshot, M22 owns the render (D12 phase boundary).
 //
 // Optimistic concurrency is §2.5: every PATCH / state transition carries `expectedVersion` (the `If-Match`
-// header) and a mismatch raises `STALE_VERSION` → 412 with the current row.
+// header) and a mismatch raises `STALE_VERSION` → 409 with the current row.
 import type { M15ReadActor, M15WriteActor } from "./actor";
 import type {
   AideSupervisoryVisitView,

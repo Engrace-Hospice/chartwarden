@@ -10,7 +10,10 @@
 import {
   type Cents,
   ChcHoursError,
+  type ClaimAssemblySeams,
+  type DateRange,
   type FiscalYearPricing,
+  type InpatientStay,
   type PerDiemRateTable,
   type SignedEncounterSnapshot,
   type ValueCodeAreas,
@@ -23,7 +26,6 @@ import {
   wageIndexFactorForLevelOfCare,
 } from "@chartwarden/billing";
 import { ChartWardenError } from "@chartwarden/types";
-import type { ClaimAssemblySeams, DateRange, InpatientStay } from "./claim-assembly-types";
 
 /** The CMS hospice fiscal year STARTING year for a service date (the rate year flips each Oct 1). */
 export function hospiceFiscalYearStarting(serviceFrom: string): number {

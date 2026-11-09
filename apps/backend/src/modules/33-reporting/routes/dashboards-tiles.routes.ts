@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/dashboards-tiles.routes.ts — M33 (§4.1 #1–#4).
 //
 // The read-only dashboard + tile surface: list/read dashboards available in the actor's scope, and
@@ -12,9 +13,9 @@
 // RLS-scoped, tiered-statement_timeout path, §8.1.2 / D3); HIPAA §164.312(b) read-audit is the standard
 // M4 read-audit anchor on that path (the M34 read-route precedent — no per-handler audit call). Org/actor
 // binding is ALWAYS server-side (request.context, never the body/query). Mirrors M34 routes/platform/tenants.ts.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
+import { actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";
 import {
   DashboardIdParamsSchema,

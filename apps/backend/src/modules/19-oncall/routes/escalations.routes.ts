@@ -14,9 +14,14 @@
 // ROUTE 18 IS WHERE A MANDATORY ROW CAN REACH `resolved` AND THE ONLY PLACE (§2.2.4). A call close may
 // auto-resolve an acknowledged non-mandatory row; the four D7 protocols' rows need this explicit write by
 // the escalated party, because the whole point is that the agency can prove a named human answered.
+import {
+  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_CALL_ACTOR, ABAC_ESCALATION_RECIPIENT, ABAC_ESCALATION_SCOPE, P } from "./guards";
 import {
   AcknowledgeEscalationBody,
@@ -52,7 +57,8 @@ export function registerEscalationRoutes(app: FastifyInstance, deps: EscalationR
       const { triageCallId } = parse(TriageCallIdParams, request.params);
       const body = parse(EscalateBody, request.body);
       const created = await writeService.escalate(writeActorOf(request), triageCallId, {
-        expectedVersion: ifMatchVersion(request, body.handOffCall === true),
+        expectedVersion:
+          body.handOffCall === true ? ifMatchVersionOf(request) : optionalIfMatchVersionOf(request),
         ...body,
       });
       return reply.code(201).send(created);
@@ -93,7 +99,7 @@ export function registerEscalationRoutes(app: FastifyInstance, deps: EscalationR
       const { escalationId } = parse(EscalationIdParams, request.params);
       parse(AcknowledgeEscalationBody, request.body);
       return writeService.acknowledgeEscalation(writeActorOf(request), escalationId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -114,7 +120,7 @@ export function registerEscalationRoutes(app: FastifyInstance, deps: EscalationR
       const { escalationId } = parse(EscalationIdParams, request.params);
       const body = parse(ResolveEscalationBody, request.body);
       return writeService.resolveEscalation(writeActorOf(request), escalationId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },

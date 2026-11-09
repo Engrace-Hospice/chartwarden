@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/35-subscription/active-period-store-drizzle.ts — the Drizzle-backed
 // `ActivePeriodStore` (F-172, #248) — the first implementation of the §D6 `patient_active_period` /
 // `user_active_period` write port anywhere in the tree (`UsageMeteringService.recordPatientActive` /
@@ -11,17 +12,13 @@
 // recomputes the SAME pseudonym (deterministic within a key epoch) for the SAME period, so
 // `ON CONFLICT DO NOTHING` is the exact "already recorded this month, no-op" outcome
 // `UsageMeteringService`'s `{inserted: boolean}` contract expects.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import type { ActivePeriodStore } from "@chartwarden/subscription-billing";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const PAP = schema.patientActivePeriod;
 const UAP = schema.userActivePeriod;
-
-/** Outbox-consumer writes attribute to no human actor — the `membershipUserIdForOrg`/`SEAM_SYSTEM_USER_ID`
- *  convention (F-102's `CONSUMER_USER_ID`), applied here to `withOrgContext`'s required `userId`. */
-const CONSUMER_USER_ID = "";
 
 export function createDrizzleActivePeriodStore(db: DbClient): ActivePeriodStore {
   return {

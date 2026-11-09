@@ -6,6 +6,7 @@
 // the injected `now()` so version/date math is deterministic in tests.
 
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
 import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
 import type { ActorSite } from "../actor-site";
@@ -1744,16 +1745,17 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     };
   };
   const page = <T extends SummaryRow>(
+    organizationId: string,
     rows: T[],
     query: { cursor?: string; limit?: number },
   ): Page<T> => {
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-    const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;
+    const offset = decodeOffsetCursor(organizationId, query.cursor);
     const slice = rows.slice(offset, offset + limit);
     const nextOffset = offset + slice.length;
     return {
       items: slice,
-      nextCursor: nextOffset < rows.length ? String(nextOffset) : null,
+      nextCursor: nextOffset < rows.length ? encodeOffsetCursor(organizationId, nextOffset) : null,
     };
   };
   const listOfKind = (organizationId: string, kind: string): Rec[] =>
@@ -1957,7 +1959,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             .some((v) => String(v).toLowerCase().includes(q)),
         );
       }
-      return page(rows.map(referralView), query);
+      return page(organizationId, rows.map(referralView), query);
     },
     async getReferral(organizationId, id) {
       const rec = get(organizationId, id, "referral");
@@ -2222,6 +2224,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // never persist a timestamp (a lightweight state-transition double, not the D1 record); the real
       // values are proven against the Drizzle implementation's own live suite.
       return page(
+        organizationId,
         rows.map((r) => ({
           ...summary(r),
           patient: patientIdentity(organizationId, r.patientId),
@@ -3285,7 +3288,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const ids = scope?.patientIds ?? null;
       if (ids !== null) rows = rows.filter((r) => !!r.patientId && ids.includes(r.patientId));
       if (query.state) rows = rows.filter((r) => r.state === query.state);
-      return page(rows.map(summary), query);
+      return page(organizationId, rows.map(summary), query);
     },
     async closeComplianceWindow(organizationId, id, ifVersion) {
       const rec = get(organizationId, id, "compliance_window") ?? notFound(id);

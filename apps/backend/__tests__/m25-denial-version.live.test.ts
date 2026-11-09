@@ -6,8 +6,8 @@
  * return `version`, so a client had nothing to send. `toDenialItem` now projects it. This suite proves the
  * whole loop live: GET detail + worklist return the persisted `version` (not stripped on the wire, and valid
  * against the published `DenialWorklistItemSchema`); `PATCH …/start` with that exact value succeeds, bumps the
- * version and moves the case to `in_progress`; a stale value is refused with 409 VERSION_CONFLICT (the code
- * the route uses) and writes nothing; a missing If-Match is a 400; another tenant's denial id is a 404 for
+ * version and moves the case to `in_progress`; a stale value is refused with 409 STALE_VERSION (the code
+ * the route uses) and writes nothing; a missing If-Match is a 428; another tenant's denial id is a 404 for
  * read AND transition (RLS), and the same id stays untouched.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m25:denial-version:live
@@ -253,11 +253,11 @@ describe.skipIf(!DB_URL)(
       expect((await getDenial(ORG_A, "a", id)).json().version).toBe(read.version + 1);
     });
 
-    it("a stale If-Match is refused with 409 VERSION_CONFLICT and writes nothing", async () => {
+    it("a stale If-Match is refused with 409 STALE_VERSION and writes nothing", async () => {
       const id = await seedDenial(ORG_A, 5);
       const res = await start(ORG_A, "a", id, "4");
       expect(res.statusCode).toBe(409);
-      expect(res.json().error.code).toBe("VERSION_CONFLICT");
+      expect(res.json().error.code).toBe("STALE_VERSION");
       expect(await rowOf(id)).toEqual({ state: "open", version: 5 });
     });
 
@@ -271,10 +271,10 @@ describe.skipIf(!DB_URL)(
       expect(await rowOf(id)).toEqual({ state: "in_progress", version: 3 });
     });
 
-    it("a missing If-Match is a 400 and writes nothing", async () => {
+    it("a missing If-Match is a 428 and writes nothing", async () => {
       const id = await seedDenial(ORG_A, 1);
       const res = await start(ORG_A, "a", id);
-      expect(res.statusCode).toBe(400);
+      expect(res.statusCode).toBe(428);
       expect(res.json().error.code).toBe("IF_MATCH_REQUIRED");
       expect(await rowOf(id)).toEqual({ state: "open", version: 1 });
     });

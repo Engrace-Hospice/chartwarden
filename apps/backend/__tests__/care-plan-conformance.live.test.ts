@@ -3,14 +3,14 @@
 //
 // TEST-003's risk: the whole `*-inject.test.ts` corpus (TASK-050A, ~950 route defs) proves routing/
 // RBAC/ABAC wiring exclusively against `createInMemory*Backend`s, while production mounts the Drizzle-
-// backed `*-route-service-db.ts` — so in-memory-vs-Drizzle BEHAVIORAL drift (a stale-version 412, a
+// backed `*-route-service-db.ts` — so in-memory-vs-Drizzle BEHAVIORAL drift (a stale-version 409, a
 // duplicate-resource 409, a pagination cursor) is invisible to that corpus by construction: nothing
 // ever drives the SAME HTTP scenario against both backends and diffs the outcome.
 //
 // This file is that diff, piloted on ONE module chosen because both dimensions are concretely, cheaply
 // provable here without a live DB round-trip per scenario variant:
-//   - 412 STALE_VERSION: `patchProblem`'s optimistic-concurrency check (`checkOptimisticConcurrency`,
-//     care-plan-routes.ts's own header: "the service raises 412 STALE_VERSION on skew (§7.7)").
+//   - 409 STALE_VERSION: `patchProblem`'s optimistic-concurrency check (`checkOptimisticConcurrency`,
+//     care-plan-routes.ts's own header: "the service raises 409 STALE_VERSION on skew").
 //   - 409 ONE_ACTIVE_PLAN_PER_ADMISSION: `bootstrapCarePlan`'s duplicate-plan guard
 //     (`CarePlanAlreadyExistsError`, service.ts: "409 TENANT_PLAN_EXISTS — one-per-admission, §2.2.1").
 // Both checks are independently implemented in `createInMemoryCarePlanBackend` (a `Map`-based scan) and
@@ -22,7 +22,7 @@
 // module whose list route actually paginates — M7's `getCarePlanForPatient`/`listVersions` do not
 // (`nextCursor` is hardcoded `null` in both backends today). M5 Patient census DOES paginate for real
 // (see the `M5 Patient census` case in `auth.live.test.ts`) and is the natural next pilot for that
-// third dimension — not done here; this file proves the shared-spec PATTERN (401→403→409/412 against
+// third dimension — not done here; this file proves the shared-spec PATTERN (401→403→409/409 against
 // two backends via one assertion function) on the two dimensions that are real on this module today.
 //
 // Skipped without CHARTWARDEN_TEST_DATABASE_URL, same convention as every other *.live.test.ts.
@@ -53,7 +53,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
 }
 
-/** Runs the same 401→403→409(bootstrap)→412(patch) sequence against whatever service backend is mounted. */
+/** Runs the same 401→403→409(bootstrap)→409(patch) sequence against whatever service backend is mounted. */
 async function runConformanceSuite(
   label: string,
   buildApp: () => Promise<{
@@ -103,7 +103,7 @@ async function runConformanceSuite(
       await app.close();
     });
 
-    it("412 STALE_VERSION: patching a problem with a stale If-Match version", async () => {
+    it("409 STALE_VERSION: patching a problem with a stale If-Match version", async () => {
       const { app, patientId, admissionId, authHeaders } = await buildApp();
       const bootstrap = await app.inject({
         method: "POST",
@@ -136,7 +136,7 @@ async function runConformanceSuite(
       });
       expect(firstPatch.statusCode).toBe(200);
 
-      // Second PATCH replaying the SAME (now-stale) version → 412 on BOTH backends.
+      // Second PATCH replaying the SAME (now-stale) version → 409 on BOTH backends.
       const stalePatch = await app.inject({
         method: "PATCH",
         url: `/api/v1/care-plans/${planId}/problems/${problemId}`,
@@ -147,7 +147,7 @@ async function runConformanceSuite(
         },
         payload: { description: "Pain — stale write" },
       });
-      expect(stalePatch.statusCode).toBe(412);
+      expect(stalePatch.statusCode).toBe(409);
       expect(stalePatch.json().error.code).toBe("STALE_VERSION");
 
       await app.close();

@@ -11,7 +11,7 @@
 //
 // Two server contracts every write helper honours (§F08 / §2.5): a mutating route requires an
 // `Idempotency-Key`, and a state transition requires `If-Match` carrying the row `version` the caller READ
-// (a 412 means the row moved under you — reload, never retry blind). The server stays the only
+// (a 409 STALE_VERSION means the row moved under you — reload, never retry blind). The server stays the only
 // authorization point: nothing here decides what a caller may see.
 //
 // THE OPTIONAL-VS-NULL RULE the DTOs below preserve. `currentRiskTier?: string | null` is a three-valued
@@ -55,17 +55,6 @@ export type PlanDetail = Ok<operations["getApiV1BereavementPlansByPlanId"]>;
 
 /** The §2.6 outreach rollup both dashboards and the closure record carry (COUNTS, never a rate). */
 export type OutreachStats = PlanDetail["stats"];
-
-/**
- * D16 — the external-source provenance an HL7 ADT plan carries.
- *
- * NOTE (TASK-022 drift): the generated shape does NOT match the old hand-written interface field-for-field.
- * It is `sourceProposalId` / `sourceMessageId` / `sourceFacilityMdmId` / `sourceFacilityName` /
- * `ackReceivedAt` / `cosignStatus` / `cosignedAt?` / `medicalDirectorMembershipId?` — there is no
- * `sourceFacility`, `sourceSystem`, `ackAt`, or `cosignedByUserId`, and no index signature. Any screen
- * reading the old field names will now fail to compile; see the final report.
- */
-export type ExternalSourceMetadata = NonNullable<PlanDetail["externalSource"]>;
 
 /** Route 10 — the §3.3.7 closure record (§7.15 survey reconstruction). */
 export type ClosureView = Ok<operations["getApiV1BereavementPlansByPlanIdClosure"]>;
@@ -219,9 +208,8 @@ export async function send<T>(
   }
 }
 
-/** 412 (the row moved), 409 (it was decided / locked elsewhere) or 404 (it is gone): what the screen read is stale. */
-export const isStaleWrite = (status: number): boolean =>
-  status === 412 || status === 409 || status === 404;
+/** 409 (the row moved, or it was decided / locked elsewhere) or 404 (it is gone): what the screen read is stale. */
+export const isStaleWrite = (status: number): boolean => status === 409 || status === 404;
 
 /** The server's machine code of a failed response (`{ error: { code } }`), or null. */
 export function errorCode(error: unknown): string | null {
@@ -229,9 +217,16 @@ export function errorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
+/** The optimistic-concurrency refusal: the version sent in `If-Match` is no longer the row's. */
+export const STALE_VERSION_CODE = "STALE_VERSION";
+
+/** 409 `STALE_VERSION` — the row moved under you (as opposed to a 409 that names a refused gate). */
+export const isStaleVersion = (status: number, error: unknown): boolean =>
+  status === 409 && errorCode(error) === STALE_VERSION_CODE;
+
 /**
  * Turn a failed response into the sentence a counselor can act on. The server's problem+json body is the
- * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (412 =
+ * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (409 STALE_VERSION =
  * the row moved, 428 = a blind write, 409 = a gate refused and SAID WHICH) rather than a generic failure.
  */
 /** GAP-047 — the server's machine code when the cosigner is the counselor who requested the close. */
@@ -247,7 +242,7 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
-  if (body?.status === 412)
+  if (errorCode(error) === STALE_VERSION_CODE)
     return "This record changed while you were working on it. Reload and re-apply your edit.";
   if (body?.status === 428)
     return "This edit is missing its version. Reload the record and try again.";
@@ -605,7 +600,7 @@ export async function listPhysicianLetters(
   return { page: data, error, status };
 }
 
-/** Route 39 — approve a pending letter. `version` is the one the caller READ; a 412 means it moved. */
+/** Route 39 — approve a pending letter. `version` is the one the caller READ; a 409 STALE_VERSION means it moved. */
 export async function approvePhysicianLetter(
   client: ApiClient,
   letterId: string,
@@ -642,7 +637,7 @@ export async function declinePhysicianLetter(
 }
 
 /** Route 36 — record the pre-death draft. `version` is the one the caller READ (0 for the first write); the server
- *  answers 409 `DRAFT_LOCKED` once a plan exists and 412 when the draft moved. */
+ *  answers 409 `DRAFT_LOCKED` once a plan exists and 409 `STALE_VERSION` when the draft moved. */
 export async function putPreDeathDraft(
   client: ApiClient,
   admissionId: string,
@@ -924,7 +919,7 @@ export async function listMailingConfigs(
   return { configs: data, error, status };
 }
 
-/** Route 43 — upsert one mailing's config. `version` is the one the caller READ (0 for the first write); a 412 means it moved. */
+/** Route 43 — upsert one mailing's config. `version` is the one the caller READ (0 for the first write); a 409 STALE_VERSION means it moved. */
 export async function putMailingConfig(
   client: ApiClient,
   mailingKey: string,

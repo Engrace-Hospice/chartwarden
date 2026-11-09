@@ -1,3 +1,9 @@
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/schedules.routes.ts — M33 (§4.1 #22–#31).
 //
 // The scheduled-delivery pipeline surface (D7): list/create/read/edit a `report_schedule`, pause / resume
@@ -20,15 +26,9 @@
 // ONE `withOrgContext` tx on the PRIMARY (RLS scopes to `app.org_id`); each carries `requireIdempotencyKey`.
 // READS disclose the actor's own org schedules / runs; the M4 write-audit trigger on the `withOrgContext`
 // path is the §164.312(b) anchor. Org/actor binding is ALWAYS server-side (request.context, never the body).
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { parse } from "./reporting-typebox";
 import type { M33WriteRouteService } from "./write-service";
 import {

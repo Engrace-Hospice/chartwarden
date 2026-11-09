@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { type TaskActorRole, decideTransition, taskActorRole } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/tasks/task-store-db.ts - WP 3.4: the `communication_task` rows and their
 // append-only `communication_task_event` history.
 //
@@ -5,8 +7,7 @@
 // statement names the organization on top of RLS. `chartwarden_app` may UPDATE only the status columns and has no DELETE.
 // The partial unique index is the idempotency arbiter for create; transitions lock the row first, so two racing
 // transitions serialise and the loser sees the winner's state (replay or conflict), never a lost update.
-import { type DbClient, schema } from "@chartwarden/db";
-import { type TaskActorRole, decideTransition, taskActorRole } from "@chartwarden/messaging";
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   TASK_ACTIVE_STATUSES,
@@ -31,8 +32,8 @@ export type TaskActor =
   | { readonly kind: "user"; readonly userId: string }
   | { readonly kind: "system" };
 
-export const TASK_LIST_DEFAULT_LIMIT = 50;
-export const TASK_LIST_MAX_LIMIT = 100;
+const TASK_LIST_DEFAULT_LIMIT = 50;
+const TASK_LIST_MAX_LIMIT = 100;
 
 /** The row is not in a state this action may start from (a closed task, or a repeat by the wrong actor). */
 export class TaskStateConflict extends Error {
@@ -159,10 +160,6 @@ const EVENT_FOR_ACTION: Record<TaskAction, TaskEventType> = {
 function sqlState(err: unknown): string | undefined {
   const code = (err as { code?: string } | null)?.code;
   return code ?? (err as { cause?: { code?: string } } | null)?.cause?.code;
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return sqlState(err) === "23505";
 }
 
 /** A CHECK constraint refused the write (WP 3.10: a medication question may not be assigned to its asker). */

@@ -38,5 +38,3 @@ export const M24_SUBSCRIPTION_MAP: Readonly<Record<string, string>> = {
 };
 
 export const M24_UPSTREAM_SUBSCRIPTIONS = Object.keys(M24_SUBSCRIPTION_MAP) as readonly string[];
-
-export type M24SubscribedTopic = (typeof M24_UPSTREAM_SUBSCRIPTIONS)[number];

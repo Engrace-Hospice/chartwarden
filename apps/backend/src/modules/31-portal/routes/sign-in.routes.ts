@@ -1,3 +1,4 @@
+import { CredentialThrottleError } from "@chartwarden/auth";
 // apps/backend/src/modules/31-portal/routes/sign-in.routes.ts — M31 invitee SIGN-IN (§2.2.4, §8.1, D2–D3).
 //
 // An invitee authenticates through M2/Better Auth (magic link — the same primitive the CAHPS/auditor links use —
@@ -21,12 +22,11 @@
 // unlock), and every bind and refusal is audited. A suspended/revoked account is refused (lockout), as is an
 // unverified email, a non-active tenant and an account with no live grant. Idempotent: a replay of the same bind
 // answers 200 `replayed:true`; a different bind of an already-bound session is a 409, never a silent re-scope.
-import { CredentialThrottleError } from "@chartwarden/auth";
+import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { type ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { PortalStateError } from "../lifecycle/errors";
 import { accountRefusal, decideSignIn } from "../sign-in";
-import { requireIdempotencyKey } from "./concurrency";
 import type { PortalRouteDeps } from "./index";
 import { PortalSignInEstablishRequest, parse } from "./portal-typebox";
 

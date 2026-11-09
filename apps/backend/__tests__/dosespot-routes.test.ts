@@ -32,8 +32,11 @@ import { cosignDraftingDiscipline } from "../src/modules/12-dosespot/prescriber-
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
+  // The M12/M13 write routes require an Idempotency-Key (the web client sends one on every mutation);
+  // a case that omits it on purpose sends an empty one.
+  request.headers["idempotency-key"] ??= `test-${request.id}`;
   request.context.userId = user;
-  // dosespot-routes.ts's actorOf() reads the acting MEMBERSHIP id from here (not ctx.userId).
+  // dosespot-routes.ts's membershipActorOf() reads the acting MEMBERSHIP id from here (not ctx.userId).
   //
   // GAP-026 — `x-test-membership` lets a case set the two APART. They default to the same string,
   // which is what every pre-existing case here does and is exactly why the id-space bug in
@@ -302,6 +305,20 @@ describe("M12-T08 — §4.7 prescriber_eligible floor", () => {
     expect(backend.drainEvents().map((e) => e.eventName)).toContain(
       "m12.medication_order.draft_created",
     );
+    await app.close();
+  });
+
+  it("refuses a write without an Idempotency-Key (400) and creates nothing", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/medication-orders",
+      headers: { ...MD, "idempotency-key": "" },
+      payload: stdBody(),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+    expect(backend.drainEvents()).toHaveLength(0);
     await app.close();
   });
 });

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 // apps/web/src/modules/16-bereavement — ADR-0109 D10: one support group (routes 55-66).
 // Open / close / cancel-session carry the version READ in If-Match plus an Idempotency-Key; attendance carries the picked contacts under an
 // Idempotency-Key and only for a started session; the roster (it names families) is never requested without `bereavement.group.run`, and
-// the volunteer projection says what it withholds. A 403 renders nothing; other failures are announced with a retry; a 412 reloads.
+// the volunteer projection says what it withholds. A 403 renders nothing; other failures are announced with a retry; a 409 STALE_VERSION reloads.
 import axe from "axe-core";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -280,14 +280,14 @@ describe("support group — writes", () => {
     expect(post?.idempotencyKey).toBeTruthy();
   });
 
-  it("a 412 on close closes the dialog, reloads the group and says why", async () => {
+  it("a 409 STALE_VERSION on close closes the dialog, reloads the group and says why", async () => {
     let groupReads = 0;
     mount({
       over: (r) => {
         if (r.method === "GET" && r.path === GROUP_PATH) groupReads += 1;
         return undefined;
       },
-      write: () => refused(412, "PRECONDITION_FAILED"),
+      write: () => refused(409, "STALE_VERSION"),
     });
     fireEvent.click(await screen.findByRole("button", { name: "Cancel group" }));
     fireEvent.click(
@@ -490,8 +490,8 @@ describe("support group — refreshes after writes", () => {
     await waitFor(() => expect(counts(calls).group).toBe(before.group + 1));
   });
 
-  it("a stale close (412) reads the sessions and the roster again", async () => {
-    const { calls } = mount({ write: () => refused(412, "PRECONDITION_FAILED") });
+  it("a stale close (409 STALE_VERSION) reads the sessions and the roster again", async () => {
+    const { calls } = mount({ write: () => refused(409, "STALE_VERSION") });
     await screen.findByRole("table", { name: "Group roster" });
     await screen.findByRole("table", { name: "Group sessions" });
     const before = counts(calls);
@@ -509,9 +509,9 @@ describe("support group — refreshes after writes", () => {
     });
   });
 
-  it("a stale edit (412) reads the sessions and the roster again", async () => {
+  it("a stale edit (409 STALE_VERSION) reads the sessions and the roster again", async () => {
     const { calls } = mount({
-      write: (r) => (r.method === "PATCH" ? refused(412, "PRECONDITION_FAILED") : undefined),
+      write: (r) => (r.method === "PATCH" ? refused(409, "STALE_VERSION") : undefined),
     });
     await screen.findByRole("table", { name: "Group roster" });
     await screen.findByRole("table", { name: "Group sessions" });

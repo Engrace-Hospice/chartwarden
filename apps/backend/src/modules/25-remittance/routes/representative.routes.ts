@@ -4,15 +4,14 @@
 // appointment is recorded from a claim: the patient and provider entity come from the claim, never the body. Every change is
 // If-Match (409 when stale) and every mutation requires an Idempotency-Key. Every PHI read emits a read-audit event keyed on its
 // own id and attributed to the patient. Nothing here writes a portal, consent or caregiver record.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { INSTRUMENT_KINDS, REPRESENTATIVE_BOUNDS, REPRESENTATIVE_KINDS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP } from "./guards";
 import { uuidParam } from "./later-tier.routes";
-import { parse } from "./m25-typebox";
 import type { RepresentativeService } from "./representative-service";
 
 export interface RepresentativeRouteDeps {
@@ -181,7 +180,7 @@ export function registerRepresentativeRoutes(
         await svc.retireFormVersion(
           writeActorOf(request),
           uuidParam(request, "id", "representative form version"),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -240,7 +239,7 @@ export function registerRepresentativeRoutes(
           writeActorOf(request),
           apptId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -255,7 +254,7 @@ export function registerRepresentativeRoutes(
           writeActorOf(request),
           apptId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -270,7 +269,7 @@ export function registerRepresentativeRoutes(
           writeActorOf(request),
           apptId(request),
           body.confirmedLabels,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -282,7 +281,7 @@ export function registerRepresentativeRoutes(
     { preHandler: [VERIFY, VERIFY_STEPUP, IDEMPOTENT] },
     async (request, reply) =>
       reply.send(
-        await svc.activate(writeActorOf(request), apptId(request), ifMatchVersion(request)),
+        await svc.activate(writeActorOf(request), apptId(request), ifMatchVersionOf(request)),
       ),
   );
   // Revocation shares the permission and step-up but is never blocked by a second person.
@@ -292,7 +291,7 @@ export function registerRepresentativeRoutes(
     async (request, reply) => {
       const body = parse(AppointmentRevokeRequestSchema, request.body);
       return reply.send(
-        await svc.revoke(writeActorOf(request), apptId(request), body, ifMatchVersion(request)),
+        await svc.revoke(writeActorOf(request), apptId(request), body, ifMatchVersionOf(request)),
       );
     },
   );

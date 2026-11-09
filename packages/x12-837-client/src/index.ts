@@ -382,6 +382,7 @@ export {
 export type { ClaimMdAnomaly, ClaimMdTransportOptions } from "./clearinghouse/claimmd-transport";
 export type { ClaimMdRequestCounter } from "./clearinghouse/claimmd-rate-limit";
 export { scopeKey } from "./clearinghouse/submission-identity";
+export { CLEARINGHOUSE_USAGE_ENV, clearinghouseUsageFromEnv } from "./clearinghouse/usage";
 export {
   extractX12SubmissionEvidence,
   X12EvidenceError,

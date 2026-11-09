@@ -13,14 +13,15 @@ import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
+import {
+  type CursorPage,
+  PLATFORM_CURSOR_SCOPE,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+} from "../keyset-page";
 
-export const DSAR_OPEN_STATUSES = [
-  "requested",
-  "generating",
-  "review_pending",
-  "extended",
-] as const;
+const DSAR_OPEN_STATUSES = ["requested", "generating", "review_pending", "extended"] as const;
 
 export interface PlatformDsarJobView {
   readonly id: string;
@@ -87,7 +88,7 @@ export interface PlatformOpsService {
 }
 
 /** PURE - the first canonical step not yet settled (the machine's `currentStep`). */
-export function currentOnboardingStep(
+function currentOnboardingStep(
   tasks: readonly Pick<
     PlatformOnboardingTaskView,
     "templateKey" | "status" | "isCanonical" | "canonicalOrder"
@@ -99,18 +100,8 @@ export function currentOnboardingStep(
   return open[0]?.templateKey ?? null;
 }
 
-/** PURE - open and past the (extended) SLA. */
-export function isDsarSlaBreached(
-  job: { status: string; slaDueAt: Date; extendedUntil: Date | null },
-  now: Date,
-): boolean {
-  if (!(DSAR_OPEN_STATUSES as readonly string[]).includes(job.status)) return false;
-  const due = job.extendedUntil ?? job.slaDueAt;
-  return due.getTime() < now.getTime();
-}
-
 /** The statuses a platform-ops skip may act on (a settled task is refused, never silently rewritten). */
-export const SKIPPABLE_TASK_STATUSES = ["pending", "in_progress", "blocked"] as const;
+const SKIPPABLE_TASK_STATUSES = ["pending", "in_progress", "blocked"] as const;
 
 // ── in-memory twin ───────────────────────────────────────────────────────────────────────────────────
 
@@ -225,7 +216,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
     async listDsarJobs(filter, cursor, limit) {
       return inPlatform("platform-ops cross-tenant DSAR list", async (tx) => {
         const size = pageSizeOf(limit);
-        const after = cursor ? decodeCursor(cursor) : null;
+        const after = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
         const open = sql.join(
           DSAR_OPEN_STATUSES.map((s) => sql`${s}`),
           sql`, `,
@@ -274,7 +265,9 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
             }),
           ),
           nextCursor:
-            hasMore && last ? encodeCursor({ createdAt: last.cursorTs, id: last.id }) : null,
+            hasMore && last
+              ? encodeKeyset(PLATFORM_CURSOR_SCOPE, { createdAt: last.cursorTs, id: last.id })
+              : null,
           hasMore,
         };
       });

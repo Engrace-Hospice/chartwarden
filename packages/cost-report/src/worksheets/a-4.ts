@@ -6,7 +6,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4311 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** One reclassification/adjustment entry within the IRC/GIP direct-care trial balance. */
 const A4Entry = Type.Object({
@@ -31,5 +31,3 @@ export const WorksheetA4 = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export type WorksheetA4Data = Static<typeof WorksheetA4>;

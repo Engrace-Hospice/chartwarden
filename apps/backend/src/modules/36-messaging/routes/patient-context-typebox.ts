@@ -1,5 +1,6 @@
 // apps/backend/src/modules/36-messaging/routes/patient-context-typebox.ts — WP 3.1 response schema (OpenAPI only; the
 // handler returns the service's plain object, which this mirrors).
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 
 const Ok = <T extends ReturnType<typeof Type.Object>>(data: T) =>
@@ -14,7 +15,7 @@ const Tile = <T extends ReturnType<typeof Type.Object>>(data: T) =>
   Type.Union([Ok(data), Unavailable]);
 
 export const PatientContextResponseSchema = Type.Object({
-  patient_id: Type.String({ format: "uuid" }),
+  patient_id: Uuid(),
   // A tile the caller may not see is ABSENT, so every key is optional.
   tiles: Type.Object({
     status: Type.Optional(Tile(Type.Object({ status: Type.Union([Type.String(), Type.Null()]) }))),

@@ -113,7 +113,7 @@ export class ValidationRuleConfigRepository {
       eq(G.organizationId, organizationId),
       filter.enabled !== undefined ? eq(G.enabled, filter.enabled) : undefined,
       filter.isCustom !== undefined ? eq(G.isCustom, filter.isCustom) : undefined,
-      keysetBefore(G.createdAt, G.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(G.createdAt, G.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -121,7 +121,7 @@ export class ValidationRuleConfigRepository {
       .where(where)
       .orderBy(desc(G.createdAt), desc(G.id))
       .limit(size + 1);
-    return buildCursorPage(rows, size, (r) => ({
+    return buildCursorPage(organizationId, rows, size, (r) => ({
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));
@@ -132,7 +132,7 @@ export class ValidationRuleConfigRepository {
    * supplied `expectedVersion`, bumping `version` + `updated_at`. The `regulatoryRequiredSnapshot` floor flag
    * is NOT in {@link ValidationRuleConfigUpdatePatch}, so it can never be raised here (D5). On a version
    * mismatch returns `VERSION_CONFLICT` carrying the current persisted version (or `null` when the row
-   * vanished) so the service can surface a 412.
+   * vanished) so the service can surface a 409 STALE_VERSION.
    */
   async updateWithVersion(
     id: string,

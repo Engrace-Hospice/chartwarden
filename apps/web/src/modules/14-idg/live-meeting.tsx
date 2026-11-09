@@ -42,8 +42,7 @@ import {
 // RECERT / F2F WINDOWS come from `GET /idg/meetings/{id}/recert-windows` (org-local yyyy-mm-dd dates, one item
 // per agenda patient). An `unknown` F2F status is rendered "Not available" — never guessed — and a failed read
 // leaves one quiet line rather than a broken pane.
-// LIVE UPDATES: there is no realtime channel to subscribe to (no socket/SSE gateway server-side; the UI's
-// `SocketProvider` is unmounted), so while the meeting is `live` and the tab visible the surface polls its
+// LIVE UPDATES: there is no realtime channel to subscribe to (no socket/SSE gateway server-side), so while the meeting is `live` and the tab visible the surface polls its
 // ledgers — see `use-live-refresh.ts`. The selected patient's packet content (cover + discipline tabs) is fetched per patient, cached, and NOT re-read
 // on the poll — see `usePacketDetail` in packet-content.tsx.
 import { useCallback, useEffect, useMemo, useState } from "react";

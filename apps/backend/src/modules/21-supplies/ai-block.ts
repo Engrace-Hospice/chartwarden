@@ -6,7 +6,7 @@
 // as a LOCAL structural port (no @chartwarden/ai-platform import, no dependsOn edge); the composition root binds
 // the real seam in a db-present onReady hook (the M37 `validateIpuAIBlock` precedent).
 //
-// Per-route layer: `rejectAiActor` in ./routes/actor.ts rejects an `actor_kind='ai_*'` principal on every
+// Per-route layer: the route kit's `rejectAiActor` rejects an `actor_kind='ai_*'` principal on every
 // mutating M21 route (mounted in routes/mount.ts).
 
 /** Output-entity prefixes an M32 prompt template may NEVER target (D15 + the central AI_PROHIBITED_ZONES). */

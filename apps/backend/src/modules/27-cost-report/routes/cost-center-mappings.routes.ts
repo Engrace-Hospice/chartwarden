@@ -7,15 +7,13 @@
 // `cost_report.edit` editor predicate (it is a no-write what-if so carries no Idempotency-Key); apply/reset
 // gate the higher-bar `cost_report.edit_mappings` (mappings affect every future report for the FY) + the
 // editor predicate (§4.7) over the `:id`. Mutations carry `Idempotency-Key` (§4.1). Org/actor server-side.
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   ApplyMappingBodySchema,
   CostReportIdParamsSchema,
   PreviewMappingBodySchema,
   ResetMappingBodySchema,
-  parse,
 } from "./cost-report-typebox";
 import { EDITOR_FOR_PROVIDER, P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";

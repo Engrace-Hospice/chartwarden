@@ -1,3 +1,4 @@
+import type { CursorPage, RouteActor } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/21-supplies/routes/read-service.ts — the M21 READ port + its response DTOs
 // (§4.1's GET rows). The Drizzle implementation is ./read-service-drizzle.ts; tests bind an in-memory one.
 //
@@ -46,8 +47,6 @@ import type {
   VendorRoutingRuleId,
   VendorRoutingScopeKind,
 } from "@chartwarden/types";
-import type { M21ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 /** §4.1 rows 2 / 3 — one supply request on the dashboard list. No free text (see the header). */
 export interface SupplyRequestListItem {
@@ -373,48 +372,45 @@ export interface ParStockFilters {
 /** The §4.1 READ surface. Every method opens its own `withOrgContext` (RLS scopes each statement). */
 export interface M21ReadService {
   listSupplyRequests(
-    actor: M21ReadActor,
+    actor: RouteActor,
     filters: SupplyRequestFilters,
   ): Promise<CursorPage<SupplyRequestListItem>>;
-  getSupplyRequest(actor: M21ReadActor, supplyRequestId: string): Promise<SupplyRequestDetail>;
+  getSupplyRequest(actor: RouteActor, supplyRequestId: string): Promise<SupplyRequestDetail>;
 
-  listSupplyItems(
-    actor: M21ReadActor,
-    filters: CatalogFilters,
-  ): Promise<CursorPage<SupplyItemView>>;
-  getSupplyItem(actor: M21ReadActor, supplyItemId: string): Promise<SupplyItemView>;
+  listSupplyItems(actor: RouteActor, filters: CatalogFilters): Promise<CursorPage<SupplyItemView>>;
+  getSupplyItem(actor: RouteActor, supplyItemId: string): Promise<SupplyItemView>;
 
   listComfortKitTemplates(
-    actor: M21ReadActor,
+    actor: RouteActor,
     filters: TemplateFilters,
   ): Promise<CursorPage<ComfortKitTemplateView>>;
   /** One template with its lines. Separate from the list so a write-through read is O(1), not a page scan
    *  that would 404 the 501st template an org authored. */
-  getComfortKitTemplate(actor: M21ReadActor, templateId: string): Promise<ComfortKitTemplateView>;
+  getComfortKitTemplate(actor: RouteActor, templateId: string): Promise<ComfortKitTemplateView>;
 
   listDispatches(
-    actor: M21ReadActor,
+    actor: RouteActor,
     filters: DispatchFilters,
   ): Promise<CursorPage<DispatchListItem>>;
-  getDispatch(actor: M21ReadActor, dispatchId: string): Promise<DispatchDetail>;
+  getDispatch(actor: RouteActor, dispatchId: string): Promise<DispatchDetail>;
 
   listReturns(
-    actor: M21ReadActor,
+    actor: RouteActor,
     filters: ReturnFilters,
   ): Promise<CursorPage<ComfortKitReturnListItem>>;
-  getReturn(actor: M21ReadActor, returnId: string): Promise<ComfortKitReturnDetail>;
+  getReturn(actor: RouteActor, returnId: string): Promise<ComfortKitReturnDetail>;
 
   listVendorRoutingRules(
-    actor: M21ReadActor,
+    actor: RouteActor,
     filters: RoutingRuleFilters,
   ): Promise<CursorPage<VendorRoutingRuleView>>;
   /** One routing rule, retired or not (the write-through read; see the template note). */
-  getVendorRoutingRule(actor: M21ReadActor, ruleId: string): Promise<VendorRoutingRuleView>;
+  getVendorRoutingRule(actor: RouteActor, ruleId: string): Promise<VendorRoutingRuleView>;
 
-  listParStock(actor: M21ReadActor, filters: ParStockFilters): Promise<CursorPage<ParStockView>>;
+  listParStock(actor: RouteActor, filters: ParStockFilters): Promise<CursorPage<ParStockView>>;
   /** One par row with its DERIVED severity (the write-through read; see the template note). */
-  getParStock(actor: M21ReadActor, parStockId: string): Promise<ParStockView>;
+  getParStock(actor: RouteActor, parStockId: string): Promise<ParStockView>;
 
   /** §8.1 — the DEA perpetual log for one dispatch (`comfort_kit.perpetual_log.read`). */
-  getPerpetualLog(actor: M21ReadActor, dispatchId: string): Promise<PerpetualLogView>;
+  getPerpetualLog(actor: RouteActor, dispatchId: string): Promise<PerpetualLogView>;
 }

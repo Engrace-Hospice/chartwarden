@@ -1,13 +1,13 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/denials.routes.ts — M25 (§4.1 routes 9-17, 20) the denial
 // worklist: list, detail, the state ladder (assign/start/escalate/resolve/close/reopen), the step-up-gated
 // close-with-write-off, and the appeal spawn. Worklist read gates on `denial.worklist.read`; detail +
 // transitions compose `claim_assigned_to_actor` (the worklist-ownership ABAC); resolve/reopen/close-write-off
 // carry the §4.1 reason floor; close-with-write-off composes the §D15 step-up. PATCH routes are
 // optimistic-concurrency (If-Match → 409 on stale).
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { ASSIGNED_TO_ACTOR, P, STEP_UP } from "./guards";
 import {
   AppealCreateRequestSchema,
@@ -17,7 +17,7 @@ import {
   DenialEscalateRequestSchema,
   DenialReopenRequestSchema,
   DenialResolveRequestSchema,
-  parse,
+  clampLimit,
 } from "./m25-typebox";
 import type { M25ReadService } from "./read-service";
 import type { M25WriteService } from "./write-service";
@@ -96,7 +96,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
         actor,
         idOf(request),
         { assigneeMembershipId: body.assigneeMembershipId, reason: body.reason },
-        ifMatchVersion(request),
+        ifMatchVersionOf(request),
       );
       return reply.send(res);
     },
@@ -108,7 +108,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
     async (request, reply) => {
       const actor = writeActorOf(request);
       return reply.send(
-        await writeService.startDenial(actor, idOf(request), ifMatchVersion(request)),
+        await writeService.startDenial(actor, idOf(request), ifMatchVersionOf(request)),
       );
     },
   );
@@ -124,7 +124,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
           actor,
           idOf(request),
           { reason: body.reason },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -141,7 +141,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
           actor,
           idOf(request),
           { reason: body.reason },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -153,7 +153,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
     async (request, reply) => {
       const actor = writeActorOf(request);
       return reply.send(
-        await writeService.closeDenial(actor, idOf(request), ifMatchVersion(request)),
+        await writeService.closeDenial(actor, idOf(request), ifMatchVersionOf(request)),
       );
     },
   );
@@ -169,7 +169,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
           actor,
           idOf(request),
           { reason: body.reason },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -186,7 +186,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
           actor,
           idOf(request),
           { reason: body.reason },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

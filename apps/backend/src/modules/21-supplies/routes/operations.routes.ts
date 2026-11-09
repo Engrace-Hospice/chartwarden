@@ -16,9 +16,13 @@
 //     what is on it, not what changed since the last count, and an adjustment-shaped API drifts from the
 //     shelf every time a count is missed. The delta is derived and run through the pure §2.7 rule, so a
 //     count that would drive the shelf negative is the typed refusal rather than a silent clamp.
+import {
+  actorOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { ifMatchStamp, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
 import {
   ListParStockQuery,
@@ -32,6 +36,7 @@ import {
   parseQuery,
 } from "./m21-typebox";
 import type { M21ReadService } from "./read-service";
+import { ifMatchStamp } from "./route-policy";
 import type { M21WriteService } from "./write-service";
 
 export interface OperationsRouteDeps {
@@ -119,7 +124,7 @@ export function registerSupplyOperationsRoutes(
       const { parStockId } = parse(ParStockIdParams, request.params);
       const body = parse(UpdateParStockBody, request.body);
       return writeService.updateParStock(writeActorOf(request), parStockId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },

@@ -1,6 +1,3 @@
-import * as billing from "@chartwarden/billing";
-import { BillingRuleRegistry, pass } from "@chartwarden/billing";
-import type { Rule } from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/assembly.test.ts — the §10 task-30 CLAIM ASSEMBLY
 // service tests (D10 / D15). The service constructs its repos internally (`new repositories.X(tx)`), so this
 // suite PARTIAL-mocks `@chartwarden/billing`: the data ports are swapped for the in-memory `_billing-repo-fakes`
@@ -13,9 +10,12 @@ import type { Rule } from "@chartwarden/billing";
 //   • server-authoritative — the response lines are HIPPS-derived; any client-supplied line data is ignored.
 //   • one logical unit — claim + claim_line[] + per_diem_rate_calculation (+ optional sia_calculation) + the initial
 //     validation_run + the creation history row + the `m23.claim.draft_created` outbox emit all land together.
+import * as billing from "@chartwarden/billing";
+import { BillingRuleRegistry, type ClaimAssemblySeams, pass } from "@chartwarden/billing";
+import type { Rule } from "@chartwarden/billing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildClaimAssemblyService } from "../services/claim-assembly";
-import type { ClaimAssemblyActor, ClaimAssemblySeams } from "../services/claim-assembly";
+import type { ClaimAssemblyActor } from "../services/claim-assembly";
 import { computeClaimSia } from "../services/claim-assembly-facts";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";

@@ -9,6 +9,7 @@
 // predicate (`channel_visibility`), never the break-glass read variant: a break-glass grant does not open AI. Flag off => typed AI_NOT_ENABLED (404),
 // decided in the service after the guards. Responses are `no-store`. No Idempotency-Key is required or honoured: a replayed cached body would be a
 // server-side copy of a summary, which ADR-0095 section 7 forbids.
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AiService } from "../ai/ai-service";
@@ -21,8 +22,6 @@ import {
 } from "./ai-typebox";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface AiRouteDeps {
   readonly service: AiService;

@@ -5,11 +5,11 @@ import { randomUUID } from "node:crypto";
 // transaction as the write, and never blocks or sends anything. Every route hangs off the ADMISSION path; a notice,
 // review or deadline of another admission reads as absent.
 import { type DbClient, organizationTimezone } from "@chartwarden/db";
+import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
 import { ResourceNotFoundError } from "../routes/service";
-import { mapUniqueViolation } from "../unique-violation";
 import {
   type DocumentVerifier,
   type NomncLog,

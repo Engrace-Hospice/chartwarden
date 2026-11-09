@@ -1,27 +1,15 @@
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/05-patient/routes/patient-typebox.ts — M5-T09 TypeBox route schemas
 // (§4.2, §4.4). Named `patient-typebox` (NOT `*schema*`) so the table-ownership import heuristic
 // never mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
 // VALIDATION_FAILED envelope.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   AdmitResult as ServiceAdmitResult,
   AmendmentView as ServiceAmendmentView,
 } from "./service";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set(
-    "date",
-    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
-  );
-}
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
 
 const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
 const PAYER_COVERAGE_KINDS = [
@@ -137,8 +125,7 @@ export const PatientSummarySchema = Type.Object({
 export const PatientListQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 120 })), // name or MRN substring
   status: Type.Optional(Type.String({ maxLength: 32 })),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const PatientListResponseSchema = Type.Object({
@@ -158,7 +145,7 @@ export const MessagingPatientSearchResponseSchema = Type.Object({
 });
 export const MessagingPatientSearchQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 120 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 25 })),
+  limit: pageLimit({ max: 25 }),
 });
 
 // GET /api/v1/patients/census-metrics (§4.2 census KPI strip) — the true active census, org-scoped.

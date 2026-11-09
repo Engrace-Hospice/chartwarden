@@ -26,7 +26,7 @@ import {
 // Lantern: WorkQueueLayout + FilterBar + No-Line table (§6.7) + RightDetailPanel for the queue; DetailPageLayout
 // for the detail. Every window tier renders through billing-status.ts (§6.6) and a §7.5 CountdownChip clock
 // to `windowTargetAt`. CSS-var tokens only, mono identifiers, tabular figures. The server is the only authz
-// point (ADR-0030): a 503 (seams unbound) degrades to EmptyState; a write 412 (If-Match) / 422 (validation) /
+// point (ADR-0030): a 503 (seams unbound) degrades to EmptyState; a write 409 (stale If-Match) / 422 (validation) /
 // 401-403 (step-up) surfaces inline (role="alert"), never a toast.
 //
 // §5.4 accessibility: the countdown timers carry NON-VISUAL equivalents — a visually-hidden aria-live region
@@ -778,7 +778,7 @@ function NoticeActions({
       };
       if (err) {
         const status = response?.status;
-        if (status === 412)
+        if (status === 409)
           setActionError(`This ${config.acronym} changed since you opened it — reopen to retry.`);
         else if (status === 422)
           setActionError("Validation failed — resolve the record's open findings first.");

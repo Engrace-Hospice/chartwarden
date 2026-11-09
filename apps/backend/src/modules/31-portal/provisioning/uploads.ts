@@ -23,12 +23,12 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 type UploadRow = typeof UP.$inferSelect;
 
 /** How long an initiated upload stays open for its bytes. */
-export const PORTAL_UPLOAD_TTL_MS = 15 * 60_000;
+const PORTAL_UPLOAD_TTL_MS = 15 * 60_000;
 /** The leading bytes read for the §7.8 magic-byte re-check (HEIC needs the first 12). */
 const MAGIC_WINDOW = 16;
 
 /** The route that takes the bytes (what `signedUploadUrl` points at). */
-export const portalUploadContentPath = (uploadId: string): string =>
+const portalUploadContentPath = (uploadId: string): string =>
   `/api/v1/portal/documents/uploads/${uploadId}/content`;
 
 export interface PortalUploads {

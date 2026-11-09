@@ -92,7 +92,7 @@ interface RequestShape {
   /**
    * GAP-033 - the event's content blob MUST be a typed `renderPayload` the producer built (the six M6 CoP
    * documents). An id-only event is a malformed request - retry then DLQ - never a generic dump of identifiers
-   * drawn as a legal document. {@link NormalizeInput.legacyUntypedFallback} is the explicit drain-window escape.
+   * drawn as a legal document.
    */
   readonly requiresRenderPayload?: boolean;
 }
@@ -592,13 +592,6 @@ export interface NormalizeInput {
   /** The outbox row's own `aggregate_id` — the identity for shapes that carry it on the envelope. */
   readonly aggregateId?: string;
   readonly payload: unknown;
-  /**
-   * Drain-window escape for {@link RequestShape.requiresRenderPayload}: an id-only legacy event is passed through
-   * marked `legacyUntyped` and drawn by the generic builder (the pre-GAP-033 behaviour) instead of dead-lettering.
-   * Off by default - a legal document must be drawn from typed content. Enable only while the outbox drains rows
-   * queued before the producer deploy, then turn it off (see docs/history/gates-pdf-templates.md).
-   */
-  readonly legacyUntypedFallback?: boolean;
 }
 
 export function normalizeDocumentRequest(delivered: NormalizeInput): {
@@ -658,7 +651,7 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
     typeof rawContent === "object" &&
     (!shape.requiresRenderPayload ||
       (rawContent as Record<string, unknown>).schemaVersion === RENDER_PAYLOAD_VERSION);
-  if (shape.requiresRenderPayload && !typedContent && delivered.legacyUntypedFallback !== true) {
+  if (shape.requiresRenderPayload && !typedContent) {
     throw new MalformedRenderRequestError(
       eventType,
       `the event carries no typed '${shape.contentField}' (an id-only legacy event); the producer must build it`,
@@ -666,14 +659,7 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
   }
   const content: Record<string, unknown> = typedContent
     ? (rawContent as Record<string, unknown>)
-    : shape.requiresRenderPayload
-      ? {
-          ...(rawContent !== null && typeof rawContent === "object"
-            ? (rawContent as Record<string, unknown>)
-            : p),
-          legacyUntyped: true,
-        }
-      : {};
+    : {};
 
   // The chart-target patient may live on the envelope (M21/M23 style) or inside the content blob (M11/M12
   // thread it through `renderPayload`, whose schema is `Type.Unknown()` — no catalog change needed).
@@ -753,8 +739,6 @@ export interface DocumentRequestConsumerDeps {
    * through `document.(aggregate_type, aggregate_id)`; the source row's column simply stays NULL.
    */
   readonly emitRendered?: (event: DocumentRenderedEmit) => Promise<void>;
-  /** See {@link NormalizeInput.legacyUntypedFallback}. Defaults to the `M22_M6_LEGACY_UNTYPED_RENDER=1` env flag. */
-  readonly legacyUntypedFallback?: boolean;
 }
 
 /** The `m22.document.rendered` payload (see ../events-by-m22.ts) as the consumer hands it to the emitter. */
@@ -797,18 +781,13 @@ export function buildM22DocumentRequestConsumer(
 ): OutboxConsumerBinding {
   const templates = deps.templates ?? PLATFORM_TEMPLATE_TABLE;
   const renderer = deps.renderer ?? getDocumentRenderer;
-  const legacyUntyped =
-    deps.legacyUntypedFallback ?? process.env.M22_M6_LEGACY_UNTYPED_RENDER === "1";
 
   return {
     consumerName: M22_DOCUMENT_RENDER_CONSUMER,
     consumerModule: "m22",
     eventTypes: [...M22_DOCUMENT_REQUEST_EVENTS],
     async handle(event: DispatchableOutboxEvent): Promise<void> {
-      const { event: sourceEvent, payload } = normalizeDocumentRequest({
-        ...event,
-        legacyUntypedFallback: legacyUntyped,
-      });
+      const { event: sourceEvent, payload } = normalizeDocumentRequest(event);
       // F-168 (#248) — two-tier idempotency, per event shape. Most events are GENESIS-only (their real
       // source transition fires exactly once per real-world occurrence — an order is signed once), so
       // `alreadyRendered` stays keyed on `(aggregateType, aggregateId)`: this is what makes a PRODUCER-

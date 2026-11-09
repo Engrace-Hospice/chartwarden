@@ -200,7 +200,7 @@ export async function runDunningForOrg(deps: M35JobDeps, organizationId: string)
 // ── payment-method expiry watch ─────────────────────────────────────────────────────────────────────────
 
 /** The §2.4 warning windows (days before expiry) - one `expiring_soon` per window crossing. */
-export const PAYMENT_METHOD_EXPIRY_WINDOWS_DAYS: readonly number[] = [30, 14, 7, 1];
+const PAYMENT_METHOD_EXPIRY_WINDOWS_DAYS: readonly number[] = [30, 14, 7, 1];
 
 /** Days until `expiresAt`, rounded UP so "expires later today" is 1 and the window match is stable. */
 export function daysUntil(expiresAt: Date, now: Date): number {
@@ -272,7 +272,7 @@ interface UsageWindow {
 }
 
 /** The subscription's billing window containing `now`; calendar month (UTC) when the mirror has no period. */
-export function usageWindowFor(
+function usageWindowFor(
   sub: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
   now: Date,
 ): UsageWindow {
