@@ -615,6 +615,12 @@ jobs:
               name: "M1 idempotency — atomic claim and expiry reclaim",
               scripts: "test:gap007:idempotency-claim:live",
             }
+          # M1 idempotency.cleanup — the sweeper purges expired rows in EVERY org status (created, suspended and closed
+          # orgs too, not only active); LIVE by necessity: RLS-forced table + the separately-pooled platform login.
+          - {
+              name: "M1 idempotency — cleanup sweeps every organization status",
+              scripts: "test:idempotency:cleanup:live",
+            }
           # GAP-007 - the 422 through the real store, the CHECK on every writer, legacy-blob quarantine and the fail-closed reader; LIVE by necessity.
           - {
               name: "M3 membership_role.scope - shape CHECK, quarantine, fail-closed reach",
