@@ -8,9 +8,18 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { type JSX, StrictMode, useRef, useState } from "react";
+import {
+  type JSX,
+  StrictMode,
+  createRef,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { interactiveRowProps } from "../system/interactive-row";
 import { ToastProvider } from "../system/toast";
 import { useDebouncedValue } from "./use-debounced-value";
 import { useDisclosureDismiss } from "./use-disclosure-dismiss";
@@ -23,6 +32,133 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+
+type RowMarker = "class" | "pressed" | "current";
+
+/** How a list marks its open row: the kit's `tr.is-selected`, `aria-pressed` (interactiveRowProps), `aria-current`, (the `[role=row]` forms are covered by the grid below). */
+function markSelected(marker: RowMarker, selected: boolean): Record<string, unknown> {
+  if (marker === "class") return { className: selected ? "is-selected" : undefined };
+  if (marker === "pressed") return { role: "button", "aria-pressed": selected };
+  return { "aria-current": selected ? "true" : undefined };
+}
+
+interface RowsHandle {
+  select: (id: string | null) => void;
+}
+
+function RowDrawer({ onClose }: { onClose?: () => void }): JSX.Element {
+  const props = useDrawerA11y<HTMLElement>(onClose ?? (() => undefined));
+  return (
+    <aside aria-label="Detail" {...props}>
+      <button type="button">act</button>
+    </aside>
+  );
+}
+
+/** A list with a drawer per selected row, like the admin list screens: the open row is marked per `rowMarker`. */
+const RowsWithDrawer = forwardRef<RowsHandle, { rowMarker?: RowMarker }>(function RowsWithDrawer(
+  { rowMarker = "class" },
+  handle,
+): JSX.Element {
+  const [id, setId] = useState<string | null>(null);
+  useImperativeHandle(handle, () => ({ select: setId }), []);
+  return (
+    <div>
+      <input aria-label="filter" />
+      <table>
+        <tbody>
+          {["a", "b"].map((row) => (
+            <tr
+              key={row}
+              aria-label={`row ${row}`}
+              tabIndex={0}
+              onClick={() => setId(row)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") setId(row);
+              }}
+              {...markSelected(rowMarker, id === row)}
+            >
+              <td>{row}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {id ? <RowDrawer key={id} onClose={() => setId(null)} /> : null}
+    </div>
+  );
+});
+
+/** A div grid whose open row is `[role=row]` + aria-pressed / aria-current. */
+const GridWithDrawer = forwardRef<RowsHandle, { attr: "aria-pressed" | "aria-current" }>(
+  function GridWithDrawer({ attr }, handle): JSX.Element {
+    const [id, setId] = useState<string | null>(null);
+    useImperativeHandle(handle, () => ({ select: setId }), []);
+    return (
+      <div>
+        {/* biome-ignore lint/a11y/useSemanticElements: the point is the `[role=row]` selector, which a real <table> never exercises */}
+        <div role="grid" aria-label="grid">
+          <div
+            role="row"
+            aria-label="grid row a"
+            tabIndex={0}
+            {...{ [attr]: id === "a" ? "true" : "false" }}
+          />
+        </div>
+        {id ? <RowDrawer key={id} onClose={() => setId(null)} /> : null}
+      </div>
+    );
+  },
+);
+
+interface RowsRemountHandle extends RowsHandle {
+  remount: () => void;
+  /** Closes the drawer but leaves the row marked selected (the drawer's own Close, with the selection kept). */
+  closeDrawer: () => void;
+}
+
+/** A list that can re-render every row into a new element (a refetch), with or without `data-row-id` on the rows. */
+const RemountingList = forwardRef<RowsRemountHandle, { withRowIds: boolean }>(
+  function RemountingList({ withRowIds }, handle): JSX.Element {
+    const [id, setId] = useState<string | null>(null);
+    const [drawerOpen, setDrawerOpen] = useState(true);
+    const [generation, setGeneration] = useState(0);
+    useImperativeHandle(
+      handle,
+      () => ({
+        select: (next) => {
+          setId(next);
+          setDrawerOpen(true);
+        },
+        remount: () => setGeneration((g) => g + 1),
+        closeDrawer: () => setDrawerOpen(false),
+      }),
+      [],
+    );
+    return (
+      <div className="wx-list-drawer">
+        <table>
+          <tbody>
+            {["a", "b"].map((row) => (
+              <tr
+                key={`${generation}-${row}`}
+                aria-label={`row ${row}`}
+                {...interactiveRowProps(
+                  () => setId(row),
+                  id === row,
+                  false,
+                  withRowIds ? row : undefined,
+                )}
+              >
+                <td>{row}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {id && drawerOpen ? <RowDrawer key={id} onClose={() => setId(null)} /> : null}
+      </div>
+    );
+  },
+);
 
 function Host({ onClose }: { onClose: () => void }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -81,50 +217,15 @@ describe("useDrawerA11y", () => {
   });
 });
 
+interface RowsHandle {
+  select: (id: string | null) => void;
+}
+
 describe("useDrawerA11y focus hand-off", () => {
-  /** A list with a drawer per selected row, like the admin list screens: the open row is `tr.is-selected`. */
-  function RowsWithDrawer({
-    controls,
-  }: { controls: { select: (id: string | null) => void } }): JSX.Element {
-    const [id, setId] = useState<string | null>(null);
-    controls.select = setId;
-    return (
-      <div>
-        <input aria-label="filter" />
-        <table>
-          <tbody>
-            {["a", "b"].map((row) => (
-              <tr
-                key={row}
-                aria-label={`row ${row}`}
-                className={id === row ? "is-selected" : undefined}
-                tabIndex={0}
-                onClick={() => setId(row)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") setId(row);
-                }}
-              >
-                <td>{row}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {id ? <KeyedDrawer key={id} onClose={() => setId(null)} /> : null}
-      </div>
-    );
-  }
-  function KeyedDrawer({ onClose }: { onClose: () => void }): JSX.Element {
-    const props = useDrawerA11y<HTMLElement>(onClose);
-    return (
-      <aside aria-label="Detail" {...props}>
-        <button type="button">act</button>
-      </aside>
-    );
-  }
-  const mountRows = (): { select: (id: string | null) => void } => {
-    const controls = { select: (_id: string | null): void => undefined };
-    render(<RowsWithDrawer controls={controls} />);
-    return { select: (id) => act(() => controls.select(id)) };
+  const mountRows = (rowMarker?: RowMarker): RowsHandle => {
+    const handle = createRef<RowsHandle>();
+    render(<RowsWithDrawer ref={handle} rowMarker={rowMarker} />);
+    return { select: (id) => act(() => handle.current?.select(id)) };
   };
 
   it("hands focus to the selected row when the drawer opened with nothing focused (a deep link)", () => {
@@ -151,7 +252,7 @@ describe("useDrawerA11y focus hand-off", () => {
           <button type="button" onClick={() => setOpenerShown(false)}>
             hide opener
           </button>
-          {open ? <KeyedDrawer onClose={() => setOpen(false)} /> : null}
+          {open ? <RowDrawer onClose={() => setOpen(false)} /> : null}
         </div>
       );
     }
@@ -201,6 +302,234 @@ describe("useDrawerA11y focus hand-off", () => {
     select(null);
     expect(document.activeElement).toBe(rowA);
     expect(document.activeElement).not.toBe(rowB);
+  });
+});
+
+describe("useDrawerA11y selected-row lookup", () => {
+  const openAndClose = (select: (id: string | null) => void): void => {
+    select("a");
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+    select(null);
+  };
+
+  it.each(["pressed", "current"] as const)(
+    "finds the open row marked %s (not only tr.is-selected) when the drawer opened with nothing focused",
+    (marker) => {
+      const handle = createRef<RowsHandle>();
+      render(<RowsWithDrawer ref={handle} rowMarker={marker} />);
+      openAndClose((id) => act(() => handle.current?.select(id)));
+      expect(document.activeElement).toBe(screen.getByLabelText("row a"));
+    },
+  );
+
+  it("finds a [role=row] grid row marked aria-pressed or aria-current", () => {
+    for (const attr of ["aria-pressed", "aria-current"] as const) {
+      const handle = createRef<RowsHandle>();
+      render(<GridWithDrawer ref={handle} attr={attr} />);
+      openAndClose((id) => act(() => handle.current?.select(id)));
+      expect(document.activeElement).toBe(screen.getByLabelText("grid row a"));
+      cleanup();
+    }
+  });
+
+  it("looks only inside its own list: another list's selected row never takes focus", () => {
+    const handle = createRef<RowsHandle>();
+    render(
+      <>
+        <table>
+          <tbody>
+            <tr aria-label="other list row" tabIndex={0} className="is-selected">
+              <td>x</td>
+            </tr>
+          </tbody>
+        </table>
+        <RowsWithDrawer ref={handle} />
+      </>,
+    );
+    handle.current && act(() => handle.current?.select("a"));
+    // Nothing was focused when the drawer opened: the opener is this list's row a, not the other list's selected row.
+    act(() => handle.current?.select(null));
+    expect(document.activeElement).toBe(screen.getByLabelText("row a"));
+    expect(document.activeElement).not.toBe(screen.getByLabelText("other list row"));
+  });
+
+  it("does not move focus into a different page's list when the drawer's list is gone (a route change)", () => {
+    function Routes(): JSX.Element {
+      const [page, setPage] = useState<"list" | "other">("list");
+      return (
+        <div>
+          <button type="button" onClick={() => setPage("other")}>
+            go
+          </button>
+          {page === "list" ? (
+            <div className="wx-list-drawer">
+              <table>
+                <tbody>
+                  <tr aria-label="row a" className="is-selected" tabIndex={0}>
+                    <td>a</td>
+                  </tr>
+                </tbody>
+              </table>
+              <KeyedDrawer />
+            </div>
+          ) : (
+            <table>
+              <tbody>
+                <tr aria-label="new page row" className="is-selected" tabIndex={0}>
+                  <td>n</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      );
+    }
+    function KeyedDrawer(): JSX.Element {
+      const props = useDrawerA11y<HTMLElement>(() => undefined);
+      return <aside aria-label="Detail" {...props} />;
+    }
+    render(<Routes />);
+    fireEvent.click(screen.getByRole("button", { name: "go" }));
+    expect(screen.getByLabelText("new page row")).toBeTruthy();
+    expect(document.activeElement).not.toBe(screen.getByLabelText("new page row"));
+  });
+
+  it("returns focus to the opener's row after the list re-rendered it, found again by data-row-id", () => {
+    const handle = createRef<RowsRemountHandle>();
+    render(<RemountingList ref={handle} withRowIds />);
+    const original = screen.getByLabelText("row a");
+    original.focus();
+    fireEvent.click(original);
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+    // The list re-renders into new elements (a refetch): the opener is now a detached node.
+    act(() => handle.current?.remount());
+    const replaced = screen.getByLabelText("row a");
+    expect(replaced).not.toBe(original);
+    expect(original.isConnected).toBe(false);
+    act(() => handle.current?.select(null));
+    expect(document.activeElement).toBe(replaced);
+  });
+
+  it("does not hand focus back to the old row when the selection moved on and the list re-rendered (ids tell the rows apart)", () => {
+    const handle = createRef<RowsRemountHandle>();
+    render(<RemountingList ref={handle} withRowIds />);
+    fireEvent.click(screen.getByLabelText("row a"));
+    act(() => handle.current?.remount());
+    // Row b is picked: row a's keyed drawer unmounts while row b is the open row.
+    const rowB = screen.getByLabelText("row b");
+    rowB.focus();
+    fireEvent.click(rowB);
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+    act(() => handle.current?.select(null));
+    expect(document.activeElement).toBe(screen.getByLabelText("row b"));
+  });
+
+  it("falls back to the selected row when the re-rendered rows carry no id", () => {
+    const handle = createRef<RowsRemountHandle>();
+    render(<RemountingList ref={handle} withRowIds={false} />);
+    const original = screen.getByLabelText("row a");
+    original.focus();
+    fireEvent.click(original);
+    act(() => handle.current?.remount());
+    const replaced = screen.getByLabelText("row a");
+    act(() => handle.current?.closeDrawer());
+    // Row a is still marked selected when the drawer closes, so it stands in for the opener the re-render replaced.
+    expect(document.activeElement).toBe(replaced);
+  });
+
+  it("a native select outside the drawer does not keep focus (only text entry does)", () => {
+    function WithSelect(): JSX.Element {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <select aria-label="status" onChange={() => setOpen(true)}>
+            <option>a</option>
+            <option>b</option>
+          </select>
+          {open ? <KeyedDrawer /> : null}
+        </div>
+      );
+    }
+    function KeyedDrawer(): JSX.Element {
+      const props = useDrawerA11y<HTMLElement>(() => undefined);
+      return <aside aria-label="Detail" {...props} />;
+    }
+    render(<WithSelect />);
+    const select = screen.getByLabelText("status");
+    select.focus();
+    fireEvent.change(select, { target: { value: "b" } });
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+  });
+
+  it.each([
+    ["a textarea", <textarea key="t" aria-label="typing" />],
+    ["a search input", <input key="s" type="search" aria-label="typing" />],
+    // jsdom has no `isContentEditable`, so mark the attribute the hook reads.
+    [
+      "a contenteditable region",
+      <div
+        key="c"
+        contentEditable
+        suppressContentEditableWarning
+        aria-label="typing"
+        role="textbox"
+        tabIndex={0}
+      />,
+    ],
+  ])("leaves focus in %s outside the drawer", (_name, field) => {
+    function WithField(): JSX.Element {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          {field}
+          <button type="button" onClick={() => setOpen(true)}>
+            open
+          </button>
+          {open ? <KeyedDrawer /> : null}
+        </div>
+      );
+    }
+    function KeyedDrawer(): JSX.Element {
+      const props = useDrawerA11y<HTMLElement>(() => undefined);
+      return <aside aria-label="Detail" {...props} />;
+    }
+    render(<WithField />);
+    const typing = screen.getByLabelText("typing");
+    typing.focus();
+    // Open the drawer without moving focus off the field (as a debounced filter result would).
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    expect(screen.getByRole("complementary", { name: "Detail" })).toBeTruthy();
+    expect(document.activeElement).toBe(typing);
+  });
+
+  it("under StrictMode's mount, unmount, mount the drawer still takes focus and Escape returns it to the opener", () => {
+    const onClose = vi.fn();
+    render(
+      <StrictMode>
+        <Host onClose={onClose} />
+      </StrictMode>,
+    );
+    const opener = screen.getByRole("button", { name: "open" });
+    opener.focus();
+    fireEvent.click(opener);
+    const drawer = screen.getByRole("complementary", { name: "Detail" });
+    expect(document.activeElement).toBe(drawer);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("under StrictMode a deep-linked drawer still hands focus to the selected row on close", () => {
+    const handle = createRef<RowsHandle>();
+    render(
+      <StrictMode>
+        <RowsWithDrawer ref={handle} />
+      </StrictMode>,
+    );
+    act(() => handle.current?.select("a"));
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+    act(() => handle.current?.select(null));
+    expect(document.activeElement).toBe(screen.getByLabelText("row a"));
   });
 });
 
