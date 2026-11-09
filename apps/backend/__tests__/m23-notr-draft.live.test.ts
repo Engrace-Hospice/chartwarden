@@ -732,7 +732,7 @@ describe.skipIf(!DB_URL)(
       });
       // Round 2, Q4: a LATE filing is published (real catalog-validating publisher, same transaction) and reaches the alert + ops sink.
       const { rows: lateEvents } = await admin.query(
-        "SELECT payload FROM outbox_event WHERE event_type='m23.notr.filed_externally_late' AND payload->>'notrId'=$1",
+        "SELECT id, payload FROM outbox_event WHERE event_type='m23.notr.filed_externally_late' AND payload->>'notrId'=$1",
         [id],
       );
       expect(lateEvents).toHaveLength(1);
@@ -760,8 +760,13 @@ describe.skipIf(!DB_URL)(
         }),
       ]);
       expect(
-        lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === id),
-      ).toEqual([expect.objectContaining({ kind: "m23.notice_filed_late" })]);
+        lateOpsNotices.filter((n) => lateEvents.some((e) => e.id === n.correlationId)),
+      ).toEqual([
+        expect.objectContaining({
+          kind: "m23.notice_filed_late",
+          details: { organizationId: ORG_A, noticeKind: "notr" },
+        }),
+      ]);
       // An idempotent replay of the same recording publishes nothing more.
       await service.recordNotrExternalFiling(actorOf(ORG_A), id, { filedOn });
       expect((await notrRow(id)).version).toBe(row.version);
