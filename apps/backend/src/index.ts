@@ -164,7 +164,6 @@ import {
   wireAuditArchiveTenancy,
 } from "./bootstrap/jobs/audit-archive";
 import {
-  buildIdempotencyCleanupOrgs,
   registerIdempotencyCleanupWorker,
   scheduleIdempotencyCleanup,
   wireIdempotencyCleanupTenancy,
@@ -11323,13 +11322,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           "M3 reap_breakglass cron (active-org enumeration)",
         ),
       });
-      // The sweeper covers every org status (created, suspended and closed orgs hold expired rows too), unlike the reaper.
+      // The sweeper covers every org status (created, suspended and closed orgs hold expired rows too), unlike the reaper: it builds
+      // its own enumeration from the platform pool and the auditor.
       const idempotencyCleanupWorker = registerIdempotencyCleanupWorker(queueConnection, {
         db: dbHandle.db,
-        activeOrgs: buildIdempotencyCleanupOrgs({
-          platformDb: platformDbHandle?.db,
-          auditBypass: m34PlatformBypassAuditor,
-        }),
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
       });
       attachDlqAlertsToAll([...m3ReaperWorkers, idempotencyCleanupWorker], "m1m3");
       app.addHook("onClose", async () => {

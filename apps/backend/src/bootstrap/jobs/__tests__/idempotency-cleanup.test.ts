@@ -30,10 +30,13 @@ vi.mock("@chartwarden/tenancy", () => ({
         }),
       }),
       delete: () => ({
-        where: async () => {
-          backlog[currentOrg] = (backlog[currentOrg] ?? 0) - pending.length;
-          deleteCalls.push({ org: currentOrg, ids: pending.length });
-        },
+        where: () => ({
+          returning: async () => {
+            backlog[currentOrg] = (backlog[currentOrg] ?? 0) - pending.length;
+            deleteCalls.push({ org: currentOrg, ids: pending.length });
+            return pending.map((id) => ({ id }));
+          },
+        }),
       }),
     };
     return fn(tx);
