@@ -1201,6 +1201,7 @@ import {
   buildNoticeWindowPort,
   buildSubmissionControlNumberReader,
   buildTransferNoticeService,
+  claimAccountReferenceFor,
   createClaimMdOperationalReader,
   createDrizzleBillingEraseStore,
   createDrizzleDdeAgingStore,
@@ -7387,6 +7388,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     providerNpi: m25PayeeNpi,
                     ...clearinghouseUsageFor,
                   }).contextFor(organizationId, providerEntityId);
+                  // The same resolution the submit worker repeats, so the preview's fingerprint and the worker's keep matching.
+                  const accountReference = await claimAccountReferenceFor(
+                    { binding: clearinghouseBinding, env: process.env },
+                    organizationId,
+                  );
                   return withOrgContext(
                     dbHandle.db,
                     { organizationId, userId: actorUserId },
@@ -7400,8 +7406,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                           addresses: lazyPatientAddressReader(),
                           parties: m23ClaimPreviewParties(tx as DbClient),
                           previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
-                          accountReference:
-                            process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                          accountReference,
                         },
                         {
                           claimId,
@@ -7418,8 +7423,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                             status: "rendered" as const,
                             document: rendered.document,
                             sourceFingerprint: rendered.sourceFingerprint,
-                            accountReference:
-                              process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                            accountReference,
                             usage: context.usage,
                           }
                         : {
@@ -7438,6 +7442,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   env: process.env,
                   binding: clearinghouseBinding,
                   providerNpi: m25PayeeNpi,
+                  log: (fields, message) => app.log.warn(fields, message),
                   ...clearinghouseUsageFor,
                   payerIsActive: async (payerId) =>
                     Boolean(await m23PayerNameByX12Id(dbHandle.db, payerId)),
@@ -10625,7 +10630,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // billing-provider EIN is opened with M2's tax-id cipher (the tenant's own DEK) and held in memory for one build.
       claim837i: {
         previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
-        accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+        // Per organization (a tenant's own Claim.MD account is not the platform's), resolved as the preview route does.
+        accountReferenceFor: (organizationId) =>
+          claimAccountReferenceFor(
+            { binding: clearinghouseBinding, env: process.env },
+            organizationId,
+          ),
         admission: m23AssemblySeams.admission,
         mbiUnlock: () => getSeam("MbiUnlockReader"),
         patients: lazyPatientReader(),

@@ -5,6 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { and, eq } from "drizzle-orm";
 import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
@@ -192,6 +193,26 @@ async function claimMdAccountOf(
   return { accountReference: platformReference };
 }
 
+/** What a claim fingerprint is bound to when no Claim.MD account reference is configured (the pre-tenant-account placeholder). */
+const LEGACY_CLAIM_ACCOUNT_REFERENCE = "legacy-mac";
+
+/**
+ * The account reference a claim's preview fingerprint and its submit-time fingerprint are both bound to, for one organization: a
+ * tenant's OWN Claim.MD account is `tenant:<org>` (the reference its evidence uses), otherwise the platform's
+ * CLAIMMD_ACCOUNT_REFERENCE, else a fixed placeholder. The preview route and the submit worker call this one function, so a
+ * preview confirmed for one account can never be sent under another and the two fingerprints keep matching.
+ */
+export async function claimAccountReferenceFor(
+  deps: Pick<ClearinghouseContextDeps, "binding" | "env">,
+  organizationId: string,
+): Promise<string> {
+  const resolved = deps.binding?.forOrg ? await deps.binding.forOrg(organizationId) : deps.binding;
+  if (resolved?.vendor === "claimmd" && resolved.account === "tenant") {
+    return tenantClaimMdAccountReference(organizationId);
+  }
+  return deps.env[CLAIMMD_ACCOUNT_REFERENCE_ENV]?.trim() || LEGACY_CLAIM_ACCOUNT_REFERENCE;
+}
+
 export function buildClearinghouseContextPort(
   deps: ClearinghouseContextDeps,
 ): ClearinghouseContextPort {
@@ -285,6 +306,8 @@ export function buildClaimPayerRouteStatus(
   deps: ClearinghouseContextDeps & {
     /** True when the resolved payer id is an active X12 payer (M40 owns the directory). */
     readonly payerIsActive: (payerId: string) => Promise<boolean>;
+    /** Structured logger for a readiness check that failed to resolve (ids and a code only, never the error's message). */
+    readonly log?: (fields: Record<string, unknown>, message: string) => void;
   },
 ): (organizationId: string, providerEntityId: string) => Promise<ClaimPayerRouteStatus> {
   return async (organizationId, providerEntityId) => {
@@ -302,10 +325,17 @@ export function buildClaimPayerRouteStatus(
       }
       return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
     } catch (error) {
+      // A typed refusal keeps its own code (an unreadable credential is not "not verified"); only an untyped throw is generic.
       const code =
-        error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
-          ? error.message
-          : "PAYER_ROUTE_NOT_VERIFIED";
+        error instanceof ChartWardenError
+          ? error.code
+          : error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
+            ? error.message
+            : "PAYER_ROUTE_NOT_VERIFIED";
+      deps.log?.(
+        { organizationId, providerEntityId, code },
+        "claim payer-route readiness could not be resolved",
+      );
       return { status: "not_configured", reasonCode: code };
     }
   };

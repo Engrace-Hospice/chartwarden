@@ -1,3 +1,4 @@
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
 import {
@@ -6,6 +7,7 @@ import {
   type ClaimMdM23PayerRoute,
   buildClaimPayerRouteStatus,
   buildClearinghouseContextPort,
+  claimAccountReferenceFor,
   resolveClaimMdM23PayerRoute,
 } from "./clearinghouse-context";
 
@@ -329,5 +331,67 @@ describe("the claim payer-route readiness follows the organization's own binding
       status: "not_configured",
       reasonCode: "PAYER_ROUTE_NOT_VERIFIED",
     });
+  });
+
+  it("an org whose clearinghouse credential is unreadable reports THAT code, and logs it with ids only", async () => {
+    const unreadable = {
+      vendor: null,
+      forOrg: async () => {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+          "the credential could not be opened (synthetic message detail)",
+          503,
+        );
+      },
+    };
+    const logs: { fields: Record<string, unknown>; message: string }[] = [];
+    const result = await buildClaimPayerRouteStatus({
+      db: fakeDb,
+      env: routesEnv(tenantRoute),
+      binding: unreadable,
+      usageFor: async () => "test",
+      providerNpi: async () => "synthetic-npi",
+      payerIsActive: async () => true,
+      log: (fields, message) => logs.push({ fields, message }),
+    })(ORG, "provider-a");
+    expect(result).toEqual({
+      status: "not_configured",
+      reasonCode: "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+    });
+    expect(logs).toEqual([
+      {
+        fields: {
+          organizationId: ORG,
+          providerEntityId: "provider-a",
+          code: "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+        },
+        message: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("synthetic message detail");
+  });
+});
+
+describe("the account reference a claim's preview and submit fingerprints are bound to", () => {
+  const reference = (env: Record<string, string>, binding?: ReturnType<typeof perOrg>) =>
+    claimAccountReferenceFor({ env, ...(binding ? { binding } : {}) }, ORG);
+
+  it("a tenant's own Claim.MD account is tenant:<org>, never the platform's reference", async () => {
+    expect(
+      await reference({ CLAIMMD_ACCOUNT_REFERENCE: "platform-account" }, perOrg(tenantClaimMd)),
+    ).toBe(tenantClaimMdAccountReference(ORG));
+  });
+
+  it("the platform's account (and an org it serves) keeps CLAIMMD_ACCOUNT_REFERENCE, else the legacy placeholder", async () => {
+    const env = { CLAIMMD_ACCOUNT_REFERENCE: " platform-account " };
+    expect(await reference(env, perOrg(platformAccount))).toBe("platform-account");
+    expect(await reference(env)).toBe("platform-account");
+    expect(await reference({})).toBe("legacy-mac");
+  });
+
+  it("a tenant on its own Stedi account is not on a Claim.MD account: the platform reference applies, as before", async () => {
+    expect(
+      await reference({ CLAIMMD_ACCOUNT_REFERENCE: "platform-account" }, perOrg(tenantStedi)),
+    ).toBe("platform-account");
   });
 });
