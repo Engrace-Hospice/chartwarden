@@ -1012,7 +1012,7 @@ function interactiveInvocation(p: Parsed): boolean {
   const explicitInput = ins.length + docs.length > 0;
 
   if (SHELL.test(prog)) {
-    if (args.some((a) => /^(-h|--help|--version)$/.test(a))) return false;
+    if (args.length === 1 && /^(-h|--help|--version)$/.test(args[0] ?? "")) return false;
     // Shell command strings can eval, expand variables and run substitutions after inspection.
     // Codex must invoke the command directly or use a reviewable script file instead.
     if (
@@ -1033,11 +1033,12 @@ function interactiveInvocation(p: Parsed): boolean {
   }
 
   if (LANGUAGE_REPL.test(prog)) {
-    const informationOnly = args.some(
-      (a) =>
-        /^(--help|--version)$/.test(a) ||
-        (/^python[0-9.]*$/.test(prog) ? /^(-h|-V)$/.test(a) : /^(-h|-v|-V)$/.test(a)),
-    );
+    const informationOnly =
+      args.length === 1 &&
+      (/^(--help|--version)$/.test(args[0] ?? "") ||
+        (/^python[0-9.]*$/.test(prog)
+          ? /^(-h|-V)$/.test(args[0] ?? "")
+          : /^(-h|-v|-V)$/.test(args[0] ?? "")));
     if (informationOnly) return false;
     if (prog === "irb") return true;
     if (args.some((a) => a === "--interactive" || /^-[^-]*i/.test(a))) return true;
@@ -1061,12 +1062,12 @@ function interactiveInvocation(p: Parsed): boolean {
   }
 
   if (prog === "bun" || prog === "deno") {
-    if (args.some((a) => /^(-h|--help|-v|-V|--version)$/.test(a))) return false;
+    if (args.length === 1 && /^(-h|--help|-v|-V|--version)$/.test(args[0] ?? "")) return false;
     return args.length === 0 || args[0] === "repl";
   }
 
   if (DATABASE_REPL.test(prog)) {
-    if (args.some((a) => /^(--help|-\?|--version|-V)$/.test(a))) return false;
+    if (args.length === 1 && /^(--help|-\?|--version|-V)$/.test(args[0] ?? "")) return false;
     if (explicitInput) return false;
     const shellEscape = args.some((a) => {
       if (prog === "sqlite3") return /(?:^|[\r\n])\s*\.(?:shell|system)(?:\s|$)/i.test(a);
@@ -1087,7 +1088,7 @@ function interactiveInvocation(p: Parsed): boolean {
     );
   }
 
-  return /^(script|screen|tmux)$/.test(prog) && args.length === 0;
+  return /^(script|screen|tmux)$/.test(prog);
 }
 
 export const isInteractiveShell = (cmd: string): boolean =>

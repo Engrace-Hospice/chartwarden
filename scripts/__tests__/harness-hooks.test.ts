@@ -282,6 +282,8 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       "bash -c '$(printf bash)'",
       "bash -c '$SHELL'",
       "bash -c '$CMD'",
+      "bash -c bash --help",
+      "sh -c python3 --version",
       "sh -c 'ls'",
       "zsh -c 'exit 0'",
       "ksh -c 'exit 0'",
@@ -306,6 +308,7 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       "php --define x=1",
       "python3 -m code",
       "python3 -c 'import code; code.interact()'",
+      "python3 -c 'import code; code.interact()' --version",
       "node -e 'require(\"repl\").start()'",
       "psql",
       "psql -h localhost",
@@ -321,11 +324,16 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       "mysql -e 'system bash'",
       "bun repl",
       "sh -i",
+      "script -q /dev/null bash",
+      "screen bash",
+      "tmux new-session bash",
     ]) {
       expect(decision(shell(command)), command).toBe("deny");
     }
     for (const command of [
       "python3 --version",
+      "bash --help",
+      "psql --version",
       "python3 -q -- scripts/x.py",
       "ruby --encoding utf-8 -- scripts/x.rb",
       "perl --include-directory lib -- scripts/x.pl",
