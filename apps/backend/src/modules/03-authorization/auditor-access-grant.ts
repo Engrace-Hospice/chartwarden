@@ -138,6 +138,9 @@ export function createDbAuditorAccessGrantor(): AuditorAccessGrantor {
     async grant(tx, input) {
       let role = await findRole(tx, input.organizationId);
       if (!role) {
+        // The database refuses the system row (migration 1415) unless this grant says it is the writer (migration 1439); the
+        // setting is transaction-local and cleared again straight after the insert.
+        await tx.execute(sql`SELECT set_config('app.system_role_writer', 'auditor_grant', true)`);
         await tx
           .insert(schema.roles)
           .values({
@@ -153,6 +156,7 @@ export function createDbAuditorAccessGrantor(): AuditorAccessGrantor {
               "Time-boxed, read-only engagement auditor. Granted by auditor link redemption; holds only the auditor minimum.",
           })
           .onConflictDoNothing();
+        await tx.execute(sql`SELECT set_config('app.system_role_writer', '', true)`);
         role = await findRole(tx, input.organizationId);
       }
       if (!role) throw new Error("external_auditor role could not be resolved");

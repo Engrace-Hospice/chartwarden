@@ -234,14 +234,24 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       "SELECT id FROM role WHERE organization_id=$1 AND key=$2",
       [org, key],
     );
-    const roleId =
-      found[0]?.id ??
-      (
-        await q<{ id: string }>(
+    // The system auditor row is written the way M3's auditor grant writes it: with the grant's transaction-local marker (migration 1439).
+    const insertRole = async (): Promise<string | undefined> => {
+      await admin.query("BEGIN");
+      try {
+        if (key === "external_auditor")
+          await admin.query("SELECT set_config('app.system_role_writer', 'auditor_grant', true)");
+        const [row] = await q<{ id: string }>(
           "INSERT INTO role (organization_id,key,name,category,enabled,system_default) VALUES ($1,$2,$2,$3::role_category,true,$4) RETURNING id",
           [org, key, category, systemDefault],
-        )
-      )[0]?.id;
+        );
+        await admin.query("COMMIT");
+        return row?.id;
+      } catch (err) {
+        await admin.query("ROLLBACK");
+        throw err;
+      }
+    };
+    const roleId = found[0]?.id ?? (await insertRole());
     await admin.query(
       "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
       [org, membershipId, roleId],
@@ -1472,6 +1482,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       await expect(insertRole(false, "external_auditor")).rejects.toThrow(/system auditor role/);
       await expect(insertRole(false, "clinical_staff")).rejects.toThrow(/system auditor role/);
       await expect(insertRole(true, "clinical_staff")).rejects.toThrow(/system auditor role/);
+      // the system's three facts alone are not enough: the grant's own marker is required too (migration 1439)
+      await expect(insertRole(true, "external_auditor")).rejects.toThrow(/system auditor role/);
       await expect(
         admin.query(
           `INSERT INTO role (organization_id,key,name,category,enabled,system_default)
@@ -1505,7 +1517,10 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       await admin.query("DELETE FROM role WHERE organization_id=$1 AND key='external_auditor'", [
         ORG_F,
       ]);
+      await admin.query("BEGIN");
+      await admin.query("SELECT set_config('app.system_role_writer', 'auditor_grant', true)");
       await expect(insertRole(true, "external_auditor")).resolves.toBeDefined();
+      await admin.query("COMMIT");
       await admin.query("DELETE FROM role WHERE organization_id=$1 AND key='external_auditor'", [
         ORG_F,
       ]);

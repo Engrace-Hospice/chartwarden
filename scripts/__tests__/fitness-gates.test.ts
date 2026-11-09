@@ -151,6 +151,15 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out.match(/rls-session-variable/g) ?? []).toHaveLength(2);
   });
 
+  // M3 migration 1439: the system-managed role key guard may read app.system_role_writer, scoped to that function's statement HEAD.
+  it("tenancy — the system-role marker exemption needs the guard's statement HEAD, not a mention of its name", async () => {
+    const r = await gate("check-tenancy.ts", join(FIX, "tenancy-system-role-guard"));
+    expect(r.status).not.toBe(0);
+    // Only the function that mentions the name: the genuine guard stays silent.
+    expect(r.out.match(/rls-session-variable/g) ?? []).toHaveLength(1);
+    expect(r.out).toMatch(/app\.system_role_writer/);
+  });
+
   it("table-ownership — cross-module schema access", async () => {
     const r = await gate("check-table-ownership.ts", join(FIX, "table-ownership"));
     expect(r.status).not.toBe(0);
