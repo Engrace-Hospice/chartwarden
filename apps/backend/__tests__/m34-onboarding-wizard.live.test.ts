@@ -3465,15 +3465,15 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
 
     it("migration 1425: platform ops add and re-edit a non-canonical step on the real platform carrier (it was a 42501 before)", async () => {
       const created = await backend().service.upsertOnboardingTemplate(OPS_USER, {
-        key: "grant_1394_custom_step",
+        key: "grant_1425_custom_step",
         title: "Custom training",
         description: "Staff walkthrough",
         canonicalOrder: 150,
         isCanonical: false,
       });
-      expect(created).toMatchObject({ key: "grant_1394_custom_step", isCanonical: false });
+      expect(created).toMatchObject({ key: "grant_1425_custom_step", isCanonical: false });
       const edited = await backend().service.upsertOnboardingTemplate(OPS_USER, {
-        key: "grant_1394_custom_step",
+        key: "grant_1425_custom_step",
         title: "Custom training (renamed)",
         description: null,
         canonicalOrder: 151,
@@ -3495,19 +3495,19 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         ]) {
           await expect(
             login.query(
-              `UPDATE onboarding_task_template SET ${set} WHERE key = 'grant_1394_custom_step'`,
+              `UPDATE onboarding_task_template SET ${set} WHERE key = 'grant_1425_custom_step'`,
             ),
             set,
           ).rejects.toMatchObject({ code: "42501" });
         }
         await expect(
-          login.query("DELETE FROM onboarding_task_template WHERE key = 'grant_1394_custom_step'"),
+          login.query("DELETE FROM onboarding_task_template WHERE key = 'grant_1425_custom_step'"),
         ).rejects.toMatchObject({ code: "42501" });
       } finally {
         await login.end();
       }
       await admin.query(
-        "DELETE FROM onboarding_task_template WHERE key = 'grant_1394_custom_step'",
+        "DELETE FROM onboarding_task_template WHERE key = 'grant_1425_custom_step'",
       );
     });
   });
