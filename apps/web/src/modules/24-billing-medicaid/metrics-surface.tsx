@@ -441,7 +441,7 @@ export function MedicaidMetricsSurface(): JSX.Element {
                   {pagedMcoRows.map((m) => (
                     <tr key={m.mcoId ?? "fee-for-service"} style={rowLine}>
                       <td style={m.mcoId ? tdMono : td}>
-                        {m.mcoId ? shortId(m.mcoId) : "Fee-for-service"}
+                        {m.mcoId ? `MCO ${shortId(m.mcoId)} (unverified)` : "Program unresolved"}
                       </td>
                       <td style={tdNum}>{m.count.toLocaleString()}</td>
                     </tr>

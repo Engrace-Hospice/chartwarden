@@ -94,6 +94,13 @@ export interface M23RouteServices {
   readonly readService: M23ReadRouteService;
   readonly writeService: M23WriteRouteService;
   readonly assemblyService: ClaimAssemblyService;
+  readonly payerRouteStatus: (organizationId: string, providerEntityId: string) => Promise<
+    | { readonly status: "verified"; readonly routeFingerprint: string }
+    | { readonly status: "not_configured"; readonly reasonCode?: string }
+    | { readonly status: "not_applicable" }
+  >;
+  readonly renderClaimPreview?: import("./claims.routes").ClaimsRouteDeps["renderPreview"];
+  readonly previewIntegrityKey?: string;
   /** F-210 — the tenant-entered hospice rate-table service (absent ⇒ the /billing/rate-tables routes are not mounted). */
   readonly rateTableService?: RateTableRouteService;
   /** Migration 1056 — the tenant-entered visit-charge schedule service (absent ⇒ /billing/visit-charge-schedules is not mounted). */

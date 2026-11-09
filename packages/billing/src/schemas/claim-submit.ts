@@ -9,6 +9,7 @@ import { IfVersion, IsoDateTimeSchema, Uuid } from "./common";
 export const ClaimSubmitRequest = Type.Object({
   ifVersion: IfVersion,
   acknowledgeAllOverrides: Type.Boolean({ default: false }),
+  previewConfirmationToken: Type.String({ minLength: 20, maxLength: 4096 }),
 });
 export type ClaimSubmitRequest = Static<typeof ClaimSubmitRequest>;
 

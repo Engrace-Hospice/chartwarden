@@ -670,6 +670,173 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
     });
   });
 
+  describe("verified clearinghouse-rejection correction", () => {
+    async function recordRejection(claimId: string, stage: "clearinghouse" | "payer") {
+      const claim = (await admin.query("SELECT * FROM commercial_claim WHERE id=$1", [claimId]))
+        .rows[0];
+      await admin.query(
+        "UPDATE commercial_claim SET state='submitted', updated_at=now() WHERE id=$1",
+        [claimId],
+      );
+      await admin.query(
+        "UPDATE commercial_claim SET state='rejected', updated_at=now() WHERE id=$1",
+        [claimId],
+      );
+      await admin.query(
+        `INSERT INTO commercial_claim_state_history (organization_id,provider_entity_id,claim_id,from_state,to_state,actor_kind)
+         VALUES ($1,$2,$3,'ready','submitted','system'),($1,$2,$3,'submitted','rejected','system')`,
+        [ORG, providerEntityId, claimId],
+      );
+      const submissionId = randomUUID();
+      await admin.query(
+        `INSERT INTO commercial_submission (id,organization_id,provider_entity_id,claim_id,idempotency_key,control_number,
+          clearinghouse_key,clearinghouse_payer_id,status,attempt_count,requested_by_membership_id,sent_at)
+         VALUES ($1,$2,$3,$4,$5,$6,'stedi','SYNTH01','sent',1,$7,now())`,
+        [
+          submissionId,
+          ORG,
+          providerEntityId,
+          claimId,
+          `test-${randomUUID()}`,
+          claim.claim_control_number,
+          membershipId,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO commercial_acknowledgment (organization_id,provider_entity_id,claim_id,submission_id,clearinghouse_key,event_id,stage,disposition,reason_codes)
+         VALUES ($1,$2,$3,$4,'stedi',$5,$6,'rejected',ARRAY['A7'])`,
+        [ORG, providerEntityId, claimId, submissionId, `event-${randomUUID()}`, stage],
+      );
+    }
+
+    it("creates an idempotent original-frequency draft, preserves the sent original, and denies payer-stage rejection", async () => {
+      const s = await seedScenario();
+      const w = wire(s);
+      const original = await w.assembly.assemble(actor, input(s));
+      await w.lifecycle.assertReady(actor, original.claimId);
+      await recordRejection(original.claimId, "clearinghouse");
+
+      const created = await w.assembly.createRejectedCorrection(
+        actor,
+        original.claimId,
+        "corrected-01",
+        "clearinghouse_edit_corrected",
+      );
+      expect(created.replayed).toBe(false);
+      const replay = await w.assembly.createRejectedCorrection(
+        actor,
+        original.claimId,
+        "corrected-01",
+        "clearinghouse_edit_corrected",
+      );
+      expect(replay).toEqual({ ...created, replayed: true });
+      await expect(
+        w.assembly.createRejectedCorrection(
+          actor,
+          original.claimId,
+          "different-key",
+          "claim_data_corrected",
+        ),
+      ).rejects.toThrow(/correction draft already exists/i);
+
+      const rows = await admin.query(
+        `SELECT id,state,location_id,frequency_code,tob,correction_of_claim_id,correction_root_claim_id,correction_reason_code,claim_control_number,total_charge_cents
+         FROM commercial_claim WHERE id=ANY($1::uuid[]) ORDER BY created_at`,
+        [[original.claimId, created.claimId]],
+      );
+      expect(rows.rows).toHaveLength(2);
+      const parent = rows.rows.find((row) => row.id === original.claimId)!;
+      const child = rows.rows.find((row) => row.id === created.claimId)!;
+      expect(parent.state).toBe("rejected");
+      expect(child).toMatchObject({
+        state: "draft",
+        location_id: parent.location_id,
+        frequency_code: parent.frequency_code,
+        tob: parent.tob,
+        correction_of_claim_id: original.claimId,
+        correction_root_claim_id: original.claimId,
+        correction_reason_code: "clearinghouse_edit_corrected",
+      });
+      expect(child.claim_control_number).not.toBe(parent.claim_control_number);
+      const lineCount = await scalar<number>(
+        "SELECT count(*)::int AS n FROM commercial_claim_line WHERE claim_id=$1",
+        [created.claimId],
+      );
+      expect(lineCount).toBeGreaterThan(0);
+      const denial = await seedScenario();
+      const payerRejected = await wire(denial).assembly.assemble(actor, input(denial));
+      await wire(denial).lifecycle.assertReady(actor, payerRejected.claimId);
+      await recordRejection(payerRejected.claimId, "payer");
+      await expect(
+        wire(denial).assembly.createRejectedCorrection(
+          actor,
+          payerRejected.claimId,
+          "payer-correction",
+          "claim_data_corrected",
+        ),
+      ).rejects.toThrow(/no payer response/i);
+    });
+
+    it("serializes concurrent correction requests so only one linked draft can be created", async () => {
+      const s = await seedScenario();
+      const w = wire(s);
+      const original = await w.assembly.assemble(actor, input(s));
+      await w.lifecycle.assertReady(actor, original.claimId);
+      await recordRejection(original.claimId, "clearinghouse");
+      const results = await Promise.allSettled([
+        w.assembly.createRejectedCorrection(
+          actor,
+          original.claimId,
+          "concurrent-correction-a",
+          "claim_data_corrected",
+        ),
+        w.assembly.createRejectedCorrection(
+          actor,
+          original.claimId,
+          "concurrent-correction-b",
+          "clearinghouse_edit_corrected",
+        ),
+      ]);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+      expect(
+        await scalar<number>(
+          "SELECT count(*)::int AS n FROM commercial_claim WHERE correction_of_claim_id=$1",
+          [original.claimId],
+        ),
+      ).toBe(1);
+    });
+
+    it("rejects linked rows with missing correction metadata at the database boundary", async () => {
+      const s = await seedScenario();
+      const original = await wire(s).assembly.assemble(actor, input(s));
+      await wire(s).lifecycle.assertReady(actor, original.claimId);
+      await recordRejection(original.claimId, "clearinghouse");
+
+      await expect(
+        admin.query(
+          `INSERT INTO commercial_claim
+           SELECT (jsonb_populate_record(
+             NULL::commercial_claim,
+             to_jsonb(parent) || jsonb_build_object(
+               'id', $2::uuid,
+               'claim_control_number', $3::text,
+               'state', 'draft',
+               'correction_of_claim_id', parent.id,
+               'correction_root_claim_id', COALESCE(parent.correction_root_claim_id, parent.id),
+               'correction_kind', 'clearinghouse_rejection_resubmission',
+               'correction_reason_code', NULL,
+               'correction_request_key', NULL,
+               'created_at', now(),
+               'updated_at', now()
+             )
+           )).* FROM commercial_claim AS parent WHERE parent.id = $1`,
+          [original.claimId, randomUUID(), `invalid-${randomUUID().slice(0, 12)}`],
+        ),
+      ).rejects.toThrow(/commercial_claim_correction_metadata_complete_ck/);
+    });
+  });
+
   // ── S16 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
   describe("S16 commercial primary with Medicare or Medicaid secondary", () => {
     it("carries the COB data, emits loop 2320, and creates NO Medicare claim as primary", async () => {
@@ -1376,7 +1543,7 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
           () => "",
           (e: Error) => e.message,
         );
-      expect(overlap).toMatch(/commercial_claim_no_overlap/);
+      expect(overlap).toMatch(/M41_CLAIM_WINDOW_OVERLAP/);
     });
 
     it("tolerates an unbilled discharge day on a final bill, and only there", async () => {

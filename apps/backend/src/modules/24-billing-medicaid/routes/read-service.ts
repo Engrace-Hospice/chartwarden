@@ -4,6 +4,7 @@
 // cents-as-string. No Recipient ID is ever returned (only the masked last-4 fact; D12 / §3.6).
 import type { M24ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
+import type { MedicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 
 export interface ClaimView {
   id: string;
@@ -23,8 +24,10 @@ export interface ClaimView {
   version: number;
   validationRunIdLatest: string | null;
   eligibilityOutcomeSnapshot: string | null;
-  /** S11: non-null when the claim's state has no electronic gateway; the manual/paper instruction. */
+  /** Safe blocking explanation for the server-derived state/program route. */
   electronicSubmissionRefusal: string | null;
+  /** Server-derived state + FFS/MCO capability. Never inferred from a client-provided route hint. */
+  routeReadiness: MedicaidClaimRouteReadiness;
   createdAt: string;
   updatedAt: string;
 }

@@ -31,6 +31,7 @@ export type {
   SubscriptionStateProvider,
   UsageMeteringIngest,
   BereavedPortalScopeProvider,
+  BereavementPortalContentProvider,
   BereavementAssignmentReader,
   BereavementComplianceProvider,
   BereavementOutreachProvider,

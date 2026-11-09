@@ -171,6 +171,27 @@ describe("createServerUploadService.createDocument", () => {
     expect(mem.objects.size).toBe(0);
   });
 
+  // ADR-0109 D10 (PR 3) — the same org-level rule the verified upload applies (one shared assertion).
+  it("refuses a grief-library document that names a patient or an admission, storing nothing", async () => {
+    for (const named of [
+      { patientId: "44444444-4444-4444-8444-444444444444" },
+      { admissionId: "55555555-5555-4555-8555-555555555555" },
+    ]) {
+      const { db, inserts } = fakeDb();
+      const mem = createInMemoryObjectStore();
+      const svc = createServerUploadService({ db, objects: mem.store });
+      await expect(
+        svc.createDocument(ORG, ACTOR, {
+          ...ARGS,
+          aggregateType: "bereavement_library_item",
+          ...named,
+        }),
+      ).rejects.toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+      expect(inserts).toHaveLength(0);
+      expect(mem.objects.size).toBe(0);
+    }
+  });
+
   it("requires the referral reader for a referral aggregate", async () => {
     const { db } = fakeDb();
     const mem = createInMemoryObjectStore();

@@ -245,6 +245,67 @@ export const BEREAVEMENT_MAILING_EXCLUSION_REASONS = [
 export type BereavementMailingExclusionReason =
   (typeof BEREAVEMENT_MAILING_EXCLUSION_REASONS)[number];
 
+// ── ADR-0109 D10 (PR 3) — support groups (mirrors the `bereavement_support_group*` text + CHECK value sets, migration 1390) ─────────────
+
+export type BereavementGroupFormat = "recurring" | "drop_in";
+/** In person or virtual (a support group or a memorial service). */
+export type BereavementProgramModality = "in_person" | "virtual";
+export type BereavementGroupFacilitatorKind = "staff" | "volunteer";
+export type BereavementGroupStatus = "draft" | "open" | "completed" | "cancelled";
+export type BereavementGroupSessionStatus = "scheduled" | "held" | "cancelled";
+export type BereavementGroupEnrollmentStatus = "enrolled" | "withdrawn";
+export const BEREAVEMENT_GROUP_WITHDRAWN_REASONS = [
+  "requested",
+  "staff_removed",
+  "opted_out",
+  "plan_closed",
+  "group_ended",
+] as const;
+export type BereavementGroupWithdrawnReason = (typeof BEREAVEMENT_GROUP_WITHDRAWN_REASONS)[number];
+
+/** A recurring group's schedule, in the group's IANA timezone: `count` sessions every `intervalWeeks` weeks from `firstDate` at `startTime`. */
+export interface BereavementGroupRecurrence {
+  /** `YYYY-MM-DD`, group-local. */
+  readonly firstDate: string;
+  /** `HH:MM`, group-local wall time (kept across DST changes). */
+  readonly startTime: string;
+  readonly durationMinutes: number;
+  readonly intervalWeeks: number;
+  readonly count: number;
+}
+
+// ── ADR-0109 D10 (PR 3) — memorial services (mirrors the `bereavement_memorial_*` text + CHECK value sets, migration 1391) ─────────────
+
+export type BereavementMemorialStatus = "draft" | "published" | "held" | "cancelled";
+/** `mailing` = in the service's invitation mailing run; `portal_only` = no letter (no-mailings, no address): the portal and a call still reach them. */
+export type BereavementMemorialDelivery = "mailing" | "portal_only";
+export type BereavementMemorialInvitationStatus =
+  | "invited"
+  | "rsvp_yes"
+  | "rsvp_no"
+  | "rsvp_maybe"
+  | "attended"
+  | "no_show"
+  | "withdrawn";
+export type BereavementMemorialRsvpSource = "staff_phone" | "portal";
+/** A family's answer to a memorial invitation. */
+export type BereavementMemorialRsvpResponse = "yes" | "no" | "maybe";
+
+// ── ADR-0109 D10 (PR 3) — the grief library (mirrors `bereavement_library_item`'s text + CHECK value sets, migration 1393) ─────────────
+
+export const BEREAVEMENT_LIBRARY_CATEGORIES = [
+  "understanding_grief",
+  "coping",
+  "children_and_teens",
+  "holidays_and_anniversaries",
+  "practical_matters",
+  "other",
+] as const;
+export type BereavementLibraryCategory = (typeof BEREAVEMENT_LIBRARY_CATEGORIES)[number];
+/** Derived from the document's MIME type: `application/pdf` -> pdf, `video/mp4` -> video, anything else M22 accepts -> other. */
+export type BereavementLibraryKind = "pdf" | "video" | "other";
+export type BereavementLibraryStatus = "draft" | "published" | "archived";
+
 // ── §3.3 owned tables + D11 audit denylists ───────────────────────────────────────────────────────────
 
 /** M16's owned tables (the manifest `ownedTables` set). */
@@ -264,6 +325,13 @@ export type M16TableName =
   | "bereavement_mailing_config"
   | "bereavement_mailing_run"
   | "bereavement_mailing_item"
+  | "bereavement_support_group"
+  | "bereavement_support_group_session"
+  | "bereavement_support_group_enrollment"
+  | "bereavement_support_group_attendance"
+  | "bereavement_memorial_service"
+  | "bereavement_memorial_invitation"
+  | "bereavement_library_item"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -302,6 +370,16 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_mailing_config: ["content_jsonb"],
   bereavement_mailing_run: ["content_jsonb"],
   bereavement_mailing_item: [],
+  // ADR-0109 D10 (PR 3) — a group's description is agency prose; the join link is ciphertext (kept, as every `*_cipher`, for change detection).
+  bereavement_support_group: ["description"],
+  bereavement_support_group_session: [],
+  bereavement_support_group_enrollment: [],
+  bereavement_support_group_attendance: [],
+  // ADR-0109 D10 (PR 3) — a memorial's description is agency prose.
+  bereavement_memorial_service: ["description"],
+  bereavement_memorial_invitation: [],
+  // ADR-0109 D10 (PR 3) — a library item's summary is agency prose.
+  bereavement_library_item: ["summary"],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -354,6 +432,8 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.outreach_artifact_requested",
   "m16.bereavement.document_requested",
   "m16.bereavement.mailing_run_mailed",
+  "m16.bereavement.support_group_attendance_recorded",
+  "m16.bereavement.memorial_rsvp_recorded",
   "m16.bereavement.risk_score_computed",
   "m16.bereavement.anniversary_due_in_14_days",
 ] as const;
@@ -1045,6 +1125,72 @@ export interface BereavedPortalScopeProvider {
     readonly patientId: PatientId;
     readonly asOf: IsoInstant;
   }): Promise<boolean>;
+}
+
+/** ADR-0109 D10 (PR 3) — one memorial invitation as the bereaved family sees it in the portal (no other family, no contact id). */
+export interface BereavementPortalMemorialInvitation {
+  readonly invitationId: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly startsAt: IsoInstant;
+  readonly endsAt: IsoInstant;
+  readonly modality: BereavementProgramModality;
+  readonly venueText: string | null;
+  /** A virtual service's link, shown once the family said yes; null otherwise. */
+  readonly joinUrl: string | null;
+  /** `YYYY-MM-DD`; the portal stops taking answers after it. */
+  readonly rsvpBy: string | null;
+  readonly status: BereavementMemorialInvitationStatus;
+  readonly guests: number;
+  /** May the family still answer here (published, not started, not past the RSVP-by date, not closed)? */
+  readonly rsvpOpen: boolean;
+}
+
+/** ADR-0109 D10 (PR 3) — one PUBLISHED grief-library item as the portal lists it (agency content: no person named). */
+export interface BereavementPortalLibraryItem {
+  readonly itemId: string;
+  readonly title: string;
+  readonly summary: string | null;
+  readonly category: BereavementLibraryCategory;
+  readonly kind: BereavementLibraryKind;
+  readonly hasTranscript: boolean;
+}
+
+/**
+ * ADR-0109 D10 (PR 3) — what M16 shows a bereaved family in the M31 portal beyond the plan scope: their memorial invitations and RSVP, and the
+ * agency's published grief library. Every memorial call names the portal ACCOUNT; M16 resolves which contacts are its own
+ * (`bereaved_contact.portal_account_id`), so another family's invitation is "not found". A library URL is minted through M22's portal door, which
+ * records the account and session on `document_access_log` before the URL is returned.
+ */
+export interface BereavementPortalContentProvider {
+  memorialInvitationsForPortalAccount(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+  }): Promise<readonly BereavementPortalMemorialInvitation[]>;
+  /** The family's own answer; refused after the RSVP-by date, once the service started, or over capacity. */
+  recordPortalRsvp(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+    readonly invitationId: string;
+    readonly response: BereavementMemorialRsvpResponse;
+    readonly guests: number;
+  }): Promise<BereavementPortalMemorialInvitation>;
+  /** The PUBLISHED grief library, portal order. */
+  libraryForPortal(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+  }): Promise<readonly BereavementPortalLibraryItem[]>;
+  /** A short-lived URL for a published item's file (or its transcript); null = no such published item / no transcript. */
+  mintLibraryUrlForPortal(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+    readonly portalSessionId: string;
+    readonly itemId: string;
+    readonly part: "document" | "transcript";
+  }): Promise<{ readonly url: string; readonly expiresAt: IsoInstant } | null>;
 }
 
 /** §4.6 / D13 — the M30 HQRP + M33 rollups. Counts, never rates: a zero denominator must stay visible so

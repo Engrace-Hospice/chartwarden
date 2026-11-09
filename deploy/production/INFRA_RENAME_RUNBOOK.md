@@ -700,7 +700,10 @@ host and port 80 answers: do not retire the old DNS before the redirects.
 ### Window 2 - volumes + database (stack stopped, about 10-20 min)
 
 Preconditions: Window 0 merged and the helper on the host; free space on `/var/lib/docker` at least the total of the four volumes (`docker system df -v | grep wardenx_`);
-`deploy.yml` and `reseed-production.yml` disabled in the Actions UI; no merges to `main`.
+`deploy.yml` and `reseed-production.yml` disabled in the Actions UI; no merges to `main`; the Debian → Wolfi Postgres
+migration (README, "Postgres image") is done. `compose.yml` pins the Wolfi image, so step 5's `up -d postgres` on a
+volume Debian last ran would move glibc with no `cw-refresh-collation`. When WAL archiving is on, run these commands
+with `-f compose.backup.yml` added and `--no-build` on each `up`, or the plain `compose.yml` turns archiving off.
 ```sh
 cd /opt/chartwarden
 umask 077   # dumps hold PHI and role verifiers: owner-only; keep them on encrypted storage and delete them after Window 3
@@ -711,7 +714,7 @@ docker compose --env-file .env.production -f compose.yml exec -T postgres psql -
 docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -Atc "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate"   # expect exactly: postgres, wardenx (migration 1142 is cluster-global)
 # 2. Stop everything (NEVER -v) with a long grace so postgres can checkpoint (the default 10 s can end in SIGKILL). Downtime starts here.
 docker compose --env-file .env.production -f compose.yml down -t 120
-docker run --rm -u postgres -v wardenx_postgres-data:/var/lib/postgresql:ro --entrypoint pg_controldata pgvector/pgvector:pg18 /var/lib/postgresql/18/docker | grep 'Database cluster state'   # must say: shut down
+docker run --rm -u postgres -v wardenx_postgres-data:/var/lib/postgresql:ro --entrypoint pg_controldata ghcr.io/engrace-hospice/chartwarden-postgres@sha256:b325d5fd8f295ef1aaed77508f808fcbd573787ff0469de6126fdff4ae261636 /var/lib/postgresql/18/docker | grep 'Database cluster state'   # must say: shut down (any PG18 image reads it; this is the digest compose.yml pins)
 # 3. Copy + verify. Refuses if a container still uses a source volume or a destination already holds data; never writes to the source.
 sh volumes-copy.sh copy wardenx chartwarden        # one "identical" digest line per volume; any non-zero exit: STOP (Rollback)
 sh volumes-copy.sh verify wardenx chartwarden      # REQUIRED green before step 4 (re-reads both sides; read-only)

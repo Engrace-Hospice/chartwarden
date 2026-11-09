@@ -111,6 +111,14 @@ export const columnStyle: CSSProperties = {
   padding: t.space5,
   minWidth: 0,
 };
+/** A <fieldset> used only to disable its controls while a write is in flight: no border, no inset, the controls in a grid. */
+export const plainFieldset: CSSProperties = {
+  border: 0,
+  padding: 0,
+  margin: 0,
+  display: "grid",
+  gap: "0.75rem",
+};
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
 export const selectStyle: CSSProperties = {

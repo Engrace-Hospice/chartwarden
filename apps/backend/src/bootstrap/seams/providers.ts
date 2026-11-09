@@ -28,6 +28,7 @@ import type {
   BereavementEncounterReader,
   BereavementOutreachProvider,
   BereavementPlanProvider,
+  BereavementPortalContentProvider,
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   BillableEncounterReader,
@@ -442,6 +443,12 @@ export const extractionProvenanceReaderDenyStub: ExtractionProvenanceReader = {
 /** M22 — org-level (patient-less) document download mint (ADR-0109 D10: M16's internal mailing batch). Denies until M22 registers the real provider. */
 export const orgDocumentAccessProviderDenyStub: OrgDocumentAccessProvider = {
   mintOrgDownloadUrl() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
+  },
+  describeOrgDocument() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
+  },
+  mintPortalLibraryUrl() {
     throw new NotImplementedError("OrgDocumentAccessProvider");
   },
 };
@@ -1498,6 +1505,22 @@ export const bereavedPortalScopeProviderDenyStub: BereavedPortalScopeProvider = 
   },
   isWindowOpen() {
     throw new NotImplementedError("BereavedPortalScopeProvider");
+  },
+};
+
+/** M16 — ADR-0109 D10 (PR 3): the bereaved family's memorial invitations / RSVP in the portal. Denies until M16 registers the real provider. */
+export const bereavementPortalContentProviderDenyStub: BereavementPortalContentProvider = {
+  memorialInvitationsForPortalAccount() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
+  },
+  recordPortalRsvp() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
+  },
+  libraryForPortal() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
+  },
+  mintLibraryUrlForPortal() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
   },
 };
 

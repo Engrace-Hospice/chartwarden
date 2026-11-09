@@ -163,6 +163,12 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/1345_m16_physician_letter.sql",
       // ADR-0109 D10 — the mailing program (the agency-authored wording of config and run is prose and is scrubbed).
       "packages/db/migrations/1374_m16_mailings.sql",
+      // ADR-0109 D10 (PR 3) — support groups (the agency-authored description is prose and is scrubbed).
+      "packages/db/migrations/1390_m16_support_groups.sql",
+      // ADR-0109 D10 (PR 3) — memorial services (the agency-authored description is prose and is scrubbed).
+      "packages/db/migrations/1391_m16_memorial_services.sql",
+      // ADR-0109 D10 (PR 3) — the grief library (the summary is agency prose and is scrubbed).
+      "packages/db/migrations/1393_m16_grief_library.sql",
     ],
   },
   {

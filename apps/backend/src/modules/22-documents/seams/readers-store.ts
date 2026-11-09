@@ -277,7 +277,8 @@ export interface PortalAccessLogEntry {
   readonly organizationId: OrgId;
   readonly documentId: DocumentId;
   readonly documentVersionId: DocumentVersionId;
-  readonly patientId: PatientId;
+  /** Null for an org-level grief-library document (ADR-0109 D10, PR 3). */
+  readonly patientId: PatientId | null;
   readonly portalAccountId: string;
   readonly portalSessionId: string;
   readonly correlationId: string;

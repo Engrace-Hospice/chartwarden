@@ -259,6 +259,36 @@ import {
   VersionListQuerySchema as M15VersionListQuerySchema,
   VolunteerStatusQuerySchema as M15VolunteerStatusQuerySchema,
 } from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
+// ADR-0109 D10 (PR 3) — the M16 support groups (routes 53-66).
+import {
+  AddGroupSessionBody as M16AddGroupSessionBody,
+  AttendanceResultResponseSchema as M16AttendanceResultResponse,
+  CloseGroupBody as M16CloseGroupBody,
+  CreateGroupBody as M16CreateGroupBody,
+  EnrollContactBody as M16EnrollContactBody,
+  GroupDetailResponseSchema as M16GroupDetailResponse,
+  GroupEnrollmentListResponseSchema as M16GroupEnrollmentListResponse,
+  GroupEnrollmentResponseSchema as M16GroupEnrollmentResponse,
+  GroupListQuerySchema as M16GroupListQuerySchema,
+  GroupPageResponseSchema as M16GroupPageResponse,
+  GroupRosterResponseSchema as M16GroupRosterResponse,
+  GroupSessionListResponseSchema as M16GroupSessionListResponse,
+  GroupSessionResponseSchema as M16GroupSessionResponse,
+  RecordAttendanceBody as M16RecordAttendanceBody,
+  UpdateGroupBody as M16UpdateGroupBody,
+  WithdrawEnrollmentBody as M16WithdrawEnrollmentBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/group-typebox";
+// ADR-0109 D10 (PR 3) — the M16 grief library (routes 77-81).
+import {
+  CreateLibraryItemBody as M16CreateLibraryItemBody,
+  LibraryItemListResponseSchema as M16LibraryItemListResponse,
+  LibraryItemResponseSchema as M16LibraryItemResponse,
+  LibraryItemUrlResponseSchema as M16LibraryItemUrlResponse,
+  LibraryListQuerySchema as M16LibraryListQuerySchema,
+  LibraryUrlQuerySchema as M16LibraryUrlQuerySchema,
+  SetLibraryStatusBody as M16SetLibraryStatusBody,
+  UpdateLibraryItemBody as M16UpdateLibraryItemBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/library-typebox";
 // M16 Bereavement — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
 // web screens call the surface these type.
@@ -315,6 +345,20 @@ import {
   PutMailingConfigBody as M16PutMailingConfigBody,
   UpdateMailingRunContentBody as M16UpdateMailingRunContentBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/mailing-typebox";
+// ADR-0109 D10 (PR 3) — the M16 memorial services (routes 67-76).
+import {
+  CloseMemorialBody as M16CloseMemorialBody,
+  ContactMemorialInvitationListResponseSchema as M16ContactMemorialInvitationListResponse,
+  ContactMemorialInvitationResponseSchema as M16ContactMemorialInvitationResponse,
+  MemorialAttendanceBody as M16MemorialAttendanceBody,
+  MemorialDetailResponseSchema as M16MemorialDetailResponse,
+  MemorialFieldsBody as M16MemorialFieldsBody,
+  MemorialInvitationListResponseSchema as M16MemorialInvitationListResponse,
+  MemorialInvitationResponseSchema as M16MemorialInvitationResponse,
+  MemorialListQuerySchema as M16MemorialListQuerySchema,
+  MemorialPageResponseSchema as M16MemorialPageResponse,
+  MemorialRsvpBody as M16MemorialRsvpBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/memorial-typebox";
 // M19 On-Call Triage — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M19-T08
 // web screens call the surface these type. Note what is deliberately ABSENT from every body and therefore
@@ -949,6 +993,8 @@ import {
   ReadyResponseSchema as M41ReadyResponseSchema,
   ReconcileBodySchema as M41ReconcileBodySchema,
   RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
+  RejectedCorrectionBodySchema as M41RejectedCorrectionBodySchema,
+  RejectedCorrectionResponseSchema as M41RejectedCorrectionResponseSchema,
   SendGateViewSchema as M41SendGateViewSchema,
   SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
   SubmissionViewSchema as M41SubmissionViewSchema,
@@ -2444,6 +2490,12 @@ import {
   PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
+  PortalLibraryListResponse as M31PortalLibraryListResponse,
+  PortalLibraryUrlQuery as M31PortalLibraryUrlQuery,
+  PortalLibraryUrlResponse as M31PortalLibraryUrlResponse,
+  PortalMemorialInvitationListResponse as M31PortalMemorialInvitationListResponse,
+  PortalMemorialInvitationResponse as M31PortalMemorialInvitationResponse,
+  PortalMemorialRsvpRequest as M31PortalMemorialRsvpRequest,
   PortalMessageHistoryQuery as M31PortalMessageHistoryQuery,
   PortalMessageHistoryResponse as M31PortalMessageHistoryResponse,
   PortalSessionCurrentResponse as M31PortalSessionCurrentResponse,
@@ -3603,7 +3655,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/billing/claims/:id/submit": {
     summary:
-      "READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7)",
+      "Submit an M23 claim only with the current short-lived reviewed-preview confirmation (PE scope + step-up + If-Match; 202, §4.1 #7)",
+    body: Type.Object({
+      ifVersion: Type.Integer({ minimum: 0 }),
+      acknowledgeAllOverrides: Type.Optional(Type.Boolean()),
+      previewConfirmationToken: Type.String({ minLength: 20, maxLength: 4096 }),
+    }),
     headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     status: 202,
   },
@@ -4422,6 +4479,28 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/portal/bereavement/opt-out": {
     summary: "Self opt-out of the bereavement program (M16)",
     response: M31AckResponse,
+  },
+  "GET /api/v1/portal/bereavement/memorials": {
+    summary:
+      "The bereaved family's own memorial-service invitations (published services only; a virtual link once they said yes), window-gated (M16, ADR-0109 D10)",
+    response: M31PortalMemorialInvitationListResponse,
+  },
+  "POST /api/v1/portal/bereavement/memorials/:invitationId/rsvp": {
+    summary:
+      "The family's own RSVP (yes with a guest count, no, maybe); 404 for another family's invitation, 409 `MEMORIAL_RSVP_CLOSED` after the RSVP-by date or once the service started, 409 `MEMORIAL_FULL` over capacity; `Idempotency-Key` required (M16, ADR-0109 D10)",
+    body: M31PortalMemorialRsvpRequest,
+    response: M31PortalMemorialInvitationResponse,
+  },
+  "GET /api/v1/portal/bereavement/library": {
+    summary:
+      "The agency's PUBLISHED grief library (title, summary, category, kind), window-gated (M16, ADR-0109 D10)",
+    response: M31PortalLibraryListResponse,
+  },
+  "GET /api/v1/portal/bereavement/library/:itemId/url": {
+    summary:
+      "A short-lived URL for one published library file (`?part=transcript` for its transcript); M22's portal door serves the library type only and records the account and session first; never cached (M16, ADR-0109 D10)",
+    query: M31PortalLibraryUrlQuery,
+    response: M31PortalLibraryUrlResponse,
   },
   "POST /api/v1/portal/bereavement/mailing-preference": {
     summary:
@@ -8033,6 +8112,171 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The contact's touchpoints and program activities (mailings, sessions), newest first, cursor-paginated; program activities satisfy no cadence item; a bereavement volunteer sees no touchpoint outcome (ADR-0109 D10, #52)",
     query: M16ContactTimelineQuerySchema,
     response: M16ContactTimelinePageResponse,
+  },
+
+  // ── group.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/groups": {
+    summary:
+      "Support groups, newest first (`?status=`), cursor-paginated, each with its enrolled count and next session; bereavement oversight or bereavement-capable staff; names no family (ADR-0109 D10, #53)",
+    query: M16GroupListQuerySchema,
+    response: M16GroupPageResponse,
+  },
+  "POST /api/v1/bereavement/groups": {
+    summary:
+      "Create a DRAFT support group (recurring with its schedule, or drop-in), in person or virtual, facilitated by bereavement-capable staff or a bereavement volunteer; oversight only; `Idempotency-Key` required (ADR-0109 D10, #54)",
+    body: M16CreateGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId": {
+    summary: "One support group with its meeting link (ADR-0109 D10, #55)",
+    response: M16GroupDetailResponse,
+  },
+  "PATCH /api/v1/bereavement/groups/:groupId": {
+    summary:
+      "Edit a draft or open group (a recurring group's schedule only while a draft); oversight or the group's staff facilitator; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #56)",
+    body: M16UpdateGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/open": {
+    summary:
+      "Open a draft group: a recurring group's sessions are materialized (group-local wall time, kept across DST); a volunteer facilitator must pass the 418.78 gates now (422 `GROUP_FACILITATOR_INELIGIBLE`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #57)",
+    response: M16GroupDetailResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/close": {
+    summary:
+      "Complete or cancel a group: live enrollments are withdrawn (`group_ended`) and future sessions cancelled; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #58)",
+    body: M16CloseGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId/sessions": {
+    summary: "A group's sessions by start, with attendee counts (ADR-0109 D10, #59)",
+    response: M16GroupSessionListResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions": {
+    summary:
+      "Add one session (a drop-in meeting, or an extra meeting of a recurring group); `Idempotency-Key` required (ADR-0109 D10, #60)",
+    body: M16AddGroupSessionBody,
+    response: M16GroupSessionResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions/:sessionId/cancel": {
+    summary:
+      "Cancel a scheduled session; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #61)",
+    response: M16GroupSessionResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId/roster": {
+    summary:
+      "The roster of live program families (an opted-out or closed-plan contact drops off); oversight, the staff facilitator, or a volunteer facilitator passing the 418.78 gates, who gets the reduced projection (display name, enrollment status, attended) (ADR-0109 D10, #62)",
+    response: M16GroupRosterResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/enrollments": {
+    summary:
+      "Enroll a program family member (active plan and contact, no full / pause opt-out) into an open group under capacity; the contact's counselor or oversight; idempotent for a contact already enrolled; `Idempotency-Key` required (ADR-0109 D10, #63)",
+    body: M16EnrollContactBody,
+    response: M16GroupEnrollmentResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/enrollments/:contactId/withdraw": {
+    summary:
+      "Withdraw a contact's live enrollment (requested by the family, or removed by staff); `Idempotency-Key` required (ADR-0109 D10, #64)",
+    body: M16WithdrawEnrollmentBody,
+    response: M16GroupEnrollmentResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions/:sessionId/attendance": {
+    summary:
+      "Record who attended a session that has started (idempotent per contact): each new attendee gets a contact-log activity row (`support_group_session`, outcome `attended`) that satisfies no cadence item; emits `m16.bereavement.support_group_attendance_recorded`; `Idempotency-Key` required (ADR-0109 D10, #65)",
+    body: M16RecordAttendanceBody,
+    response: M16AttendanceResultResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/support-groups": {
+    summary: "One contact's support-group enrollments, live and past (ADR-0109 D10, #66)",
+    response: M16GroupEnrollmentListResponse,
+  },
+
+  // ── memorial.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/memorials": {
+    summary:
+      "Memorial services, newest start first (`?status=`), cursor-paginated, each with its RSVP counts; oversight or bereavement-capable staff; names no family (ADR-0109 D10, #67)",
+    query: M16MemorialListQuerySchema,
+    response: M16MemorialPageResponse,
+  },
+  "POST /api/v1/bereavement/memorials": {
+    summary:
+      "Create a DRAFT memorial service (title, time, place or meeting link, capacity, RSVP-by date, invitation window of 1..13 months, default 12); oversight only; `Idempotency-Key` required (ADR-0109 D10, #68)",
+    body: M16MemorialFieldsBody,
+    response: M16MemorialDetailResponse,
+  },
+  "GET /api/v1/bereavement/memorials/:serviceId": {
+    summary: "One memorial service with its meeting link and RSVP counts (ADR-0109 D10, #69)",
+    response: M16MemorialDetailResponse,
+  },
+  "PATCH /api/v1/bereavement/memorials/:serviceId": {
+    summary:
+      "Edit a draft or published service (the invitation window is fixed once published); oversight only; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #70)",
+    body: M16MemorialFieldsBody,
+    response: M16MemorialDetailResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/publish": {
+    summary:
+      "Publish: invite, set-based, every program family whose decedent died within the window before the service (`mailing` when the mailing rule lets them receive a letter, else `portal_only`) and draft ONE `memorial_invitation` mailing run for the mailing invitees (no default wording); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #71)",
+    response: M16MemorialDetailResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/close": {
+    summary:
+      "Mark a started service held, or cancel a draft or published one (its unmailed invitation run is cancelled too); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #72)",
+    body: M16CloseMemorialBody,
+    response: M16MemorialDetailResponse,
+  },
+  "GET /api/v1/bereavement/memorials/:serviceId/invitations": {
+    summary:
+      "Every invitation of a service by family name, with delivery, RSVP and attendance; oversight only (ADR-0109 D10, #73)",
+    response: M16MemorialInvitationListResponse,
+  },
+  "PUT /api/v1/bereavement/contacts/:contactId/memorial-invitations/:invitationId/rsvp": {
+    summary:
+      "Record a family's RSVP taken by phone (yes with a guest count, no, maybe) until the service starts; 409 `MEMORIAL_FULL` over capacity; emits `m16.bereavement.memorial_rsvp_recorded`; `Idempotency-Key` required (ADR-0109 D10, #74)",
+    body: M16MemorialRsvpBody,
+    response: M16ContactMemorialInvitationResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/invitations/:invitationId/attendance": {
+    summary:
+      "Mark an invitee attended (a contact-log activity row `memorial_service_attendance`, no cadence item; final) or a no-show, once the service has started; oversight only; `Idempotency-Key` required (ADR-0109 D10, #75)",
+    body: M16MemorialAttendanceBody,
+    response: M16MemorialInvitationResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/memorial-invitations": {
+    summary: "One contact's memorial invitations, newest service first (ADR-0109 D10, #76)",
+    response: M16ContactMemorialInvitationListResponse,
+  },
+
+  // ── library.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/library": {
+    summary:
+      "Every grief-library item (`?status=`), portal order; bereavement oversight only; agency content, no person named (ADR-0109 D10, #77)",
+    query: M16LibraryListQuerySchema,
+    response: M16LibraryItemListResponse,
+  },
+  "POST /api/v1/bereavement/library": {
+    summary:
+      "Register an uploaded M22 `bereavement_library_item` document (active, org-level; checked through the M22 seam) as a DRAFT item; its kind and MIME type come from the document; a transcript must be a PDF; 409 when the file is already listed; `Idempotency-Key` required (ADR-0109 D10, #78)",
+    body: M16CreateLibraryItemBody,
+    response: M16LibraryItemResponse,
+  },
+  "PATCH /api/v1/bereavement/library/:itemId": {
+    summary:
+      "Edit an item's title, summary, category, transcript and order; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #79)",
+    body: M16UpdateLibraryItemBody,
+    response: M16LibraryItemResponse,
+  },
+  "POST /api/v1/bereavement/library/:itemId/status": {
+    summary:
+      "Publish an item to the bereaved portal, archive it, or return it to draft; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #80)",
+    body: M16SetLibraryStatusBody,
+    response: M16LibraryItemResponse,
+  },
+  "GET /api/v1/bereavement/library/:itemId/url": {
+    summary:
+      "A short-lived preview URL for the item's file (`?part=transcript` for its transcript), minted through M22's org-level seam, which records the access; never cached (ADR-0109 D10, #81)",
+    query: M16LibraryUrlQuerySchema,
+    response: M16LibraryItemUrlResponse,
   },
 
   // ── contacts.routes.ts ──
@@ -12908,6 +13152,7 @@ const M23ClaimSubmissionOutcome = Type.Union([
   Type.Literal("submitted"),
   Type.Literal("failed_worker"),
   Type.Literal("failed_portal"),
+  Type.Literal("held_stale_source"),
 ]);
 const M23ClaimAcknowledgmentKind = Type.Union([
   Type.Literal("ack_999"),
@@ -13081,6 +13326,50 @@ const M23ClaimLineView = Type.Object({
   backingEncounterIds: Type.Array(Type.String()),
 });
 const M23ClaimLinesResponse = Type.Array(M23ClaimLineView);
+const M23ClaimPreparationResponse = Type.Object({
+  route: Type.Object({
+    status: Type.Union([
+      Type.Literal("verified"),
+      Type.Literal("not_configured"),
+      Type.Literal("not_applicable"),
+    ]),
+    reasonCode: Type.Optional(Type.String()),
+  }),
+  previewVersion: Type.Integer(),
+  previewGeneratedAt: Type.String({ format: "date-time" }),
+  previewExpiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  previewConfirmationToken: Type.Union([Type.String(), Type.Null()]),
+  rendererStatus: Type.Union([Type.Literal("rendered"), Type.Literal("blocked")]),
+  billingPreview: Type.Optional(
+    Type.Object({
+      tob: Type.String(),
+      serviceFrom: Type.String({ format: "date" }),
+      serviceTo: Type.String({ format: "date" }),
+      admissionDate: Type.String({ format: "date" }),
+      lines: Type.Array(
+        Type.Object({
+          lineNumber: Type.Integer(),
+          revenueCode: Type.String(),
+          hcpcs: Type.String(),
+          modifiers: Type.Array(Type.String()),
+          units: Type.Number(),
+          chargeCents: Type.Integer(),
+          serviceDateFrom: Type.String({ format: "date" }),
+          serviceDateTo: Type.String({ format: "date" }),
+        }),
+      ),
+      diagnosisCodes: Type.Array(Type.String()),
+      totalChargeCents: Type.Integer(),
+      nonCoveredChargeCents: Type.Integer(),
+    }),
+  ),
+  rendererGaps: Type.Optional(
+    Type.Array(Type.Object({ field: Type.String(), reason: Type.String() })),
+  ),
+  payloadDigest: Type.Null(),
+  payloadDigestStatus: Type.Literal("not_available_from_read_projection"),
+  submissionEligible: Type.Boolean(),
+});
 const M23ClaimStateHistoryView = Type.Object({
   historyId: Type.String(),
   claimId: Type.String(),
@@ -13111,6 +13400,13 @@ const M23ClaimSubmissionView = Type.Object({
   claimControlNumber: Type.String(),
   attemptIndex: Type.Integer(),
   outcome: M23ClaimSubmissionOutcome,
+  dispatchState: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("sending"),
+    Type.Literal("in_doubt"),
+    Type.Literal("finished"),
+  ]),
+  dispatchReasonCode: Type.Union([Type.String({ pattern: "^[A-Z0-9_]{1,64}$" }), Type.Null()]),
   outcomeReason: Type.Union([Type.String(), Type.Null()]),
   generatedFileUri: Type.Union([Type.String(), Type.Null()]),
   submittedAt: Type.Union([Type.String(), Type.Null()]),
@@ -13373,6 +13669,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3)",
     response: M23ClaimDetailResponse,
+  },
+  "GET /api/v1/billing/claims/:id/preparation": {
+    summary: "Read-only claim preparation and verified payer-route readiness projection",
+    response: M23ClaimPreparationResponse,
   },
   "GET /api/v1/billing/claims/:id/acknowledgments": {
     summary: "All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13)",
@@ -15182,6 +15482,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Assemble a hospice 837I claim for a COMMERCIAL primary payer from the shared claim facts, priced from the plan's contract rates (plan, route and rate periods intersected with the window); records COB when Medicare or Medicaid is secondary. 409 NON_COMMERCIAL_PRIMARY_PAYER when the primary payer is not a commercial plan (Medicare is Module 23, Medicaid Module 24); 422 COMMERCIAL_PLAN_NOT_FOUND",
     body: M41AssembleBodySchema,
     response: M41AssembleResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/corrections/clearinghouse-rejection": {
+    summary:
+      "Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract.",
+    body: M41RejectedCorrectionBodySchema,
+    response: M41RejectedCorrectionResponseSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },
