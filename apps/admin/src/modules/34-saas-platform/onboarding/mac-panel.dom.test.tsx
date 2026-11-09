@@ -163,7 +163,7 @@ describe("MacPanel", () => {
   });
 
   it("closes the form on a version conflict (its pin is stale), says why, and reopens on what it says now", async () => {
-    mount([CRED], { POST: { [MAC]: () => refused(412, "VERSION_CONFLICT", "stale") } });
+    mount([CRED], { POST: { [MAC]: () => refused(409, "STALE_VERSION", "stale") } });
     fireEvent.click(
       await screen.findByRole("button", { name: "Replace credential for Beta Hospice" }),
     );
@@ -194,7 +194,7 @@ describe("MacPanel", () => {
 
   it("explains a version conflict: someone changed it, it is reloaded, the key must be typed again", async () => {
     const { client } = mount([CRED], {
-      POST: { [MAC]: () => refused(412, "VERSION_CONFLICT", "stale") },
+      POST: { [MAC]: () => refused(409, "STALE_VERSION", "stale") },
     });
     fireEvent.click(
       await screen.findByRole("button", { name: "Replace credential for Beta Hospice" }),
@@ -265,7 +265,7 @@ describe("MacPanel: coming back from Re-verify", () => {
     cleanup();
   };
 
-  it("resumes a REPLACE pinned to the version the operator first read (3), so a change made meanwhile is a 412, not a replace they never saw", async () => {
+  it("resumes a REPLACE pinned to the version the operator first read (3), so a change made meanwhile is a 409 STALE_VERSION, not a replace they never saw", async () => {
     await reverify([CRED]);
 
     // someone else replaced it while the operator was re-verifying: the version is now 4
@@ -278,7 +278,7 @@ describe("MacPanel: coming back from Re-verify", () => {
               "If-Match"
             ] === "4"
               ? ok(CRED)
-              : refused(412, "VERSION_CONFLICT", "stale"),
+              : refused(409, "STALE_VERSION", "stale"),
         },
       },
       view(),

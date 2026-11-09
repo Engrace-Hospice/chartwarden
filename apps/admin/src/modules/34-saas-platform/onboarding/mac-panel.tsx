@@ -1,7 +1,7 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — step 8, Billing: MAC credentials. The Medicare submitter credential the tenant's
 // claims go out under, entered on its behalf. The client secret is write-only: sealed under the tenant's own key, never returned,
 // never shown, never stashed through a re-verify (the operator types it again). An update is pinned to the version the operator read
-// (If-Match, an integer); a first create carries none, and a stale pin is a 412 that reloads the record.
+// (If-Match, an integer); a first create carries none, and a stale pin is a 409 STALE_VERSION that reloads the record.
 import {
   Button,
   type Fact,
@@ -102,7 +102,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       }>,
   );
   // Back from Re-verify the edit resumes PINNED to the version the operator first read (null: a create). It is never re-read, so a
-  // credential changed while they re-verified is a 412 that reloads it, not a replace the operator did not see.
+  // credential changed while they re-verified is a 409 STALE_VERSION that reloads it, not a replace the operator did not see.
   const restored = useStepUpDraft<{ form: Form; pinnedVersion: number | null }>(draftKey(orgSlug));
   const [editing, setEditing] = useState<{ pinnedVersion: number | null } | null>(
     restored ? { pinnedVersion: restored.pinnedVersion ?? null } : null,
@@ -175,7 +175,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       setClientSecret("");
       await Promise.all([credentials.reload(true), ctx.refresh()]);
     } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
-      // Someone changed it since it was read (412), or no pin was sent (428): the form's pin is stale, so the prompt AND the form
+      // Someone changed it since it was read (409 STALE_VERSION), or no pin was sent (428): the form's pin is stale, so the prompt AND the form
       // close, the record is read again, and the operator opens the form on what it says now and enters the secret again.
       setAsking(false);
       setEditing(null);

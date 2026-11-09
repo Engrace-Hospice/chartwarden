@@ -60,6 +60,13 @@ describe("describeOpsError", () => {
     ).toBe("conflict");
   });
 
+  it("a 409 STALE_VERSION (the route kit's stale If-Match, e.g. the MAC credential save) is a conflict, not a refusal", () => {
+    const failure = describeOpsError(envelope("STALE_VERSION", "the record changed"), {
+      status: 409,
+    });
+    expect(failure.kind).toBe("conflict");
+  });
+
   it.each([
     "ONBOARDING_TASK_CHANGED",
     "PRICING_PLAN_CHANGED",
