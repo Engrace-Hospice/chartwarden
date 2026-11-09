@@ -388,6 +388,15 @@ export async function reserveM41ClaimMdEvidence(input: {
   readonly billingNpi: string;
   readonly usage: "test" | "production";
   readonly x12: string;
+  readonly submittedLines?: readonly {
+    readonly internalClaimLineId: string;
+    readonly revenueCode: string;
+    readonly procedureCode: string | null;
+    readonly serviceFrom: string;
+    readonly serviceTo: string;
+    readonly units: string;
+    readonly chargeCents: number;
+  }[];
   readonly outboundReference: string;
   readonly now: Date;
 }): Promise<string | null> {
@@ -421,6 +430,7 @@ export async function reserveM41ClaimMdEvidence(input: {
       accountReference: evidence.accountReference,
       usage: input.usage,
       x12Claim: outbound,
+      ...(input.submittedLines === undefined ? {} : { submittedLines: input.submittedLines }),
       payloadSha256: parsed.payloadSha256,
       outboundReference: input.outboundReference,
       reservedAt: input.now,
@@ -561,6 +571,7 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
       billingNpi: context.billingNpi ?? "",
       usage: context.usage,
       x12: rendered.x12,
+      submittedLines: rendered.submittedLines,
       outboundReference: claimMdFilename(scopeKey(context), transportKeyFor(sub.claimId), "x12"),
       now: nowOf(deps),
     });

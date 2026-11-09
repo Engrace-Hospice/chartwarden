@@ -321,6 +321,15 @@ export interface MacPortalPort {
     readonly locationId?: string | null;
     readonly noticeId?: string;
     readonly expectedRouteFingerprint?: string;
+    readonly submittedLines?: readonly {
+      readonly internalClaimLineId: string | null;
+      readonly revenueCode: string;
+      readonly procedureCode: string | null;
+      readonly serviceFrom: string;
+      readonly serviceTo: string;
+      readonly units: string;
+      readonly chargeCents: number;
+    }[];
   }): Promise<{
     readonly accepted: boolean;
     readonly generatedFileUri: string;
@@ -903,6 +912,7 @@ async function generateClaim837i(
   readonly stediJson?: StediClaimJson;
   readonly correlationId: string;
   readonly sourceFingerprint: string | null;
+  readonly submittedLines?: Awaited<ReturnType<typeof renderClaimForTransport>>["submittedLines"];
 }> {
   if (!transport) {
     const legacyContext = deps.transport?.contexts;
@@ -1058,6 +1068,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
     readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
     readonly sourceFingerprint: string | null;
+    readonly submittedLines?: Awaited<ReturnType<typeof generateClaim837i>>["submittedLines"];
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
@@ -1094,6 +1105,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
       kind: "claim_837i",
       x12: generated.x12,
       stediJson: generated.stediJson,
+      submittedLines: generated.submittedLines,
       controlNumber: job.claimControlNumber,
       claimId: job.claimId,
       submissionId: job.submissionId,
@@ -1330,6 +1342,7 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
     readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
     readonly sourceFingerprint: string | null;
+    readonly submittedLines?: Awaited<ReturnType<typeof generateClaim837i>>["submittedLines"];
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
@@ -1377,6 +1390,7 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         kind: "claim_837i",
         x12: generated.x12,
         stediJson: generated.stediJson,
+        submittedLines: generated.submittedLines,
         controlNumber: claimControlNumber,
         claimId: job.claimId,
         submissionId: job.submissionId,
@@ -1649,6 +1663,7 @@ export async function runClaimSubmit(
       kind: "claim_837i",
       x12: prepared.generated.x12,
       stediJson: prepared.generated.stediJson,
+      submittedLines: prepared.generated.submittedLines,
       controlNumber: job.claimControlNumber,
       claimId: job.claimId,
       submissionId: job.submissionId,

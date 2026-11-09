@@ -25,6 +25,8 @@ const FREQUENCY_BY_TOB: Readonly<Record<string, string>> = {
 const REPLACEMENT_FREQUENCIES: readonly string[] = ["7", "8"];
 
 export interface ClaimDocumentLine {
+  /** Source-owned immutable database identity; absent only in legacy pure callers without a persisted row. */
+  readonly sourceLineId: string | null;
   readonly lineNumber: number;
   /** 4-digit revenue code. */
   readonly revenueCode: string;
@@ -88,6 +90,7 @@ export interface ClaimDocumentClaimSource {
 
 /** The `claim_line` row fields the document reads (a structural subset of `ClaimLineRecord`). */
 export interface ClaimDocumentLineSource {
+  readonly id?: string;
   readonly lineNumber: number;
   readonly revenueCode: string;
   readonly qCode: string;
@@ -164,6 +167,7 @@ function mapLines(
         gaps.push(gap(`lines[${i}].chargeCents`, "invalid"));
       }
       return {
+        sourceLineId: l.id ?? null,
         lineNumber: l.lineNumber,
         revenueCode: l.revenueCode,
         hcpcs,

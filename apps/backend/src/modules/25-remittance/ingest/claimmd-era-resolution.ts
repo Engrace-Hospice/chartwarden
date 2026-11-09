@@ -307,6 +307,7 @@ export function decideClaimMdEraOwnership(input: {
         transactionSetControlNumber: advice.transactionSetControlNumber,
         pcn: pcn ?? null,
         payerIcn: claim.payerIcn ?? null,
+        billingModule: matchingClaims.length === 1 ? matchingClaims[0]!.billingModule : null,
         outcome: conflicts.length
           ? "conflict"
           : matchingClaims.length === 1

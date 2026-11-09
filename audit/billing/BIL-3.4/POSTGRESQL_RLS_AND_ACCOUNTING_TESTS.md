@@ -1,0 +1,5 @@
+# PostgreSQL, RLS, and accounting tests
+
+Migration `1396_m23_claimmd_submission_line_evidence.sql` is additive and declares `compat: expand`. It creates an attempt-specific, tenant-scoped, immutable line evidence table. The migration journal entry and M23 table ownership metadata were updated.
+
+The repository's disposable private PostgreSQL 18.6 runner applied the full migration set, including 1396. The M23 live RLS suite passed 14/14 and the M25 live RLS suite passed 21/21 with the real test `chartwarden_app` role. The M23 suite seeds line evidence and verifies owner visibility, cross-tenant invisibility, mismatched provider association rejection, update rejection, and audit metadata. The response inbox suite passed 3/3. These are migration/RLS checks, not posting/accounting certification: posting plans, approval, concurrency, rollback, duplicate-source accounting and ledger invariants remain **NOT EXECUTED**. The runner used a fresh disposable container and did not read the `.env` database URL, shared `os-postgres-1`, or production. The earlier identified 1378 migration alias arrangement was not changed here.

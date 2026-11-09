@@ -40,3 +40,6 @@ export * from "./playbook"; // denial_playbook, denial_playbook_version, denial_
 export * from "./pull-cursor"; // remittance_pull_cursor (#717)
 export * from "./pull-refusal"; // remittance_pull_refusal (#717 follow-up)
 export * from "./claimmd-era"; // Claim.MD central capture/resolution/delivery + tenant M25 staging (BIL-1.4)
+export * from "./claimmd-era-match"; // Append-only tenant match/review evidence (BIL-3.2; nonposting)
+export * from "./claimmd-era-financial-review"; // Append-only nonposting financial-review dispositions (BIL-3.3)
+export * from "./claimmd-era-posting"; // Immutable plans and append-only approval/execution history (BIL-3.4)

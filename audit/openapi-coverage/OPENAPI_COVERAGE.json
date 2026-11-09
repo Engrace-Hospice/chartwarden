@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 2025,
-    "enriched": 2025,
+    "routes": 2033,
+    "enriched": 2033,
     "deficit": 0,
-    "mutating": 1162,
+    "mutating": 1167,
     "mutatingNoBody": 1,
-    "gets": 810,
-    "getsNoResponse": 11
+    "gets": 813,
+    "getsNoResponse": 9
   },
   "modules": [
     {
@@ -241,13 +241,13 @@
     },
     {
       "module": "25-remittance",
-      "routes": 160,
-      "enriched": 160,
+      "routes": 168,
+      "enriched": 168,
       "deficit": 0,
-      "mutating": 104,
+      "mutating": 109,
       "mutatingNoBody": 0,
-      "gets": 53,
-      "getsNoResponse": 2
+      "gets": 56,
+      "getsNoResponse": 0
     },
     {
       "module": "26-cap",
