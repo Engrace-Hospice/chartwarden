@@ -210,7 +210,7 @@ controls:
       owner: engineering
       review_by: 2027-01-31
 
-  - id: CW-AC-11
+  - id: CW-AC-25
     title: Vendor-reported state never applies itself — Claim.MD enrollment reports are advisory (the commercial send gate opens only after staff record the enrollment through the existing step-up-guarded routes) and Claim.MD appeal reports open or link a draft appeal level but never decide, close or withdraw an appeal case
     hipaa: ["164.312(c)(1)", "164.308(a)(4)(ii)(B)"]
     soc2: ["CC5.2", "CC8.1", "PI1.3"]

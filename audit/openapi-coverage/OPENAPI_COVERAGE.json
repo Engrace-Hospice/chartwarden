@@ -1,10 +1,10 @@
 {
   "totals": {
     "routes": 2008,
-    "enriched": 2005,
-    "deficit": 3,
+    "enriched": 2008,
+    "deficit": 0,
     "mutating": 1149,
-    "mutatingNoBody": 2,
+    "mutatingNoBody": 1,
     "gets": 806,
     "getsNoResponse": 11
   },
@@ -242,8 +242,8 @@
     {
       "module": "25-remittance",
       "routes": 160,
-      "enriched": 158,
-      "deficit": 2,
+      "enriched": 160,
+      "deficit": 0,
       "mutating": 104,
       "mutatingNoBody": 0,
       "gets": 53,
@@ -412,10 +412,10 @@
     {
       "module": "bootstrap",
       "routes": 12,
-      "enriched": 11,
-      "deficit": 1,
+      "enriched": 12,
+      "deficit": 0,
       "mutating": 2,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 1
     }

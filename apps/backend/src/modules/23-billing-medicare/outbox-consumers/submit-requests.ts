@@ -72,17 +72,30 @@ function queueRequest(event: DispatchableOutboxEvent): {
       throw new Error("M23 submission request has invalid 'attemptIndex'");
     }
     const expectedRouteFingerprint = event.payload.expectedRouteFingerprint;
-    if (expectedRouteFingerprint !== undefined &&
-      (typeof expectedRouteFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(expectedRouteFingerprint))) {
+    if (
+      expectedRouteFingerprint !== undefined &&
+      (typeof expectedRouteFingerprint !== "string" ||
+        !/^[a-f0-9]{64}$/.test(expectedRouteFingerprint))
+    ) {
       throw new Error("M23 submission request has invalid 'expectedRouteFingerprint'");
     }
-    const reviewedSourceFingerprint = requiredString(event.payload.reviewedSourceFingerprint, "reviewedSourceFingerprint");
-    if (!/^[a-f0-9]{64}$/.test(reviewedSourceFingerprint)) throw new Error("M23 submission request has invalid 'reviewedSourceFingerprint'");
+    const reviewedSourceFingerprint = requiredString(
+      event.payload.reviewedSourceFingerprint,
+      "reviewedSourceFingerprint",
+    );
+    if (!/^[a-f0-9]{64}$/.test(reviewedSourceFingerprint))
+      throw new Error("M23 submission request has invalid 'reviewedSourceFingerprint'");
     return {
       queue: "claim.submit",
       key: submissionId,
-      payload: { claimId, submissionId, claimControlNumber, attemptIndex, reviewedSourceFingerprint,
-        ...(typeof expectedRouteFingerprint === "string" ? { expectedRouteFingerprint } : {}) },
+      payload: {
+        claimId,
+        submissionId,
+        claimControlNumber,
+        attemptIndex,
+        reviewedSourceFingerprint,
+        ...(typeof expectedRouteFingerprint === "string" ? { expectedRouteFingerprint } : {}),
+      },
     };
   }
   if (event.eventType === "m23.claim.submission_failed") {
@@ -93,15 +106,22 @@ function queueRequest(event: DispatchableOutboxEvent): {
       throw new Error("M23 submission failure has invalid 'attemptIndex'");
     }
     const expectedRouteFingerprint = event.payload.expectedRouteFingerprint;
-    if (expectedRouteFingerprint !== undefined &&
-      (typeof expectedRouteFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(expectedRouteFingerprint))) {
+    if (
+      expectedRouteFingerprint !== undefined &&
+      (typeof expectedRouteFingerprint !== "string" ||
+        !/^[a-f0-9]{64}$/.test(expectedRouteFingerprint))
+    ) {
       throw new Error("M23 submission failure has invalid 'expectedRouteFingerprint'");
     }
     return {
       queue: "claim.submit.retry",
       key: `${submissionId}:${attemptIndex}`,
-      payload: { claimId, submissionId, attemptIndex,
-        ...(typeof expectedRouteFingerprint === "string" ? { expectedRouteFingerprint } : {}) },
+      payload: {
+        claimId,
+        submissionId,
+        attemptIndex,
+        ...(typeof expectedRouteFingerprint === "string" ? { expectedRouteFingerprint } : {}),
+      },
     };
   }
   if (event.eventType === "m23.noe.submit_requested") {

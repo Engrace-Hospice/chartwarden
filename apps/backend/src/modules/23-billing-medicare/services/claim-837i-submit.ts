@@ -61,7 +61,8 @@ export async function renderClaimForTransport(args: {
       claimControlNumber: args.claimControlNumber,
     },
   );
-  if (loaded.ok) return { ...loaded.rendered.reveal(), sourceFingerprint: loaded.sourceFingerprint };
+  if (loaded.ok)
+    return { ...loaded.rendered.reveal(), sourceFingerprint: loaded.sourceFingerprint };
   const why =
     loaded.kind === "claim_not_found"
       ? "claim not found for this organization and provider entity"

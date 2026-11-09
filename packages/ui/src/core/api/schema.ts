@@ -19557,6 +19557,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409 */
         post: operations["postApiV1OpsClaimmdErasByInboxIdRecovery"];
         delete?: never;
         options?: never;
@@ -25185,6 +25186,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Claim.MD ERAs staged for M25 posting, filterable by provider entity and stage state, cursor-paginated */
         get: operations["getApiV1RemittanceClaimmdera"];
         put?: never;
         post?: never;
@@ -25201,6 +25203,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One Claim.MD ERA staged for M25 posting */
         get: operations["getApiV1RemittanceClaimmderaById"];
         put?: never;
         post?: never;
@@ -88766,7 +88769,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Client-generated id; a replay with the same id is idempotent
+                     */
+                    actionId: string;
+                    /** @description Must equal this runtime's configured Claim.MD account */
+                    accountReference: string;
+                    usage: "test" | "production";
+                    stage: "capture" | "ownership_resolution" | "m25_delivery";
+                    reasonCode: string;
+                    expectedState: string;
+                    expectedVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -104835,7 +104855,12 @@ export interface operations {
     };
     getApiV1RemittanceClaimmdera: {
         parameters: {
-            query?: never;
+            query?: {
+                providerEntityId?: string;
+                state?: string;
+                cursor?: string;
+                limit?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

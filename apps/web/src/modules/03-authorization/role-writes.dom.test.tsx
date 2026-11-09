@@ -104,6 +104,25 @@ describe("GAP-116 — role writes", () => {
     ]);
   });
 
+  it("an Edit click that lands in the commit where the matrix first mounts still opens the editor", async () => {
+    // The matrix's mount effects have not flushed yet when this click arrives. An effect that resets the edit state
+    // on mount would run after it and silently cancel the edit (the "findByRole checkbox" timeout seen under load).
+    const { container } = mount();
+    await new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        const edit = [...container.querySelectorAll("button")].find(
+          (button) => button.textContent === "Edit permissions",
+        );
+        if (!edit) return;
+        observer.disconnect();
+        edit.click();
+        resolve();
+      });
+      observer.observe(container, { childList: true, subtree: true });
+    });
+    expect(await screen.findByRole("checkbox", { name: "patient.create" })).toBeTruthy();
+  });
+
   it("shows the server's refusal in place when the save is denied", async () => {
     patchFailure = { message: "cannot grant permission 'patient.create' you do not hold" };
     mount();
