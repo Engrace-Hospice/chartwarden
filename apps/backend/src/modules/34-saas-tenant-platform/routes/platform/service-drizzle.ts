@@ -67,6 +67,7 @@ import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
 import {
   type CursorPage,
   PLATFORM_CURSOR_SCOPE,
+  assertPageCursor,
   decodeKeyset,
   encodeKeyset,
   pageSizeOf,
@@ -561,6 +562,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
   const service: TenantPlatformRouteService = {
     // ── tenants (live cross-tenant reads under withPlatformContext) ──
     async listTenants(filter, cursor, limit): Promise<CursorPage<TenantSummaryView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list tenants", async (tx) => {
         const rows = await tx
           .select({ account: A, slug: ORG.slug })
@@ -891,6 +894,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── tenant-invitations ──
     async listInvitations(filter, cursor, limit) {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list invitations", async (tx) => {
         const rows = await tx
           .select()
@@ -1016,6 +1021,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── onboarding-templates (platform-shared catalog) ──
     async listOnboardingTemplates(cursor, limit): Promise<CursorPage<OnboardingTemplateView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list onboarding templates", async (tx) => {
         const rows = await new OnboardingRepository(tx).listTemplates();
         const views = rows.map((t) => ({
@@ -1086,6 +1093,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── support sessions (§7.4; F01/D8/D16) ──
     async listSessions(filter, cursor, limit): Promise<CursorPage<SupportSessionView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list support sessions", async (tx) => {
         const rows = await tx
           .select({ s: SS, grant: SCG })
@@ -1110,6 +1119,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       cursor,
       limit,
     ): Promise<CursorPage<SupportSessionEventView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list support session events", async (tx) => {
         const session = await new SupportRepository(tx).findSessionById(sessionId);
         if (!session) throw new NotFoundError("support session");
@@ -1175,6 +1186,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── signup intents (§4.1; F02 / ADR-0010 — org-less, withPlatformContext) ──
     async listSignupIntents(filter, cursor, limit): Promise<CursorPage<SignupIntentView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list signup intents", async (tx) => {
         const rows = await new SignupIntentRepository(tx).listIntents();
         const views = rows
@@ -1288,6 +1301,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── platform-tenant BAA register (§3.8 / D11) ──
     async listBaaRecords(filter, cursor, limit): Promise<CursorPage<BaaRegisterListItem>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list BAA records", async (tx) => {
         const rows = await tx.select().from(BAA).orderBy(desc(BAA.executedOn), desc(BAA.id));
         const tenantRows = rows.filter((b) =>
@@ -1400,7 +1415,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     // one, so the wire shape matches every other platform list.
     async listTenantExportJobs(filter, cursor, limit): Promise<CursorPage<TenantExportJobView>> {
       // The cursor goes into SQL as a timestamp and a uuid: checked strictly BEFORE the platform context is entered, so a value that is
-      // neither is a clean 400 that leaves no platform bypass audit row.
+      // neither is a clean 422 INVALID_CURSOR that leaves no platform bypass audit row.
       const keyset = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list tenant export jobs", async (tx) => {
         const repo = new TenantExportRepository(tx);

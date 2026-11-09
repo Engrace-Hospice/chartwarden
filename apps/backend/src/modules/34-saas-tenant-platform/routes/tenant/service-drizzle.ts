@@ -30,7 +30,7 @@ import {
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
-import { paginate } from "../keyset-page";
+import { assertPageCursor, paginate } from "../keyset-page";
 import type {
   BaaRecordView,
   DownloadUrlView,
@@ -87,6 +87,8 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
   const service: TenantRouteService = {
     // ── support consent grants ──
     async listConsentGrants(organizationId, cursor, limit) {
+      // judged before the org transaction is opened: a bad cursor reaches no database
+      assertPageCursor(organizationId, cursor);
       return inOrgCtx(organizationId, async (tx) => {
         const rows = await tx.select().from(SCG); // RLS scopes to app.org_id
         const views = rows.map(grantView).sort(byCreatedDesc);
@@ -178,6 +180,8 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     },
 
     async listDsarExports(organizationId, filter, cursor, limit) {
+      // judged before the org transaction is opened: a bad cursor reaches no database
+      assertPageCursor(organizationId, cursor);
       return inOrgCtx(organizationId, async (tx) => {
         const rows = await tx.select().from(schema.dsarExportJob);
         const views = rows
@@ -291,6 +295,8 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     },
 
     async listTenantExports(organizationId, filter, cursor, limit) {
+      // judged before the org transaction is opened: a bad cursor reaches no database
+      assertPageCursor(organizationId, cursor);
       return inOrgCtx(organizationId, async (tx) => {
         const rows = await tx.select().from(schema.tenantExportJob);
         const views = rows
@@ -331,6 +337,8 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
 
     // ── BAA (tenant-side read + attest) ──
     async listBaa(organizationId, cursor, limit) {
+      // judged before the org transaction is opened: a bad cursor reaches no database
+      assertPageCursor(organizationId, cursor);
       return inOrgCtx(organizationId, async (tx) => {
         const rows = await tx.select().from(BAA);
         const views = rows.map(baaTenantView).sort(byCreatedDesc);

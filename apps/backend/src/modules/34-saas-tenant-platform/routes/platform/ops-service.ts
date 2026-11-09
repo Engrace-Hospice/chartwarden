@@ -104,7 +104,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
   return {
     async listDsarJobs(filter, cursor, limit) {
       // The cursor goes into SQL as a timestamp and a uuid: judged BEFORE the platform context is entered (no bypass row for a bad
-      // request) and before any cast, so a value that is neither is a clean 400, never the database's cast error (a 500).
+      // request) and before any cast, so a value that is neither is a clean 422 INVALID_CURSOR, never the database's cast error (a 500).
       const after = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatform("platform-ops cross-tenant DSAR list", async (tx) => {
         const size = pageSizeOf(limit);
