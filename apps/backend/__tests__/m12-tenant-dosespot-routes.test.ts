@@ -306,7 +306,9 @@ describe("tenant DoseSpot routes", () => {
       headers: { ...ADMIN, ...idem(), "if-match": "four" },
       payload: BODY,
     });
-    expect(bad.statusCode).toBe(422);
+    // a malformed If-Match is the route kit's 400 VALIDATION_FAILED (it was a 422 from a local copy of the helper)
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error.code).toBe("VALIDATION_FAILED");
     expect(calls.map((c) => c.expectedVersion)).toEqual([undefined, 4]);
     expect(calls[0]).toMatchObject({ organizationId: ORG, membershipId: MEMBERSHIP, body: BODY });
     expect(first.body).not.toContain(SECRET);

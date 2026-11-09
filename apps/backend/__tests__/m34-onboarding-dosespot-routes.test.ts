@@ -317,6 +317,15 @@ describe("platform DoseSpot plumbing", () => {
       payload: PUT_BODY,
     });
     expect(change.statusCode).toBe(200);
+    // a malformed If-Match is the route kit's 400 VALIDATION_FAILED (it was a 422 from a local copy of the helper)
+    const malformed = await app.inject({
+      method: "PUT",
+      url: BASE,
+      headers: { ...fresh(), "if-match": "three" },
+      payload: PUT_BODY,
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json().error.code).toBe("VALIDATION_FAILED");
     expect(calls.map((c) => c.expectedVersion)).toEqual([undefined, 3]);
     expect(calls[0]).toMatchObject({
       orgSlug: "tenant-b",

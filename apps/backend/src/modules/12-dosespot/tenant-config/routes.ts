@@ -7,18 +7,18 @@
 // where every prescription of the organization goes. A first PUT omits `If-Match`; a change carries the version last read
 // (428 / 412). The credential is write-only (sealed, never returned). Org and membership binding is server-side.
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
-import { rejectAiActor } from "@chartwarden/shared/route-kit";
+import {
+  type PreHandler,
+  optionalIfMatchVersionOf,
+  orgOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { MembershipParamsSchema, OrderParamsSchema, parse } from "../routes/dosespot-typebox";
 import type { PractitionerLinkService } from "./practitioner-link";
 import type { PrescriberEnrollmentService } from "./prescriber-enrollment";
-import {
-  type PreHandler,
-  clinicActorOf,
-  optionalIfMatch,
-  orgOf,
-  requireIdempotencyKey,
-} from "./route-guards";
+import { clinicActorOf } from "./route-guards";
 import type { DoseSpotClinicRouteService } from "./tenant-service";
 import type { TransmissionResolveService } from "./transmission-resolve";
 import {
@@ -91,7 +91,7 @@ export function registerTenantDoseSpotRoutes(
   app.put("/api/v1/tenant/dosespot", { preHandler: [...WRITE] }, async (request, reply) => {
     const actor = clinicActorOf(request);
     const body = parse(PutClinicBodySchema, request.body);
-    const { created, view } = await service.put(actor, body, optionalIfMatch(request));
+    const { created, view } = await service.put(actor, body, optionalIfMatchVersionOf(request));
     return reply.code(created ? 201 : 200).send(view);
   });
 
