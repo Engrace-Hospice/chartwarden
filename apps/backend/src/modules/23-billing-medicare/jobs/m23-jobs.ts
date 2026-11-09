@@ -74,6 +74,7 @@ import {
   type TransportAck,
   activeTransport,
   assertOrgBound,
+  failureLabel,
   hasPerOrgTransport,
   priorClaimAttempt,
   pullTransportAcks,
@@ -82,7 +83,11 @@ import {
   transportUpload,
   transportUploadPerOrg,
 } from "./clearinghouse-submission";
-import { clearinghouseStateFor, holdJobWhileUnbound } from "./clearinghouse-unbound-hold";
+import {
+  clearinghouseStateFor,
+  holdJobWhileUnbound,
+  reportClearinghouseUnresolved,
+} from "./clearinghouse-unbound-hold";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
   M23_NOTICE_PARK_QUEUES,
@@ -2402,7 +2407,16 @@ async function runTransportAckPull(
     try {
       orgTransport = await transportForOrg(deps, organizationId);
     } catch (err) {
-      failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
+      // That tenant's problem (its credential cannot be opened, its config read failed), not the shared job's: reported for
+      // the organization (code or class only) and the tick carries on; failing it would retry the job into the DLQ for every tenant.
+      await reportClearinghouseUnresolved(
+        { alerts: deps.alerts, logger: deps.logger },
+        {
+          queue: kind === "ack_999" ? M23_CRON_QUEUES.ackPull999 : M23_CRON_QUEUES.ackPull277ca,
+          organizationId,
+          code: failureLabel(err),
+        },
+      );
       continue;
     }
     if (!orgTransport || orgTransport.binding.vendor === null) continue;
@@ -2479,7 +2493,8 @@ async function runTransportAckPull(
         failures.push(`ack backlog (page cap) for ${pulled.backlog.join(", ")}`);
       }
     } catch (err) {
-      failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
+      // A code or class, never the message: this string reaches job data and logs.
+      failures.push(`org ${organizationId}: ${failureLabel(err)}`);
     }
   }
   if (failures.length > 0) {
