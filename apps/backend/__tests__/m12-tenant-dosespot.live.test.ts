@@ -2069,6 +2069,83 @@ describe.skipIf(!DB_URL)(
           expect((await linkService.view(asMember(m))).confirmed).toBe(false);
         });
 
+        it("a CONFIRMED link with no recorded maker is refused at enrolment (409 DOSESPOT_PRACTITIONER_UNCONFIRMED), and the store never records a vendor id against it", async () => {
+          const m = await newMember();
+          await link(m, MEMBERSHIP);
+          await admin.query(
+            "UPDATE dosespot_prescriber SET linked_by_membership_id=NULL WHERE membership_id=$1",
+            [m.membershipId],
+          );
+          // a confirmation written while the maker was unknown (the database allows it; the enrolment gate must not honour it)
+          await asDeclaredUser(
+            m.userId,
+            `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
+               link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+            [m.membershipId, m.physician.id, m.physician.npi],
+          );
+          expect((await confirmationOf(m.membershipId))?.mdm).toBe(m.physician.id);
+          expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), m.membershipId))).toBe(
+            "DOSESPOT_PRACTITIONER_UNCONFIRMED",
+          );
+          // the statement-level guard too, straight at the store: nothing is recorded
+          const recorded = await withOrgContext(
+            tdb,
+            { organizationId: ORG_A, userId: m.userId },
+            (tx) =>
+              createDrizzleRosterStore(tx as unknown as DbClient)
+                .recordVendorId(ORG_A, m.membershipId, {
+                  expectedPhysicianMdmId: m.physician.id,
+                  dosespotPrescriberId: "9001",
+                  npi: m.physician.npi as string,
+                  at: new Date(),
+                })
+                .catch((e: unknown) => e),
+          );
+          expect(recorded).toMatchObject({ code: "DOSESPOT_ROSTER_CHANGED" });
+          expect(
+            (
+              await q(
+                "SELECT dosespot_prescriber_id AS id FROM dosespot_prescriber WHERE membership_id=$1",
+                [m.membershipId],
+              )
+            )[0]?.id,
+          ).toBeNull();
+        });
+
+        it("a DEA-only re-save (no physician record in the body) of a link with no recorded maker also records the administrator as its maker and clears a confirmation made while the maker was unknown", async () => {
+          const m = await newMember();
+          await link(m, MEMBERSHIP);
+          await admin.query(
+            "UPDATE dosespot_prescriber SET linked_by_membership_id=NULL WHERE membership_id=$1",
+            [m.membershipId],
+          );
+          await asDeclaredUser(
+            m.userId,
+            `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
+               link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+            [m.membershipId, m.physician.id, m.physician.npi],
+          );
+          await createDbDoseSpotBackend(tdb as unknown as DbClient, outbox).enrollPrescriber(
+            ORG_A,
+            m.membershipId,
+            [],
+            undefined,
+            MEMBERSHIP,
+          );
+          expect(await linkerOf(m.membershipId)).toBe(MEMBERSHIP);
+          expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+          // the link itself is untouched, and the member can now confirm it under the recorded maker
+          expect(
+            (
+              await q(
+                "SELECT external_physician_mdm_id AS mdm FROM dosespot_prescriber WHERE membership_id=$1",
+                [m.membershipId],
+              )
+            )[0]?.mdm,
+          ).toBe(m.physician.id);
+          expect((await linkService.confirm(asMember(m), pin(m))).confirmed).toBe(true);
+        });
+
         it("a link recorded under a platform operator's membership counts as another linker: the prescriber's own confirmation is accepted", async () => {
           const m = await newMember();
           await link(m, OPS_MEMBERSHIP);

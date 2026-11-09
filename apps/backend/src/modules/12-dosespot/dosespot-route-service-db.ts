@@ -1633,14 +1633,13 @@ export function createDbDoseSpotBackend(
             existing.mdmId === externalPhysicianMdmId &&
             existing.linkedBy === membershipId &&
             linkedByMembershipId !== membershipId;
-          // A link with NO recorded maker (it predates the column) is unconfirmable (409 DOSESPOT_LINK_MAKER_UNKNOWN), so it is fixed the
-          // same way: an administrator re-saving the same link becomes its maker, and a confirmation made while the maker was unknown is
-          // cleared, so the member confirms again under the recorded maker.
+          // A link with NO recorded maker (it predates the column, or was written outside this route) is unconfirmable (409
+          // DOSESPOT_LINK_MAKER_UNKNOWN) and never passes the enrolment gate, so it is fixed the same way: ANY administrator re-save of the
+          // row (the same link re-sent, or a DEA-schedules-only save that carries no physician record) becomes its maker, and a
+          // confirmation made while the maker was unknown is cleared, so the member confirms again under the recorded maker.
+          // (A re-save naming a different physician is a re-link, handled above.)
           const reassertsUnattributedLink =
-            existing !== undefined &&
-            Boolean(externalPhysicianMdmId) &&
-            existing.mdmId === externalPhysicianMdmId &&
-            existing.linkedBy === null;
+            existing !== undefined && existing.mdmId !== null && existing.linkedBy === null;
           const linkAsserted =
             (Boolean(externalPhysicianMdmId) && existing?.mdmId !== externalPhysicianMdmId) ||
             (existing !== undefined && existing.revokedAt !== null) ||
