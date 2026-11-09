@@ -1,4 +1,4 @@
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
+import { ApiClientProvider, LINK_FLOOR_MS, createApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 // apps/web/src/modules/16-bereavement — ADR-0109 D10: one mailing run (routes 45-51).
 // Wording first (no default ever ships), Generate with the version read, a poll that stops when the render ends, Download only for a
@@ -9,7 +9,7 @@ import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { LINK_FLOOR_MS, MailingRunDetail, linkLifetimeMs } from "./mailing-run-detail";
+import { MailingRunDetail } from "./mailing-run-detail";
 
 /** jest-dom's `toBeDisabled`: the control itself, or a descendant of a disabled fieldset (how these screens make a whole form inert). */
 const inert = (el: HTMLElement): boolean =>
@@ -516,16 +516,6 @@ describe("mailing run — download, confirm and cancel", () => {
     vi.advanceTimersByTime(LINK_TTL_MS + 1000);
     await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
     expect(document.body.innerHTML).not.toContain("sig=abc");
-  });
-
-  it("a link lifetime is clamped to what a timer can wait, and a link the client clock calls expired still gets the floor", () => {
-    const now = Date.parse("2026-11-06T00:00:00.000Z");
-    expect(linkLifetimeMs("2026-11-06T00:05:00.000Z", now)).toBe(LINK_TTL_MS);
-    expect(linkLifetimeMs("2099-01-01T00:00:00.000Z", now)).toBe(2 ** 31 - 1);
-    expect(LINK_FLOOR_MS).toBe(60_000);
-    expect(linkLifetimeMs("2026-11-05T00:00:00.000Z", now)).toBe(LINK_FLOOR_MS);
-    expect(linkLifetimeMs("2026-11-06T00:00:10.000Z", now)).toBe(LINK_FLOOR_MS);
-    expect(linkLifetimeMs("not a date", now)).toBe(LINK_FLOOR_MS);
   });
 
   it("a link whose expiry the (skewed) client clock already passed stays clickable for the floor, then goes", async () => {

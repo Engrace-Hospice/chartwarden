@@ -1,4 +1,4 @@
-// @chartwarden/db — `tenant_clearinghouse_config` (M23 Billing-Medicare; ADR-0053 amendment 2026-11-06; migration 1386).
+// @chartwarden/db — `tenant_clearinghouse_config` (M23 Billing-Medicare; ADR-0053 amendment 2026-11-06; migration 1417).
 // The clearinghouse a tenant chose: `stedi`, `claimmd` or `outside` ("bills outside ChartWarden"), its mode, its sealed
 // vendor credential and where the config is in draft -> verified -> active. One row per organization. The CHECKs in the
 // migration are the authority on which column combinations are legal; this file mirrors the shape for Drizzle.
@@ -21,10 +21,10 @@ export const tenantClearinghouseConfig = pgTable(
     status: text("status").notNull().default("draft"),
     secretCipher: text("secret_cipher"),
     secretDekVersion: integer("secret_dek_version"),
-    // Migration 1403: a keyed HMAC of the vendor and the account key (write-only, never returned or audited), unique ACROSS
+    // Migration 1434: a keyed HMAC of the vendor and the account key (write-only, never returned or audited), unique ACROSS
     // organizations so one vendor account belongs to one tenant. NULL with no credential.
     credentialFingerprint: text("credential_fingerprint"),
-    // Migration 1405: the public id of the key that fingerprint is under (null before 1405, or with no credential).
+    // Migration 1436: the public id of the key that fingerprint is under (null before 1436, or with no credential).
     credentialFingerprintKeyId: text("credential_fingerprint_key_id"),
     verificationKind: text("verification_kind"),
     verificationEvidence: text("verification_evidence"),

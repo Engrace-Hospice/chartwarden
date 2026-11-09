@@ -23,6 +23,7 @@ import {
   OverrideRbDayBody,
   ReplaceClaimBody,
   SubmitClaimBody,
+  UpdateDraftClaimBody,
   TerminateRbArrangementBody,
   UpsertCredentialBody,
   ValidationWorklistQuery,
@@ -44,6 +45,12 @@ const expectQueryRejected = (schema: Parameters<typeof parseQuery>[0], raw: unkn
 };
 
 describe("M24 §4.2 request validation — bodies", () => {
+  it("does not allow clients to set or clear an MCO routing identity", () => {
+    expect(parse(UpdateDraftClaimBody, {})).toEqual({});
+    expectRejected(UpdateDraftClaimBody, { mcoId: UUID_A });
+    expectRejected(UpdateDraftClaimBody, { mcoId: null });
+  });
+
   it("accepts a well-formed assemble body and rejects a bad claim kind", () => {
     const ok = parse(AssembleClaimBody, {
       patientId: UUID_A,

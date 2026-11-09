@@ -169,6 +169,8 @@ export function mountDocumentRoutes(
     createVerifiedUploadService({
       db,
       objects,
+      // ADR-0109 D10 (PR 3) — the grief-library video `ftyp` check reads the upload's first bytes back.
+      reader: objects,
       referralReader: {
         canAccessReferral(input) {
           return getSeam("ReferralReader").canAccessReferral(input);

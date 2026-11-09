@@ -115,6 +115,8 @@ export type DocumentAggregateType =
   | "bereavement_discharge_summary"
   // ADR-0109 D10 (mig 1375) — the INTERNAL mailing batch PDF (every recipient's name and address), one per mailing run.
   | "bereavement_mailing_batch"
+  // ADR-0109 D10 (mig 1392) — an org-level, PATIENT-FACING grief library item (a leaflet or a short video) M16 lists in the bereaved portal.
+  | "bereavement_library_item"
   | "visit_confirmation"
   | "evv_verification"
   | "patient_amendment_statement_of_disagreement"
@@ -441,6 +443,14 @@ export const INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggrega
 export const SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggregateType> =
   new Set<DocumentAggregateType>(["bereavement_mailing_batch"]);
 
+/**
+ * ADR-0109 D10 (PR 3) — the ORG-LEVEL, patient-facing library types: agency content (no patient) a bereaved family reaches only through
+ * `OrgDocumentAccessProvider.mintPortalLibraryUrl` (and staff through `mintOrgDownloadUrl`). NOT internal: staff upload them through M22's verified
+ * upload, which accepts `video/mp4` for these types only.
+ */
+export const ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggregateType> =
+  new Set<DocumentAggregateType>(["bereavement_library_item"]);
+
 /** §4.3 — the portal-safe digest (internal-only tags stripped; SUD content filtered per consent by the
  * reader). M31 only ever sees this projection, never {@link DocumentDigest}. */
 export interface PortalDocumentDigest {
@@ -625,11 +635,41 @@ export interface OrgDocumentAccessProvider {
   mintOrgDownloadUrl(args: {
     readonly organizationId: OrgId;
     readonly documentId: DocumentId;
-    /** The aggregate types the CALLER's module may hand out. The seam INTERSECTS this with {@link SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES}: it never hands
-     *  out a type that M22's own routes serve, whatever the caller names. */
+    /** The aggregate types the CALLER's module may hand out. The seam INTERSECTS this with {@link SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES} plus the
+     *  org-level library types ({@link ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES}): it hands out nothing else, whatever the caller names. */
     readonly allowedAggregateTypes: readonly DocumentAggregateType[];
     // No accessor id: the seam derives the requesting member from the ambient request context (org + user -> their active membership), so a
     // caller cannot record the mint against someone else.
+  }): Promise<
+    | {
+        readonly url: string;
+        readonly expiresAt: IsoInstant;
+        readonly documentVersionId: DocumentVersionId;
+      }
+    | { readonly denied: true; readonly reason: OrgDocumentDenialReason }
+  >;
+  /**
+   * ADR-0109 D10 (PR 3) — describe an org-level document of a caller-named type (intersected exactly as above) WITHOUT handing it out: its active
+   * version's MIME type and size. M16 checks a grief-library upload with it before listing it. Logs nothing (no URL leaves).
+   */
+  describeOrgDocument(args: {
+    readonly organizationId: OrgId;
+    readonly documentId: DocumentId;
+    readonly allowedAggregateTypes: readonly DocumentAggregateType[];
+  }): Promise<
+    | { readonly mimeType: string; readonly byteSize: number }
+    | { readonly denied: true; readonly reason: OrgDocumentDenialReason }
+  >;
+  /**
+   * ADR-0109 D10 (PR 3) — the PORTAL door: a bereaved family's session mints a short-lived URL for a GRIEF-LIBRARY document only
+   * ({@link ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES}; never a seam-only, internal or patient document, whatever the caller asks). The ledger row names
+   * the portal account and session and lands BEFORE the URL is returned. The caller (M16) has already checked the item is published.
+   */
+  mintPortalLibraryUrl(args: {
+    readonly organizationId: OrgId;
+    readonly documentId: DocumentId;
+    readonly portalAccountId: string;
+    readonly portalSessionId: string;
   }): Promise<
     | {
         readonly url: string;

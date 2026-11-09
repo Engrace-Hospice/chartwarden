@@ -84,7 +84,14 @@ export function mountM23Routes(
 
   // Route group A — claims core (§4.1 routes #1–#13): assemble / list / detail / patch-draft / delete /
   // validate / submit / replace / void / lines / state-history / submissions / acknowledgments.
-  registerClaimsRoutes(app, { readService, writeService, assemblyService });
+  registerClaimsRoutes(app, {
+    readService,
+    writeService,
+    assemblyService,
+    payerRouteStatus: services.payerRouteStatus,
+    renderPreview: services.renderClaimPreview,
+    previewIntegrityKey: services.previewIntegrityKey,
+  });
 
   // Route group B — validation + override (validation-runs read/detail, validate, result override).
   registerValidationRoutes(app, { readService, writeService });

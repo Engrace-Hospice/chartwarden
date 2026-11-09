@@ -43,6 +43,7 @@ import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { medicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 import {
   M24_PERMISSION_KEY_LIST,
   type ReadingM24AbacResolver,
@@ -148,7 +149,8 @@ function createM24Backend(): {
     version: 1,
     validationRunIdLatest: RUN,
     eligibilityOutcomeSnapshot: null,
-    electronicSubmissionRefusal: null,
+    electronicSubmissionRefusal: "Electronic Medicaid submission remains unavailable.",
+    routeReadiness: medicaidClaimRouteReadiness("OR", null, false),
     createdAt: NOW,
     updatedAt: NOW,
   });
@@ -397,7 +399,8 @@ function createM24Backend(): {
         version: 1,
         validationRunIdLatest: null,
         eligibilityOutcomeSnapshot: null,
-        electronicSubmissionRefusal: null,
+        electronicSubmissionRefusal: "Electronic Medicaid submission remains unavailable.",
+        routeReadiness: medicaidClaimRouteReadiness("OR", null, false),
         createdAt: NOW,
         updatedAt: NOW,
       };
@@ -409,7 +412,6 @@ function createM24Backend(): {
       if (!row) throw new NotFoundError("claim not found");
       const updated: ClaimView = {
         ...row,
-        mcoId: input.mcoId ?? row.mcoId,
         version: row.version + 1,
         updatedAt: NOW,
       };
@@ -820,7 +822,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: `/api/v1/medicaid-claims/${CLAIM}`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k4") },
     payload: { mcoId: MCO },
-    expectStatus: 200,
+    // Program routing may not be changed by a tenant PATCH; payer/program identity must be resolved
+    // from authoritative coverage and configured payer data.
+    expectStatus: 422,
   },
   {
     label: "5 DELETE /medicaid-claims/:id",

@@ -19,6 +19,8 @@ function renderBereavement(handler: Handler) {
       requests.push(`${req.method} ${path}`);
       if (path === "/api/v1/portal/care-summary")
         return json({ patient: { layLabel: "Example patient" } });
+      // The memorial and library sections (bereavement-services.dom.test.tsx) answer 404 here: they render nothing.
+      if (/\/portal\/bereavement\/(memorials|library)/.test(path)) return json({}, 404);
       return handler(path, req.method);
     },
   });
@@ -162,6 +164,7 @@ describe("PR4.4 bereavement support", () => {
           const path = new URL(req.url).pathname;
           if (path === "/api/v1/portal/care-summary")
             return json({ patient: { layLabel: "Example patient" } });
+          if (/\/portal\/bereavement\/(memorials|library)/.test(path)) return json({}, 404);
           const text = req.method === "GET" ? "" : await req.clone().text();
           const body = text === "" ? undefined : JSON.parse(text);
           if (path.endsWith("/mailing-preference")) bodies.push(body);

@@ -7,6 +7,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_MEDICAID_RULES,
   electronicSubmissionRefusal,
+  medicaidClaimRouteReadiness,
 } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
@@ -79,8 +80,16 @@ export function buildDrizzleM24ReadService(
     version: r.version,
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
-    electronicSubmissionRefusal:
-      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
+    electronicSubmissionRefusal: electronicSubmissionRefusal(
+      r.serviceState,
+      isGatewayBound(r.serviceState),
+      r.mcoId ?? null,
+    )?.message ?? null,
+    routeReadiness: medicaidClaimRouteReadiness(
+      r.serviceState,
+      r.mcoId ?? null,
+      isGatewayBound(r.serviceState),
+    ),
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
   });

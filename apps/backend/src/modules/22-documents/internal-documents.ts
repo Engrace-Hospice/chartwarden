@@ -13,6 +13,7 @@ import {
   ChartWardenError,
   type DocumentAggregateType,
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES,
   SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
 } from "@chartwarden/types";
 
@@ -70,6 +71,54 @@ export function assertNotInternalOnlyForWrite(aggregateType: string | null | und
     throw new ChartWardenError(
       "DOCUMENT_INTERNAL_ONLY",
       "this document is internal to the agency and render-only: it cannot be created or changed by hand",
+      422,
+    );
+  }
+}
+
+/** ADR-0109 D10 (PR 3) — true for an org-level grief-library type (`ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES`). */
+export const isOrgLibraryAggregateType = (aggregateType: string | null | undefined): boolean =>
+  aggregateType !== null &&
+  aggregateType !== undefined &&
+  ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES.has(aggregateType as DocumentAggregateType);
+
+/**
+ * ADR-0109 D10 (PR 3) — a grief-library file is FIXED once uploaded: no generic M22 write (a new version, a PATCH, a tag, a link) may change
+ * it, because bereavement oversight published THAT file to families. Replacing one means uploading a new document and registering it in the
+ * library, which oversight then publishes. 422 `DOCUMENT_LIBRARY_IMMUTABLE`.
+ */
+export function assertNotOrgLibraryForEdit(aggregateType: string | null | undefined): void {
+  if (isOrgLibraryAggregateType(aggregateType)) {
+    throw new ChartWardenError(
+      "DOCUMENT_LIBRARY_IMMUTABLE",
+      "a grief-library file cannot be changed after upload: upload a new file and register it in the library",
+      422,
+    );
+  }
+}
+
+/**
+ * ADR-0109 D10 (PR 3) — an intake batch may adopt (and later move onto a chart) only an ordinary document: never an internal-only one (render-only,
+ * read by role) and never a grief-library file (org-level, published to families). 422 so a caller learns why, not an oracle about its content.
+ */
+export function assertAdoptableByIntake(aggregateType: string | null | undefined): void {
+  assertNotInternalOnlyForWrite(aggregateType);
+  assertNotOrgLibraryForEdit(aggregateType);
+}
+
+/** ADR-0109 D10 (PR 3) — a grief-library document is agency content: it never names a patient or an admission (every upload path asserts this). */
+export function assertOrgLibraryIsOrgLevel(
+  aggregateType: string | null | undefined,
+  patientId: string | null | undefined,
+  admissionId: string | null | undefined,
+): void {
+  if (
+    isOrgLibraryAggregateType(aggregateType) &&
+    ((patientId ?? null) !== null || (admissionId ?? null) !== null)
+  ) {
+    throw new ChartWardenError(
+      "VALIDATION_FAILED",
+      "a grief-library document is org-level: it names no patient or admission",
       422,
     );
   }

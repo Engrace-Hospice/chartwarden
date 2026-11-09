@@ -1078,7 +1078,7 @@ describe("tenant clearinghouse service: attesting a vendor with no safe probe", 
   });
 });
 
-// Owner decisions 2026-11-08 (migrations 1403/1404): one credential belongs to ONE organization, and never to the platform's own
+// Owner decisions 2026-11-08 (migrations 1434/1435): one credential belongs to ONE organization, and never to the platform's own
 // binding; it stays reserved through a rotation or a switch to outside until a platform operator releases it.
 describe("tenant clearinghouse service: one credential per organization", () => {
   const OTHER: ClearinghouseActor = { ...ACTOR, organizationId: OTHER_ORG };
@@ -1210,7 +1210,7 @@ describe("tenant clearinghouse service: one credential per organization", () => 
     ).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
   });
 
-  it("backfills a pre-1403 row's fingerprint (and its reservation) on its next write", async () => {
+  it("backfills a pre-1434 row's fingerprint (and its reservation) on its next write", async () => {
     const { store, service } = setup();
     await service.put(
       store,
@@ -1219,7 +1219,7 @@ describe("tenant clearinghouse service: one credential per organization", () => 
       undefined,
     );
     const sealed = store.rows()[0];
-    // simulate a row sealed before migration 1403: a credential with no fingerprint and no reservation
+    // simulate a row sealed before migration 1434: a credential with no fingerprint and no reservation
     const legacy = createInMemoryConfigStore();
     await legacy.insert({ ...sealed, credentialFingerprint: null } as never);
     expect(legacy.heldFingerprints(ORG)).toEqual([]);
@@ -1244,7 +1244,7 @@ describe("tenant clearinghouse service: one credential per organization", () => 
     expect(store.rows()).toEqual([]); // nothing was written
   });
 
-  // Migration 1405 (security review MEDIUM-1): after a KEK change with the old KEK kept as retired, a reservation recorded under the
+  // Migration 1436 (security review MEDIUM-1): after a KEK change with the old KEK kept as retired, a reservation recorded under the
   // old key still blocks; the holder's re-entry records it under the new key too; dropping the old KEK ends only what it computed.
   it("keeps a reservation recorded under a retired KEK blocking while that KEK is configured", async () => {
     const store = createInMemoryConfigStore();
@@ -1290,7 +1290,7 @@ describe("tenant clearinghouse service: one credential per organization", () => 
     );
     const row = store.rows()[0];
     const bare = createInMemoryConfigStore();
-    await bare.insert({ ...row } as never); // a row written without its reservation (a pre-1404 build)
+    await bare.insert({ ...row } as never); // a row written without its reservation (a pre-1435 build)
     expect(bare.heldFingerprints(ORG)).toEqual([]);
     await service.recordBaa(bare, ACTOR, BAA);
     expect(bare.heldFingerprints(ORG)).toEqual([row?.credentialFingerprint]);
@@ -1306,7 +1306,7 @@ describe("tenant clearinghouse service: one credential per organization", () => 
     );
     const row = store.rows()[0];
     const bare = createInMemoryConfigStore();
-    // a pre-1405 build rewrote the fingerprint and left an earlier credential's key id behind
+    // a pre-1436 build rewrote the fingerprint and left an earlier credential's key id behind
     await bare.insert({ ...row, credentialFingerprintKeyId: "0123456789abcdef" } as never);
     await service.recordBaa(bare, ACTOR, BAA);
     expect(bare.rows()[0]?.credentialFingerprintKeyId).toBe(row?.credentialFingerprintKeyId);

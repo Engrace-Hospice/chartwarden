@@ -2236,6 +2236,7 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "bereavement_physician_letter", // the approved condolence letter to the internal attending clinician
   "bereavement_discharge_summary", // the internal discharge summary an auditor reads at closure
   "bereavement_mailing_batch", // ADR-0109 D10 (mig 1375) — the internal mailing batch PDF (every recipient's name and address)
+  "bereavement_library_item", // ADR-0109 D10 (mig 1392) — an org-level, patient-facing grief library item (portal-only)
   "visit_confirmation",
   "evv_verification",
   "patient_amendment_statement_of_disagreement",

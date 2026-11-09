@@ -17,7 +17,7 @@ import {
 // server stays the authoritative shape.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { statusLabel, submissionStatusTone } from "./billing-status";
+import { statusLabel, submissionStatusLabel, submissionStatusTone } from "./billing-status";
 
 export interface ClaimSubmission {
   submissionId: string;
@@ -25,6 +25,8 @@ export interface ClaimSubmission {
   claimControlNumber: string;
   attemptIndex: number;
   outcome: string;
+  dispatchState?: "pending" | "sending" | "in_doubt" | "finished";
+  dispatchReasonCode?: string | null;
   outcomeReason: string | null;
   generatedFileUri: string | null;
   submittedAt: string | null;
@@ -55,7 +57,7 @@ export function SubmissionsTimeline(): JSX.Element {
       setLoading(false);
       return;
     }
-    setRows(((data as unknown as ClaimSubmission[]) ?? []) as ClaimSubmission[]);
+    setRows(data ?? []);
     setLoading(false);
   }, [client, claimId]);
 
@@ -107,10 +109,12 @@ export function SubmissionsTable({ rows }: { rows: ClaimSubmission[] }): JSX.Ele
             </td>
             <td style={tdStyle}>{statusLabel(r.kind)}</td>
             <td style={tdStyle}>
-              <StatusPill label={statusLabel(r.outcome)} tone={submissionStatusTone(r.outcome)} />
+              <StatusPill label={submissionStatusLabel(r.outcome, r.dispatchState)} tone={submissionStatusTone(r.dispatchState === "in_doubt" ? "failed_portal" : r.dispatchState === "sending" ? "queued" : r.outcome)} />
             </td>
             <td style={{ ...tdStyle, color: "var(--color-on-surface-variant)" }}>
-              {r.outcomeReason ?? "—"}
+              {r.dispatchState === "in_doubt"
+                ? "Transport outcome uncertain. Reconcile this attempt before retrying."
+                : r.outcomeReason ?? (r.dispatchReasonCode ? "Transport requires reconciliation." : "—")}
             </td>
             <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
               {r.submittedAt ?? r.createdAt}

@@ -90,6 +90,8 @@ describe("M23 submission outbox bridge", () => {
         submissionId: "submission-1",
         claimControlNumber: "control-1",
         attemptIndex: 0,
+        expectedRouteFingerprint: "a".repeat(64),
+        reviewedSourceFingerprint: "b".repeat(64),
       },
       attemptCount: 1,
       createdAt: new Date(),
@@ -104,6 +106,8 @@ describe("M23 submission outbox bridge", () => {
           submissionId: "submission-1",
           claimControlNumber: "control-1",
           attemptIndex: 0,
+          reviewedSourceFingerprint: "b".repeat(64),
+          expectedRouteFingerprint: "a".repeat(64),
         },
       ],
     ]);
@@ -161,6 +165,7 @@ describe("M23 submission outbox bridge", () => {
         claimId: "claim-1",
         submissionId: "submission-1",
         attemptIndex: 0,
+        expectedRouteFingerprint: "b".repeat(64),
         reason: "gateway unavailable",
       },
       attemptCount: 1,
@@ -175,6 +180,7 @@ describe("M23 submission outbox bridge", () => {
           claimId: "claim-1",
           submissionId: "submission-1",
           attemptIndex: 0,
+          expectedRouteFingerprint: "b".repeat(64),
         },
       ],
     ]);

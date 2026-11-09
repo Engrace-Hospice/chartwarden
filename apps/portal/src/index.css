@@ -5098,6 +5098,48 @@
 .wx-bereavement-resource__link:hover {
   background: var(--color-surface-low);
 }
+/* ADR-0109 D10 PR 3 — the memorial RSVP form and the library video. */
+.wx-bereavement-resource__body {
+  flex: 1 1 auto;
+}
+.wx-bereavement-rsvp {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-outline-variant);
+}
+.wx-bereavement-rsvp legend {
+  padding: 0;
+  font-size: .86rem;
+  font-weight: 600;
+}
+.wx-bereavement-rsvp label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: .86rem;
+}
+.wx-bereavement-rsvp input[type="number"] {
+  width: 5rem;
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+}
+.wx-bereavement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.wx-bereavement-video {
+  width: 100%;
+  margin-top: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: #000;
+}
 .wx-bereavement-resource__link:focus-visible {
   outline: 3px solid var(--color-focus-ring);
   outline-offset: 3px;

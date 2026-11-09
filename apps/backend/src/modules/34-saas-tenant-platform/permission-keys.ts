@@ -388,7 +388,7 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
-  // Owner decision 2026-11-08 (migration 1404): a credential a tenant sealed stays reserved to it, through a switch to `outside` and a
+  // Owner decision 2026-11-08 (migration 1435): a credential a tenant sealed stays reserved to it, through a switch to `outside` and a
   // rotation, until a platform operator releases it (an account moved to another organization). Its own key, bound to platform_ops;
   // the route also needs a fresh step-up, a human actor and a recorded reason. Not limited to an onboarding tenant.
   "tenant_clearinghouse.release_credential_platform": {
