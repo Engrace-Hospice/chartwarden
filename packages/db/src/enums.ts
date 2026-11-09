@@ -2273,7 +2273,7 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   // FY2027 (mig 0380) — the 42 CFR 418.24(c) "Patient Notification of Hospice Non-Covered Items, Services,
   // and Drugs" (the election statement addendum), one document per addendum version.
   "election_addendum",
-  // Onboarding step 3 (mig 1392) — the signed BAA between ChartWarden and the tenant, uploaded by a platform operator (the one kind
+  // Onboarding step 3 (mig 1423) — the signed BAA between ChartWarden and the tenant, uploaded by a platform operator (the one kind
   // `tenant_baa_document.upload_platform` admits). No generic upload route accepts it.
   "tenant_baa",
   "other",

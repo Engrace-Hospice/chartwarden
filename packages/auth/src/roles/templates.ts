@@ -157,7 +157,7 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
   "onboarding.manage_platform",
   "go_live.approve_platform",
   "platform_tenant_baa.write_platform",
-  // Migration 1407: the wizard's own read and its skip (both platform routes gate on tenant_lifecycle_platform_ops, so platform_ops
+  // Migration 1438: the wizard's own read and its skip (both platform routes gate on tenant_lifecycle_platform_ops, so platform_ops
   // alone can use them). Without the read key a template operator was refused the wizard itself; only the dev seed held both.
   "onboarding.read_platform",
   "onboarding.skip",
@@ -183,7 +183,7 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_clearinghouse.release_credential_platform",
   // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1422).
   "tenant_notice_filing.withdraw_platform",
-  // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1393). Scoped to the one document kind
+  // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1424). Scoped to the one document kind
   // `tenant_baa` and the tenant in the path; it is not `documents.upload` and reads no document.
   "tenant_baa_document.upload_platform",
 ] as const;

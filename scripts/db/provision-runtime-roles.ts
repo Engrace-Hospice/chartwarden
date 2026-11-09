@@ -400,7 +400,7 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
       );
-      // Migration 1394: platform ops add or re-edit a non-canonical onboarding step. INSERT is table-wide (Drizzle's insert
+      // Migration 1425: platform ops add or re-edit a non-canonical onboarding step. INSERT is table-wide (Drizzle's insert
       // names every column); UPDATE is COLUMN-level (the upsert's set), so a step's key, owner role and settings can never be
       // rewritten from the platform side. REVOKE first so a re-provision takes back an older table-wide UPDATE.
       await run('REVOKE UPDATE ON "onboarding_task_template" FROM chartwarden_platform;');

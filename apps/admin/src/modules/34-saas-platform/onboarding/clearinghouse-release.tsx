@@ -1,5 +1,5 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — an operator releases the clearinghouse credentials a tenant still holds (migration
-// 1404). Every credential a tenant seals stays reserved to it through a key rotation and a switch to outside, so no other organization can
+// 1435). Every credential a tenant seals stays reserved to it through a key rotation and a switch to outside, so no other organization can
 // seal it; this frees all but the tenant's current one (an account moved to another organization, a key retired by a rotation). The
 // server refuses while the tenant's vendor responses may still arrive (409, shown by the dialog) and never says which credentials it freed.
 // Offered only to an operator who holds the release key (fail closed); the result is reported by the card, outside its actions row.

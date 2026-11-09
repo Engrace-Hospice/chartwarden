@@ -279,7 +279,7 @@ describe("TenantClearinghouseCard", () => {
     });
   });
 
-  describe("releasing earlier credentials (migration 1404)", () => {
+  describe("releasing earlier credentials (migration 1435)", () => {
     const RELEASE = "/api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release";
     const mountWith = (
       choice: unknown,

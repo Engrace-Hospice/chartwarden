@@ -12,7 +12,7 @@ import type { OnboardingWriteScope } from "./onboarding-credential-port";
 
 export type { OnboardingWriteScope } from "./onboarding-credential-port";
 
-/** The one document kind this seam files (the `document_aggregate_type` value, migration 1392). */
+/** The one document kind this seam files (the `document_aggregate_type` value, migration 1423). */
 export const TENANT_BAA_DOCUMENT_KIND = "tenant_baa";
 
 /**

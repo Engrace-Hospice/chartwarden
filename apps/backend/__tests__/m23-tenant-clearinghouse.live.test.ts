@@ -150,8 +150,8 @@ const ORG_L = "ac000000-0000-4000-8000-0000000000ac"; // outside with a mode tha
 const ORG_N = "ad000000-0000-4000-8000-0000000000ad"; // outside with a PAUSED contract: the tenant's own switch is still refused, the operator's names the mode
 const ORG_O = "ae000000-0000-4000-8000-0000000000ae"; // the race: the system sets none between the operator's mode write and the vendor commit
 const ORG_P = "af000000-0000-4000-8000-0000000000af"; // two mode writers at once (the subscription row is the lock)
-const ORG_Q = "b0000000-0000-4000-8000-0000000000b0"; // tries to seal org A's Claim.MD account (migration 1403)
-const ORG_R = "b3000000-0000-4000-8000-0000000000b3"; // races ORG_S to seal one new key (migration 1404's index serialises them)
+const ORG_Q = "b0000000-0000-4000-8000-0000000000b0"; // tries to seal org A's Claim.MD account (migration 1434)
+const ORG_R = "b3000000-0000-4000-8000-0000000000b3"; // races ORG_S to seal one new key (migration 1435's index serialises them)
 const ORG_S = "b4000000-0000-4000-8000-0000000000b4";
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
@@ -326,7 +326,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_N, "onboarding"],
       [ORG_O, "onboarding"],
       [ORG_P, "onboarding"],
-      [ORG_Q, "active"], // the platform release of its earlier credentials (migration 1404) resolves its tenant account
+      [ORG_Q, "active"], // the platform release of its earlier credentials (migration 1435) resolves its tenant account
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -618,7 +618,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect((await tenantCall("GET", ORG_A, "")).body).not.toContain(KEY_A);
   });
 
-  // Migration 1403 (owner decision 2026-11-08): one vendor account belongs to ONE organization. Org Q (nothing chosen) saving org
+  // Migration 1434 (owner decision 2026-11-08): one vendor account belongs to ONE organization. Org Q (nothing chosen) saving org
   // A's Claim.MD key is refused by the cross-org unique index, under the real NOBYPASSRLS role that cannot even see A's row; the
   // refusal never names the holder, and nothing is written. A re-saving its own key succeeds.
   it("a second organization saving the same Claim.MD account key gets 409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder may re-save it", async () => {
@@ -2132,7 +2132,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1 ORDER BY created_at`,
         [org],
       );
-    // One vendor account per organization (migration 1403): each org gets its own synthetic key.
+    // One vendor account per organization (migration 1434): each org gets its own synthetic key.
     const VENDOR_KEY = (slug: string) => `fake-claimmd-key-${slug}#live-1`;
     const inForce = (org: string) => modeInForce(tenantPool.db, org);
 
