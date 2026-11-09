@@ -5,8 +5,8 @@
 -- the member confirms it is them. But an org administrator holds the roster key, `prescribing.sign` and the clinic key, so ONE person could link
 -- their OWN membership to any physician record, confirm it, and enrol at DoseSpot under that NPI. `linked_by_membership_id` records the membership
 -- that set (or changed) the link, and the application refuses a confirmation by that same member (409 DOSESPOT_LINK_SELF_CONFIRM); the enrolment
--- gate refuses a link whose linker is its confirmer. NULL = the link predates this column, or was written outside the roster route (a seed): it is
--- not the confirmer, so it is not refused.
+-- gate refuses a link whose linker is its confirmer. NULL = the link predates this column, or was written outside the roster route (a seed): the
+-- application refuses to confirm such a link until an administrator re-saves it and so becomes its maker.
 --
 -- Expand-only: one nullable column with no default and no constraint; the previous release neither reads nor writes it. dosespot_prescriber
 -- already has RLS, table-level app grants and the M4 write-audit trigger (0039), so the column inherits all three. Enforced by the application
