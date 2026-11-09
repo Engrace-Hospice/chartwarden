@@ -9,8 +9,8 @@
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import {
   type PreHandler,
+  actorOf,
   optionalIfMatchVersionOf,
-  orgOf,
   rejectAiActor,
   requireIdempotencyKey,
 } from "@chartwarden/shared/route-kit";
@@ -84,7 +84,11 @@ export function registerTenantDoseSpotRoutes(
         },
       },
     },
-    async (request) => service.get(orgOf(request), request.context.userId),
+    async (request) => {
+      // actorOf, not orgOf: a context with an organization but no user id stays a 401 (the read is handed the user id)
+      const { organizationId, userId } = actorOf(request);
+      return service.get(organizationId, userId);
+    },
   );
 
   // PUT — save the environment, clinic id, service clinician and credential. 201 on the first save, 200 on a change.
