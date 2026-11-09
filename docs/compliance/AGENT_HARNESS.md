@@ -53,9 +53,9 @@ from Codex's hook protocol:
   call's `workdir`; `cd`, a pipe, a redirect or a second command is refused, because `apply_patch` is on
   PATH and each of those applies a patch the guard cannot place. Codex has no Read/Grep/Glob tools; its reads
   are shell commands. An interactive shell, language REPL or database client is refused even when it has
-  login, quiet or connection flags: what is typed into it later reaches it through `write_stdin`, which
-  Codex does not hook. A script, inline command, input file, or help/version invocation is terminating and
-  remains available. A command or workdir that is present and not text is refused, never coerced with
+  login, quiet or connection flags. The hook also matches `write_stdin` and permits empty polling only;
+  refusing the interactive process at creation remains defence in depth. A reviewed script, finite input
+  file, or standalone help/version invocation remains available. A command or workdir that is present and not text is refused, never coerced with
   `String()` and judged.
 - **MCP tools** arrive as `mcp__<server>__<tool>` with arbitrary JSON, and nothing says which field is a path
   or text. The guard therefore judges EVERY string in `tool_input`, object keys included, at any depth: each
@@ -88,8 +88,9 @@ from Codex's hook protocol:
   (`--dangerously-bypass-hook-trust`), and OpenAI calls hooks "a useful guardrail, not a complete
   enforcement boundary". The shell layer is text heuristics, the same as Claude's: it does not understand an
   interpreter script (`python - <<EOF`), `git apply`, `git checkout <rev> -- <protected path>`, a directory
-  move or copy, or an obfuscated command name. `write_stdin` is not hooked, and an MCP tool is judged only by
-  the strings in its input, not by what the tool does with them. **Run Codex in its `workspace-write`
+  move or copy, or an obfuscated command name. `write_stdin` fails closed on every non-empty or malformed
+  `chars` value and permits empty polling only; an MCP tool is judged only by the strings in its input, not
+  by what the tool does with them. **Run Codex in its `workspace-write`
   sandbox: that, not this hook, is the boundary.** Codex has no ledger or Stop gate yet; only the guard's own
   deny entries reach `.claude/audit/`, tagged `codex/<tool>`, capped at 1000 characters a field, and carrying
   the decision actually answered (`deny`, never the `ask` Codex cannot honour).

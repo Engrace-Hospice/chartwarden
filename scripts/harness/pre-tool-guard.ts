@@ -226,7 +226,7 @@ function checkCodexShell(
   if (isInteractiveShell(cmd)) {
     refuse(
       log,
-      "A bare interactive shell or REPL is refused: what is typed into it later reaches it through Codex's write_stdin, which does not fire the PreToolUse hook, so the guard would never see it. Run the command you need directly.",
+      "A bare interactive shell or REPL is refused. Non-empty write_stdin input also fails closed, but refusing the persistent process at creation is defence in depth. Run the command you need directly.",
       undefined,
       cmd,
     );
@@ -333,7 +333,7 @@ async function main(): Promise<void> {
     if (CODEX && (input.tty === true || input.pty === true || input.use_pty === true)) {
       refuse(
         log,
-        "Codex PTY execution is refused: write_stdin can feed a persistent PTY without firing the PreToolUse guard. Run a finite non-PTY command instead.",
+        "Codex PTY execution is refused at creation; non-empty write_stdin input also fails closed. Run a finite non-PTY command instead.",
         undefined,
         cmd,
       );
