@@ -36,7 +36,10 @@
  *         works from a stale copy of a rule (the CLAUDE.md → AGENTS.md rule, extended). `settings.json`
  *         is deliberately not mirrored: it is Claude Code's format and Codex does not read it;
  *     17. `.codex/hooks.json` keeps Codex behind the same PreToolUse guard (run with `--codex`, covering
- *         Bash and apply_patch, synchronous, with a timeout) and `.gitignore` allow-lists `.codex/`.
+ *         Bash, apply_patch and MCP tools, synchronous, with a timeout) and `.gitignore` allow-lists
+ *         `.codex/` (and `.agents/`) at every depth, each re-include AFTER the ignore line;
+ *     18. the three Claude hook commands (guard, ledger, Stop gate) are pinned byte for byte, each run with
+ *         `--config=/dev/null --no-env-file` so a `bunfig.toml` preload cannot run first.
  *
  * Run:   bun run scripts/check-compliance-controls.ts
  * CI:    exits 1 on any violation (arch:fitness stage).
@@ -201,8 +204,38 @@ interface Settings {
 const commandsFor = (s: Settings, event: string): string[] =>
   (s.hooks?.[event] ?? []).flatMap((h) => (h.hooks ?? []).map((x) => x.command ?? ""));
 
-/** The one matcher Codex's guard runs under: shell commands, and file edits (which arrive as `apply_patch`). */
-export const CODEX_GUARD_MATCHER = "Bash|apply_patch";
+/**
+ * The one matcher Codex's guard runs under: shell commands, file edits (which arrive as `apply_patch`) and MCP
+ * tools (Codex names them `mcp__<server>__<tool>`; the guard judges every string in their input).
+ */
+export const CODEX_GUARD_MATCHER = "Bash|apply_patch|mcp__.*";
+
+/**
+ * Claude's three hook commands, pinned byte for byte like {@link CODEX_GUARD_COMMAND}. `--config=/dev/null
+ * --no-env-file`: a `preload` in a `bunfig.toml` in the session directory would otherwise run BEFORE the hook
+ * script and could silence it. Deliberately no perl alarm and no `|| exit 2` wrapper (Codex needs them, Claude
+ * does not): a missing `perl` would lock out every Claude tool call, and Claude Code has its own timeout.
+ */
+const BUN_HARDENED = "bun --config=/dev/null --no-env-file";
+export const CLAUDE_GUARD_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts`;
+export const CLAUDE_LEDGER_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/post-tool-ledger.ts`;
+export const CLAUDE_STOP_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/stop-gate.ts`;
+
+const PINNED_CLAUDE_HOOKS = [
+  {
+    event: "PreToolUse",
+    script: "pre-tool-guard",
+    name: "CLAUDE_GUARD_COMMAND",
+    command: CLAUDE_GUARD_COMMAND,
+  },
+  {
+    event: "PostToolUse",
+    script: "post-tool-ledger",
+    name: "CLAUDE_LEDGER_COMMAND",
+    command: CLAUDE_LEDGER_COMMAND,
+  },
+  { event: "Stop", script: "stop-gate", name: "CLAUDE_STOP_COMMAND", command: CLAUDE_STOP_COMMAND },
+] as const;
 
 /**
  * The one hook command that keeps Codex behind the guard, pinned byte for byte (a loose "contains the script
@@ -246,22 +279,37 @@ export function checkCodexHooks(text: string | undefined): string[] {
   return v;
 }
 
-/** `.gitignore` lines for an allow-listed directory: ignore `dir/*`, re-include only the shared pieces. */
+/**
+ * `.gitignore` lines for an allow-listed directory: ignore `**\/dir/*` at EVERY depth (a root-anchored
+ * `dir/*` leaves a nested `apps/x/.codex/config.toml` committable), re-include only the shared pieces
+ * (root-anchored, so a nested copy stays ignored). Git's last matching line wins, so each re-include must come
+ * AFTER the ignore and no later ignore may repeat it.
+ */
 function allowListViolations(
   gi: readonly string[],
   dir: string,
   keeps: readonly string[],
 ): string[] {
   const v: string[] = [];
-  if ([`${dir}/`, dir, `/${dir}/`].some((l) => gi.includes(l)))
+  const ignore = `**/${dir}/*`;
+  if ([`${dir}/`, dir, `/${dir}/`, `**/${dir}/`, `**/${dir}`].some((l) => gi.includes(l)))
     v.push(
       `.gitignore ignores the whole ${dir}/ directory — its shared files would never be committed`,
     );
-  if (!gi.includes(`${dir}/*`))
-    v.push(`.gitignore must ignore \`${dir}/*\` and re-include only the shared files (allow-list)`);
-  for (const k of keeps)
-    if (!gi.includes(`!${dir}/${k}`))
-      v.push(`.gitignore must re-include \`!${dir}/${k}\` (shared)`);
+  const ignoreAt = gi.lastIndexOf(ignore);
+  if (ignoreAt < 0)
+    v.push(
+      `.gitignore must ignore \`${ignore}\` (at every depth) and re-include only the shared files (allow-list)`,
+    );
+  for (const k of keeps) {
+    const line = `!${dir}/${k}`;
+    const at = gi.lastIndexOf(line);
+    if (at < 0) v.push(`.gitignore must re-include \`${line}\` (shared)`);
+    else if (ignoreAt >= 0 && at < ignoreAt)
+      v.push(
+        `.gitignore re-includes \`${line}\` BEFORE \`${ignore}\`, so the ignore wins and the shared file is never committed — put the re-include after it`,
+      );
+  }
   return v;
 }
 
@@ -277,12 +325,24 @@ export function registryFingerprint(reg: { ssn?: string[]; mbi?: string[] }): st
 /** The shared pieces `.agents/` must carry byte-for-byte; plans/prds are local-only on both sides. */
 export const MIRRORED = ["rules", "agents", "skills"] as const;
 
-/** PURE — relative path → content for `.claude/` and `.agents/`; Codex's twin may not drift. */
+/**
+ * PURE — relative path → a comparable form of the file (its bytes' digest from {@link readMirrorTree}; any
+ * equal-iff-identical string in a test) for `.claude/` and `.agents/`; Codex's twin may not drift. An empty side
+ * is a violation: comparing nothing with nothing agrees with everything.
+ */
 export function checkMirror(
   claude: Readonly<Record<string, string>>,
   agents: Readonly<Record<string, string>>,
 ): string[] {
   const v: string[] = [];
+  if (Object.keys(claude).length === 0)
+    v.push(
+      ".claude/{rules,agents,skills} read as empty, so the .agents/ twin was compared with nothing",
+    );
+  if (Object.keys(agents).length === 0)
+    v.push(
+      ".agents/{rules,agents,skills} read as empty, so Codex's twin of the shared harness is missing",
+    );
   for (const [p, text] of Object.entries(claude)) {
     if (!(p in agents)) v.push(`.agents/${p} is missing — copy .claude/${p} (Codex's twin)`);
     else if (agents[p] !== text)
@@ -293,8 +353,7 @@ export function checkMirror(
   return v;
 }
 
-/** PURE over file contents. */
-export function checkHarness(files: {
+export interface HarnessFiles {
   settings?: string;
   gitignore?: string;
   claudeMd?: string;
@@ -304,7 +363,10 @@ export function checkHarness(files: {
   mirror?: { claude: Readonly<Record<string, string>>; agents: Readonly<Record<string, string>> };
   /** `.codex/hooks.json` text, `undefined` when the file is missing. Checked only when the key is present. */
   codexHooks?: string | undefined;
-}): string[] {
+}
+
+/** PURE over file contents. */
+export function checkHarness(files: HarnessFiles): string[] {
   const v: string[] = [];
   if (files.settings === undefined)
     return [".claude/settings.json is missing — the agent harness is not installed"];
@@ -317,10 +379,15 @@ export function checkHarness(files: {
   const deny = new Set(s.permissions?.deny ?? []);
   for (const d of REQUIRED_READ_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
-  if (!commandsFor(s, "PreToolUse").some((c) => c.includes("scripts/harness/pre-tool-guard.ts")))
-    v.push(".claude/settings.json: PreToolUse does not run scripts/harness/pre-tool-guard.ts");
-  if (!commandsFor(s, "Stop").some((c) => c.includes("scripts/harness/stop-gate.ts")))
-    v.push(".claude/settings.json: Stop does not run scripts/harness/stop-gate.ts");
+  for (const p of PINNED_CLAUDE_HOOKS) {
+    const script = `scripts/harness/${p.script}.ts`;
+    const commands = commandsFor(s, p.event).filter((c) => c.includes(script));
+    if (commands.length === 0) v.push(`.claude/settings.json: ${p.event} does not run ${script}`);
+    else if (commands.some((c) => c !== p.command))
+      v.push(
+        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`bun --config=/dev/null --no-env-file\`: a bunfig.toml preload would otherwise run before it)`,
+      );
+  }
   for (const d of REQUIRED_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
   for (const a of s.permissions?.allow ?? [])
@@ -415,7 +482,11 @@ export function checkHarness(files: {
   return v;
 }
 
-/** relative path → content for every file under `<root>/<base>/` in {@link MIRRORED}. */
+/**
+ * relative path → SHA-256 of the file's BYTES for every file under `<root>/<base>/` in {@link MIRRORED}.
+ * Bytes, not decoded text: two different invalid-UTF-8 files decode to the same replacement characters and
+ * would compare equal as strings.
+ */
 export function readMirrorTree(root: string, base: string): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (rel: string): void => {
@@ -423,10 +494,31 @@ export function readMirrorTree(root: string, base: string): Record<string, strin
     if (!existsSync(abs)) return;
     if (statSync(abs).isDirectory()) {
       for (const e of readdirSync(abs)) if (e !== ".DS_Store") walk(join(rel, e));
-    } else out[rel] = readFileSync(abs, "utf8");
+    } else out[rel] = createHash("sha256").update(readFileSync(abs)).digest("hex");
   };
   for (const m of MIRRORED) walk(m);
   return out;
+}
+
+/**
+ * Every input {@link checkHarness} judges, read from `root`. `main()` and the tests share it: `mirror` and
+ * `codexHooks` are skipped by `checkHarness` when the key is absent, so a caller that forgot one would pass
+ * silently. `codexHooks` is present (as `undefined`) even when the file is missing, which is what makes a
+ * missing `.codex/hooks.json` a violation.
+ */
+export function readHarnessInputs(root: string): HarnessFiles {
+  const read = (p: string): string | undefined =>
+    existsSync(join(root, p)) ? readFileSync(join(root, p), "utf8") : undefined;
+  return {
+    settings: read(".claude/settings.json"),
+    gitignore: read(".gitignore"),
+    claudeMd: read("CLAUDE.md"),
+    agentsMd: read("AGENTS.md"),
+    codeowners: read(".github/CODEOWNERS"),
+    registry: read("compliance/synthetic-identifiers.json"),
+    mirror: { claude: readMirrorTree(root, ".claude"), agents: readMirrorTree(root, ".agents") },
+    codexHooks: read(".codex/hooks.json"),
+  };
 }
 
 // --------------------------------------------------------------------------------------- main
@@ -481,18 +573,7 @@ function main(): void {
       ),
     );
   }
-  violations.push(
-    ...checkHarness({
-      settings: read(".claude/settings.json"),
-      gitignore: read(".gitignore"),
-      claudeMd: read("CLAUDE.md"),
-      agentsMd: read("AGENTS.md"),
-      codeowners: read(".github/CODEOWNERS"),
-      registry: read("compliance/synthetic-identifiers.json"),
-      mirror: { claude: readMirrorTree(root, ".claude"), agents: readMirrorTree(root, ".agents") },
-      codexHooks: read(".codex/hooks.json"),
-    }),
-  );
+  violations.push(...checkHarness(readHarnessInputs(root)));
 
   if (violations.length > 0) {
     console.error(`FAIL check-compliance-controls: ${violations.length} violation(s)\n`);

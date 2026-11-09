@@ -4,7 +4,15 @@
  * ledger it writes is a valid hash chain holding no content.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -30,12 +38,20 @@ function guard(
   return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
 }
 
-/** The guard as `.codex/hooks.json` runs it: `--codex`, Codex's payload (cwd, tool_name, tool_input). */
-function codexGuard(input: Record<string, unknown>, cwd: string = tmp) {
+/**
+ * The guard as `.codex/hooks.json` runs it: `--codex`, Codex's payload (cwd, tool_name, tool_input). The
+ * root is pinned to `tmp` through the test-only `CW_HARNESS_ROOT_FOR_TESTS`: in `--codex` mode the guard's
+ * root is the repo its script lives in, and `CLAUDE_PROJECT_DIR` is not consulted at all.
+ */
+function codexGuard(
+  input: Record<string, unknown>,
+  cwd: string = tmp,
+  env: Record<string, string> = {},
+) {
   const r = spawnSync("bun", [join(ROOT, "scripts/harness/pre-tool-guard.ts"), "--codex"], {
     input: JSON.stringify({ hook_event_name: "PreToolUse", session_id: "c1", cwd, ...input }),
     encoding: "utf8",
-    env: { ...process.env, CLAUDE_PROJECT_DIR: tmp },
+    env: { ...process.env, CW_HARNESS_ROOT_FOR_TESTS: tmp, ...env },
   });
   return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
 }

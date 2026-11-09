@@ -6,8 +6,10 @@ node_modules/
 
 # AI coding-agent tool config/state — personal/local, not part of the ChartWarden corpus.
 # `.agents/` is Codex's twin of `.claude/`: the same allow-list, the same shared pieces, kept identical by
-# `arch:compliance` (it fails on drift). Plans, prds and any other local state stay out of git.
-.agents/*
+# `arch:compliance` (it fails on drift). Plans, prds and any other local state stay out of git. `**/` makes the
+# ignore hold at every depth (a nested `packages/x/.agents/` is local state too); the re-includes below are
+# root-anchored, so only the root's shared pieces come back, and each must stay AFTER this line.
+**/.agents/*
 !.agents/rules/
 !.agents/agents/
 !.agents/skills/
@@ -29,8 +31,9 @@ node_modules/
 .claude/worktrees/
 # `.codex/` is Codex's local config and state (config.toml can switch hooks off), except the shared hook
 # layer: `.codex/hooks.json` keeps Codex behind the same PreToolUse guard as Claude Code. Allow-list, like
-# `.claude/` — `arch:compliance` fails if it goes back to ignoring the whole directory.
-.codex/*
+# `.claude/` — `arch:compliance` fails if it goes back to ignoring the whole directory. `**/` keeps a nested
+# `apps/x/.codex/` ignored (it was, before the allow-list); only the ROOT hooks.json is re-included.
+**/.codex/*
 !.codex/hooks.json
 .cursor/
 

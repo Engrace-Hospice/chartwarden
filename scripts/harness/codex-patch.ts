@@ -10,6 +10,9 @@
  *
  * Anything outside that grammar is INVALID and the guard fails closed on it: a header this parser did not
  * understand but Codex applied would be a way past the guard.
+ *
+ * The same file also takes apart an MCP tool's input (`mcpStrings`, at the bottom): Codex's other way to
+ * reach the filesystem or the network with text the guard has to read.
  */
 export type PatchOp = "add" | "update" | "delete";
 
@@ -151,4 +154,60 @@ export function shellPatch(cmd: string): ShellPatch {
     return { kind: "refuse", reason: SHELL_FORM_REASON };
   }
   return { kind: "patch", text: body };
+}
+
+// ------------------------------------------------------------------------------------------------ MCP tools
+
+/** Past this many strings (keys included) an MCP input is refused: each one is resolved against the disk. */
+export const MAX_MCP_STRINGS = 2000;
+/** A container nested this deep or deeper is refused; a hostile input must not decide how far the guard walks. */
+export const MAX_MCP_DEPTH = 32;
+
+export type McpStrings =
+  | { readonly ok: true; readonly strings: readonly string[] }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Every string in a Codex MCP tool's `tool_input` (`mcp__<server>__<tool>`): values at any depth AND object keys
+ * (`{ "<path>": "<text>" }` is a common shape). The guard cannot know which field of an arbitrary tool is a path
+ * or text, so it judges all of them. Fails closed: an input that is not an object, nested too deep, or too big
+ * (same text cap as a patch, so the scan finishes inside Codex's hook timeout) is refused. Iterative, so a
+ * hostile depth cannot overflow the stack.
+ */
+export function mcpStrings(input: unknown): McpStrings {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return { ok: false, reason: "the tool input was not an object" };
+  }
+  const strings: string[] = [];
+  let chars = 0;
+  const stack: Array<readonly [unknown, number]> = [[input, 0]];
+  const add = (s: string): string | undefined => {
+    strings.push(s);
+    chars += s.length;
+    if (chars > MAX_PATCH_CHARS)
+      return `it holds more than ${MAX_PATCH_CHARS / 1024} KB of text, past what the guard can scan inside Codex's hook timeout`;
+    if (strings.length > MAX_MCP_STRINGS) return `it holds more than ${MAX_MCP_STRINGS} strings`;
+    return undefined;
+  };
+  for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+    const [node, depth] = next;
+    if (typeof node === "string") {
+      const why = add(node);
+      if (why) return { ok: false, reason: why };
+      continue;
+    }
+    if (typeof node !== "object" || node === null) continue;
+    if (depth >= MAX_MCP_DEPTH)
+      return { ok: false, reason: `it is nested ${MAX_MCP_DEPTH} levels deep or more` };
+    if (Array.isArray(node)) {
+      for (const v of node) stack.push([v, depth + 1]);
+      continue;
+    }
+    for (const [k, v] of Object.entries(node)) {
+      const why = add(k);
+      if (why) return { ok: false, reason: why };
+      stack.push([v, depth + 1]);
+    }
+  }
+  return { ok: true, strings };
 }

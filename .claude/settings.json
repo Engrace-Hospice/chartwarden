@@ -87,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
+            "command": "bun --config=/dev/null --no-env-file \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
             "timeout": 10
           }
         ]
@@ -99,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/post-tool-ledger.ts",
+            "command": "bun --config=/dev/null --no-env-file \"$CLAUDE_PROJECT_DIR\"/scripts/harness/post-tool-ledger.ts",
             "async": true,
             "timeout": 10
           }
@@ -111,7 +111,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/stop-gate.ts",
+            "command": "bun --config=/dev/null --no-env-file \"$CLAUDE_PROJECT_DIR\"/scripts/harness/stop-gate.ts",
             "timeout": 300
           }
         ]

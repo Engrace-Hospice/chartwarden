@@ -4,7 +4,14 @@
  * guard fails closed on invalid), because a header the parser misses but Codex applies bypasses the guard.
  */
 import { describe, expect, it } from "vitest";
-import { parseApplyPatch, shellPatch } from "../harness/codex-patch";
+import {
+  MAX_MCP_DEPTH,
+  MAX_MCP_STRINGS,
+  MAX_PATCH_CHARS,
+  mcpStrings,
+  parseApplyPatch,
+  shellPatch,
+} from "../harness/codex-patch";
 
 const patch = (...body: string[]): string =>
   ["*** Begin Patch", ...body, "*** End Patch"].join("\n");
@@ -198,5 +205,61 @@ describe("shellPatch — a patch applied through the shell must be one plain her
     ["text that only mentions it", "git commit -m 'document apply_patch'"],
   ])("refuses %s", (_name, cmd) => {
     expect(shellPatch(cmd).kind).toBe("refuse");
+  });
+});
+
+describe("mcpStrings — every string an MCP tool is handed, keys included", () => {
+  const strings = (input: unknown): readonly string[] | string => {
+    const r = mcpStrings(input);
+    return r.ok ? [...r.strings].sort() : r.reason;
+  };
+
+  it("collects values and keys from nested objects and arrays, and skips non-strings", () => {
+    expect(
+      strings({ a: "x", b: ["y", { c: "z", n: 5, t: true, none: null }], "p/q": { d: "w" } }),
+    ).toEqual(["a", "b", "c", "d", "n", "none", "p/q", "t", "w", "x", "y", "z"]);
+  });
+  it("reads an empty object as no strings", () => {
+    expect(strings({})).toEqual([]);
+  });
+  it.each([
+    ["a string", "text"],
+    ["an array", ["a"]],
+    ["a number", 1],
+    ["null", null],
+    ["undefined", undefined],
+    ["a boolean", false],
+  ])("refuses %s as the input", (_name, value) => {
+    const r = mcpStrings(value);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.reason).toMatch(/not an object/);
+  });
+  it("refuses an input nested deeper than MAX_MCP_DEPTH, and accepts one exactly at the limit", () => {
+    const nest = (levels: number): unknown => {
+      let node: unknown = "leaf";
+      for (let i = 0; i < levels; i++) node = { n: node };
+      return node;
+    };
+    expect(mcpStrings(nest(MAX_MCP_DEPTH)).ok).toBe(true);
+    const r = mcpStrings(nest(MAX_MCP_DEPTH + 1));
+    expect(!r.ok && r.reason).toMatch(/levels deep or more/);
+  });
+  it("refuses more than MAX_MCP_STRINGS strings, and more than MAX_PATCH_CHARS characters", () => {
+    expect(mcpStrings({ ids: Array.from({ length: MAX_MCP_STRINGS - 1 }, () => "a") }).ok).toBe(
+      true,
+    );
+    const many = mcpStrings({ ids: Array.from({ length: MAX_MCP_STRINGS + 1 }, () => "a") });
+    expect(!many.ok && many.reason).toMatch(/strings/);
+    expect(mcpStrings({ t: "a".repeat(MAX_PATCH_CHARS - 1) }).ok).toBe(true); // key + value = the cap
+    const big = mcpStrings({ t: "a".repeat(MAX_PATCH_CHARS) });
+    expect(!big.ok && big.reason).toMatch(/KB/);
+    // Keys count too: a key is text the guard must read.
+    const bigKey = mcpStrings({ [`k${"a".repeat(MAX_PATCH_CHARS)}`]: 1 });
+    expect(bigKey.ok).toBe(false);
+  });
+  it("does not recurse on the call stack: a hostile 100k-deep input is refused, not a crash", () => {
+    let node: unknown = "leaf";
+    for (let i = 0; i < 100_000; i++) node = [node];
+    expect(mcpStrings({ a: node }).ok).toBe(false);
   });
 });

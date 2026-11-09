@@ -18,14 +18,17 @@
  * `--codex` (run from `.codex/hooks.json`) is the same guard for Codex. Codex cannot prompt: `ask` is
  * "parsed but not supported yet" there, the hook run is marked failed and the tool call PROCEEDS. So every
  * `ask` is answered `deny`. File edits arrive as `apply_patch` (the patch text is `tool_input.command`) and
- * are judged file by file; Codex has no Read/Grep/Glob tools, its reads are shell commands (`Bash`).
- * Hooks there are trust-gated per developer (`/hooks`) and OpenAI calls them a guardrail, not an
- * enforcement boundary.
+ * are judged file by file; Codex has no Read/Grep/Glob tools, its reads are shell commands (`Bash`); an MCP
+ * tool (`mcp__<server>__<tool>`) takes arbitrary JSON, so every string in it is judged as a path and as text.
+ * The repo root there is where this script lives (the hook command runs the script from the git toplevel),
+ * never `CLAUDE_PROJECT_DIR`. Hooks there are trust-gated per developer (`/hooks`) and OpenAI calls them a
+ * guardrail, not an enforcement boundary.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync, writeSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { MAX_PATCH_CHARS, parseApplyPatch, shellPatch } from "./codex-patch";
+import { fileURLToPath } from "node:url";
+import { MAX_PATCH_CHARS, mcpStrings, parseApplyPatch, shellPatch } from "./codex-patch";
 import { appendLedger, loadRegistry, projectDir, readHookInput, relPath, sha256 } from "./io";
 import {
   type Decision,
@@ -87,20 +90,22 @@ function canon(p: string): string {
   }
 }
 
-/** Codex gives the session cwd, which may be a subdirectory; the rules are relative to the repo root. */
-function codexRoot(cwd: string | undefined): string {
-  const from = cwd || process.cwd();
-  try {
-    return (
-      execFileSync("git", ["rev-parse", "--show-toplevel"], {
-        cwd: from,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim() || from
-    );
-  } catch {
-    return from;
-  }
+/**
+ * `--codex`: the repo root is where THIS script lives. The pinned hook command runs
+ * `$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts`, so the script's grandparent is the git
+ * toplevel of the Codex session, with no `git` call and no environment variable to move it: `CLAUDE_PROJECT_DIR`
+ * (a developer may export it from a Claude shell, pointing at another tree) used to override the root here, and
+ * protected-path matching then ran against the wrong tree without a word. `CW_HARNESS_ROOT_FOR_TESTS` is the
+ * test seam; production never sets it.
+ */
+const codexRoot = (): string =>
+  process.env.CW_HARNESS_ROOT_FOR_TESTS ||
+  resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/** A path as the repo sees it: real paths on both sides, relative paths resolved from the directory `base`. */
+function pathResolver(root: string, base: string): (p: string) => string {
+  const realRoot = canon(root);
+  return (p) => relPath(realRoot, canon(isAbsolute(p) ? p : join(base, p)));
 }
 
 /**
@@ -124,8 +129,7 @@ function checkPatch(text: string, root: string, base: string, log: Log): void {
   }
   // Real paths on both sides, resolved from the directory the patch runs in: a symlinked cwd or root would
   // otherwise turn `.codex/hooks.json` into `../../..`, and a symlink into a protected directory would pass.
-  const realRoot = canon(root);
-  const rel = (p: string): string => relPath(realRoot, canon(isAbsolute(p) ? p : join(base, p)));
+  const rel = pathResolver(root, base);
   const registry = loadRegistry(root);
   for (const f of parsed.files) {
     for (const target of (f.moveTo ? [f.path, f.moveTo] : [f.path]).map(rel)) {
@@ -153,17 +157,72 @@ function checkPatch(text: string, root: string, base: string, log: Log): void {
   }
 }
 
+const NOT_TEXT = "was not text, so the guard cannot judge it";
+/** A line this long is not a path (PATH_MAX is 4096): it is matched as written and never resolved on disk. */
+const MAX_PATH_CHARS = 4096;
+/** Lines of an MCP input resolved on disk in one call; past it the call is refused (the work must fit the hook's timeout). */
+const MAX_MCP_PATH_LINES = 20_000;
+
+/** A name for the log and the reason only when it is short and one word: never echo prose, which may hold PHI. */
+const nameOf = (s: string): string | undefined =>
+  s.length <= 200 && !/\s/.test(s) ? s : undefined;
+
+/**
+ * `--codex`, an MCP tool (`mcp__<server>__<tool>`): Codex hands it arbitrary JSON and nothing says which field
+ * is a path or text, so EVERY string in it (keys too) is judged: each line as a secret path and as a protected
+ * path, as written and resolved from the session cwd with symlinks followed (as `apply_patch` paths are), and
+ * the whole string through the PHI/credential scan with no source-file exemptions. Nothing is guessed about what
+ * the tool does with a value. An input that is not an object, or too big or deep to scan in time, is refused.
+ */
+function checkMcp(raw: unknown, root: string, base: string, log: Log): void {
+  const got = mcpStrings(raw);
+  if (!got.ok) refuse(log, `The MCP tool input could not be judged: ${got.reason}.`);
+  const rel = pathResolver(root, base);
+  const registry = loadRegistry(root);
+  let lines = 0;
+  for (const value of got.strings) {
+    for (const line of value.split(/[\r\n\0]/)) {
+      const written = line.trim();
+      if (!written) continue;
+      if (++lines > MAX_MCP_PATH_LINES) {
+        refuse(
+          log,
+          `The MCP tool input has more than ${MAX_MCP_PATH_LINES} lines of text, past what the guard can resolve inside Codex's hook timeout. Split it.`,
+        );
+      }
+      const candidates = written.length > MAX_PATH_CHARS ? [written] : [written, rel(written)];
+      for (const target of candidates) {
+        const named = nameOf(target) ? `\`${target}\`` : "A value in the tool input";
+        const why = secretPathReason(target);
+        if (why) {
+          refuse(
+            log,
+            `${named} is ${why}. Agents never read or write it; use the committed .example template for its shape.`,
+            nameOf(target),
+          );
+        }
+        if (isProtectedPath(target)) {
+          refuse(
+            log,
+            `${named} is part of the agent harness or the compliance record. Codex cannot ask a human, so a human edits it (or Claude Code, with approval).`,
+            nameOf(target),
+          );
+        }
+      }
+    }
+    const findings = scanContent(value, registry, "");
+    if (findings.length > 0) refuse(log, describeFindings("(an MCP tool argument)", findings));
+  }
+}
+
 /** Codex shell commands: no bare interactive shell, and a patch applied through the shell is one plain heredoc. */
 function checkCodexShell(
-  input: Record<string, unknown>,
+  cmd: string,
+  workdirInput: unknown,
   root: string,
   cwd: string,
   log: Log,
 ): void {
-  const cmd = input.command;
-  if (typeof cmd !== "string") {
-    refuse(log, "The command was not text, so the guard cannot judge it.");
-  }
   if (isInteractiveShell(cmd)) {
     refuse(
       log,
@@ -175,8 +234,13 @@ function checkCodexShell(
   const shell = shellPatch(cmd);
   if (shell.kind === "refuse") refuse(log, shell.reason, undefined, cmd);
   if (shell.kind === "patch") {
+    // A workdir that is present and not text must not silently fall back to the session cwd: the patch's
+    // relative paths would be judged against a directory it is not applied in.
+    if (workdirInput !== undefined && workdirInput !== null && typeof workdirInput !== "string") {
+      refuse(log, `The command's workdir ${NOT_TEXT}.`, undefined, cmd);
+    }
     const workdir =
-      typeof input.workdir === "string" && input.workdir ? resolve(cwd, input.workdir) : cwd;
+      typeof workdirInput === "string" && workdirInput ? resolve(cwd, workdirInput) : cwd;
     checkPatch(shell.text, root, workdir, log);
   }
 }
@@ -193,15 +257,23 @@ function currentBranch(root: string): string | undefined {
   }
 }
 
-/** The text an editing tool is about to put on disk. */
-function newContent(tool: string, input: Record<string, unknown>): string {
-  if (tool === "Write") return String(input.content ?? "");
-  if (tool === "Edit") return String(input.new_string ?? "");
-  if (tool === "NotebookEdit") return String(input.new_source ?? "");
+/**
+ * A text field of an editing tool. Absent is empty text; under `--codex` a value that is present and not a
+ * string is `undefined` (refused), never `String(value)` judged as if it were what the tool would write.
+ */
+const textField = (v: unknown): string | undefined =>
+  v === undefined || v === null ? "" : typeof v === "string" ? v : CODEX ? undefined : String(v);
+
+/** The text an editing tool is about to put on disk; `undefined` when a field it holds is not text (`--codex`). */
+function newContent(tool: string, input: Record<string, unknown>): string | undefined {
+  if (tool === "Write") return textField(input.content);
+  if (tool === "Edit") return textField(input.new_string);
+  if (tool === "NotebookEdit") return textField(input.new_source);
   if (tool === "MultiEdit" && Array.isArray(input.edits)) {
-    return (input.edits as Array<{ new_string?: unknown }>)
-      .map((e) => String(e.new_string ?? ""))
-      .join("\n");
+    const parts = (input.edits as Array<{ new_string?: unknown }>).map((e) =>
+      textField(e.new_string),
+    );
+    return parts.some((p) => p === undefined) ? undefined : parts.join("\n");
   }
   return "";
 }
@@ -217,7 +289,7 @@ async function main(): Promise<void> {
   }
   const tool = hook.tool_name ?? "";
   const input = hook.tool_input ?? {};
-  const root = CODEX ? process.env.CLAUDE_PROJECT_DIR || codexRoot(hook.cwd) : projectDir(hook);
+  const root = CODEX ? codexRoot() : projectDir(hook);
   const cwd = hook.cwd || root;
   const log: Log = (decision, reason, target, cmd) =>
     appendLedger(root, hook.session_id, {
@@ -232,17 +304,27 @@ async function main(): Promise<void> {
   if (CODEX && tool === "apply_patch") {
     const patch = input.command;
     if (typeof patch !== "string") {
-      refuse(log, "The apply_patch input was not text, so the guard cannot judge it.");
+      refuse(log, `The apply_patch input ${NOT_TEXT}.`);
     }
     checkPatch(patch, root, cwd, log);
     return;
   }
 
+  if (CODEX && tool.startsWith("mcp__")) {
+    checkMcp(hook.tool_input, root, cwd, log);
+    return;
+  }
+
   if (tool === "Bash") {
-    const cmd = String(input.command ?? "");
+    const command = input.command;
+    // `String(command)` of an array or object is not what the shell would run: refuse it before judging it.
+    if (CODEX && typeof command !== "string") refuse(log, `The command ${NOT_TEXT}.`);
+    const cmd = String(command ?? "");
     const v = classifyBash(cmd, {
       branch: currentBranch(root),
       root,
+      // A persisted `cd apps/backend` from an earlier call leaves the shell there: judge relative writes from it.
+      cwd,
       exists: (p) => existsSync(isAbsolute(p) ? p : join(cwd, p)),
     });
     if (v.decision !== "allow") {
@@ -257,7 +339,7 @@ async function main(): Promise<void> {
       );
       respond(v.decision, v.reason);
     }
-    if (CODEX) checkCodexShell(input, root, cwd, log);
+    if (CODEX) checkCodexShell(cmd, input.workdir, root, cwd, log);
     return;
   }
 
@@ -289,6 +371,11 @@ async function main(): Promise<void> {
   }
 
   const content = newContent(tool, input);
+  if (content === undefined) {
+    const reason = `A field of this ${tool} ${NOT_TEXT}.`;
+    log("deny", reason, target);
+    respond("deny", reason);
+  }
   if (content.length > MAX_SCAN_CHARS) {
     const reason = `This ${tool} writes ${Math.round(content.length / 1_000_000)} MB in one call, past the ${MAX_SCAN_CHARS / 1_000_000} MB the PHI/credential scan can vouch for. Write it in smaller pieces.`;
     log("deny", reason, target);
