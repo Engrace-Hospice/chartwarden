@@ -62,12 +62,15 @@ export function actorOf(request: ContextCarrier): RouteActor {
   };
 }
 
-/** The actor of an authored write: {@link actorOf} plus a membership, or 401 when the session carries none. */
+/**
+ * The actor of an authored write (or of a read attributed to the member): {@link actorOf} plus a membership. 401 without a session;
+ * 403 when a live session carries no membership (never 401: the web shell signs the user out on any 401).
+ */
 export function writeActorOf(request: ContextCarrier): WriteActor {
   const actor = actorOf(request);
   if (actor.membershipId === null) {
     // 403, not 401: the web shell signs the user out on any 401, and this session is alive.
-    throw new ForbiddenError("an active membership is required to author this record");
+    throw new ForbiddenError("an active membership is required to act on this record");
   }
   return { ...actor, membershipId: actor.membershipId };
 }

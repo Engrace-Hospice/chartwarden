@@ -6,9 +6,12 @@
 // not only `active`: an org in `created` (the onboarding orgs, where platform operators write with an Idempotency-Key),
 // `suspended` or `closed` holds rows too, and the 24 h replay window is only a window if the rows really go.
 //
-// Reentrant by construction (§4.8.1: "purge is reentrant"): the DELETE is a pure predicate on `expires_at`, a
-// replayed tick or a racing replica simply matches fewer rows. Batched, so one org with a large backlog cannot
-// hold a long transaction.
+// Reentrant by construction (§4.8.1: "purge is reentrant"): a replayed tick or a racing replica simply matches fewer
+// rows. Batched, so one org with a large backlog cannot hold a long transaction. The batch is SELECTed and then DELETEd
+// in a second statement, and `putPending` can reclaim an expired key in between (ON CONFLICT DO UPDATE ... WHERE
+// expires_at <= now() resets the SAME row id to a fresh 24 h pending claim), so the DELETE re-checks `expires_at` (and
+// the org): a delete by id alone would remove a LIVE claim and a retry would run the handler twice. No row is ever
+// deleted before its TTL.
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import {
@@ -18,8 +21,9 @@ import {
   withOrgContext,
 } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 import { buildActiveOrgEnumerator } from "../active-org-enumerator";
+import { safeErrorMessage } from "../redact-database-error";
 
 export const IDEMPOTENCY_CLEANUP_JOB_ID = "platform.idempotency_cleanup";
 export const IDEMPOTENCY_CLEANUP_QUEUE = "idempotency.cleanup";
@@ -85,13 +89,22 @@ async function purgeOrg(
         .where(lte(T.expiresAt, now))
         .limit(IDEMPOTENCY_PURGE_BATCH)) as Array<{ id: string }>;
       if (expired.length === 0) return 0;
-      await t.delete(T).where(
-        inArray(
-          T.id,
-          expired.map((r) => r.id),
-        ),
-      );
-      return expired.length;
+      // Still expired AND this org: a row reclaimed since the SELECT is a live claim and survives. `returning` counts what was
+      // really deleted (a reclaimed row is not counted).
+      const removed = await t
+        .delete(T)
+        .where(
+          and(
+            inArray(
+              T.id,
+              expired.map((r) => r.id),
+            ),
+            eq(T.organizationId, organizationId),
+            lte(T.expiresAt, now),
+          ),
+        )
+        .returning({ id: T.id });
+      return removed.length;
     });
     total += deleted;
     if (deleted < IDEMPOTENCY_PURGE_BATCH) break;
@@ -109,7 +122,8 @@ export async function runIdempotencyCleanup(deps: IdempotencyCleanupDeps): Promi
     try {
       total += await purgeOrg(deps, organizationId, now);
     } catch (err) {
-      failures.push(`${organizationId}: ${err instanceof Error ? err.message : String(err)}`);
+      // safeErrorMessage, never err.message: a database error's message carries the query's bound parameters
+      failures.push(`${organizationId}: ${safeErrorMessage(err, { bare: true })}`);
     }
   }
   if (failures.length > 0) {
@@ -120,11 +134,28 @@ export async function runIdempotencyCleanup(deps: IdempotencyCleanupDeps): Promi
   return total;
 }
 
+/**
+ * The sweeper's worker. It takes the platform pool and the bypass auditor and builds its OWN every-status org enumeration
+ * ({@link buildIdempotencyCleanupOrgs}), so the composition root cannot bind it to the active-only default by accident.
+ */
 export function registerIdempotencyCleanupWorker(
   connection: ConnectionOptions,
-  deps: IdempotencyCleanupDeps,
+  deps: {
+    readonly db: DbClient;
+    readonly platformDb: DbClient | undefined;
+    readonly auditBypass: PlatformBypassAuditor<DbClient>;
+    readonly now?: () => Date;
+  },
 ): Worker {
-  return new Worker(IDEMPOTENCY_CLEANUP_QUEUE, async () => runIdempotencyCleanup(deps), {
+  const cleanup: IdempotencyCleanupDeps = {
+    db: deps.db,
+    activeOrgs: buildIdempotencyCleanupOrgs({
+      platformDb: deps.platformDb,
+      auditBypass: deps.auditBypass,
+    }),
+    ...(deps.now ? { now: deps.now } : {}),
+  };
+  return new Worker(IDEMPOTENCY_CLEANUP_QUEUE, async () => runIdempotencyCleanup(cleanup), {
     connection,
     concurrency: 1,
   });
