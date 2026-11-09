@@ -6,7 +6,14 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import type { JSX } from "react";
 import { useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ONBOARDING_OPERATOR, ok, refused, renderAt, stubClient } from "./onboarding/test-support";
+import {
+  ONBOARDING_OPERATOR,
+  RETURNED_FROM_STEP_UP,
+  ok,
+  refused,
+  renderAt,
+  stubClient,
+} from "./onboarding/test-support";
 import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
 
 const CH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
@@ -569,13 +576,14 @@ describe("TenantClearinghouseCard: switching a live outside tenant to a vendor",
     choice: unknown,
     status: string,
     put: () => ReturnType<typeof ok> | ReturnType<typeof refused> = () => ok({ ...CLAIMMD }),
+    at: Parameters<typeof renderAt>[0] = "/x",
   ) {
     const client = stubClient({
       GET: { [CH]: () => ok(choice) },
       PUT: { [CH]: put },
     });
     renderAt(
-      "/x",
+      at,
       [
         {
           path: "/x",
@@ -734,6 +742,71 @@ describe("TenantClearinghouseCard: switching a live outside tenant to a vendor",
     expect(stashed?.value.form).toMatchObject({ vendor: "claimmd", billingServiceMode: "none" });
     expect(stashed?.value.pinnedVersion).toBe(4);
     expect(JSON.stringify(window.sessionStorage)).not.toContain("vendor-credential-for-test-only");
+  });
+
+  // Re-verify leaves the page and comes back through /step-up. Only that return restores the form; pressing Back from /step-up is an
+  // abandoned Re-verify, whose draft must not reopen the form on a later visit.
+  const reverifyFromSwitch = async () => {
+    mountSwitch(SWITCHABLE, "active", () => refused(403, "STEP_UP_REQUIRED"));
+    await show();
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+  };
+
+  it("reopens the switch form, on the version it was opened on, when the operator comes back from Re-verify", async () => {
+    await reverifyFromSwitch();
+    mountSwitch(SWITCHABLE, "active", undefined, RETURNED_FROM_STEP_UP);
+    await show();
+    expect(await screen.findByRole("heading", { name: "Switch to a clearinghouse" })).toBeTruthy();
+    expect((screen.getByLabelText(/^Billing service mode/) as HTMLSelectElement).value).toBe(
+      "none",
+    );
+    expect((screen.getByLabelText(/^Vendor credential/) as HTMLInputElement).value).toBe("");
+  });
+
+  it("does not reopen the switch form from a draft an abandoned Re-verify left behind (Back from /step-up)", async () => {
+    await reverifyFromSwitch();
+    mountSwitch(SWITCHABLE, "active");
+    await show();
+    expect(screen.getByRole("button", { name: "Switch to a vendor" })).toBeTruthy();
+    expect(screen.queryByLabelText(/^Vendor credential/)).toBeNull();
+    cleanup();
+
+    // that visit dropped the draft: a later, genuine return finds nothing to resurrect
+    mountSwitch(SWITCHABLE, "active", undefined, RETURNED_FROM_STEP_UP);
+    await show();
+    expect(screen.getByRole("button", { name: "Switch to a vendor" })).toBeTruthy();
+    expect(screen.queryByLabelText(/^Vendor credential/)).toBeNull();
+  });
+
+  // The vendor refuses on the merits (409): nothing is stale, so the form, the credential and the prompt's reason are kept.
+  it("keeps the form and the typed credential when the server refuses the switch on its merits (409), and says why", async () => {
+    const client = mountSwitch(SWITCHABLE, "active", () =>
+      refused(
+        409,
+        "CLEARINGHOUSE_WORK_WAITING",
+        "claims or submissions are still queued on the current clearinghouse",
+      ),
+    );
+    await show();
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
+
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(await dialog.findByText(/still queued on the current clearinghouse/)).toBeTruthy();
+    expect(reads(client, CH)).toBe(1); // no reload: nothing was stale
+    fireEvent.click(dialog.getByRole("button", { name: /Cancel/ }));
+    expect((screen.getByLabelText(/^Vendor credential/) as HTMLInputElement).value).toBe(
+      "vendor-credential-for-test-only",
+    );
   });
 });
 

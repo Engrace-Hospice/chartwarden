@@ -10,7 +10,6 @@ import {
   TextField,
   stashStepUpDraft,
   useApiClient,
-  useStepUpDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -22,6 +21,7 @@ import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { useReturnedDraft } from "./use-returned-draft";
 
 interface Credential {
   credentialId: string;
@@ -103,7 +103,9 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   );
   // Back from Re-verify the edit resumes PINNED to the version the operator first read (null: a create). It is never re-read, so a
   // credential changed while they re-verified is a 412 that reloads it, not a replace the operator did not see.
-  const restored = useStepUpDraft<{ form: Form; pinnedVersion: number | null }>(draftKey(orgSlug));
+  const restored = useReturnedDraft<{ form: Form; pinnedVersion: number | null }>(
+    draftKey(orgSlug),
+  );
   const [editing, setEditing] = useState<{ pinnedVersion: number | null } | null>(
     restored ? { pinnedVersion: restored.pinnedVersion ?? null } : null,
   );

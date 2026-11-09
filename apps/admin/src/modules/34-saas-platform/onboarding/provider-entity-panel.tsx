@@ -10,7 +10,6 @@ import {
   TextField,
   stashStepUpDraft,
   useApiClient,
-  useStepUpDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -23,6 +22,7 @@ import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { useReturnedDraft } from "./use-returned-draft";
 
 interface Entity {
   id: string;
@@ -101,7 +101,7 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
       }) as Promise<{ data?: { items: Entity[] }; error?: unknown; response?: { status: number } }>,
   );
   // The stash names what was being edited (a record, or null for a new one) so coming back resumes THAT edit, not a create.
-  const restored = useStepUpDraft<{ form: Form; id: string | null }>(draftKey(orgSlug));
+  const restored = useReturnedDraft<{ form: Form; id: string | null }>(draftKey(orgSlug));
   const [editing, setEditing] = useState<{ id: string | null } | null>(
     restored ? { id: restored.id } : null,
   );

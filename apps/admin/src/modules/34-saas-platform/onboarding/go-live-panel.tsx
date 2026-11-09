@@ -10,7 +10,7 @@ import {
   REASON_RULES,
   useApiClient,
 } from "@chartwarden/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import type { PanelContext } from "./panel-types";
@@ -50,6 +50,12 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   useEffect(() => {
     setDone((d) => (d && !d.left && goLive.state !== d.from ? { ...d, left: true } : d));
   }, [goLive.state]);
+  // Approving or revoking moves the wizard to another state, and the buttons that opened the prompt go with the old one (focus would fall
+  // to the page): the outcome takes focus instead.
+  const outcome = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (done) outcome.current?.focus();
+  }, [done]);
   const write = useOpsWrite();
   const mayDecide = useCan(ONBOARDING_KEYS.goLiveApprove);
 
@@ -226,7 +232,9 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         ) : null}
 
         {done && (goLive.state === done.to || (goLive.state === done.from && !done.left)) ? (
-          <InlineAlert tone="success">{done.message}</InlineAlert>
+          <div ref={outcome} tabIndex={-1}>
+            <InlineAlert tone="success">{done.message}</InlineAlert>
+          </div>
         ) : null}
       </section>
 

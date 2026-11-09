@@ -157,6 +157,52 @@ describe("GoLivePanel: awaiting approval", () => {
     await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
   });
 
+  // Approving or revoking moves the wizard to another state, and the buttons that opened the prompt go with the old one: focus must land
+  // on the outcome, not fall to the page.
+  it.each([
+    {
+      what: "approving",
+      from: () => ready(),
+      to: () => wizard("live"),
+      trigger: "Approve go-live",
+      confirm: "Approve",
+      path: APPROVE,
+      outcome: /Approved\. The tenant is live/,
+    },
+    {
+      what: "revoking",
+      from: () => ready(),
+      to: () => wizard("awaiting_attestation"),
+      trigger: "Revoke attestation",
+      confirm: "Revoke",
+      path: REVOKE,
+      outcome: /Attestation revoked/,
+    },
+  ])(
+    "moves focus to the outcome when $what removes the buttons that opened the prompt",
+    async ({ from, to, trigger, confirm, path, outcome }) => {
+      function Host(): JSX.Element {
+        const [view, set] = useState(from());
+        const ctx = {
+          ...panelCtx(view, "go_live_checklist_complete"),
+          refresh: async () => set(to()),
+        };
+        return <GoLivePanel ctx={ctx} />;
+      }
+      const client = stubClient({ POST: { [path]: () => ok({}) } });
+      renderAt("/x", [{ path: "/x", element: <Host /> }], client);
+      fireEvent.click(screen.getByRole("button", { name: trigger }));
+      fireEvent.change(screen.getByLabelText(/^Reason/), {
+        target: { value: "Checked the BAA and the officer's attestation" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: confirm }));
+      const banner = await screen.findByText(outcome);
+      await waitFor(() => expect(screen.queryByRole("button", { name: trigger })).toBeNull());
+      await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+      expect(document.activeElement?.contains(banner)).toBe(true);
+    },
+  );
+
   it("the outcome banner belongs to the state it was written for: a later state does not inherit it", async () => {
     let setView: (v: WizardView) => void = () => undefined;
     function Host({ initial }: { initial: WizardView }): JSX.Element {

@@ -11,13 +11,13 @@ import {
   normalizeReason,
   stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { useOpsWrite } from "./use-ops-write";
+import { useReturnedMemoryDraft } from "./use-returned-draft";
 
 const EVIDENCE_NOTE_MAX = 2000;
 const EVIDENCE_REF_MAX = 500;
@@ -41,7 +41,7 @@ export function AttestCard({
   const client = useApiClient();
   const { orgSlug, step } = ctx;
   const draftKey = attestDraftKey(orgSlug, step.key);
-  const restored = useStepUpMemoryDraft<Draft>(draftKey);
+  const restored = useReturnedMemoryDraft<Draft>(draftKey);
   const [note, setNote] = useState(restored?.evidenceNote ?? "");
   const [ref, setRef] = useState(restored?.evidenceRef ?? "");
   const [reason, setReason] = useState(restored?.reason ?? "");

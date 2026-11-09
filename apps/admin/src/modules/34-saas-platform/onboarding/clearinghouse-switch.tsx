@@ -5,7 +5,7 @@
 // For a live tenant the mode is dated the 1st of next month, and the form says so before anything is confirmed. The vendor credential is
 // write-only and never kept (a Re-verify stashes the form and its pin, never the credential): a stale pin (412) or a missing one (428)
 // closes the form and reads the record again.
-import { Button, stashStepUpDraft, useApiClient, useStepUpDraft } from "@chartwarden/ui";
+import { Button, stashStepUpDraft, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import {
@@ -23,6 +23,7 @@ import { RecordSaveDialog } from "./record-save-dialog";
 import { RoleCannot } from "./role-cannot";
 import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
+import { useReturnedDraft } from "./use-returned-draft";
 
 const PATH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
 /** The tenant statuses in which the switch is offered here: a live tenant (the wizard's step 7 serves one that is still onboarding). */
@@ -43,12 +44,15 @@ export function SwitchToVendor({
   orgSlug,
   view,
   tenantStatus,
+  returnedFromStepUp,
   reload,
   onSwitched,
 }: {
   orgSlug: string;
   view: ClearinghouseView;
   tenantStatus: string;
+  /** The hub card read the return from Re-verify once and cleared its history marker before this mounted: it hands the answer down. */
+  returnedFromStepUp?: boolean;
   /** Read the choice again (a pin that went stale). */
   reload: () => Promise<void> | void;
   /** The switch committed; `modeConfirmed` is false when the billing mode could not be confirmed afterwards (the caller says so). */
@@ -59,8 +63,9 @@ export function SwitchToVendor({
   // the switch always names the billing mode, so it takes the pricing key as well as the clearinghouse one
   const mayWrite = useCan(ONBOARDING_KEYS.clearinghouseWrite, ONBOARDING_KEYS.pricingWrite);
   // Coming back from Re-verify: the form and its pin are restored (the credential is typed again).
-  const restored = useStepUpDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
+  const restored = useReturnedDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
     draftKey(orgSlug),
+    returnedFromStepUp,
   );
   const [open, setOpen] = useState(restored !== undefined);
   const [asking, setAsking] = useState(false);

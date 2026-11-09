@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ProviderEntityPanel } from "./provider-entity-panel";
 import {
   ORG_SLUG,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -37,10 +38,15 @@ const view = (over = {}) =>
     [wizardStep("ccn_registered", 1, { title: "Provider entity & NPI", owner: "either" })],
     over,
   );
-function mount(items: unknown[], extra: Parameters<typeof stubClient>[0] = {}, v = view()) {
+function mount(
+  items: unknown[],
+  extra: Parameters<typeof stubClient>[0] = {},
+  v = view(),
+  at: Parameters<typeof renderAt>[0] = "/x",
+) {
   const client = stubClient({ GET: { [LIST]: () => ok({ items }) }, ...extra });
   const ctx = panelCtx(v, "ccn_registered");
-  renderAt("/x", [{ path: "/x", element: <ProviderEntityPanel ctx={ctx} /> }], client);
+  renderAt(at, [{ path: "/x", element: <ProviderEntityPanel ctx={ctx} /> }], client);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -119,7 +125,12 @@ describe("ProviderEntityPanel", () => {
   });
 
   it("edits an entity without offering the CCN, NPI or EIN, which the tenant's own record fixes", async () => {
-    const { client } = mount([ENTITY], { PATCH: { [PATCH]: () => ok(ENTITY) } });
+    const { client } = mount(
+      [ENTITY],
+      { PATCH: { [PATCH]: () => ok(ENTITY) } },
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Edit 444444" }));
     expect(screen.queryByLabelText("CCN")).toBeNull();
     expect(screen.queryByLabelText(/^EIN/)).toBeNull();
@@ -235,7 +246,12 @@ describe("ProviderEntityPanel: coming back from Re-verify", () => {
     fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
     cleanup();
 
-    const { client } = mount([ENTITY], { PATCH: { [PATCH]: () => ok(ENTITY) } });
+    const { client } = mount(
+      [ENTITY],
+      { PATCH: { [PATCH]: () => ok(ENTITY) } },
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     expect(((await screen.findByLabelText("Legal name")) as HTMLInputElement).value).toBe(
       "Beta Hospice, LLC",
     );
@@ -266,7 +282,12 @@ describe("ProviderEntityPanel: coming back from Re-verify", () => {
     cleanup();
 
     // an entity exists when the operator comes back: the resumed form is still the create
-    const { client } = mount([ENTITY], { POST: { [LIST]: () => ok(ENTITY, 201) } });
+    const { client } = mount(
+      [ENTITY],
+      { POST: { [LIST]: () => ok(ENTITY, 201) } },
+      view(),
+      RETURNED_FROM_STEP_UP,
+    );
     expect(((await screen.findByLabelText("CCN")) as HTMLInputElement).value).toBe("444444");
     fireEvent.change(screen.getByLabelText(/^EIN/), { target: { value: "12-3456789" } }); // never stashed
     fireEvent.change(screen.getByLabelText(/^Confirm EIN/), { target: { value: "12-3456789" } });

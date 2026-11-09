@@ -39,11 +39,13 @@ function Body({
   tenantStatus,
   onOpenFilings,
   restoredReason,
+  returnedFromStepUp,
 }: {
   orgSlug: string;
   tenantStatus: string;
   onOpenFilings: () => void;
   restoredReason: string | undefined;
+  returnedFromStepUp: boolean;
 }): JSX.Element {
   const client = useApiClient();
   const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
@@ -129,6 +131,7 @@ function Body({
           orgSlug={orgSlug}
           view={view}
           tenantStatus={tenantStatus}
+          returnedFromStepUp={returnedFromStepUp}
           reload={() => load.reload(true)}
           onSwitched={async (modeConfirmed) => {
             setModeUnconfirmed(!modeConfirmed);
@@ -202,6 +205,7 @@ export function TenantClearinghouseCard({
             tenantStatus={tenantStatus}
             onOpenFilings={() => setFilingsOpen(true)}
             restoredReason={restoredReason}
+            returnedFromStepUp={returnedFromStepUp}
           />
         ) : (
           <span className="wx-row-sub">

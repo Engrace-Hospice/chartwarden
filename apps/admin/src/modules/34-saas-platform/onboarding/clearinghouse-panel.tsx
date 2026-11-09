@@ -12,7 +12,6 @@ import {
   TextAreaField,
   stashStepUpDraft,
   useApiClient,
-  useStepUpDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -47,6 +46,7 @@ import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { useReturnedDraft } from "./use-returned-draft";
 
 const PATH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
 const EVIDENCE_NOTE_MIN = 8;
@@ -136,7 +136,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   );
   // The version the operator read when the form opened (null: a first choice). It is stashed through Re-verify and sent from there,
   // never re-read, so a config changed while they re-verified is a 412 that reloads it, not a change they did not see.
-  const restored = useStepUpDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
+  const restored = useReturnedDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
     draftKey(orgSlug),
   );
   const [pinnedVersion, setPinnedVersion] = useState<number | null>(

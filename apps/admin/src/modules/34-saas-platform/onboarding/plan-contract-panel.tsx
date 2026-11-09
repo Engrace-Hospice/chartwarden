@@ -280,7 +280,24 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
   }
 
   if (plans.failure || subscription.failure) {
-    return <p role="alert">Could not load the plan and contract.</p>;
+    // Reads only what failed: the contract read is audited per read, so a good one is not repeated.
+    return (
+      <div className="wx-form-stack">
+        <InlineAlert tone="error">Could not load the plan and contract.</InlineAlert>
+        <div>
+          <Button
+            tone="secondary"
+            size="sm"
+            onClick={() => {
+              if (plans.failure) void plans.reload();
+              if (subscription.failure) void subscription.reload();
+            }}
+          >
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
   }
   if (!plans.data || !subscription.data) return <p>Loading the plan and contract…</p>;
 

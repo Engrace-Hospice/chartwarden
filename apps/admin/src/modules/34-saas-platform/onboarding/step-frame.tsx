@@ -8,10 +8,10 @@ import {
   ReasonDialog,
   StatusPill,
   type StatusTone,
-  peekStepUpMemoryDraft,
+  stashStepUpMemoryDraft,
   useApiClient,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useSession } from "../../../shell/session";
 import { statusLabel } from "../saas-status";
@@ -20,6 +20,7 @@ import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { useOpsWrite } from "./use-ops-write";
+import { useReturnedMemoryDraft } from "./use-returned-draft";
 import { OWNER_LABEL, isSystemSkip } from "./wizard-model";
 
 const STEP_TONE: Record<string, StatusTone> = {
@@ -31,6 +32,14 @@ const STEP_TONE: Record<string, StatusTone> = {
 };
 
 type Dialog = "skip" | "reopen" | null;
+
+/** What a Re-verify keeps of the skip / re-open prompt: which one was open and the reason typed in it (free text: memory only). */
+interface DecideDraft {
+  readonly dialog: "skip" | "reopen";
+  readonly reason: string;
+}
+const decideDraftKey = (orgSlug: string, stepKey: string): string =>
+  `wizard:${orgSlug}:${stepKey}:decide`;
 
 function settledBy(ctx: PanelContext, me: string | undefined): string | null {
   const by = ctx.step.attestedBy;
@@ -98,13 +107,33 @@ export function StepFrame({
 }): JSX.Element {
   const client = useApiClient();
   const { step, actions, orgSlug } = ctx;
-  // Coming back from Re-verify with a stashed form: the card opens with what was typed (the card itself restores it).
-  const [attesting, setAttesting] = useState(
-    () =>
-      actions.canAttest && peekStepUpMemoryDraft(attestDraftKey(orgSlug, step.key)) !== undefined,
-  );
-  const [dialog, setDialog] = useState<Dialog>(null);
+  // Coming back from Re-verify with a stashed form: the card opens with what was typed (the card itself restores it). Only on that
+  // return: a draft an abandoned Re-verify left is dropped here, so it never opens the card on a later visit or another step-up's return.
+  const attestDraft = useReturnedMemoryDraft(attestDraftKey(orgSlug, step.key));
+  const [attesting, setAttesting] = useState(() => actions.canAttest && attestDraft !== undefined);
+  // The same for the skip / re-open prompt: it reopens, with the reason that was typed, on the return from Re-verify.
+  const decideDraft = useReturnedMemoryDraft<DecideDraft>(decideDraftKey(orgSlug, step.key));
+  const [dialog, setDialog] = useState<Dialog>(decideDraft?.dialog ?? null);
+  // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
+  const typedReason = useRef(decideDraft?.reason ?? "");
   const write = useOpsWrite();
+
+  /** The props a skip / re-open prompt shares: the typed reason survives a Re-verify, and is dropped with the prompt. */
+  const reasonKeeping = (kind: "skip" | "reopen") => ({
+    ...(decideDraft?.dialog === kind ? { initialReason: decideDraft.reason } : {}),
+    onReasonChange: (reason: string) => {
+      typedReason.current = reason;
+    },
+    onReverify: () =>
+      stashStepUpMemoryDraft<DecideDraft>(decideDraftKey(orgSlug, step.key), {
+        dialog: kind,
+        reason: typedReason.current,
+      }),
+  });
+  const closeDialog = (): void => {
+    typedReason.current = "";
+    setDialog(null);
+  };
 
   async function decide(kind: "skip" | "reopen", reason: string): Promise<void> {
     const taskId = step.id;
@@ -123,7 +152,7 @@ export function StepFrame({
           }),
     );
     if (outcome.ok) {
-      setDialog(null);
+      closeDialog();
       await ctx.refresh();
     }
   }
@@ -205,8 +234,9 @@ export function StepFrame({
         confirmLabel="Skip step"
         write={write}
         orgSlug={orgSlug}
+        {...reasonKeeping("skip")}
         onConfirm={(reason) => void decide("skip", reason)}
-        onCancel={() => setDialog(null)}
+        onCancel={closeDialog}
       />
       <RecordSaveDialog
         open={dialog === "reopen"}
@@ -216,8 +246,9 @@ export function StepFrame({
         confirmLabel="Re-open step"
         write={write}
         orgSlug={orgSlug}
+        {...reasonKeeping("reopen")}
         onConfirm={(reason) => void decide("reopen", reason)}
-        onCancel={() => setDialog(null)}
+        onCancel={closeDialog}
       />
     </div>
   );
