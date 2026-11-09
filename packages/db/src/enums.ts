@@ -3614,7 +3614,7 @@ export const planTier = pgEnum("plan_tier", [
   "starter",
   "professional",
   "enterprise",
-  // Slice 2 pricing (migration 1379): the contracted census-banded model; the three above are retired.
+  // Slice 2 pricing (migration 1410): the contracted census-banded model; the three above are retired.
   "census_banded",
 ]);
 
