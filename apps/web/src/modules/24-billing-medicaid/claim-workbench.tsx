@@ -435,7 +435,9 @@ export function MedicaidClaimWorkbench(): JSX.Element {
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
                         {shortDate(r.serviceFrom)} → {shortDate(r.serviceTo)}
                       </td>
-                      <td style={tdMono}>{r.mcoId ? shortId(r.mcoId) : "FFS"}</td>
+                      <td style={tdMono}>
+                        {r.mcoId ? `MCO assignment ${shortId(r.mcoId)} · unverified` : "Program unresolved"}
+                      </td>
                       <td style={td}>
                         <StatusPill
                           label={humanize(r.state)}
@@ -494,7 +496,11 @@ function ClaimPreview({ claim }: { claim: ClaimRow }): JSX.Element {
           label="Service dates"
           value={`${shortDate(claim.serviceFrom)} to ${shortDate(claim.serviceTo)}`}
         />
-        <Field label="MCO" value={claim.mcoId ? shortId(claim.mcoId) : "Fee-for-service"} mono />
+        <Field
+          label="Program assignment"
+          value={claim.mcoId ? `MCO ${shortId(claim.mcoId)} (unverified)` : "Unresolved"}
+          mono={Boolean(claim.mcoId)}
+        />
         <Field label="Updated" value={shortDate(claim.updatedAt)} />
         <Field label="Version" value={claim.version.toLocaleString()} />
       </SummaryGrid>

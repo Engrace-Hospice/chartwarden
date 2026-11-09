@@ -844,10 +844,14 @@ export function buildDrizzleM23WriteService(
       });
     },
 
-    async submitClaim(actor, claimId): Promise<ClaimSubmissionAcceptedView> {
+    async submitClaim(actor, claimId, route): Promise<ClaimSubmissionAcceptedView> {
       requireStepUp(actor);
+      if (!route.reviewedSourceFingerprint || !/^[0-9a-f]{64}$/.test(route.reviewedSourceFingerprint)) {
+        throw new ChartWardenError("CLAIM_PREVIEW_REQUIRED", "a valid reviewed claim preview is required", 409);
+      }
       return inOrgCtx(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId);
+        if (claim.version !== route.expectedVersion) throw conflict412(claim.version);
         if (claim.state !== "ready") {
           throw new ConflictError("only a READY claim can be submitted");
         }
@@ -886,11 +890,17 @@ export function buildDrizzleM23WriteService(
           claimControlNumber,
           attemptIndex,
           outcome: "queued",
+          reviewedSourceFingerprint: route.reviewedSourceFingerprint,
         });
+        if (submission.reviewedSourceFingerprint !== route.reviewedSourceFingerprint) {
+          throw new ConflictError("an idempotent submission key already exists for a different reviewed claim snapshot");
+        }
         const { jobId } = await jobs.enqueue(
           "claim.submit",
           `${actor.organizationId}:${claim.id}:${attemptIndex}`,
-          { claimId: claim.id, submissionId: submission.id, claimControlNumber, attemptIndex },
+          { claimId: claim.id, submissionId: submission.id, claimControlNumber, attemptIndex,
+            reviewedSourceFingerprint: route.reviewedSourceFingerprint,
+            ...(route.expectedRouteFingerprint ? { expectedRouteFingerprint: route.expectedRouteFingerprint } : {}) },
         );
         // D2 outbox-only: the worker performs the upload + the READY→SUBMITTED transition + `m23.claim.submitted`.
         await emit(tx, {
@@ -903,6 +913,8 @@ export function buildDrizzleM23WriteService(
             submissionId: submission.id,
             claimControlNumber,
             attemptIndex,
+            reviewedSourceFingerprint: route.reviewedSourceFingerprint,
+            ...(route.expectedRouteFingerprint ? { expectedRouteFingerprint: route.expectedRouteFingerprint } : {}),
           },
         });
         return { submissionId: submission.id, jobId, attemptIndex, claimControlNumber };

@@ -4,6 +4,9 @@ import { Button, Glyph, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { usePortalPatient } from "../patient-context";
+import { BereavementLibrarySection } from "./bereavement-library";
+import { SectionError, SectionLoading } from "./bereavement-section";
+import { BereavementServicesSection } from "./bereavement-services";
 import { humanize, readError } from "./portal-format";
 import { PortalPage } from "./portal-page";
 
@@ -51,36 +54,6 @@ function safeResourceUrl(value: string | undefined): string | null {
   } catch {
     return null;
   }
-}
-
-function SectionLoading({ label }: { label: string }): JSX.Element {
-  return (
-    <output className="wx-bereavement-skeleton" aria-label={label}>
-      <span />
-      <span />
-      <span />
-    </output>
-  );
-}
-function SectionError({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}): JSX.Element {
-  return (
-    <div className="wx-bereavement-section-state" role="alert">
-      <Glyph name="alert-circle" size={22} aria-hidden="true" />
-      <div>
-        <strong>Information unavailable</strong>
-        <p>{message}</p>
-        <Button tone="secondary" onClick={onRetry}>
-          Try again
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 /** Key the complete screen by selected patient; never reuse grief-support content across records. */
@@ -408,6 +381,8 @@ function BereavementForPatient({
                 </div>
               )}
             </section>
+            <BereavementServicesSection />
+            <BereavementLibrarySection />
           </div>
           <aside
             className="wx-bereavement-panel wx-bereavement-preferences"

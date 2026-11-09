@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 213 statically-routable `web` screen(s) — 26/213 E2E-reached, 201/213 axe-reached.
+**Coverage:** 216 statically-routable `web` screen(s) — 26/216 E2E-reached, 204/216 axe-reached.
 
 ## Zero E2E coverage
 
@@ -32,8 +32,11 @@
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `bereavement.caseload` | 16-bereavement | `/bereavement` | bereavement.dashboard.counselor |
 | `bereavement.intake` | 16-bereavement | `/bereavement/eligible` | bereavement.plan.assign_counselor |
+| `bereavement.groups` | 16-bereavement | `/bereavement/groups` | bereavement.group.read |
+| `bereavement.library` | 16-bereavement | `/bereavement/library` | bereavement.library.read |
 | `bereavement.mailings` | 16-bereavement | `/bereavement/mailings` | bereavement.mailing.read |
 | `bereavement.mailings.settings` | 16-bereavement | `/bereavement/mailings/settings` | bereavement.mailing.manage |
+| `bereavement.memorials` | 16-bereavement | `/bereavement/memorials` | bereavement.memorial.rsvp |
 | `bereavement.supervisor` | 16-bereavement | `/bereavement/supervisor` | bereavement.dashboard.supervisor |
 | `billing.claim.new` | 23-billing-medicare | `/billing/claims/new` | billing.claim.assemble |
 | `billing.dde-queue` | 23-billing-medicare | `/billing/dde` | billing.dde.read |
@@ -215,7 +218,7 @@
 
 ## Dynamic web screens (#852)
 
-28/116 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
+28/118 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
@@ -230,7 +233,9 @@
 | `admission.level-of-care-change` | `/admissions/:id/level-of-care/new` | loc.change | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `admission.readmit` | `/admissions/:id/readmit` | admission.create | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `admission.transfer-in` | `/admissions/:id/transfer-in` | transfer.in | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `bereavement.groups.detail` | `/bereavement/groups/:groupId` | bereavement.group.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `bereavement.mailings.run` | `/bereavement/mailings/runs/:runId` | bereavement.mailing.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `bereavement.memorials.detail` | `/bereavement/memorials/:serviceId` | bereavement.memorial.rsvp | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `bereavement.plan` | `/bereavement/plans/:planId` | bereavement.plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `bereavement.plan.closeout` | `/bereavement/plans/:planId/closeout` | bereavement.plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | bereavement.plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |

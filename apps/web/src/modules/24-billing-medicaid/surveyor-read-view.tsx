@@ -218,7 +218,7 @@ export function MedicaidSurveyorReadView(): JSX.Element {
           <Field label="Patient" value={shortId(claim.patientId)} mono />
           <Field
             label="MCO"
-            value={claim.mcoId ? shortId(claim.mcoId) : "Fee-for-service"}
+            value={claim.mcoId ? `MCO assignment ${shortId(claim.mcoId)} (unverified)` : "Program unresolved"}
             mono={Boolean(claim.mcoId)}
           />
           <Field label="Total charges" value={money(totalCharges)} />

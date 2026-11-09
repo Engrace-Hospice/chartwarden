@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1973,
-    "enriched": 1970,
+    "routes": 2008,
+    "enriched": 2005,
     "deficit": 3,
-    "mutating": 1129,
+    "mutating": 1149,
     "mutatingNoBody": 2,
-    "gets": 791,
+    "gets": 806,
     "getsNoResponse": 11
   },
   "modules": [
@@ -151,12 +151,12 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 53,
-      "enriched": 53,
+      "routes": 82,
+      "enriched": 82,
       "deficit": 0,
-      "mutating": 36,
+      "mutating": 54,
       "mutatingNoBody": 0,
-      "gets": 17,
+      "gets": 28,
       "getsNoResponse": 0
     },
     {
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 101,
-      "enriched": 101,
+      "routes": 102,
+      "enriched": 102,
       "deficit": 0,
       "mutating": 53,
       "mutatingNoBody": 0,
-      "gets": 46,
+      "gets": 47,
       "getsNoResponse": 0
     },
     {
@@ -301,12 +301,12 @@
     },
     {
       "module": "31-portal",
-      "routes": 68,
-      "enriched": 68,
+      "routes": 72,
+      "enriched": 72,
       "deficit": 0,
-      "mutating": 34,
+      "mutating": 35,
       "mutatingNoBody": 0,
-      "gets": 34,
+      "gets": 37,
       "getsNoResponse": 0
     },
     {
@@ -401,10 +401,10 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 28,
-      "enriched": 28,
+      "routes": 29,
+      "enriched": 29,
       "deficit": 0,
-      "mutating": 17,
+      "mutating": 18,
       "mutatingNoBody": 0,
       "gets": 11,
       "getsNoResponse": 0

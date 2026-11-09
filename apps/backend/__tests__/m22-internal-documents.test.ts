@@ -44,6 +44,8 @@ const PATIENT = "11111111-1111-4111-8111-111111111111";
 const DOC_SUMMARY = "c0000000-0000-4000-8000-0000000000a1";
 const DOC_LETTER = "c0000000-0000-4000-8000-0000000000a2";
 const DOC_PLAIN = "c0000000-0000-4000-8000-0000000000a3";
+/** ADR-0109 D10 (PR 3) — an org-level (patientless) grief-library file. */
+const DOC_LIBRARY = "c0000000-0000-4000-8000-0000000000a4";
 const VERSION = "d0000000-0000-4000-8000-000000000001";
 
 function headerAuth(request: FastifyRequest): void {
@@ -74,6 +76,13 @@ const backend = createInMemoryDocumentBackend({
       retentionClass: "bereavement",
     },
     { id: DOC_PLAIN, organizationId: ORG, patientId: PATIENT, aggregateType: "encounter" },
+    {
+      id: DOC_LIBRARY,
+      organizationId: ORG,
+      patientId: null,
+      aggregateType: "bereavement_library_item",
+      retentionClass: "bereavement",
+    },
   ],
 });
 
@@ -378,6 +387,42 @@ describe("internal documents are render-only: every hand write path is refused",
       expect(code(refused)).toBe("DOCUMENT_INTERNAL_ONLY");
       const hidden = await app.inject({ ...write, headers: RN });
       expect(hidden.statusCode, `${write.method} ${write.url}`).toBe(404);
+    }
+    await app.close();
+  });
+
+  // ADR-0109 D10 (PR 3) — a grief-library file is fixed: an ORG-WIDE actor (who passes the patientless-document scope) is refused every write,
+  // and a /links write can never move it onto a patient's chart.
+  it("a grief-library file refuses PATCH, tags, links and versions with 422 even for an org-wide actor", async () => {
+    const app = makeServer();
+    const writes = [
+      {
+        method: "PATCH" as const,
+        url: `/api/v1/documents/${DOC_LIBRARY}`,
+        payload: { title: "Renamed" },
+      },
+      {
+        method: "POST" as const,
+        url: `/api/v1/documents/${DOC_LIBRARY}/tags`,
+        payload: { tagKind: "free", tagKey: "note", tagValue: "x" },
+      },
+      {
+        method: "POST" as const,
+        url: `/api/v1/documents/${DOC_LIBRARY}/links`,
+        payload: { patientId: PATIENT },
+      },
+      {
+        method: "POST" as const,
+        url: `/api/v1/documents/${DOC_LIBRARY}/versions`,
+        payload: { contentBase64: "JVBERi0xLjQK", mimeType: "application/pdf" },
+      },
+    ];
+    for (const write of writes) {
+      for (const who of [COMPLIANCE, COORDINATOR]) {
+        const refused = await app.inject({ ...write, headers: who });
+        expect(refused.statusCode, `${write.method} ${write.url}`).toBe(422);
+        expect(code(refused)).toBe("DOCUMENT_LIBRARY_IMMUTABLE");
+      }
     }
     await app.close();
   });
