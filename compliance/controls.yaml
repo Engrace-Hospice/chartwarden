@@ -47,6 +47,10 @@ controls:
       - script: arch:request-header-auth
       - script: test:auth:live
       - script: test:m10:s04-override:live
+      # #883 — HOPE assessment attribution is frozen on the row; edit/sign require the actor to hold
+      # that stored discipline. The live suite proves the resolver query as chartwarden_app/NOBYPASSRLS.
+      - script: test:m10:write:live
+      - file: apps/backend/src/modules/10-hope/abac-predicates.ts
       - script: test:s11:adversarial-stages:live
 
   - id: CW-AC-02A

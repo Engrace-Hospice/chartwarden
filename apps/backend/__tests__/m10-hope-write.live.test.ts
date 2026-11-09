@@ -14,6 +14,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import type { AbacContext } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import type { LatestAssessment, ScaleType } from "@chartwarden/types";
 import { Client } from "pg";
@@ -29,6 +30,7 @@ import {
 import {
   type HopeWriteOutboxPort,
   M10_OUTBOX_EVENTS,
+  buildHopeAbacPredicates,
   buildM10AdmissionWorkflowConsumer,
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
@@ -560,6 +562,51 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const second = await svc.regenerateSchedules(ORG_A, adm);
     expect(second.scheduleCount).toBe(3); // no duplicates
     expect(await count()).toBe(3);
+  });
+
+  it("#883 persists RN attribution and the shared edit/sign predicate refuses an NP under the NOBYPASSRLS app role", async () => {
+    const adm = await admitted();
+    await seedSchedule(ORG_A, adm);
+    const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+    expect(draft.authorDiscipline).toBe("RN");
+    expect(
+      (await admin.query("SELECT author_discipline FROM hope_assessment WHERE id=$1", [draft.id]))
+        .rows[0].author_discipline,
+    ).toBe("RN");
+
+    const predicate = buildHopeAbacPredicates({
+      resolver: svc,
+      isInCaseload: async () => true,
+    })["hope.authorDisciplineAllowed"]!;
+    const context = (roles: readonly string[]): AbacContext =>
+      ({
+        organizationId: ORG_A,
+        userId: USER,
+        roles,
+        attributes: { membershipId: memberOf[ORG_A] },
+        providerEntityIds: [],
+        locationIds: [],
+        permissions: new Set<string>(),
+      }) as unknown as AbacContext;
+    const target = { id: draft.id };
+    expect(await predicate(context(["rn"]), target)).toBe(true);
+    expect(await predicate(context(["np"]), target)).toBe(false);
+
+    await answerForSign(draft.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    const inactivation = await svc.inactivateTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
+      reason: "recorded against the wrong chart",
+    });
+    expect(inactivation.authorDiscipline).toBe("RN");
+    expect(
+      (
+        await admin.query("SELECT author_discipline FROM hope_assessment WHERE id=$1", [
+          inactivation.id,
+        ])
+      ).rows[0].author_discipline,
+    ).toBe("RN");
+    expect(await predicate(context(["rn"]), { id: inactivation.id })).toBe(true);
+    expect(await predicate(context(["np"]), { id: inactivation.id })).toBe(false);
   });
 
   it("a J2051 moderate answer opens the SFV; recordSfv completes it; the signed admission carries the trigger", async () => {

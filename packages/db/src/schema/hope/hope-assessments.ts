@@ -27,6 +27,7 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   hopeAssessmentStatus,
+  hopeAuthorDiscipline,
   hopeDischargeReason,
   hopeIsc,
   hopeRfaKind,
@@ -66,6 +67,9 @@ export const hopeAssessments = pgTable(
     dischargeReason: hopeDischargeReason("discharge_reason"), // required when rfa_kind='05_discharge'
     status: hopeAssessmentStatus("status").notNull().default("draft"),
     data: jsonb("data").notNull(), // per-Section discriminated union (free-text denylisted from audit)
+    // Frozen at record/correction time from the route-bound, actor-owned discipline. Nullable only for
+    // rows created before migration 1394; write/sign authorization fails closed for those legacy rows.
+    authorDiscipline: hopeAuthorDiscipline("author_discipline"),
 
     // Derived from data.J at sign; server-authoritative (§J/j2051-evaluator).
     j2051MaxSeverity: j2051Severity("j2051_max_severity").notNull().default("none"),

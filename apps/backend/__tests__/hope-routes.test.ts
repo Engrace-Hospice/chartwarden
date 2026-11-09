@@ -68,6 +68,7 @@ const PERMISSION_SEED = [
       "hope.admin.regenerate_schedules",
     ],
   },
+  { userId: "np_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   { userId: "chap_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   { userId: "lpn_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   { userId: "lvn_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
@@ -101,6 +102,8 @@ function makeServer(
     caseload?: readonly string[];
     /** GAP-182 — the caseload seam rejects (the worklist must fail CLOSED). */
     caseloadFails?: boolean;
+    /** #883 regression: model a pre-1394 row whose frozen attribution is absent. */
+    assessmentAuthorDisciplineOverride?: string | null;
   } = {},
 ) {
   const backend = createInMemoryHopeBackend({
@@ -187,8 +190,20 @@ function makeServer(
   // (unlike M9's `assessment.scope`, it never binds the shared `caseload_or_scope` by name), so no
   // cross-module predicate needs registering here.
   const registry = createPredicateRegistry();
+  const resolver =
+    options.assessmentAuthorDisciplineOverride === undefined
+      ? backend
+      : {
+          ...backend,
+          async loadAssessment(organizationId: string, assessmentId: string) {
+            const facts = await backend.loadAssessment(organizationId, assessmentId);
+            return facts
+              ? { ...facts, authorDiscipline: options.assessmentAuthorDisciplineOverride ?? null }
+              : null;
+          },
+        };
   const predicates = buildHopeAbacPredicates({
-    resolver: backend,
+    resolver,
     isInCaseload: options.isInCaseload ?? (async () => true),
     resolveAdmissionPatient:
       options.resolveAdmissionPatient ??
@@ -210,6 +225,7 @@ function makeServer(
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn", "x-test-pe": "pe_1" };
+const NP = { "x-test-user": "np_1", "x-test-org": ORG, "x-test-roles": "np", "x-test-pe": "pe_1" };
 const ADMIN_OVERRIDER = {
   "x-test-user": "admin_1",
   "x-test-org": ORG,
@@ -558,6 +574,79 @@ describe("M10-T06 — §4.7 hope.authorDisciplineAllowed (RN/NP/MD only)", () =>
     });
     expect(res.statusCode).toBe(403);
     await app.close();
+  });
+
+  it("freezes the claimed discipline: RN cannot record as NP, and NP cannot edit or sign an RN draft", async () => {
+    const { app } = makeServer();
+    const falseClaim = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body({ authorDiscipline: "NP" }),
+    });
+    expect(falseClaim.statusCode).toBe(403);
+
+    const recorded = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(recorded.statusCode).toBe(201);
+    expect(recorded.json().authorDiscipline).toBe("RN");
+    const id = recorded.json().id as string;
+
+    const edited = await app.inject({
+      method: "PUT",
+      url: `/api/v1/hope/assessments/${id}`,
+      headers: NP,
+      payload: { data: huv1Body().data },
+    });
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${id}/sign`,
+      headers: NP,
+      payload: { ifVersion: recorded.json().version, attestationConfirmed: true },
+    });
+    expect(edited.statusCode).toBe(403);
+    expect(signed.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("guards HUV completion-date writes by the stored discipline and fails closed for a legacy NULL", async () => {
+    const { app } = makeServer();
+    const recorded = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(recorded.statusCode).toBe(201);
+    const denied = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/hope/assessments/${recorded.json().id}/huv/completion-date`,
+      headers: NP,
+      payload: { ifVersion: recorded.json().version, z0350: "2026-06-12" },
+    });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+
+    const { app: legacyApp } = makeServer({ assessmentAuthorDisciplineOverride: null });
+    const legacyDraft = await legacyApp.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(legacyDraft.statusCode).toBe(201);
+    const legacyDenied = await legacyApp.inject({
+      method: "PATCH",
+      url: `/api/v1/hope/assessments/${legacyDraft.json().id}/huv/completion-date`,
+      headers: RN,
+      payload: { ifVersion: legacyDraft.json().version, z0350: "2026-06-12" },
+    });
+    expect(legacyDenied.statusCode).toBe(403);
+    await legacyApp.close();
   });
 });
 

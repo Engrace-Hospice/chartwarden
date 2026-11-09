@@ -221,8 +221,6 @@ function isOfficialRfaKind(rfaKind: string): rfaKind is (typeof OFFICIAL_RFA_KIN
   return (OFFICIAL_RFA_KINDS as readonly string[]).includes(rfaKind);
 }
 
-// `hope_assessment` carries no author_discipline / version column (the correction chain is append-only;
-// the discipline is a request-time attribute, not persisted). Reads project the stable view defaults.
 const toAssessmentView = (r: AssessmentRow): HopeAssessmentView => ({
   id: r.id,
   patientId: r.patientId,
@@ -230,7 +228,7 @@ const toAssessmentView = (r: AssessmentRow): HopeAssessmentView => ({
   rfaKind: r.rfaKind as HopeAssessmentView["rfaKind"],
   status: r.status as HopeAssessmentView["status"],
   targetDate: r.targetDate.toISOString(),
-  authorDiscipline: "",
+  authorDiscipline: r.authorDiscipline ?? "",
   j2051MaxSeverity: r.j2051MaxSeverity as HopeAssessmentView["j2051MaxSeverity"],
   j2051TriggerFired: r.j2051TriggerFired,
   wasLate: r.wasLate,
@@ -1158,6 +1156,7 @@ export function createDbHopeBackend(
             patientId: ASSESS.patientId,
             signedByMembershipId: ASSESS.signedByMembershipId,
             rfaKind: ASSESS.rfaKind,
+            authorDiscipline: ASSESS.authorDiscipline,
           })
           .from(ASSESS)
           .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
@@ -1165,12 +1164,14 @@ export function createDbHopeBackend(
           patientId: string;
           signedByMembershipId: string | null;
           rfaKind: string;
+          authorDiscipline: string | null;
         }[];
         if (!r) return null; // absent / cross-tenant → deny
         return {
           patientId: r.patientId,
           originalSignedBy: r.signedByMembershipId ?? null,
           rfaKind: r.rfaKind,
+          authorDiscipline: r.authorDiscipline,
         };
       });
     },
@@ -1352,6 +1353,7 @@ export function createDbHopeBackend(
               isc: init.isc,
               status: "draft",
               data: args.data,
+              authorDiscipline: args.authorDiscipline as AssessmentRow["authorDiscipline"],
               providerEntityId: admissionSummary?.providerEntityId ?? null,
               locationId: admissionSummary?.locationId ?? null,
               dischargeReason: args.dischargeReason as AssessmentRow["dischargeReason"],
@@ -1459,6 +1461,7 @@ export function createDbHopeBackend(
               rfaKind: "04_sfv",
               status: "signed",
               data: args.data,
+              authorDiscipline: args.authorDiscipline as AssessmentRow["authorDiscipline"],
               targetDate: new Date(args.targetDate),
               signedAt: at,
               signedByMembershipId: userId,
@@ -1820,6 +1823,7 @@ export function createDbHopeBackend(
               isc: init.isc,
               status: "draft",
               data: args.data,
+              authorDiscipline: args.authorDiscipline as AssessmentRow["authorDiscipline"],
               // The composite self-FK forces the correction to REUSE the original's target_date.
               targetDate: original.targetDate,
               j2051MaxSeverity: original.j2051MaxSeverity,
@@ -1913,6 +1917,7 @@ export function createDbHopeBackend(
               locationId: original.locationId,
               signedAt: null,
               signedByMembershipId: null,
+              authorDiscipline: original.authorDiscipline,
               createdByMembershipId: userId,
               correctsAssessmentId: id,
             })

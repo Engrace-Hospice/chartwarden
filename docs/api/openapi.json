@@ -153595,6 +153595,7 @@
                     "type": "string"
                   },
                   "authorDiscipline": {
+                    "description": "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
                     "anyOf": [
                       {
                         "const": "RN",

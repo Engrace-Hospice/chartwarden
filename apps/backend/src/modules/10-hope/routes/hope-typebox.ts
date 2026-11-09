@@ -35,6 +35,19 @@ const AUTHOR_DISCIPLINE = Type.Union([Type.Literal("RN"), Type.Literal("NP"), Ty
 /** SFV (RFA-04) authors additionally allow LPN/LVN (CMS HOPE Guidance Manual v1.03); MD stays accepted at
  *  the boundary so it is refused by the ABAC predicate (403), as before. */
 const SFV_AUTHOR_DISCIPLINE = lit(["RN", "NP", "MD", "LPN", "LVN"] as const);
+const CORRECTION_AUTHOR_DISCIPLINE = Type.Union(
+  [
+    Type.Literal("RN"),
+    Type.Literal("NP"),
+    Type.Literal("MD"),
+    Type.Literal("LPN"),
+    Type.Literal("LVN"),
+  ],
+  {
+    description:
+      "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
+  },
+);
 /** The §4.3 J2051 per-symptom severity vocabulary. */
 const J2051_SEVERITY = Type.Union([
   Type.Literal("none"),
@@ -226,7 +239,7 @@ export const CorrectTimepointSchema = Type.Object({
   correctionReason: Type.String({ minLength: 1, maxLength: 2000 }),
   ifVersion: Type.Optional(Type.Integer({ minimum: 1 })),
   targetDate: Type.String({ format: "date-time" }),
-  authorDiscipline: SFV_AUTHOR_DISCIPLINE,
+  authorDiscipline: CORRECTION_AUTHOR_DISCIPLINE,
   data: HopeData,
 });
 export const InactivateTimepointSchema = Type.Object({

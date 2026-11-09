@@ -95,6 +95,8 @@ export interface HopeAssessmentAbacFacts {
   /** The record's RFA kind: lets the author-discipline predicate apply the SFV rule to an SFV's
    * draft-edit/sign/correct routes (#850). */
   readonly rfaKind: string;
+  /** Frozen author attribution. Null only for legacy rows; edit/sign fail closed. */
+  readonly authorDiscipline: string | null;
 }
 
 /** Loads a HOPE assessment's org-scoped signer + patient facts (in-memory in the slice; Drizzle in prod
@@ -189,7 +191,14 @@ export function buildHopeAbacPredicates(
       const facts = id ? await resolver.loadAssessment(context.organizationId, id) : null;
       const allowed =
         facts?.rfaKind === "04_sfv" ? isSfvAuthorDisciplineAllowed : isHopeAuthorDisciplineAllowed;
-      return hopeDisciplinesOf(context).some((d) => allowed(d));
+      const actorDisciplines = hopeDisciplinesOf(context);
+      if (!actorDisciplines.some((d) => allowed(d))) return false;
+      // Existing-row writes preserve the record's frozen attribution: holding some other eligible
+      // discipline is insufficient, and a pre-1394 NULL cannot silently acquire an attribution.
+      if (id && (!facts?.authorDiscipline || !actorDisciplines.includes(facts.authorDiscipline))) {
+        return false;
+      }
+      return true;
     },
     "hope.sfvAuthorAllowed": async (context) =>
       hopeDisciplinesOf(context).some((d) => isSfvAuthorDisciplineAllowed(d)),

@@ -1470,6 +1470,15 @@ export const hopeAssessmentStatus = pgEnum("hope_assessment_status", [
   "superseded",
 ]);
 
+/** `hope_author_discipline` — frozen attribution on each HOPE assessment row. */
+export const hopeAuthorDiscipline = pgEnum("hope_author_discipline", [
+  "RN",
+  "NP",
+  "MD",
+  "LPN",
+  "LVN",
+]);
+
 /** `hope_schedule_status` — the §2.2.1 timepoint-window lifecycle (open → completed/expired/skipped). */
 export const hopeScheduleStatus = pgEnum("hope_schedule_status", [
   "open",
