@@ -327,18 +327,26 @@ describe.skipIf(!DB_URL)(
 
     it("commits the send reservation before transport and never re-sends an uncertain outcome", async () => {
       const { claimId, submissionId, ccn } = await seedReadyClaim({
-        patient: "dddddddd-dddd-dddd-dddd-dddddddddddd", attemptIndex: 0, withBlockingFailure: false,
+        patient: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        attemptIndex: 0,
+        withBlockingFailure: false,
       });
       let uploads = 0;
       let publishedFailure = false;
       const deps: M23WorkerDeps = {
-        connection: {} as never, db: handle.db as unknown as repositories.BillingDb,
-        outbox: { publish: async (_tx, event) => { if (event.eventName === "m23.claim.submission_failed") publishedFailure = true; } },
+        connection: {} as never,
+        db: handle.db as unknown as repositories.BillingDb,
+        outbox: {
+          publish: async (_tx, event) => {
+            if (event.eventName === "m23.claim.submission_failed") publishedFailure = true;
+          },
+        },
         x12: {
           generate837i: async () => ({ x12: "ISA*00*...", correlationId: "corr-uncertain" }),
           generateNoe: async () => ({ x12: "", correlationId: "" }),
           generateNotr: async () => ({ x12: "", correlationId: "" }),
-          parse999: async () => [], parse277ca: async () => [],
+          parse999: async () => [],
+          parse277ca: async () => [],
         },
         macPortal: {
           upload: async () => {
@@ -348,12 +356,23 @@ describe.skipIf(!DB_URL)(
             expect(rows[0].n).toBe(0);
             throw new Error("connection closed after remote receipt may have been accepted");
           },
-          pullPending999: async () => [], pullPending277ca: async () => [], probeHealth: async () => true,
+          pullPending999: async () => [],
+          pullPending277ca: async () => [],
+          probeHealth: async () => true,
         },
       };
-      const job: ClaimSubmitJob = { organizationId: ORG, claimId, submissionId, claimControlNumber: ccn, attemptIndex: 0 };
+      const job: ClaimSubmitJob = {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      };
       await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
-      expect(await submissionRow(submissionId)).toMatchObject({ outcome: "queued", dispatch_state: "in_doubt" });
+      expect(await submissionRow(submissionId)).toMatchObject({
+        outcome: "queued",
+        dispatch_state: "in_doubt",
+      });
       await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
       expect(uploads).toBe(1);
       expect(publishedFailure).toBe(false);
@@ -482,30 +501,48 @@ describe.skipIf(!DB_URL)(
 
     it("allows only one concurrent worker delivery to acquire the durable send reservation", async () => {
       const { claimId, submissionId, ccn } = await seedReadyClaim({
-        patient: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", attemptIndex: 0, withBlockingFailure: false,
+        patient: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        attemptIndex: 0,
+        withBlockingFailure: false,
       });
       let uploads = 0;
       const deps: M23WorkerDeps = {
-        connection: {} as never, db: handle.db as unknown as repositories.BillingDb,
+        connection: {} as never,
+        db: handle.db as unknown as repositories.BillingDb,
         outbox: { publish: async () => {} },
         x12: {
           generate837i: async () => ({ x12: "ISA*00*...", correlationId: "corr-concurrent" }),
           generateNoe: async () => ({ x12: "", correlationId: "" }),
           generateNotr: async () => ({ x12: "", correlationId: "" }),
-          parse999: async () => [], parse277ca: async () => [],
+          parse999: async () => [],
+          parse277ca: async () => [],
         },
         macPortal: {
-          upload: async () => { uploads += 1; return { accepted: true, generatedFileUri: "s3://claims/concurrent.837" }; },
-          pullPending999: async () => [], pullPending277ca: async () => [], probeHealth: async () => true,
+          upload: async () => {
+            uploads += 1;
+            return { accepted: true, generatedFileUri: "s3://claims/concurrent.837" };
+          },
+          pullPending999: async () => [],
+          pullPending277ca: async () => [],
+          probeHealth: async () => true,
         },
       };
-      const job: ClaimSubmitJob = { organizationId: ORG, claimId, submissionId, claimControlNumber: ccn, attemptIndex: 0 };
+      const job: ClaimSubmitJob = {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      };
       await Promise.all([
         runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job),
         runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job),
       ]);
       expect(uploads).toBe(1);
-      expect(await submissionRow(submissionId)).toMatchObject({ outcome: "submitted", dispatch_state: "finished" });
+      expect(await submissionRow(submissionId)).toMatchObject({
+        outcome: "submitted",
+        dispatch_state: "finished",
+      });
     });
   },
 );

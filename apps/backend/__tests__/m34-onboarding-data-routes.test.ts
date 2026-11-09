@@ -117,10 +117,6 @@ function recordingService(calls: Call[]): OnboardingDataService {
       calls.push({ method: "verifyClearinghouse", op, orgSlug, fields, reason });
       return { config: { vendor: "claimmd" }, test: { outcome: "ok" } };
     },
-    activateClearinghouse: async (op: OnboardingOperator, orgSlug: string, reason: string) => {
-      calls.push({ method: "activateClearinghouse", op, orgSlug, reason });
-      return { status: "active" };
-    },
     verifyClearinghouseBaa: async (
       op: OnboardingOperator,
       orgSlug: string,
@@ -315,11 +311,6 @@ describe("write guards (every write route)", () => {
     {
       method: "POST",
       url: `${URL_BASE}/clearinghouse/verify`,
-      payload: { reason: "ticket CHG-1" },
-    },
-    {
-      method: "POST",
-      url: `${URL_BASE}/clearinghouse/activate`,
       payload: { reason: "ticket CHG-1" },
     },
     {
@@ -546,7 +537,7 @@ describe("clearinghouse routes", () => {
     await app.close();
   });
 
-  it("verify and activate carry the operator, the reason and the verify body; GET is read-guarded", async () => {
+  it("verify carries the operator, the reason and the verify body; GET is read-guarded; there is no platform activate (only the tenant's own admin activates)", async () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
     const verify = await app.inject({
@@ -557,13 +548,14 @@ describe("clearinghouse routes", () => {
     });
     expect(verify.statusCode).toBe(200);
     expect(verify.json()).toEqual({ config: { vendor: "claimmd" }, test: { outcome: "ok" } });
+    // CW-AC-17: activation is the tenant's. The platform lane has no route for it, whatever its role and step-up.
     const activate = await app.inject({
       method: "POST",
       url: `${URL_BASE}/clearinghouse/activate`,
       headers: fresh(),
       payload: { reason: "ticket CHG-1" },
     });
-    expect(activate.statusCode).toBe(200);
+    expect(activate.statusCode).toBe(404);
     const read = await app.inject({
       method: "GET",
       url: `${URL_BASE}/clearinghouse`,
@@ -580,11 +572,7 @@ describe("clearinghouse routes", () => {
       },
     });
     expect(tenant.statusCode).toBe(403);
-    expect(calls.map((c) => c.method)).toEqual([
-      "verifyClearinghouse",
-      "activateClearinghouse",
-      "getClearinghouse",
-    ]);
+    expect(calls.map((c) => c.method)).toEqual(["verifyClearinghouse", "getClearinghouse"]);
     expect(calls[0]?.fields).toEqual({ evidenceNote: "Sandbox claim accepted, ticket OPS-9" });
     expect(calls[0]?.op.userId).toBe(OPERATOR_USER);
     await app.close();
@@ -1097,10 +1085,6 @@ describe("service: the clearinghouse choice", () => {
           detail: { verificationKind: "connection_test", testOutcome: "ok" },
         };
       },
-      activate: async () => {
-        seen.push({ method: "activate" });
-        return { resourceId: CONFIG_ID, view: { status: "active" } };
-      },
       verifyBaa: async (_tx: unknown, _scope: unknown, expected: unknown) => {
         seen.push({ method: "verifyBaa", expected });
         return { resourceId: CONFIG_ID, view: { status: "verified", baa: { verified: {} } } };
@@ -1154,7 +1138,7 @@ describe("service: the clearinghouse choice", () => {
     expect(settled).toEqual([TARGET_ORG]);
   });
 
-  it("verify audits how it was verified and the test outcome; activate audits the activation; each settles the wizard step", async () => {
+  it("verify audits how it was verified and the test outcome and settles the wizard step", async () => {
     const { db, inserts } = stubDb("provisioning");
     const { port } = fakePort();
     const settled: string[] = [];
@@ -1166,16 +1150,14 @@ describe("service: the clearinghouse choice", () => {
     });
     const verified = await service.verifyClearinghouse(OPERATOR, "tenant-b", {}, "ticket CHG-1");
     expect(verified).toEqual({ config: { status: "verified" }, test: { outcome: "ok" } });
-    await service.activateClearinghouse(OPERATOR, "tenant-b", "ticket CHG-1");
     expect(inserts.map((i) => i.values.eventType)).toEqual([
       ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseVerified,
-      ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseActivated,
     ]);
     expect(inserts[0]?.values.context).toMatchObject({
       verificationKind: "connection_test",
       testOutcome: "ok",
     });
-    expect(settled).toEqual([TARGET_ORG, TARGET_ORG]);
+    expect(settled).toEqual([TARGET_ORG]);
   });
 
   it("is refused once the tenant is active (409 TENANT_NOT_ONBOARDING), audited, and nothing is settled", async () => {
@@ -1224,8 +1206,8 @@ describe("service: the clearinghouse choice", () => {
       logError: (cause) => errored.push(cause),
     });
     await expect(
-      service.activateClearinghouse(OPERATOR, "tenant-b", "ticket CHG-1"),
-    ).resolves.toEqual({ status: "active" });
+      service.verifyClearinghouse(OPERATOR, "tenant-b", {}, "ticket CHG-1"),
+    ).resolves.toEqual({ config: { status: "verified" }, test: { outcome: "ok" } });
     // warned with its own message and the raw error (for the redacting logger), never through the tax-id `logError`
     expect(warned).toEqual([
       {

@@ -153,11 +153,21 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   }
   async function eventRows(eventType: string, key: string, value: string) {
     const { rows } = await admin.query(
-      `SELECT organization_id, payload, status FROM outbox_event
+      `SELECT id, organization_id, payload, status FROM outbox_event
         WHERE event_type=$1 AND payload->>$2=$3`,
       [eventType, key, value],
     );
-    return rows as { organization_id: string; payload: Record<string, unknown>; status: string }[];
+    return rows as {
+      id: string;
+      organization_id: string;
+      payload: Record<string, unknown>;
+      status: string;
+    }[];
+  }
+  /** The ops notices raised for one notice's late-filing event (the ops details carry no notice id: matched by the event id). */
+  async function opsNoticesFor(noeId: string) {
+    const ids = (await eventRows("m23.noe.filed_externally_late", "noeId", noeId)).map((r) => r.id);
+    return lateOpsNotices.filter((n) => ids.includes(n.correlationId));
   }
   async function firstPeriodId(admissionId: string): Promise<string> {
     const { rows } = await admin.query(
@@ -1335,9 +1345,9 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
         payload: { noeId: late, admissionId: expect.any(String), filedOn, windowTargetAt },
       }),
     ]);
-    expect(
-      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === late),
-    ).toEqual([expect.objectContaining({ kind: "m23.notice_filed_late" })]);
+    expect(await opsNoticesFor(late)).toEqual([
+      expect.objectContaining({ kind: "m23.notice_filed_late" }),
+    ]);
     // An idempotent replay of the same recording publishes nothing more.
     await service.recordNoeExternalFiling(actorOf(ORG_A), late, { filedOn });
     expect(await eventRows("m23.noe.filed_externally_late", "noeId", late)).toHaveLength(1);
@@ -1396,9 +1406,9 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
         payload: expect.objectContaining({ breachObservedAt: observed, filedOn: todayIso() }),
       }),
     ]);
-    expect(
-      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === onTime),
-    ).toEqual([expect.objectContaining({ kind: "m23.notice_filing_contradicts_breach" })]);
+    expect(await opsNoticesFor(onTime)).toEqual([
+      expect.objectContaining({ kind: "m23.notice_filing_contradicts_breach" }),
+    ]);
     // a replay announces nothing more
     await service.recordNoeExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
     expect(await eventRows("m23.noe.filed_externally_late", "noeId", onTime)).toHaveLength(1);
@@ -1476,9 +1486,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect(await eventRows("m23.noe.filed_externally_late", "noeId", id)).toHaveLength(1); // the first record's, no second
     await dispatcher.tick();
     expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === id)).toEqual([]);
-    expect(
-      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === id),
-    ).toEqual([]);
+    expect(await opsNoticesFor(id)).toEqual([]);
   }, 60_000);
 
   // The deadline watchdog stamps `medicareReceiptDay(now)` on its first tick after the due day: target + 1. A tenant that filed

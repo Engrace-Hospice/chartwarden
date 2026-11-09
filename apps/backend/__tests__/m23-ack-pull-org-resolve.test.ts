@@ -23,12 +23,23 @@ const SECRET = "postgres://app:hunter2@10.0.0.9/chartwarden";
 function deps(opts: {
   readonly resolveError?: unknown;
   readonly pullError?: unknown;
+  /** The vendor's own reason text of a degraded acknowledgment fetch (it may carry vendor details). */
+  readonly degradedReason?: string;
 }) {
   const polled: string[] = [];
   const logs: { fields: Record<string, unknown>; message: string }[] = [];
   const alerts: { alertCode: string; organizationId: string; payload: Record<string, unknown> }[] =
     [];
-  const transport = {} as never;
+  const transport = (
+    opts.degradedReason === undefined
+      ? {}
+      : {
+          fetchAcknowledgments: async () => ({
+            ok: false,
+            degraded: { code: "CH_UNAVAILABLE", reason: opts.degradedReason },
+          }),
+        }
+  ) as never;
   const d = {
     connection: {} as never,
     db: {} as never,
@@ -53,13 +64,23 @@ function deps(opts: {
         },
       },
       contexts: {
-        contextFor: async () => {
-          throw new Error("no provider entity is pulled in this test");
+        contextFor: async (organizationId: string, providerEntityId: string) => {
+          if (opts.degradedReason === undefined) {
+            throw new Error("no provider entity is pulled in this test");
+          }
+          return {
+            organizationId,
+            providerEntityId,
+            payerId: "ngs_j6",
+            correlationId: "corr",
+            usage: "test",
+            jurisdiction: "ngs_j6",
+          };
         },
         providerEntitiesFor: async (organizationId: string) => {
           polled.push(organizationId);
           if (organizationId === HEALTHY && opts.pullError) throw opts.pullError;
-          return [];
+          return opts.degradedReason === undefined ? [] : ["22222222-2222-4222-8222-222222222222"];
         },
       },
     },
@@ -109,6 +130,17 @@ describe("the M23 ack pull reports an organization whose clearinghouse cannot be
       expect(raised).toBeInstanceOf(Error);
       expect((raised as Error).message).toContain(`org ${HEALTHY}: Error`);
       expect((raised as Error).message).not.toContain("hunter2");
+    });
+
+    it(`${name}: a degraded vendor answer's reason text never reaches the job error, a log line or an alert`, async () => {
+      // `failure()` keeps the vendor's reason on the error message for the caller only; the job error becomes BullMQ's failedReason.
+      const { d, logs, alerts } = deps({ degradedReason: `denied for ${SECRET}` });
+      const raised = await pull(d).catch((error: unknown) => error as Error);
+      expect(raised).toBeInstanceOf(Error);
+      expect((raised as Error).message).toContain("CH_UNAVAILABLE");
+      expect(JSON.stringify({ message: (raised as Error).message, logs, alerts })).not.toContain(
+        "hunter2",
+      );
     });
   }
 });

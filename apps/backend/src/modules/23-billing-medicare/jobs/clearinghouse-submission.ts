@@ -162,9 +162,19 @@ export class ClearinghouseTransportError extends Error {
   }
 }
 
-function failure(what: string, code: string, reason: string, ambiguous = false): ClearinghouseTransportError {
+function failure(
+  what: string,
+  code: string,
+  reason: string,
+  ambiguous = false,
+): ClearinghouseTransportError {
   // `reason` is useful to the caller but must never be persisted or logged; it may contain vendor details.
-  return new ClearinghouseTransportError(what, code, ambiguous, `clearinghouse ${what} failed (${code}): ${reason}`);
+  return new ClearinghouseTransportError(
+    what,
+    code,
+    ambiguous,
+    `clearinghouse ${what} failed (${code}): ${reason}`,
+  );
 }
 
 /**
@@ -283,8 +293,16 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
     let evidenceId: string | null = null;
     let noticeEvidenceId: string | null = null;
     if (transport.binding.vendor === "claimmd") {
-      if (kind === "claim" && (!input.expectedRouteFingerprint || input.expectedRouteFingerprint !== ctx.claimMdRouteFingerprint)) {
-        throw failure(kind, CH.INVALID_REQUEST, "the Claim.MD payer route changed after submission was authorized");
+      if (
+        kind === "claim" &&
+        (!input.expectedRouteFingerprint ||
+          input.expectedRouteFingerprint !== ctx.claimMdRouteFingerprint)
+      ) {
+        throw failure(
+          kind,
+          CH.INVALID_REQUEST,
+          "the Claim.MD payer route changed after submission was authorized",
+        );
       }
       const exact = payloadFor(transport.binding.vendor, kind, input);
       if (exact.format !== "x12")
@@ -435,12 +453,13 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         ? transport.binding.transport.submitClaim(ctx, submission)
         : transport.binding.transport.submitNotice(ctx, submission),
     );
-    if (!result.ok) throw failure(
-      kind,
-      result.degraded.code,
-      result.degraded.reason,
-      result.degraded.ambiguous === true || result.degraded.code === CH.IN_DOUBT,
-    );
+    if (!result.ok)
+      throw failure(
+        kind,
+        result.degraded.code,
+        result.degraded.reason,
+        result.degraded.ambiguous === true || result.degraded.code === CH.IN_DOUBT,
+      );
     if ((evidenceId && evidence.submission) || (noticeEvidenceId && evidence.notice)) {
       const value = result.data.clearinghouseSubmissionId;
       const fieldNamespace: Record<
@@ -649,10 +668,9 @@ export async function pullTransportAcks(
       );
       if (outcome === "backlog") backlog.push(`org ${organizationId} provider ${providerEntityId}`);
     } catch (err) {
-      // Ids and the (PHI-free) failure text only.
-      failures.push(
-        `org ${organizationId} provider ${providerEntityId}: ${err instanceof Error ? err.message : "failed"}`,
-      );
+      // Ids and a code or class only: the error's message can carry the vendor's reason text (see `failure`), and this string
+      // reaches the job error (BullMQ's failedReason) and the logs.
+      failures.push(`org ${organizationId} provider ${providerEntityId}: ${failureLabel(err)}`);
     }
   }
   return { failures, backlog, quarantined };

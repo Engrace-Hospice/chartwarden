@@ -150,7 +150,10 @@ interface PayerRoutePreview {
 }
 
 interface ClaimPreparationResponse {
-  readonly route: { readonly status: "verified" | "not_configured" | "not_applicable"; readonly reasonCode?: string };
+  readonly route: {
+    readonly status: "verified" | "not_configured" | "not_applicable";
+    readonly reasonCode?: string;
+  };
   readonly previewVersion: number;
   readonly previewGeneratedAt: string;
   readonly previewExpiresAt: string | null;
@@ -261,13 +264,12 @@ export function ClaimEditor(): JSX.Element {
               preparation.route.status === "not_applicable"
                 ? preparation.route.status
                 : "not_configured",
-            ...(preparation.route.reasonCode
-              ? { reasonCode: preparation.route.reasonCode }
-              : {}),
+            ...(preparation.route.reasonCode ? { reasonCode: preparation.route.reasonCode } : {}),
             previewVersion: preparation.previewVersion,
             previewExpiresAt: preparation.previewExpiresAt,
             previewConfirmationToken: preparation.previewConfirmationToken,
-            submissionEligible: preparation.submissionEligible === true && preparation.rendererStatus === "rendered",
+            submissionEligible:
+              preparation.submissionEligible === true && preparation.rendererStatus === "rendered",
             stale: preparation.previewVersion !== currentClaim.version,
             rendererStatus: preparation.rendererStatus,
             rendererGaps: preparation.rendererGaps ?? [],
@@ -318,9 +320,14 @@ export function ClaimEditor(): JSX.Element {
         // §2.5 — replace/void must carry `ifVersion` (the row version the caller read) alongside the
         // If-Match header; the route's TypeBox body (ClaimReplaceRequest/ClaimVoidRequest) requires it and
         // previously never received it, so every replace/void 422'd before If-Match was even checked.
-        body: mode === "submit"
-          ? { ifVersion: claim.version, acknowledgeAllOverrides: false, previewConfirmationToken: routePreview?.previewConfirmationToken ?? "" }
-          : { reason: reason.trim(), ifVersion: claim.version },
+        body:
+          mode === "submit"
+            ? {
+                ifVersion: claim.version,
+                acknowledgeAllOverrides: false,
+                previewConfirmationToken: routePreview?.previewConfirmationToken ?? "",
+              }
+            : { reason: reason.trim(), ifVersion: claim.version },
       };
       const path =
         mode === "submit"
@@ -349,10 +356,15 @@ export function ClaimEditor(): JSX.Element {
         if (response?.status === 412)
           setActionError("This claim changed since you opened it — close and reopen to retry.");
         else if (err?.error?.code === "CLAIM_PREVIEW_STALE") {
-          setActionError("Billing information changed after review. Refresh the preview and review it again before submitting.");
-          setRoutePreview((current) => current ? { ...current, submissionEligible: false, previewConfirmationToken: null } : null);
-        }
-        else if (response?.status === 422)
+          setActionError(
+            "Billing information changed after review. Refresh the preview and review it again before submitting.",
+          );
+          setRoutePreview((current) =>
+            current
+              ? { ...current, submissionEligible: false, previewConfirmationToken: null }
+              : null,
+          );
+        } else if (response?.status === 422)
           setActionError("Validation failed — resolve the claim's open findings first.");
         else if (response?.status === 503)
           setActionError("Billing write seam unavailable — try again shortly.");
@@ -371,8 +383,12 @@ export function ClaimEditor(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error || !claim) return <EmptyState title="Unavailable" description={error ?? "No claim."} />;
 
-  const canSubmit = claim.state === "ready" && routePreview?.submissionEligible === true && !routePreview.stale &&
-    !!routePreview.previewConfirmationToken && !!routePreview.previewExpiresAt &&
+  const canSubmit =
+    claim.state === "ready" &&
+    routePreview?.submissionEligible === true &&
+    !routePreview.stale &&
+    !!routePreview.previewConfirmationToken &&
+    !!routePreview.previewExpiresAt &&
     Date.parse(routePreview.previewExpiresAt) > clockNow;
   // The server's REPLACEABLE_STATES (write-service-drizzle.ts): accepted, partially accepted, paid.
   const canReplaceVoid = REPLACEABLE.has(claim.state);
@@ -463,55 +479,93 @@ export function ClaimEditor(): JSX.Element {
       <section style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
         <ClaimSummaryGrid claim={claim} />
         <section aria-labelledby="claim-preparation-title" style={preparationStyle}>
-          <h2 id="claim-preparation-title" style={sectionTitleStyle}>Submission preparation</h2>
+          <h2 id="claim-preparation-title" style={sectionTitleStyle}>
+            Submission preparation
+          </h2>
           {!routePreview ? (
-            <p role="status">Checking payer route and current claim readiness…</p>
+            <p>
+              <output>Checking payer route and current claim readiness…</output>
+            </p>
           ) : routePreview.stale ? (
-            <p role="alert" aria-live="polite">Claim details changed while this preparation view was loading. Refresh before submitting.</p>
+            <p role="alert" aria-live="polite">
+              Claim details changed while this preparation view was loading. Refresh before
+              submitting.
+            </p>
           ) : routePreview.status === "not_configured" ? (
             <p role="alert" aria-live="polite">
-              Claim.MD payer route is not verified for this provider and environment. The claim is held until the route is configured.
+              Claim.MD payer route is not verified for this provider and environment. The claim is
+              held until the route is configured.
               {routePreview.reasonCode ? ` (${routePreview.reasonCode})` : ""}
             </p>
           ) : (
             <div>
-              <p role="status">
-                {routePreview.status === "verified"
-                  ? "Claim.MD payer route verified for this provider and environment."
-                  : "Legacy MAC route applies; Claim.MD payer routing is not selected."}
+              <p>
+                <output>
+                  {routePreview.status === "verified"
+                    ? "Claim.MD payer route verified for this provider and environment."
+                    : "Legacy MAC route applies; Claim.MD payer routing is not selected."}
+                </output>
               </p>
-              <p>Preparation check is based on claim version {routePreview.previewVersion}; the final X12 payload digest is recorded at send time.</p>
+              <p>
+                Preparation check is based on claim version {routePreview.previewVersion}; the final
+                X12 payload digest is recorded at send time.
+              </p>
               {routePreview.rendererStatus === "rendered" && routePreview.billingPreview ? (
                 <div aria-label="Rendered claim review">
                   <h3>Billing information in the 837I</h3>
                   <p>
-                    Type of bill {routePreview.billingPreview.tob}; service period {routePreview.billingPreview.serviceFrom} to {routePreview.billingPreview.serviceTo}; {routePreview.billingPreview.lines.length} rendered service lines; total {formatCents(routePreview.billingPreview.totalChargeCents)}.
+                    Type of bill {routePreview.billingPreview.tob}; service period{" "}
+                    {routePreview.billingPreview.serviceFrom} to{" "}
+                    {routePreview.billingPreview.serviceTo};{" "}
+                    {routePreview.billingPreview.lines.length} rendered service lines; total{" "}
+                    {formatCents(routePreview.billingPreview.totalChargeCents)}.
                   </p>
                   <ul aria-label="Rendered billing lines">
                     {routePreview.billingPreview.lines.map((line) => (
                       <li key={line.lineNumber}>
-                        Line {line.lineNumber}: {line.serviceDateFrom} to {line.serviceDateTo}; revenue {line.revenueCode}, {line.hcpcs}
-                        {line.modifiers.length ? ` (${line.modifiers.join(", ")})` : ""}; {line.units} units, {formatCents(line.chargeCents)}
+                        Line {line.lineNumber}: {line.serviceDateFrom} to {line.serviceDateTo}
+                        {"; "}revenue {line.revenueCode}, {line.hcpcs}
+                        {line.modifiers.length ? ` (${line.modifiers.join(", ")})` : ""}
+                        {"; "}
+                        {line.units} units, {formatCents(line.chargeCents)}
                       </li>
                     ))}
                   </ul>
-                  <p>Diagnoses: {routePreview.billingPreview.diagnosisCodes.join(", ") || "None"}</p>
+                  <p>
+                    Diagnoses: {routePreview.billingPreview.diagnosisCodes.join(", ") || "None"}
+                  </p>
                 </div>
               ) : (
                 <div>
-                  <p role="alert" aria-live="polite">The 837I renderer cannot produce this claim yet. Resolve these billing information gaps before submitting.</p>
+                  <p role="alert" aria-live="polite">
+                    The 837I renderer cannot produce this claim yet. Resolve these billing
+                    information gaps before submitting.
+                  </p>
                   {routePreview.rendererGaps.length > 0 ? (
-                    <ul>{routePreview.rendererGaps.map((gap) => <li key={`${gap.field}:${gap.reason}`}>{gap.field}: {gap.reason}</li>)}</ul>
+                    <ul>
+                      {routePreview.rendererGaps.map((gap) => (
+                        <li key={`${gap.field}:${gap.reason}`}>
+                          {gap.field}: {gap.reason}
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
                 </div>
               )}
               {!routePreview.submissionEligible ? (
-                <p role="note">Submission is unavailable until validation passes and the claim remains current.</p>
+                <p role="note">
+                  Submission is unavailable until validation passes and the claim remains current.
+                </p>
               ) : null}
-              {routePreview.previewExpiresAt && Date.parse(routePreview.previewExpiresAt) <= clockNow ? (
-                <p role="alert" aria-live="polite">This preview has expired. Refresh it before submitting.</p>
+              {routePreview.previewExpiresAt &&
+              Date.parse(routePreview.previewExpiresAt) <= clockNow ? (
+                <p role="alert" aria-live="polite">
+                  This preview has expired. Refresh it before submitting.
+                </p>
               ) : null}
-              <button type="button" onClick={() => void load()} disabled={loading || busy}>Refresh preview</button>
+              <button type="button" onClick={() => void load()} disabled={loading || busy}>
+                Refresh preview
+              </button>
             </div>
           )}
         </section>
@@ -537,7 +591,11 @@ export function ClaimEditor(): JSX.Element {
           field — the modal has no step-up input because typing into one here never verified anything. */}
       <CeremonyModal
         open={ceremony === "submit"}
-        title={routePreview?.status === "verified" ? "Submit claim through Claim.MD" : "Submit claim to MAC"}
+        title={
+          routePreview?.status === "verified"
+            ? "Submit claim through Claim.MD"
+            : "Submit claim to MAC"
+        }
         attestation={
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>

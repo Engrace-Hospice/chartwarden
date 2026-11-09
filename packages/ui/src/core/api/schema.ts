@@ -19555,6 +19555,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409 */
         post: operations["postApiV1OpsClaimmdErasByInboxIdRecovery"];
         delete?: never;
         options?: never;
@@ -21881,23 +21882,6 @@ export interface paths {
         /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
         put: operations["putApiV1PlatformTenantsByOrgSlugClearinghouse"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
-        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseActivate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -25337,6 +25321,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Claim.MD ERAs staged for M25 posting, filterable by provider entity and stage state, cursor-paginated */
         get: operations["getApiV1RemittanceClaimmdera"];
         put?: never;
         post?: never;
@@ -25353,6 +25338,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One Claim.MD ERA staged for M25 posting */
         get: operations["getApiV1RemittanceClaimmderaById"];
         put?: never;
         post?: never;
@@ -88914,7 +88900,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Client-generated id; a replay with the same id is idempotent
+                     */
+                    actionId: string;
+                    /** @description Must equal this runtime's configured Claim.MD account */
+                    accountReference: string;
+                    usage: "test" | "production";
+                    stage: "capture" | "ownership_resolution" | "m25_delivery";
+                    reasonCode: string;
+                    expectedState: string;
+                    expectedVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -96230,77 +96233,6 @@ export interface operations {
         responses: {
             /** @description OK */
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
-                        mode: ("test" | "production") | null;
-                        status: ("draft" | "verified" | "active") | null;
-                        source: "tenant" | "platform_env" | "none";
-                        /** @description The credential itself is never projected. */
-                        hasSecret: boolean;
-                        verifiableBy: ("connection_test" | "attestation") | null;
-                        verification: {
-                            kind: "connection_test" | "attested";
-                            evidence: string | null;
-                            /** Format: date-time */
-                            verifiedAt: string;
-                        } | null;
-                        lastTest: {
-                            outcome: "ok" | "credential_rejected" | "unreachable";
-                            /** Format: date-time */
-                            at: string;
-                        } | null;
-                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
-                        baaRequired: boolean;
-                        baa: {
-                            /** @constant */
-                            heldBy: "tenant";
-                            /** Format: date */
-                            effectiveDate: string;
-                            documentRef: string;
-                            /** Format: date-time */
-                            recordedAt: string;
-                            verified: {
-                                /** Format: date-time */
-                                at: string;
-                            } | null;
-                        } | null;
-                        activatedAt: string | null;
-                        version: number | null;
-                        updatedAt: string | null;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1PlatformTenantsByOrgSlugClearinghouseActivate: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
-                "Idempotency-Key": string;
-            };
-            path: {
-                orgSlug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
-                    reason: string;
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -105479,7 +105411,12 @@ export interface operations {
     };
     getApiV1RemittanceClaimmdera: {
         parameters: {
-            query?: never;
+            query?: {
+                providerEntityId?: string;
+                state?: string;
+                cursor?: string;
+                limit?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

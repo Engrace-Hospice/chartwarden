@@ -120,26 +120,47 @@ export function medicaidClaimRouteReadiness(
   gatewayBound = false,
 ): MedicaidClaimRouteReadiness {
   const programKind: MedicaidProgramKind = mcoId === null ? "unresolved" : "managed_care";
-  const requestedChannel: "cco_clearinghouse" | null =
-    mcoId === null ? null : "cco_clearinghouse";
-  const base = { serviceState, programKind, programAssignmentVerified: false as const, requestedChannel,
-    localPreparationAvailable: true as const, transportConfigured: serviceState === "OR" && gatewayBound,
-    providerEnrollmentVerified: false as const, tradingPartnerCertificationVerified: false as const,
-    outboundFormat: "unverified" as const, submissionAvailable: false as const };
+  const requestedChannel: "cco_clearinghouse" | null = mcoId === null ? null : "cco_clearinghouse";
+  const base = {
+    serviceState,
+    programKind,
+    programAssignmentVerified: false as const,
+    requestedChannel,
+    localPreparationAvailable: true as const,
+    transportConfigured: serviceState === "OR" && gatewayBound,
+    providerEnrollmentVerified: false as const,
+    tradingPartnerCertificationVerified: false as const,
+    outboundFormat: "unverified" as const,
+    submissionAvailable: false as const,
+  };
   if (mcoId === null) {
-    return { ...base, status: "unsupported_program_route", reasonCode: "MEDICAID_PROGRAM_UNRESOLVED",
-      message: `WardenX cannot verify whether this ${serviceState} coverage is fee-for-service or a managed-care plan. The M40 state Medicaid MCO catalog and a coverage-to-program mapping are not available, so no destination is inferred from a missing MCO value.` };
+    return {
+      ...base,
+      status: "unsupported_program_route",
+      reasonCode: "MEDICAID_PROGRAM_UNRESOLVED",
+      message: `WardenX cannot verify whether this ${serviceState} coverage is fee-for-service or a managed-care plan. The M40 state Medicaid MCO catalog and a coverage-to-program mapping are not available, so no destination is inferred from a missing MCO value.`,
+    };
   }
   if (serviceState === "OR" && programKind === "managed_care") {
-    return { ...base, status: "unsupported_program_route", reasonCode: "MEDICAID_MCO_ROUTE_UNVERIFIED",
-      message: "This managed-care route is not configured or certified for electronic submission. The Oregon reference adapter currently renders a local preparation envelope only; it does not establish a CCO transmission route." };
+    return {
+      ...base,
+      status: "unsupported_program_route",
+      reasonCode: "MEDICAID_MCO_ROUTE_UNVERIFIED",
+      message:
+        "This managed-care route is not configured or certified for electronic submission. The Oregon reference adapter currently renders a local preparation envelope only; it does not establish a CCO transmission route.",
+    };
   }
   const explicitStub = ["WA", "ID", "CA", "NV"].includes(serviceState);
-  return { ...base, status: "unsupported_state_program",
-    reasonCode: explicitStub ? "MEDICAID_STATE_ADAPTER_UNSUPPORTED" : "MEDICAID_STATE_PROGRAM_UNSUPPORTED",
+  return {
+    ...base,
+    status: "unsupported_state_program",
+    reasonCode: explicitStub
+      ? "MEDICAID_STATE_ADAPTER_UNSUPPORTED"
+      : "MEDICAID_STATE_PROGRAM_UNSUPPORTED",
     message: explicitStub
       ? `Electronic Medicaid submission for ${serviceState} is not implemented in WardenX. Claim preparation and local validation remain available. Follow only the state/program's approved submission procedure; this screen cannot transmit or record an external submission.`
-      : `No verified Medicaid state/program route is available for ${serviceState}. Claim preparation may continue, but electronic submission is blocked.` };
+      : `No verified Medicaid state/program route is available for ${serviceState}. Claim preparation may continue, but electronic submission is blocked.`,
+  };
 }
 
 /** Compatibility wrapper for existing submit call sites; all present state/program routes fail closed. */

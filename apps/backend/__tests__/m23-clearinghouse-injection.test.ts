@@ -350,7 +350,9 @@ describe("acknowledgments over the transport", () => {
     });
     const pulled = await pulledAcks(t, "ack_999");
     expect(pulled.acks).toHaveLength(1);
-    expect(pulled.failures).toEqual([expect.stringContaining("no NPI on file")]);
+    // the failing entity is named by id and by error class; the error's own message is never carried into the failure text
+    expect(pulled.failures).toEqual([expect.stringContaining(`provider ${bad}: Error`)]);
+    expect(JSON.stringify(pulled.failures)).not.toContain("no NPI on file");
   });
 });
 

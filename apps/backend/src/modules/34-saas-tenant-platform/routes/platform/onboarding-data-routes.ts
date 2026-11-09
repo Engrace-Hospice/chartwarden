@@ -405,16 +405,6 @@ export function registerOnboardingDataRoutes(
     },
   );
 
-  app.post(
-    "/api/v1/platform/tenants/:orgSlug/clearinghouse/activate",
-    { preHandler: [...CLEARINGHOUSE_WRITE] },
-    async (request) => {
-      const op = operatorOf(request);
-      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-      return service.activateClearinghouse(op, slugOf(request), reason);
-    },
-  );
-
   // POST baa/verify — the operator verifies the vendor BAA the tenant recorded for its own account. Not gated on the tenant's
   // onboarding status (a live tenant that changed vendor needs it too); the audit row names the operator, the org, the reason and the
   // record verified. `If-Match` is the record's recordedAt (see requiredBaaPin): verifying a record the operator did not read is a 409.

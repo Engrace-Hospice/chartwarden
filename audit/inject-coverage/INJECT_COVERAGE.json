@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2013,
-    "coveredRoutes": 2013,
-    "directRoutesReferenced": 1826
+    "routes": 2012,
+    "coveredRoutes": 2012,
+    "directRoutesReferenced": 1825
   },
   "modules": [
     {
@@ -563,7 +563,7 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 95,
+      "routes": 94,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
@@ -576,7 +576,7 @@
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 94
+      "directRoutesReferenced": 93
     },
     {
       "module": "35-subscription",

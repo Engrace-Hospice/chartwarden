@@ -1,12 +1,14 @@
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
 import {
-  buildClaimPayerRouteStatus,
-  buildClearinghouseContextPort,
   CLAIMMD_M23_PAYER_ROUTES_ENV,
   CLEARINGHOUSE_PAYER_ID_ENV,
-  resolveClaimMdM23PayerRoute,
   type ClaimMdM23PayerRoute,
+  buildClaimPayerRouteStatus,
+  buildClearinghouseContextPort,
+  claimAccountReferenceFor,
+  resolveClaimMdM23PayerRoute,
 } from "./clearinghouse-context";
 
 const base: ClaimMdM23PayerRoute = {
@@ -18,7 +20,10 @@ const base: ClaimMdM23PayerRoute = {
   payerId: "synthetic-vendor-payer-a",
   effectiveFrom: "2026-01-01",
 };
-const input = (routes: readonly ClaimMdM23PayerRoute[], over: Partial<Parameters<typeof resolveClaimMdM23PayerRoute>[0]> = {}) =>
+const input = (
+  routes: readonly ClaimMdM23PayerRoute[],
+  over: Partial<Parameters<typeof resolveClaimMdM23PayerRoute>[0]> = {},
+) =>
   resolveClaimMdM23PayerRoute({
     routes,
     organizationId: "org-a",
@@ -44,32 +49,46 @@ describe("M23 Claim.MD payer route resolution", () => {
       macJurisdiction: "mac-b",
       payerId: "synthetic-vendor-payer-b",
     };
-    expect(input([base, second], { providerEntityId: "provider-b", macJurisdiction: "mac-b" }).payerId)
-      .toBe("synthetic-vendor-payer-b");
+    expect(
+      input([base, second], { providerEntityId: "provider-b", macJurisdiction: "mac-b" }).payerId,
+    ).toBe("synthetic-vendor-payer-b");
   });
 
   it("does not match another tenant even when provider, MAC and account are the same", () => {
-    expect(() => input([base], { organizationId: "org-b" })).toThrow("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
+    expect(() => input([base], { organizationId: "org-b" })).toThrow(
+      "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    );
   });
 
   it("separates test and production usage and account references", () => {
-    expect(() => input([base], { usage: "production" })).toThrow("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
-    expect(() => input([base], { accountReference: "other-account" })).toThrow("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
+    expect(() => input([base], { usage: "production" })).toThrow(
+      "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    );
+    expect(() => input([base], { accountReference: "other-account" })).toThrow(
+      "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    );
   });
 
   it("rejects missing or expired routes", () => {
     expect(() => input([])).toThrow("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
-    expect(() => input([{ ...base, effectiveTo: "2026-11-06" }])).toThrow("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
+    expect(() => input([{ ...base, effectiveTo: "2026-11-06" }])).toThrow(
+      "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    );
   });
 
   it("rejects malformed or inverted effective dates explicitly", () => {
-    expect(() => input([{ ...base, effectiveFrom: "not-a-date" }])).toThrow("CLAIMMD_PAYER_ROUTE_INVALID_DATES");
-    expect(() => input([{ ...base, effectiveFrom: "2026-12-01", effectiveTo: "2026-11-01" }]))
-      .toThrow("CLAIMMD_PAYER_ROUTE_INVALID_DATES");
+    expect(() => input([{ ...base, effectiveFrom: "not-a-date" }])).toThrow(
+      "CLAIMMD_PAYER_ROUTE_INVALID_DATES",
+    );
+    expect(() =>
+      input([{ ...base, effectiveFrom: "2026-12-01", effectiveTo: "2026-11-01" }]),
+    ).toThrow("CLAIMMD_PAYER_ROUTE_INVALID_DATES");
   });
 
   it("rejects overlapping active configuration as ambiguous", () => {
-    expect(() => input([base, { ...base, payerId: "other-synthetic-id" }])).toThrow("CLAIMMD_PAYER_ROUTE_AMBIGUOUS");
+    expect(() => input([base, { ...base, payerId: "other-synthetic-id" }])).toThrow(
+      "CLAIMMD_PAYER_ROUTE_AMBIGUOUS",
+    );
   });
 
   it("rejects blank payer identifiers instead of falling back to the MAC", () => {
@@ -77,25 +96,33 @@ describe("M23 Claim.MD payer route resolution", () => {
   });
 
   it("does not let the legacy global override authorize a Claim.MD route", () => {
-    expect(() => buildClearinghouseContextPort({
-      db: {} as never,
-      env: {
-        CLEARINGHOUSE_VENDOR: "claimmd",
-        [CLEARINGHOUSE_PAYER_ID_ENV]: "global-id",
-        CLAIMMD_ACCOUNT_REFERENCE: "shared-test-account",
-        CLAIMMD_ACCOUNT_USAGE: "test",
-        [CLAIMMD_M23_PAYER_ROUTES_ENV]: JSON.stringify([base]),
-      },
-      providerNpi: async () => "synthetic-npi",
-    })).toThrow(/cannot authorize Claim\.MD payer routing/);
+    expect(() =>
+      buildClearinghouseContextPort({
+        db: {} as never,
+        env: {
+          CLEARINGHOUSE_VENDOR: "claimmd",
+          [CLEARINGHOUSE_PAYER_ID_ENV]: "global-id",
+          CLAIMMD_ACCOUNT_REFERENCE: "shared-test-account",
+          CLAIMMD_ACCOUNT_USAGE: "test",
+          [CLAIMMD_M23_PAYER_ROUTES_ENV]: JSON.stringify([base]),
+        },
+        providerNpi: async () => "synthetic-npi",
+      }),
+    ).toThrow(/cannot authorize Claim\.MD payer routing/);
   });
 
   it("rejects malformed central route configuration", () => {
-    expect(() => buildClearinghouseContextPort({
-      db: {} as never,
-      env: { [CLAIMMD_M23_PAYER_ROUTES_ENV]: "not-json", CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_USAGE: "test" },
-      providerNpi: async () => null,
-    })).toThrow(/must be a valid array/);
+    expect(() =>
+      buildClearinghouseContextPort({
+        db: {} as never,
+        env: {
+          [CLAIMMD_M23_PAYER_ROUTES_ENV]: "not-json",
+          CLEARINGHOUSE_VENDOR: "claimmd",
+          CLAIMMD_ACCOUNT_USAGE: "test",
+        },
+        providerNpi: async () => null,
+      }),
+    ).toThrow(/must be a valid array/);
   });
 });
 
@@ -304,5 +331,67 @@ describe("the claim payer-route readiness follows the organization's own binding
       status: "not_configured",
       reasonCode: "PAYER_ROUTE_NOT_VERIFIED",
     });
+  });
+
+  it("an org whose clearinghouse credential is unreadable reports THAT code, and logs it with ids only", async () => {
+    const unreadable = {
+      vendor: null,
+      forOrg: async () => {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+          "the credential could not be opened (synthetic message detail)",
+          503,
+        );
+      },
+    };
+    const logs: { fields: Record<string, unknown>; message: string }[] = [];
+    const result = await buildClaimPayerRouteStatus({
+      db: fakeDb,
+      env: routesEnv(tenantRoute),
+      binding: unreadable,
+      usageFor: async () => "test",
+      providerNpi: async () => "synthetic-npi",
+      payerIsActive: async () => true,
+      log: (fields, message) => logs.push({ fields, message }),
+    })(ORG, "provider-a");
+    expect(result).toEqual({
+      status: "not_configured",
+      reasonCode: "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+    });
+    expect(logs).toEqual([
+      {
+        fields: {
+          organizationId: ORG,
+          providerEntityId: "provider-a",
+          code: "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+        },
+        message: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("synthetic message detail");
+  });
+});
+
+describe("the account reference a claim's preview and submit fingerprints are bound to", () => {
+  const reference = (env: Record<string, string>, binding?: ReturnType<typeof perOrg>) =>
+    claimAccountReferenceFor({ env, ...(binding ? { binding } : {}) }, ORG);
+
+  it("a tenant's own Claim.MD account is tenant:<org>, never the platform's reference", async () => {
+    expect(
+      await reference({ CLAIMMD_ACCOUNT_REFERENCE: "platform-account" }, perOrg(tenantClaimMd)),
+    ).toBe(tenantClaimMdAccountReference(ORG));
+  });
+
+  it("the platform's account (and an org it serves) keeps CLAIMMD_ACCOUNT_REFERENCE, else the legacy placeholder", async () => {
+    const env = { CLAIMMD_ACCOUNT_REFERENCE: " platform-account " };
+    expect(await reference(env, perOrg(platformAccount))).toBe("platform-account");
+    expect(await reference(env)).toBe("platform-account");
+    expect(await reference({})).toBe("legacy-mac");
+  });
+
+  it("a tenant on its own Stedi account is not on a Claim.MD account: the platform reference applies, as before", async () => {
+    expect(
+      await reference({ CLAIMMD_ACCOUNT_REFERENCE: "platform-account" }, perOrg(tenantStedi)),
+    ).toBe("platform-account");
   });
 });

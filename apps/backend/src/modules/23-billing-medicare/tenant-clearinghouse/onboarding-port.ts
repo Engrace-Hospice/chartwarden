@@ -110,12 +110,6 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
       });
     },
 
-    async activate(tx, scope) {
-      await assertTxScopedToOrg(tx, scope.organizationId);
-      const view = await service.activate(createDrizzleConfigStore(tx), actorFor(scope));
-      return withId(tx, scope, view);
-    },
-
     async verifyBaa(tx, scope, expected) {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const view = await service.verifyBaa(createDrizzleConfigStore(tx), actorFor(scope), expected);

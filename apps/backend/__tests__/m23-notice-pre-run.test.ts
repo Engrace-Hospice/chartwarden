@@ -115,7 +115,6 @@ import {
   type M23WorkerDeps,
   holdBeforeRun,
   registerM23LaunchWorkers,
-  registerM23Workers,
   runNoeSubmit,
   runNotrSubmit,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
@@ -409,7 +408,6 @@ describe("transfer-notice job pre-flight", () => {
 });
 
 describe.each([
-  ["registerM23Workers", (deps: M23WorkerDeps) => registerM23Workers(deps)],
   ["registerM23LaunchWorkers", (deps: M23WorkerDeps) => registerM23LaunchWorkers(deps, {})],
 ] as const)("%s: the submit workers honour the pre-flight verdict", (_name, register) => {
   const cases = [
