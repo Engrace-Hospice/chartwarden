@@ -365,37 +365,24 @@ describe.skipIf(!DB_URL)(
         db.query("SELECT id FROM claimmd_submission_line_evidence WHERE id=$1", [a.lineEvidence]),
       );
       expect(foreign.rowCount).toBe(0);
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query("UPDATE claimmd_submission_line_evidence SET charge_cents=1 WHERE id=$1", [
-            a.lineEvidence,
-          ]),
-        ),
-      ).rejects.toThrow(
-        /permission denied for table claimmd_submission_line_evidence|CLAIMMD_SUBMISSION_EVIDENCE_IMMUTABLE/,
-      );
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query(
-            `INSERT INTO claimmd_submission_line_evidence
+      await expect(withOrg(ORG_A, () =>
+        db.query("UPDATE claimmd_submission_line_evidence SET charge_cents=1 WHERE id=$1", [a.lineEvidence]),
+      )).rejects.toThrow(/permission denied for table claimmd_submission_line_evidence|CLAIMMD_SUBMISSION_EVIDENCE_IMMUTABLE/);
+      await expect(withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO claimmd_submission_line_evidence
            (evidence_id,organization_id,provider_entity_id,claim_id,submission_id,attempt_key,internal_claim_line_id,
             line_position,revenue_code,charge_cents,payload_sha256,account_reference,usage)
            SELECT evidence_id,organization_id,$2,claim_id,submission_id,attempt_key,internal_claim_line_id,
             2,revenue_code,charge_cents,payload_sha256,account_reference,usage
            FROM claimmd_submission_line_evidence WHERE id=$1`,
-            [a.lineEvidence, randomUUID()],
-          ),
+          [a.lineEvidence, randomUUID()],
         ),
-      ).rejects.toThrow();
+      )).rejects.toThrow();
       const own = await withOrg(ORG_A, () =>
-        db.query(
-          "SELECT payload_sha256,internal_claim_line_id FROM claimmd_submission_line_evidence WHERE id=$1",
-          [a.lineEvidence],
-        ),
+        db.query("SELECT payload_sha256,internal_claim_line_id FROM claimmd_submission_line_evidence WHERE id=$1", [a.lineEvidence]),
       );
-      expect(own.rows).toEqual([
-        { payload_sha256: "a".repeat(64), internal_claim_line_id: a.claimLine },
-      ]);
+      expect(own.rows).toEqual([{ payload_sha256: "a".repeat(64), internal_claim_line_id: a.claimLine }]);
       const audit = await db.query<{ billing_module: string }>(
         `SELECT context->>'billing_module' AS billing_module FROM audit_event
          WHERE resource_kind='claimmd_submission_line_evidence' AND resource_id=$1
