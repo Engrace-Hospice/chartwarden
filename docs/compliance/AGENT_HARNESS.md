@@ -66,7 +66,10 @@ from Codex's hook protocol:
   scan. It guesses nothing else about the tool. An input that is not an object, nests 32 levels or deeper,
   holds more than 2,000 strings or 256 KB of text, or has more than 20,000 lines to resolve is refused (the
   scan has to finish inside Codex's timeout). A reason names a path only when the value is one short word;
-  it never echoes prose.
+  it never echoes prose. A line that becomes a secret or protected path once its control, format and
+  non-ASCII-space characters are removed (`hooks.json<U+0085>`: a Rust trim strips U+0085, a JS one keeps
+  it) is refused, as an `apply_patch` path with such a character is. Ordinary text with unicode or odd
+  spaces in it is not: only a line that turns into such a path is.
 - **The root is where the guard script lives**, not `CLAUDE_PROJECT_DIR`. The pinned command runs
   `$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts`, so the script's grandparent is the
   session's repo. An exported `CLAUDE_PROJECT_DIR` (from a Claude shell, pointing at another tree) used to

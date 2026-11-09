@@ -28,7 +28,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync, writeSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_PATCH_CHARS, mcpStrings, parseApplyPatch, shellPatch } from "./codex-patch";
+import {
+  MAX_PATCH_CHARS,
+  mcpStrings,
+  parseApplyPatch,
+  shellPatch,
+  withoutOddChars,
+} from "./codex-patch";
 import { appendLedger, loadRegistry, projectDir, readHookInput, relPath, sha256 } from "./io";
 import {
   type BashVerdict,
@@ -169,6 +175,31 @@ const nameOf = (s: string): string | undefined =>
   s.length <= 200 && !/\s/.test(s) ? s : undefined;
 
 /**
+ * A line that reads as a secret or protected path only once its control, format and non-ASCII-space characters
+ * are taken out (a trailing U+0085: a Rust `trim` strips it, a JS one keeps it) is refused, as the same path in
+ * an `apply_patch` header is. Free text with such characters in it stays allowed: only a line that BECOMES a
+ * secret or protected path is refused, and the reason echoes that path, never the odd characters.
+ */
+function refuseHiddenPath(
+  line: string,
+  written: string,
+  rel: (p: string) => string,
+  log: Log,
+): void {
+  const bare = withoutOddChars(line).trim();
+  if (!bare || bare === written || bare.length > MAX_PATH_CHARS) return;
+  for (const target of [bare, rel(bare)]) {
+    if (!secretPathReason(target) && !isProtectedPath(target)) continue;
+    const named = nameOf(target) ? `\`${target}\`` : "A value in the tool input";
+    refuse(
+      log,
+      `${named} names a secret or protected path with control or non-ASCII-space characters in it, which a tool may strip. Refused; write the plain path if it is legitimate.`,
+      nameOf(target),
+    );
+  }
+}
+
+/**
  * `--codex`, an MCP tool (`mcp__<server>__<tool>`): Codex hands it arbitrary JSON and nothing says which field
  * is a path or text, so EVERY string in it (keys too) is judged: each line as a secret path and as a protected
  * path, as written and resolved from the session cwd with symlinks followed (as `apply_patch` paths are), and
@@ -210,6 +241,7 @@ function checkMcp(raw: unknown, root: string, base: string, log: Log): void {
           );
         }
       }
+      refuseHiddenPath(line, written, rel, log);
     }
     const findings = scanContent(value, registry, "");
     if (findings.length > 0) refuse(log, describeFindings("(an MCP tool argument)", findings));

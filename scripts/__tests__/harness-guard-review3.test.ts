@@ -192,3 +192,38 @@ describe("finding 9: cwd and repo root are compared as real paths, not as text",
     expect(decision(r)).toBeUndefined();
   });
 });
+
+describe("finding 10: MCP strings are judged exactly as an apply_patch path is", () => {
+  const root = repo();
+  const mcp = (input: Record<string, unknown>) =>
+    codex(root, { tool_name: "mcp__files__read", tool_input: input });
+
+  it.each([
+    ["\u0085 trailing NEL", { path: ".env\u0085" }],
+    ["trailing NEL on a protected file", { path: ".claude/settings.json\u0085" }],
+    ["leading NEL", { path: "\u0085.codex/hooks.json" }],
+    ["zero-width space", { path: ".en\u200bv" }],
+    ["BOM", { path: "\ufeffcompliance/controls.yaml" }],
+    ["NBSP inside the name", { path: "scripts/harness/pre-tool-\u00a0guard.ts" }],
+    ["line separator", { path: ".env\u2028" }],
+    ["a key, not a value", { ".env\u0085": "x" }],
+    ["nested", { a: { b: [".env\u0085"] } }],
+  ])("refuses %s", (_name, input) => {
+    expect(decision(mcp(input)), JSON.stringify(input)).toBe("deny");
+  });
+
+  it("leaves ordinary text, even with unicode or odd spaces, allowed", () => {
+    for (const input of [
+      {
+        text: "R\u00e9sum\u00e9 de la visite\u00a0: le patient a \u00e9t\u00e9 vu \u00e0 14\u202fh 30",
+      },
+      { q: "h\u00e9llo w\u00f6rld\u0085and more\u200b" },
+      { text: "line one\u2028line two" },
+      { path: "apps/backend/src/index.ts\u0085" },
+      { path: "docs/na\u00efve plan.md" },
+      { note: "see the .env discussion in the doc" },
+    ]) {
+      expect(decision(mcp(input)), JSON.stringify(input)).toBeUndefined();
+    }
+  });
+});
