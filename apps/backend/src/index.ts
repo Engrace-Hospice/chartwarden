@@ -1949,6 +1949,7 @@ import {
   scheduleWithRetry,
   wireM41Tenancy,
 } from "./modules/41-billing-commercial/index";
+import { applyCommercialClaimMdReceipt } from "./modules/41-billing-commercial/services/claimmd-ack-adapter";
 import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
 
 export { buildServer };
@@ -4928,7 +4929,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         dekForOrgVersion: (organizationId, version) =>
           tenantKeys.dekForOrgVersion(organizationId, version),
       }),
-      commercialOutbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
+      applyCommercialReceipt: (tx, receipt) =>
+        applyCommercialClaimMdReceipt(
+          tx,
+          m41OutboxPublisher as unknown as CommercialOutboxPort,
+          receipt,
+        ),
     });
   }
   // Whether the M41 drain is scheduled. In the split deployment the API process (PROCESS_ROLE=api) never registers the repeatable jobs

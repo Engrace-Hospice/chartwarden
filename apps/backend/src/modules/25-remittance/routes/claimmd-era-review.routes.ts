@@ -11,7 +11,7 @@ const Params = Type.Object(
   { id: Type.String({ format: "uuid" }) },
   { additionalProperties: false },
 );
-const Query = Type.Object(
+export const ClaimMdEraReviewQuerySchema = Type.Object(
   {
     providerEntityId: Type.Optional(Type.String({ format: "uuid" })),
     state: Type.Optional(Type.String({ minLength: 1, maxLength: 64, pattern: "^[a-z_]+$" })),
@@ -27,7 +27,7 @@ export function registerClaimMdEraReviewRoutes(
   app.get(
     "/api/v1/remittance/claimmd-era",
     {
-      schema: { querystring: Query },
+      schema: { querystring: ClaimMdEraReviewQuerySchema },
       preHandler: [READ],
       config: { auditRead: { resourceKind: "claimmd_era_m25_stage", list: true } },
     },
