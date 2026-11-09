@@ -215,7 +215,7 @@ const commandsFor = (s: Settings, event: string): string[] =>
  * The one matcher Codex's guard runs under: shell commands, file edits (which arrive as `apply_patch`) and MCP
  * tools (Codex names them `mcp__<server>__<tool>`; the guard judges every string in their input).
  */
-export const CODEX_GUARD_MATCHER = "Bash|apply_patch|mcp__.*";
+export const CODEX_GUARD_MATCHER = "Bash|write_stdin|apply_patch|mcp__.*";
 
 /**
  * Claude's three hook commands, pinned byte for byte like {@link CODEX_GUARD_COMMAND}. `--config=/dev/null

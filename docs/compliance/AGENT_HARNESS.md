@@ -36,7 +36,7 @@ against Codex 0.162.1: its own config is `.codex/config.toml` and `.codex/hooks.
 ### The Codex guard (`.codex/hooks.json`)
 
 `.codex/hooks.json` runs the same `scripts/harness/pre-tool-guard.ts` for Codex, with `--codex`. It matches
-`Bash`, `apply_patch` and MCP tools (`Bash|apply_patch|mcp__.*`). Four things differ from Claude Code, all
+`Bash`, `write_stdin`, `apply_patch` and MCP tools (`Bash|write_stdin|apply_patch|mcp__.*`). Four things differ from Claude Code, all
 from Codex's hook protocol:
 
 - **Codex cannot ask.** `permissionDecision: "ask"` is "parsed but not supported yet": the hook run is
@@ -99,7 +99,7 @@ protected list at any depth (they are loaded from any directory, and `~/.codex/c
 hook for a user); `.codex/config.toml` itself stays local and git-ignored, at any depth: `.gitignore` ignores
 `**/.codex/*` and `**/.agents/*` (a nested `apps/x/.codex/` is local state too) and re-includes only the
 root's shared pieces, each AFTER the ignore line (git's last match wins). `arch:compliance` fails if
-`.codex/hooks.json` is missing or differs from the pinned command, matcher (`Bash|apply_patch|mcp__.*`), type
+`.codex/hooks.json` is missing or differs from the pinned command, matcher (`Bash|write_stdin|apply_patch|mcp__.*`), type
 or timeout (1 to 30 s), if one of the three Claude hook commands differs from its pinned form, if the
 `.claude/` and `.agents/` mirror reads as empty on either side or differs by a single byte (files are compared
 by SHA-256 of their bytes, not decoded text), or if `.gitignore` or CODEOWNERS stop covering any of this or
@@ -189,6 +189,11 @@ a command that writes one does.
 
 **Fails closed.** Empty or unparseable hook input, an internal error, and a write too large to scan
 (over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it.
+Codex PTY requests (`tty`, `pty`, or `use_pty`) also fail closed: later `write_stdin` input does not fire
+the original command's PreToolUse check. The Codex hook therefore matches `write_stdin` itself and allows
+only empty polling; every non-empty or malformed `chars` value is denied before reaching the process.
+Agents use finite non-PTY commands instead; the interactive-process classifier remains a defence-in-depth
+control for commands that can attach stdin without requesting a PTY.
 
 Cannot cover:
 - A program that reads a file through a construct the rules do not anticipate (a script it just wrote,

@@ -265,6 +265,31 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       "deny",
     );
   });
+  it("refuses every Codex PTY request before command classification", () => {
+    for (const field of ["tty", "pty", "use_pty"] as const) {
+      const refused = shell("printf ok", { [field]: true });
+      expect(decision(refused), field).toBe("deny");
+      expect(reason(refused), field).toMatch(/PTY/);
+      expect(shell("printf ok", { [field]: false }).out, `${field}=false`).toBeNull();
+    }
+    expect(shell("printf ok").out).toBeNull();
+  });
+  it("allows write_stdin polling but refuses every byte-bearing or malformed write", () => {
+    for (const chars of [undefined, null, ""] as const) {
+      const tool_input = chars === undefined ? {} : { chars };
+      expect(codexGuard({ tool_name: "write_stdin", tool_input }).out).toBeNull();
+    }
+    for (const chars of ["text", "\n", "\u0003", "\u001b[A"]) {
+      const refused = codexGuard({ tool_name: "write_stdin", tool_input: { chars } });
+      expect(decision(refused), JSON.stringify(chars)).toBe("deny");
+      expect(reason(refused), JSON.stringify(chars)).toMatch(/write_stdin/);
+    }
+    for (const chars of [7, true, ["x"], { value: "x" }]) {
+      const refused = codexGuard({ tool_name: "write_stdin", tool_input: { chars } });
+      expect(decision(refused), JSON.stringify(chars)).toBe("deny");
+      expect(reason(refused), JSON.stringify(chars)).toMatch(/not text/);
+    }
+  });
   it("refuses a bare interactive shell or REPL, and allows the same programs running a script", () => {
     for (const command of [
       "bash",

@@ -320,13 +320,14 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
       "",
       undefined,
       "Bash|apply_patch",
+      "Bash|write_stdin|apply_patch",
       "Bash|apply_patch|mcp__",
     ]) {
       fails((h) => {
         h.hooks.PreToolUse[0].matcher = m;
-      }, /matcher must be exactly `Bash\|apply_patch\|mcp__\.\*`/);
+      }, /matcher must be exactly `Bash\|write_stdin\|apply_patch\|mcp__\.\*`/);
     }
-    expect(CODEX_GUARD_MATCHER).toBe("Bash|apply_patch|mcp__.*");
+    expect(CODEX_GUARD_MATCHER).toBe("Bash|write_stdin|apply_patch|mcp__.*");
     fails((h) => {
       h.hooks.PreToolUse[0].hooks[0].type = "prompt";
     }, /type "command"/);

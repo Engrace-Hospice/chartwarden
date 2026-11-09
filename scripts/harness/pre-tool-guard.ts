@@ -310,6 +310,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (CODEX && tool === "write_stdin") {
+    const chars = input.chars;
+    if (chars === undefined || chars === null || chars === "") return;
+    if (typeof chars !== "string") refuse(log, `The write_stdin chars ${NOT_TEXT}.`);
+    refuse(
+      log,
+      "Non-empty write_stdin input is refused: it reaches an existing process without re-running that process's PreToolUse command checks. Use a finite exec_command call instead.",
+    );
+  }
+
   if (CODEX && tool.startsWith("mcp__")) {
     checkMcp(hook.tool_input, root, cwd, log);
     return;
@@ -320,6 +330,14 @@ async function main(): Promise<void> {
     // `String(command)` of an array or object is not what the shell would run: refuse it before judging it.
     if (CODEX && typeof command !== "string") refuse(log, `The command ${NOT_TEXT}.`);
     const cmd = String(command ?? "");
+    if (CODEX && (input.tty === true || input.pty === true || input.use_pty === true)) {
+      refuse(
+        log,
+        "Codex PTY execution is refused: write_stdin can feed a persistent PTY without firing the PreToolUse guard. Run a finite non-PTY command instead.",
+        undefined,
+        cmd,
+      );
+    }
     const v = classifyBash(cmd, {
       branch: currentBranch(root),
       root,

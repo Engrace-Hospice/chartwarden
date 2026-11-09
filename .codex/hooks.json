@@ -3,7 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|apply_patch|mcp__.*",
+        "matcher": "Bash|write_stdin|apply_patch|mcp__.*",
         "hooks": [
           {
             "type": "command",
