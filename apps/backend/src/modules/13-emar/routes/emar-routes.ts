@@ -62,7 +62,11 @@ export interface EmarRouteDeps {
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
-/** Every mutating route requires a client-supplied Idempotency-Key (the M1 middleware replays it). */
+/**
+ * Every mutating route requires a client-supplied Idempotency-Key (the M1 middleware replays it). Unlike
+ * M18's, `offline-sync` keeps it: a row's `offlineCapture` (the `(deviceId, localId)` dedupe key) is optional,
+ * so without the header a retried batch could record a dose twice.
+ */
 const IDEMPOTENT = requireIdempotencyKey();
 const READ = P("administration.read");
 const RECORD = P("administration.record");

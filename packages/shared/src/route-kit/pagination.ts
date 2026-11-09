@@ -183,7 +183,12 @@ export interface PageSizePolicy {
 
 /** Clamp a raw `?limit=` into `[1, maxSize]`, defaulting to the route's page size when absent or non-numeric. */
 export function clampLimit(raw: unknown, policy: PageSizePolicy): number {
-  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : Number.NaN;
+  const n =
+    typeof raw === "string" && raw.trim() !== ""
+      ? Number(raw)
+      : typeof raw === "number"
+        ? raw
+        : Number.NaN;
   if (!Number.isFinite(n)) return policy.defaultSize;
   return Math.min(policy.maxSize, Math.max(1, Math.floor(n)));
 }

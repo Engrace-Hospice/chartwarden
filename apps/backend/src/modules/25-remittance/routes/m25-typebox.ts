@@ -2,7 +2,7 @@
 // The route plugins validate POST/PATCH bodies against these; the §2.5 If-Match version + the
 // Idempotency-Key are headers (handled by @chartwarden/shared/route-kit), not body fields. Free-text reason/narrative
 // fields carry the §4.1 min-length floors (audit-denylisted at the DB layer — never in the audit value).
-import { pageQuery } from "@chartwarden/shared/route-kit";
+import { clampLimit as clampPageSize, pageQuery } from "@chartwarden/shared/route-kit";
 import { MAX_APPEAL_ENCLOSURES } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 
@@ -303,9 +303,7 @@ export const M25ListQuerySchema = Type.Object(pageQuery({ max: MAX_PAGE_SIZE }))
 
 /** The lenient `?limit=` the list routes read raw: missing or non-numeric is the default page, out of range is clamped. */
 export function clampLimit(raw: unknown): number {
-  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : Number.NaN;
-  if (!Number.isFinite(n)) return DEFAULT_PAGE_SIZE;
-  return Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(n)));
+  return clampPageSize(raw, { defaultSize: DEFAULT_PAGE_SIZE, maxSize: MAX_PAGE_SIZE });
 }
 
 // ── §4.1 RESPONSE DTOs (F0 enrichment, part 2) ───────────────────────────────────────────────────

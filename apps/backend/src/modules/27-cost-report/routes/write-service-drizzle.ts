@@ -10,7 +10,7 @@
 // ALWAYS the server-assembled {@link M27WriteActor} (never the body). The lifecycle methods do NOT
 // re-implement state logic — they drive the pure @chartwarden/cost-report reducer (`canTransition` /
 // `applyTransition` over `COST_REPORT_TRANSITIONS`) and persist the result with the §2.5 version check
-// (`updateWithVersion` → VERSION_CONFLICT). The §4.10 `m27.*` events are emitted through the injected
+// (`updateWithVersion` → 409 STALE_VERSION). The §4.10 `m27.*` events are emitted through the injected
 // {@link WriteOutboxPort} in the SAME unit of work as the mutation (transactional outbox); the §4.8 worker
 // jobs through the injected {@link RecomputeEnqueuePort}. M27 carries NO PHI (D18); money is INTEGER CENTS.
 //
@@ -42,6 +42,7 @@ import {
   resolveWorksheetSchema,
 } from "@chartwarden/cost-report";
 import type { DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import { Value } from "@sinclair/typebox/value";
@@ -364,7 +365,7 @@ export function buildDrizzleM27WriteService(
     }
   };
 
-  /** Apply a versioned `cost_report` update, surfacing the §2.5 VERSION_CONFLICT as a 409. */
+  /** Apply a versioned `cost_report` update, surfacing a §2.5 version mismatch as 409 STALE_VERSION. */
   const updateReport = async (
     tx: WriteTx,
     id: string,
@@ -373,10 +374,8 @@ export function buildDrizzleM27WriteService(
   ): Promise<schema.CostReport> => {
     const res = await new CostReportRepository(tx).updateWithVersion(id, expectedVersion, patch);
     if (!res.ok) {
-      throw new ChartWardenError(
-        "VERSION_CONFLICT",
+      throw new StaleVersionError(
         `the cost report was modified concurrently (current version ${res.currentVersion ?? "unknown"})`,
-        409,
       );
     }
     return res.row;
@@ -625,10 +624,8 @@ export function buildDrizzleM27WriteService(
         }
         const res = await repo.updateWithVersion(existing.id, args.expectedVersion, { data });
         if (!res.ok) {
-          throw new ChartWardenError(
-            "VERSION_CONFLICT",
+          throw new StaleVersionError(
             `the worksheet was modified concurrently (current version ${res.currentVersion ?? "unknown"})`,
-            409,
           );
         }
         return {

@@ -145,6 +145,25 @@ describe.skipIf(!DB_URL)("F-096 census caseload narrowing — LIVE Postgres", ()
     expect(JSON.parse(body)).toEqual({ id: first.items[1]!.id });
   });
 
+  it("a cursor minted for one org is refused for another (CW-AC-11) — 422 INVALID_CURSOR", async () => {
+    // The HMAC input is `${orgId}.${body}`: replayed under ORG_B the signature cannot verify, so the
+    // cursor never repositions a read in a tenant it was not minted for.
+    const first = await service.list(ORG_A, { limit: 2 }, null);
+    await expect(
+      service.list(ORG_B, { limit: 2, cursor: first.nextCursor! }, null),
+    ).rejects.toMatchObject({ code: "INVALID_CURSOR", statusCode: 422 });
+  });
+
+  it("a tampered cursor is refused (CW-AC-11) — 422 INVALID_CURSOR", async () => {
+    const first = await service.list(ORG_A, { limit: 2 }, null);
+    const [, sig] = first.nextCursor!.split(".");
+    const forged = `${Buffer.from(JSON.stringify({ id: idsA.get("Echo")! })).toString("base64url")}.${sig}`;
+    await expect(service.list(ORG_A, { limit: 2, cursor: forged }, null)).rejects.toMatchObject({
+      code: "INVALID_CURSOR",
+      statusCode: 422,
+    });
+  });
+
   it("the q-filter cannot widen the census past the scope", async () => {
     // Every other filter the route accepts is ANDed with the narrowing, never applied instead of it —
     // otherwise the search box is the bypass.

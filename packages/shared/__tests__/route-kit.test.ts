@@ -123,6 +123,8 @@ describe("route-kit keyset envelope", () => {
     expect(clampLimit(undefined, policy)).toBe(25);
     expect(clampLimit("500", policy)).toBe(100);
     expect(clampLimit(0, policy)).toBe(1);
+    expect(clampLimit("", policy)).toBe(25); // `Number("")` is 0, which would clamp to 1
+    expect(clampLimit("  ", policy)).toBe(25);
   });
 
   it("slices limit + 1 rows into a page whose cursor decodes for the same org", () => {
