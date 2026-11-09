@@ -668,10 +668,9 @@ export async function pullTransportAcks(
       );
       if (outcome === "backlog") backlog.push(`org ${organizationId} provider ${providerEntityId}`);
     } catch (err) {
-      // Ids and the (PHI-free) failure text only.
-      failures.push(
-        `org ${organizationId} provider ${providerEntityId}: ${err instanceof Error ? err.message : "failed"}`,
-      );
+      // Ids and a code or class only: the error's message can carry the vendor's reason text (see `failure`), and this string
+      // reaches the job error (BullMQ's failedReason) and the logs.
+      failures.push(`org ${organizationId} provider ${providerEntityId}: ${failureLabel(err)}`);
     }
   }
   return { failures, backlog, quarantined };
