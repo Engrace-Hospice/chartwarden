@@ -123,6 +123,10 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
   app.get("/api/v1/orgs", async (request) => {
     await requirePermission("org.manage")(request);
     const query = (request.query ?? {}) as { q?: unknown; cursor?: unknown; limit?: unknown };
+    // Validate before the tenant-only early return too: a malformed cursor is always a 422, never a silent page 1.
+    // The operator's own org signs the cross-tenant listing cursor, so replay under another operator org is refused.
+    const orgId = request.context.organizationId;
+    const offset = decodeOffsetCursor(orgId, query.cursor);
     if (!isPlatformOperator(request)) {
       const own = request.context.organizationId
         ? await store.getOrganization(request.context.organizationId)
@@ -133,9 +137,6 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       MAX_LIMIT,
       Math.max(1, Math.floor(Number(query.limit) || DEFAULT_LIMIT)),
     );
-    // the listing spans tenants, so the cursor is signed with the operator's own org id
-    const orgId = request.context.organizationId;
-    const offset = decodeOffsetCursor(orgId, query.cursor);
     const q = typeof query.q === "string" && query.q.trim() ? query.q.trim() : undefined;
     const rows = await store.listOrganizations({ ...(q ? { q } : {}), limit: limit + 1, offset });
     return {
