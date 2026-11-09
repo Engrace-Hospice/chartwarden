@@ -6,6 +6,7 @@
 //   GET  /api/v1/privacy/restricted-patients           the officer's work queue (patients with restrictions)
 //
 // Ids, statuses, dates and counts only — no document content and no detection evidence crosses here.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 
 const Nullable = <T extends ReturnType<typeof Type.String>>(t: T) => Type.Union([t, Type.Null()]);
@@ -116,8 +117,7 @@ export const PrivacySnapshotRebuildResponseSchema = Type.Object({
 
 export const RestrictedPatientsQuerySchema = Type.Object({
   origin: Type.Optional(Type.Union([PrivacyFlagOriginSchema, Type.Literal("stale")])),
-  cursor: Type.Optional(Type.String({ maxLength: 16 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const RestrictedPatientSchema = Type.Object({

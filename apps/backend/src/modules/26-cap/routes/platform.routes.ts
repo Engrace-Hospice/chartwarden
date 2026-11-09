@@ -2,9 +2,8 @@
 // (mounted under /api/v1/platform/cap, platform-admin only). List/publish/amend the CMS-published per-cap-year
 // amount (D3). Every route composes the §4.7 `cap_platform_admin` ABAC (the actor holds platform_admin); the
 // write path requires the elevated cap_platform_loader connection in prod (the composition root binds it).
+import { actorOf, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_NO_TARGET, P } from "./guards";
 import {
   AmendConstantRequest,
@@ -43,7 +42,7 @@ export function registerPlatformRoutes(app: FastifyInstance, deps: PlatformRoute
     { preHandler: [CONST_MANAGE, PLATFORM_ADMIN_MANAGE, IDEMPOTENT] },
     async (request, reply) => {
       const body = parse(PublishConstantRequest, request.body);
-      await writeService.publishConstant(writeActorOf(request), body);
+      await writeService.publishConstant(actorOf(request), body);
       return reply.code(201).send({ capYear: body.capYear });
     },
   );
@@ -56,7 +55,7 @@ export function registerPlatformRoutes(app: FastifyInstance, deps: PlatformRoute
     async (request, reply) => {
       const body = parse(AmendConstantRequest, request.body);
       const { capYear } = parse(CapYearParams, request.params);
-      await writeService.amendConstant(writeActorOf(request), capYear, body);
+      await writeService.amendConstant(actorOf(request), capYear, body);
       return reply.code(204).send();
     },
   );

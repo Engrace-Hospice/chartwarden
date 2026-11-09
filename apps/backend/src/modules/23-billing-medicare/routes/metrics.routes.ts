@@ -6,9 +6,9 @@
 // gates `billing.claim.read_ar_dashboard`; the metrics endpoint gates `billing.claim.read_metrics` (both the
 // `inOrg` §4.6 default — these are org-wide rollups, not per-claim caseload reads). Org/actor binding is
 // ALWAYS server-side; the read services open one `withOrgContext` tx per call (RLS).
+import { actorOf, parse } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf } from "./actor";
-import { MetricsQuerySchema, parse } from "./billing-typebox";
+import { MetricsQuerySchema } from "./billing-typebox";
 import { P } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 

@@ -7,7 +7,7 @@ export function isIntakeFractionValid(fraction: number | null): boolean {
 }
 
 /** §2.8 — the low-intake threshold below which a caregiver-assisted comfort feed becomes a documentation concern. */
-export const COMFORT_FEEDING_LOW_INTAKE_THRESHOLD = 0.2;
+const COMFORT_FEEDING_LOW_INTAKE_THRESHOLD = 0.2;
 
 /**
  * §2.8 — the CoP 418.110 comfort-feeding documentation surface: a meal shows on the end-of-life

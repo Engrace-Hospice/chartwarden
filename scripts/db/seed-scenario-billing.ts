@@ -362,14 +362,24 @@ async function main(): Promise<void> {
       params: { path: { id: claimData.id } },
       headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(claimData.version) },
     });
-    const validateData = validate.data as unknown as { version: number } | undefined;
-    if (validate.error || !validateData)
+    if (validate.error)
       throw new Error(`medicaid claim validate failed: ${JSON.stringify(validate.error)}`);
+
+    // validate returns only { validationRunId }; re-read the claim for the version submit's If-Match needs.
+    const validated = await admin.client.GET("/api/v1/medicaid-claims/{id}", {
+      params: { path: { id: claimData.id } },
+    });
+    const validatedData = validated.data as unknown as { version: number } | undefined;
+    if (validated.error || typeof validatedData?.version !== "number")
+      throw new Error(`medicaid claim re-read failed: ${JSON.stringify(validated.error)}`);
 
     await stepUpSession(admin.userId);
     const submit = await admin.client.POST("/api/v1/medicaid-claims/{id}/submit", {
       params: { path: { id: claimData.id } },
-      headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(validateData.version) },
+      headers: {
+        "Idempotency-Key": crypto.randomUUID(),
+        "If-Match": String(validatedData.version),
+      },
       body: { channelHint: "direct_mmis" },
     });
     if (submit.error)

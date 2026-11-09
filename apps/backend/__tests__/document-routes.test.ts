@@ -9,7 +9,7 @@
 // tests. Covers: RBAC gating (2xx with key, 403 without), §4.7 ABAC (document_owner_or_caseload,
 // extraction_reviewer_eligible, form_template_publish_authority, tenant_template_overlay_edit_authority,
 // legal_hold_aware), opaque cursor pagination (next_cursor + has_more), signed-URL mint (≤300s TTL), and
-// the overlay If-Match optimistic-concurrency race (412).
+// the overlay If-Match optimistic-concurrency race (409).
 import {
   createInMemoryEffectivePermissionStore,
   registerAbacRegistry,
@@ -1033,14 +1033,15 @@ describe("M22-T07 — cursor pagination (§4.1 / SD-052)", () => {
     expect(page2.json().nextCursor).toBeNull();
   });
 
-  it("a malformed cursor is rejected with 400 (never silently pages from start)", async () => {
+  it("a malformed cursor is rejected with 422 INVALID_CURSOR (never silently pages from start)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/documents?cursor=not-a-cursor!!!",
       headers: RN,
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("INVALID_CURSOR");
   });
 });
 
@@ -1178,7 +1179,7 @@ describe("#641 — /links keeps the admission and the patient consistent", () =>
 });
 
 describe("M22-T07 — §2.5 overlay If-Match optimistic concurrency", () => {
-  it("a stale If-Match on the overlay PUT is refused with 412", async () => {
+  it("a stale If-Match on the overlay PUT is refused with 409 STALE_VERSION", async () => {
     const { app } = makeServer();
     // first publish at version 0 succeeds → bumps to 1.
     const first = await app.inject({
@@ -1201,8 +1202,8 @@ describe("M22-T07 — §2.5 overlay If-Match optimistic concurrency", () => {
         branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
       },
     });
-    expect(stale.statusCode).toBe(412);
-    expect(stale.json().error.code).toBe("VERSION_MISMATCH");
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error.code).toBe("STALE_VERSION");
   });
 
   it("428 when the overlay PUT omits the If-Match header", async () => {
@@ -1502,7 +1503,7 @@ describe("M22 GAP-066 — step-up on PHI export, overlay publish and render retr
   });
 
   it("the overlay PUT with a fresh step-up passes", async () => {
-    // A private backend: the shared one keeps its overlay version across tests, so If-Match "0" would 412.
+    // A private backend: the shared one keeps its overlay version across tests, so If-Match "0" would 409.
     const { app } = makeServer(createInMemoryDocumentBackend().service);
     const res = await app.inject(overlayRequest(ORG_ADMIN));
     expect(res.statusCode).toBe(200);

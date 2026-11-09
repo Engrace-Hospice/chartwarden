@@ -1,7 +1,7 @@
 /**
  * M23 (migration 1269) — the per-(provider entity, route) EDI profile over the real table, as the NOBYPASSRLS
  * `chartwarden_app` role. Proves what only Postgres can: tenant isolation, the table CHECKs, the compare-and-set
- * upsert (first insert, update, stale 412, missing If-Match 428), no DELETE for the app role, and that the write lands
+ * upsert (first insert, update, stale 409, missing If-Match 428), no DELETE for the app role, and that the write lands
  * an audit event.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m23:edi-profile:live
@@ -135,22 +135,22 @@ describe.skipIf(!DB_URL)("M23 EDI profile — LIVE Postgres", () => {
     expect(res.profile).toMatchObject({ receiverId: "RECV999", version: 2 });
   });
 
-  it("refuses an update with no If-Match (428) and a stale one (412)", async () => {
+  it("refuses an update with no If-Match (428) and a stale one (409)", async () => {
     await service().upsertProfile(actorFor(ORG_A), key, BODY, undefined);
 
     await expect(
       service().upsertProfile(actorFor(ORG_A), key, BODY, undefined),
     ).rejects.toMatchObject({ code: "IF_MATCH_REQUIRED", statusCode: 428 });
     await expect(service().upsertProfile(actorFor(ORG_A), key, BODY, 7)).rejects.toMatchObject({
-      code: "VERSION_CONFLICT",
-      statusCode: 412,
+      code: "STALE_VERSION",
+      statusCode: 409,
     });
   });
 
-  it("refuses an If-Match for a profile that does not exist (412)", async () => {
+  it("refuses an If-Match for a profile that does not exist (409)", async () => {
     await expect(service().upsertProfile(actorFor(ORG_A), key, BODY, 1)).rejects.toMatchObject({
-      code: "VERSION_CONFLICT",
-      statusCode: 412,
+      code: "STALE_VERSION",
+      statusCode: 409,
     });
   });
 

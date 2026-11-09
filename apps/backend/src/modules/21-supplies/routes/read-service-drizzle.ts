@@ -1,4 +1,12 @@
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type CursorPage,
+  type PageSizePolicy,
+  type RouteActor,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/21-supplies/routes/read-service-drizzle.ts — the Drizzle-backed M21 READ service
 // (§4.1's GET rows).
 //
@@ -22,15 +30,6 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
 import type { ComfortKitDispatchedContentPayload, DeaPerpetualLogEntry } from "@chartwarden/types";
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import type { M21ReadActor } from "./actor";
-import {
-  type CursorPage,
-  M21_PAGE_SIZES,
-  type PageSizePolicy,
-  clampLimit,
-  decodeCursor,
-  toCursorPage,
-} from "./concurrency";
 import type {
   CatalogFilters,
   ComfortKitReturnDetail,
@@ -53,6 +52,7 @@ import type {
   TemplateFilters,
   VendorRoutingRuleView,
 } from "./read-service";
+import { M21_PAGE_SIZES } from "./route-policy";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -107,7 +107,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
 
   const now = deps.now ?? (() => new Date());
 
-  const scoped = <T>(actor: M21ReadActor, fn: (tx: Tx) => Promise<T>): Promise<T> =>
+  const scoped = <T>(actor: RouteActor, fn: (tx: Tx) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
 
   /** Project a `comfort_kit_dispatched_content` row onto the published per-line payload. */
@@ -314,7 +314,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
     // ── §4.1 rows 2 / 3 — supply requests ──────────────────────────────────────────────────────────
     async listSupplyRequests(actor, filters) {
       const limit = pageOf(filters.limit, M21_PAGE_SIZES.requests);
-      const cursor = decodeCursor(filters.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return scoped(actor, async (tx) => {
         const rows = await tx
           .select()
@@ -337,6 +337,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           .orderBy(desc(REQUEST.createdAt), desc(REQUEST.id))
           .limit(limit + 1);
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ a: iso(r.createdAt), id: r.id }),
@@ -489,6 +490,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
         ].sort((a, b) => a.name.localeCompare(b.name));
 
         return toCursorPage(
+          actor.organizationId,
           views,
           limit,
           (v) => ({ a: v.name, id: v.supplyItemId }),
@@ -588,6 +590,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
         }
         const views = rows.map((row) => templateViewOf(row, byTemplate.get(row.id) ?? []));
         return toCursorPage(
+          actor.organizationId,
           views,
           limit,
           (v) => ({ a: v.name, id: v.comfortKitTemplateId }),
@@ -612,7 +615,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
     // ── §4.1 rows 21 / 22 — comfort-kit dispatches ────────────────────────────────────────────────
     async listDispatches(actor, filters) {
       const limit = pageOf(filters.limit, M21_PAGE_SIZES.dispatches);
-      const cursor = decodeCursor(filters.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return scoped(actor, async (tx) => {
         const rows = await tx
           .select()
@@ -637,6 +640,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           rows.map((r) => r.id),
         );
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ a: iso(r.dispatchedAt), id: r.id }),
@@ -677,7 +681,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
     // ── §4.1 rows 25 / 26 — comfort-kit returns ───────────────────────────────────────────────────
     async listReturns(actor, filters) {
       const limit = pageOf(filters.limit, M21_PAGE_SIZES.returns);
-      const cursor = decodeCursor(filters.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       const asOf = now();
       return scoped(actor, async (tx) => {
         const rows = await tx
@@ -704,6 +708,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           rows.map((r) => r.dispatchId),
         );
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ a: iso(r.returnDueAt), id: r.id }),
@@ -784,7 +789,13 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           )
           .orderBy(asc(RULE.scopeKind), asc(RULE.precedencePriority), asc(RULE.id))
           .limit(limit + 1);
-        return toCursorPage(rows, limit, (r) => ({ a: r.scopeKind, id: r.id }), routingRuleViewOf);
+        return toCursorPage(
+          actor.organizationId,
+          rows,
+          limit,
+          (r) => ({ a: r.scopeKind, id: r.id }),
+          routingRuleViewOf,
+        );
       });
     },
 
@@ -819,6 +830,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           .orderBy(asc(PAR.locationId), asc(PAR.id))
           .limit(limit + 1);
         return toCursorPage(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ a: r.par.locationId, id: r.par.id }),

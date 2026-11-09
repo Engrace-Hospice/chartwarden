@@ -1,17 +1,16 @@
-import { NotFoundError, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/qic.routes.ts - M25 milestone 4 routes: the QIC reconsideration
 // (cited evidence, the QIC's 60-day decision clock) and the escalation to OMHA when the QIC is late. Reads gate on
 // `appeal.read`; the evidence list on `appeal.attach_document`; the QIC clock on `appeal.submit`; the escalation
 // REQUEST on `appeal.submit` + step-up (the operation key is the permission key, guards.ts); confirming that the QIC
 // forwarded the case on `appeal.decide`. Every change is If-Match (409 when stale) and requires an Idempotency-Key.
 // Org, actor and provider-entity scope are server-derived (actor.ts). Nothing here sends anything outside ChartWarden.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { QIC_ESCALATION_CHANNELS, QIC_LATE_EVIDENCE_EXTENSION_MAX_DAYS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP } from "./guards";
-import { parse } from "./m25-typebox";
 import type { QicService } from "./qic-service";
 import { MAX_CITED_EVIDENCE_ITEMS } from "./qic-service";
 
@@ -163,7 +162,7 @@ export function registerQicRoutes(app: FastifyInstance, deps: QicRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -192,7 +191,7 @@ export function registerQicRoutes(app: FastifyInstance, deps: QicRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           input,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -209,7 +208,7 @@ export function registerQicRoutes(app: FastifyInstance, deps: QicRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -225,7 +224,7 @@ export function registerQicRoutes(app: FastifyInstance, deps: QicRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

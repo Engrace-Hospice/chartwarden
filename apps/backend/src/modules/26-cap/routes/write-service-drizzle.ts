@@ -28,9 +28,9 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import type { PsrFileStorePort, PsrReconcileEnqueuePort } from "../psr/psr-reconcile";
 import { orgContextFor } from "../system-actor";
-import type { M26WriteActor } from "./actor";
 import { type PatientAccrualRow, persistPatientProjections } from "./patient-projections";
 import { type ProjectionTrigger, persistSnapshot } from "./persist-snapshot";
+import type { M26Actor } from "./read-service";
 import type { PeriodView, ProjectionView, SettlementView } from "./read-service";
 import type {
   AcknowledgeInput,

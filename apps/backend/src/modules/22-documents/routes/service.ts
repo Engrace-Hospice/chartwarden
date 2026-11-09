@@ -5,6 +5,7 @@
 // a document's owner/object facts without a cross-module schema import. Mirrors the M6/M7/M8 routes/service
 // precedent: pure-ish (only an injected `now()` so timestamps are deterministic in tests), org-scoped reads
 // (a missing/cross-tenant id is a non-leaking 404 — the way RLS behaves in prod), cursor pagination on lists.
+import { assertVersion } from "@chartwarden/shared/route-kit";
 import type {
   DocumentRetentionClass,
   DocumentStatus,
@@ -20,7 +21,7 @@ import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-
 import type { ExtractionDiagnosisWritebackSummary } from "../extraction/writeback-commit-dx-db";
 import { assertNotInternalOnlyForPatientFacing } from "../internal-documents";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
-import { type CursorPage, paginate } from "./concurrency";
+import { type CursorPage, paginate } from "./pagination";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./signed-url-service";
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ──────────────────────
@@ -753,7 +754,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           createdAt: v.createdAt,
         })),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async getVersion(organizationId, documentId, versionId) {
       const r = loadDoc(organizationId, documentId);
@@ -796,7 +797,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           )
           .map(toDocView),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async patchDocument(organizationId, _actor, documentId, patch, basis) {
       const r = loadDocForWrite(organizationId, documentId, basis);
@@ -839,7 +840,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           ? b.id.localeCompare(a.id)
           : b.createdAt.localeCompare(a.createdAt),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async addTag(organizationId, _actor, documentId, tag, basis) {
       const r = loadDocForWrite(organizationId, documentId, basis);
@@ -942,12 +943,12 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
             createdAt: b.createdAt,
           };
         });
-      return paginate(desc(rows), cursor, limit);
+      return paginate(organizationId, desc(rows), cursor, limit);
     },
     async listClassification(organizationId, batchId, cursor, limit) {
       loadBatch(organizationId, batchId);
       const rows = desc([{ id: subId(), createdAt: now(), docType: "discharge_summary" }]);
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async confirmClassification(organizationId, _actor, batchId) {
       const r = loadBatch(organizationId, batchId);
@@ -957,12 +958,12 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async listJobs(organizationId, batchId, cursor, limit) {
       loadBatch(organizationId, batchId);
       const rows = desc([{ id: subId(), createdAt: now(), status: "ready_for_review" }]);
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async getJob(organizationId, jobId, cursor, limit) {
       void organizationId;
       const rows = desc([{ id: subId(), createdAt: now(), riskLevel: "low" }]);
-      return { id: jobId, candidates: paginate(rows, cursor, limit) };
+      return { id: jobId, candidates: paginate(organizationId, rows, cursor, limit) };
     },
     async openReview(organizationId, _actor, batchId) {
       const b = loadBatch(organizationId, batchId);
@@ -976,7 +977,11 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async getReview(organizationId, reviewId, cursor, limit) {
       const { review } = loadReview(organizationId, reviewId);
       const rows = desc<{ id: string; createdAt: string }>([]);
-      return { id: review.id, status: review.status, decisions: paginate(rows, cursor, limit) };
+      return {
+        id: review.id,
+        status: review.status,
+        decisions: paginate(organizationId, rows, cursor, limit),
+      };
     },
     async recordDecision(organizationId, _actor, reviewId, _args) {
       loadReview(organizationId, reviewId);
@@ -1009,7 +1014,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async listTemplates(organizationId, cursor, limit) {
       void organizationId;
       const rows = desc([{ id: subId(), key: "election_statement", createdAt: now() }]);
-      return paginate(rows, cursor, limit);
+      return paginate(organizationId, rows, cursor, limit);
     },
     async getTemplate(organizationId, key) {
       void organizationId;
@@ -1030,13 +1035,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async publishOverlay(organizationId, _actor, templateKey, ifVersion, _content) {
       void organizationId;
       // §2.5 optimistic concurrency — the caller's If-Match version must match the current.
-      if (ifVersion !== overlayVersion) {
-        throw new ChartWardenError(
-          "VERSION_MISMATCH",
-          "the overlay was modified since you read it",
-          412,
-        );
-      }
+      assertVersion(overlayVersion, ifVersion, "the overlay was modified since you read it");
       overlayVersion += 1;
       void templateKey;
       return { overlayId: subId(), version: overlayVersion };

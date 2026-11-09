@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/20-field-safety/routes/read-service-drizzle.ts — the Drizzle-backed M20 READ
 // service (§4.1's GET rows).
 //
@@ -26,7 +27,12 @@
 //      "clinicians see their own state only" cannot be expressed by `caseload_or_scope` — an ABAC
 //      predicate answers yes/no for a request, not which rows come back. The guard admits her to the
 //      route; this layer narrows the snapshot.
-import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type CursorPage,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -57,14 +63,8 @@ import { ACTIVE_SOS_RESPONDER_STATES, decideSafetySupervisorOrAbove } from "../a
 import { mergeEffectivePolicy, safetyPolicyFloorSeed } from "../lifecycle/policy";
 import { getSafetyDashboardProvider } from "../seams/index";
 import type { M20ReadActor } from "./actor";
-import {
-  type CursorPage,
-  M20_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  toCursorPage,
-} from "./concurrency";
 import { coordinatesCaptured, decodeCoordinates } from "./coordinates";
+import { M20_PAGE_SIZES } from "./page-sizes";
 import type {
   ActiveSosView,
   CheckInFilters,
@@ -390,7 +390,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async getLocationStream(actor, sosAlertId, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.locationStream);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return withOrgContext(db, ctx(actor), async (tx): Promise<SosLocationStreamPage> => {
         const [alert] = await tx
           .select({
@@ -571,7 +571,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async listIncidents(actor, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.incidents);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       const supervisor = decideSafetySupervisorOrAbove(actor.roles);
       return withOrgContext(db, ctx(actor), async (tx): Promise<CursorPage<SafetyIncidentView>> => {
         const rows = await tx
@@ -617,7 +617,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async listSubscriptions(actor, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.subscriptions);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return withOrgContext(
         db,
         ctx(actor),
@@ -665,7 +665,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async listHighRiskAreas(actor, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.highRiskAreas);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       const at = now();
       return withOrgContext(
         db,

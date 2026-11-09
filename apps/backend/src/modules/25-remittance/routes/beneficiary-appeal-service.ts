@@ -6,6 +6,7 @@
 // Documents are validated (org, patient, admission, active version, not Part 2) before linking and the validated version id is
 // persisted. Every transition is a conditional UPDATE (version and state in the WHERE).
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -22,8 +23,6 @@ import {
   representativeFlag,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation } from "./denial-route-service";
 import {
   type LinkedDocumentPort,
   UNBOUND_LINKED_DOCUMENTS,
@@ -336,7 +335,7 @@ export function buildDrizzleBeneficiaryAppealService(
       .set({ ...set, version: sql`${BA.version} + 1`, updatedAt: new Date() })
       .where(and(eq(BA.id, cur.id), eq(BA.version, ifMatch), eq(BA.state, cur.state)))
       .returning({ id: BA.id, version: BA.version });
-    if (!updated[0]) throw new VersionConflictError(cur.version);
+    if (!updated[0]) throw new StaleVersionError();
     return updated[0];
   }
 

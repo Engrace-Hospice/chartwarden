@@ -628,7 +628,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
           { "if-match": `"${nina.version + 5}"` },
         )
       ).statusCode,
-    ).toBe(412); // STALE_VERSION
+    ).toBe(409); // STALE_VERSION
     const updated = await call(
       "PATCH",
       url,
@@ -865,12 +865,12 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       notes: "Warm conversation.",
     };
     const completeUrl = `/api/v1/bereavement/outreach/${first}/complete`;
-    // §2.5 (GAP-194) — the outreach row is versioned: no If-Match → 428, the pre-start version → 412
+    // §2.5 (GAP-194) — the outreach row is versioned: no If-Match → 428, the pre-start version → 409
     expect((await call("POST", completeUrl, "counselor", completeBody)).statusCode).toBe(428);
     const stale = await call("POST", completeUrl, "counselor", completeBody, {
       "if-match": '"0"',
     });
-    expect(stale.statusCode).toBe(412);
+    expect(stale.statusCode).toBe(409);
     expect(JSON.stringify(stale.json())).toContain("STALE_VERSION");
     expect(await outreachVersion(first as string)).toBe(1);
     const done = await call("POST", completeUrl, "counselor", completeBody, {
@@ -894,7 +894,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     const declineUrl = `/api/v1/bereavement/outreach/${second}/decline`;
     expect(
       (await call("POST", declineUrl, "counselor", {}, { "if-match": '"0"' })).statusCode,
-    ).toBe(412);
+    ).toBe(409);
     const declined = await call(
       "POST",
       declineUrl,
@@ -909,7 +909,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     const cancelBody = { reason: "Family travelling this month" };
     expect(
       (await call("POST", cancelUrl, "counselor", cancelBody, { "if-match": '"7"' })).statusCode,
-    ).toBe(412);
+    ).toBe(409);
     const cancelled = await call("POST", cancelUrl, "counselor", cancelBody, {
       "if-match": `"${await outreachVersion(third as string)}"`,
     });
@@ -924,7 +924,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     );
     const lateUrl = `/api/v1/bereavement/outreach/${fourth}/late-attempt`;
     expect((await call("POST", lateUrl, "counselor", {}, { "if-match": '"0"' })).statusCode).toBe(
-      412,
+      409,
     );
     const late = await call(
       "POST",
@@ -1431,7 +1431,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(await status("bereavement_assessment_task", c.futureTask)).toBe("scheduled");
   });
 
-  it("pre-death draft: the care-team counselor records it (If-Match 0, SUD forced unknown); a stale write 412s; others 404; a plan locks it (ADR-0109 D5)", async () => {
+  it("pre-death draft: the care-team counselor records it (If-Match 0, SUD forced unknown); a stale write 409s; others 404; a plan locks it (ADR-0109 D5)", async () => {
     const url = `/api/v1/bereavement/pre-death-assessments/${draftAdmission.admissionId}`;
     const factors = {
       ambivalent_relationship: true,
@@ -1501,7 +1501,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     // A write that read version 0 after version 1 landed is refused; the current version succeeds.
     expect(
       (await call("PUT", url, "counselor", { factors }, { "if-match": '"0"' })).statusCode,
-    ).toBe(412);
+    ).toBe(409);
     expect(
       (await call("PUT", url, "counselor", { factors }, { "if-match": '"1"' })).statusCode,
     ).toBe(200);
@@ -1860,7 +1860,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect((await call("PUT", url, "counselor", { goals })).statusCode).toBe(428);
     expect(
       (await call("PUT", url, "counselor", { goals }, { "if-match": `"${v0 + 5}"` })).statusCode,
-    ).toBe(412);
+    ).toBe(409);
     expect(
       (await call("PUT", url, "volunteer", { goals }, { "if-match": `"${v0}"` })).statusCode,
     ).toBe(403);
@@ -2065,7 +2065,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     ).toBeNull();
     expect(await physicianLetterNoteForOrg(handle.db, cipher, ORG_A, randomUUID())).toBeNull();
 
-    // a second decision on a decided letter is refused; a stale token is 412
+    // a second decision on a decided letter is refused; a stale token is 409
     expect((await act(reviewable.letter, "approve", "don", {}, 1)).statusCode).toBe(409);
     expect(
       (
@@ -2078,7 +2078,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
         )
       ).statusCode,
     ).toBe(409);
-    expect((await act(reviewable.letter, "approve", "don", {}, 0)).statusCode).toBe(412);
+    expect((await act(reviewable.letter, "approve", "don", {}, 0)).statusCode).toBe(409);
     expect(await events("m16.bereavement.document_requested")).toBe(1);
 
     // the attending the care team resolved at intake has since left the organization: approval re-checks ACTIVE membership every time

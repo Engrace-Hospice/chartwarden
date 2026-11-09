@@ -170,8 +170,6 @@ export const M23_PUBLISHED_SEAM_NAMES = [
   "MacCredentialAdmin",
 ] as const;
 
-export type M23PublishedSeamName = (typeof M23_PUBLISHED_SEAM_NAMES)[number];
-
 // -----------------------------------------------------------------------------
 // CONSUMED forward-seam interfaces (§4.4) — the producer modules own the canonical interface; M23
 // declares only the MINIMAL shape its deny-stub + rule executor type against until the producer locks.

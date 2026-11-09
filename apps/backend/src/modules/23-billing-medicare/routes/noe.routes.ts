@@ -11,16 +11,20 @@
 // CORRECT (migration 0378) drafts a corrected NOE for a REJECTED one — a new linked DRAFT (`corrects_notice_id`),
 // gated like filing it (`billing.noe.submit` + provider scope + AI-block + `Idempotency-Key`; the step-up stays on
 // submit). CMS Pub. 100-04 ch. 11 §20.1.1; M23 §2.2 "corrected NOE is its own row".
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { writeActorOf } from "./actor";
 import {
   CancelNoeBodySchema,
   CorrectNoticeBodySchema,
   NoeIdParamsSchema,
   NoeListQuerySchema,
-  parse,
 } from "./billing-typebox";
-import { requireIdempotencyKey } from "./concurrency";
 import { P, PROVIDER_SCOPE, STEP_UP, targetNoeId } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";

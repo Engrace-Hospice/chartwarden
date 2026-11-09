@@ -19,7 +19,6 @@ export const LATER_TIER_WINDOWS_CONFIRMED: Readonly<Record<LaterTier, boolean>> 
 };
 
 export const DISPOSITION_KINDS = ["decision", "remand", "dismissal", "other"] as const;
-export type DispositionKind = (typeof DISPOSITION_KINDS)[number];
 
 export const TIER_DETAIL_TEXT_MAX = 200;
 export const TIER_DISPOSITION_NOTE_MAX = 500;

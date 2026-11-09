@@ -12,7 +12,7 @@
 // registered resolver derives the report's ProviderEntity + lifecycle state. `notFoundOnDeny:true`
 // realizes the §2.2 existence-non-leak rule (a denied object-level check returns 404, not 403).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { PreHandler } from "./actor";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 
 /** A structural request shape carrying the ABAC target sources (params/body); GuardRequest is assignable. */
 type TargetRequest = { readonly params?: unknown; readonly body?: unknown };

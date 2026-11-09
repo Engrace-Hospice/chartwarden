@@ -93,5 +93,5 @@ export type RuleConfigDeleteResponse = Static<typeof RuleConfigDeleteResponse>;
 // Errors (per §4.2 patterns):
 //   403 RULE_REGULATORY_PROTECTED — the rule is regulatory_required; overlay/disable forbidden (D5)
 //   409 RULE_OVERLAY_EXISTS       — a custom rule key collides with an existing overlay
-//   412 STALE_VERSION            — If-Match / ifVersion mismatch
+//   409 STALE_VERSION            — If-Match / ifVersion mismatch
 //   422 DISABLE_REASON_REQUIRED  — disabling a non-regulatory rule needs a ≥20-char reason

@@ -6,7 +6,7 @@
 // byte counts reach ops).
 import type { FastifyInstance } from "fastify";
 
-import { actorOf } from "./actor";
+import { actorOf } from "@chartwarden/shared/route-kit";
 import { ABAC_IN_ORG, P } from "./guards";
 import { FEED_HEALTH_NO_PHI } from "./read-audit-configs";
 import type { M29Store } from "./store";

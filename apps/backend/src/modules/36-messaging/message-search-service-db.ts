@@ -1,16 +1,3 @@
-// apps/backend/src/modules/36-messaging/message-search-service-db.ts - WP 2.7a in-conversation search over Drizzle.
-//
-// DESIGN (02 section 6, option A): bodies are sealed under the tenant DEK, so there is no index. A request walks ONE
-// channel newest-first in keyset batches, opens each candidate body, matches the normalised query in memory and
-// stops at the page size or at SEARCH_MAX_SCAN_PER_REQUEST bodies, whichever comes first (then it returns a
-// continuation cursor). Nothing derived from a body is stored, cached or logged.
-//
-// ACCESS: the route has run `channel_visibility` on the channel id; this service re-runs it (`canViewChannel`) so it
-// is correct without the route, and every statement is scoped to (organization, channel). A non-member, a removed
-// member, a Part 2 gated channel, another organisation and an unknown id are all the one 404. SQL pre-filters
-// (`status <> 'deleted'`) mean a tombstone is never even opened; the body searched is the CURRENT one (an edit
-// replaces the cipher in place). Hydration (reactions, pins, scan-gated attachments) is the shared read path, so a
-// result can never show more than the channel history would.
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type MessageSearchInput,
@@ -24,11 +11,24 @@ import {
   searchPageSize,
 } from "@chartwarden/messaging";
 import type { MessageBodyKind } from "@chartwarden/messaging";
+// apps/backend/src/modules/36-messaging/message-search-service-db.ts - WP 2.7a in-conversation search over Drizzle.
+//
+// DESIGN (02 section 6, option A): bodies are sealed under the tenant DEK, so there is no index. A request walks ONE
+// channel newest-first in keyset batches, opens each candidate body, matches the normalised query in memory and
+// stops at the page size or at SEARCH_MAX_SCAN_PER_REQUEST bodies, whichever comes first (then it returns a
+// continuation cursor). Nothing derived from a body is stored, cached or logged.
+//
+// ACCESS: the route has run `channel_visibility` on the channel id; this service re-runs it (`canViewChannel`) so it
+// is correct without the route, and every statement is scoped to (organization, channel). A non-member, a removed
+// member, a Part 2 gated channel, another organisation and an unknown id are all the one 404. SQL pre-filters
+// (`status <> 'deleted'`) mean a tombstone is never even opened; the body searched is the CURRENT one (an edit
+// replaces the cipher in place). Hydration (reactions, pins, scan-gated attachments) is the shared read path, so a
+// result can never show more than the channel history would.
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
 import { BodyKeyUnavailableError } from "./body-key-ring";
-import { decodeCursor, encodeCursor } from "./message-cursor";
 import {
   type HydrationContext,
   MESSAGE_ROW_COLUMNS,
@@ -199,7 +199,8 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
   return {
     async searchMessages(orgId, input): Promise<MessageSearchResult> {
       const filters = parseFilters(input);
-      const cursor = input.cursor ? decodeCursor(input.cursor) : null;
+      const keyset = decodeKeysetCursor(orgId, input.cursor, "instant");
+      const cursor = keyset && { createdAt: keyset.a, id: keyset.id };
       if (!(await deps.canViewChannel(orgId, input.userId, input.channelId))) {
         throw new NotFoundError("channel", input.channelId);
       }
@@ -229,7 +230,10 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
           results,
           ...(found.more && found.lastExamined
             ? {
-                nextCursor: encodeCursor(found.lastExamined.createdAtMicros, found.lastExamined.id),
+                nextCursor: encodeCursor(orgId, {
+                  a: found.lastExamined.createdAtMicros,
+                  id: found.lastExamined.id,
+                }),
               }
             : {}),
           scanned: found.scanned,

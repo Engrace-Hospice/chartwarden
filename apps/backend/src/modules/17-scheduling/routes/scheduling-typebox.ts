@@ -1,3 +1,4 @@
+import "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/17-scheduling/routes/scheduling-typebox.ts — M17-T07 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
@@ -7,7 +8,6 @@ import { ValidationError } from "@chartwarden/types";
 // four §4.7 pre-schedule predicates resolve at authz time. Response view shapes (the §5 screens' reads) are
 // enriched into the OpenAPI contract with the screens in M17-T08.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   AvailabilityView as ServiceAvailabilityView,
@@ -17,17 +17,6 @@ import type {
   SchedulingRouteService as ServiceType,
   VisitView as ServiceVisitView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 

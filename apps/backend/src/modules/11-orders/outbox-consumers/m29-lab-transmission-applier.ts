@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier.ts — `LabTransmissionApplier`
 // (D16, #248 F-177): M11's own consumer for the two real M29 outbound-HL7 lifecycle events, closing the m11
 // group's `m29.lab_order.transmitted`/`.transmission_failed` pairs F-175 surfaced when it built M29's T08
@@ -31,16 +32,13 @@
 // the same order) is a benign no-op, never a re-publish. `transmitted` and `failed` are treated as already
 // SETTLED — a redelivered M29 event against an already-`transmitted`/`failed` row silently skips (the D16 state
 // machine has no transition out of either driven by this consumer).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 import { DISPATCH_REFUSED_PREFIX, RECOVERY_BLOCKED_PREFIX } from "../orm-request/orm-resend";
 
 const ORDER = schema.orderRecords;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M11_LAB_TRANSMISSION_APPLIER_CONSUMER = {
   eventNames: [

@@ -9,7 +9,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { readTenantSearchSettingInTx } from "./tenant-setting-store";
 
-export const PURGE_BATCH_ROWS = 5000;
+const PURGE_BATCH_ROWS = 5000;
 
 export interface PurgeResult {
   readonly state: "none" | "completed" | "resumable";

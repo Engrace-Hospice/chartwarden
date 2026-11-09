@@ -13,7 +13,7 @@ const MSG = schema.messages;
 const CH = schema.channels;
 
 /** Facts about one message in one channel: live (not tombstoned) and the channel's kind and subject. */
-export function createDbMessageFactsLookup(
+function createDbMessageFactsLookup(
   db: DbClient,
 ): (orgId: string, channelId: string, messageId: string) => Promise<MessageFacts | null> {
   return (orgId, channelId, messageId) =>

@@ -18,9 +18,6 @@
       "path": "./apps/web"
     },
     {
-      "path": "./packages/admin-ui-shell"
-    },
-    {
       "path": "./packages/ai-platform"
     },
     {
@@ -55,9 +52,6 @@
     },
     {
       "path": "./packages/discipline-plans"
-    },
-    {
-      "path": "./packages/domain"
     },
     {
       "path": "./packages/dosespot"

@@ -1,4 +1,5 @@
 import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/19-oncall/consumers/roster-sync-debounce.ts — the live `m17.visit.assigned`
 // outbox consumer for the §4.5 path 1 / §4.8 `m19.shift-sync.debounced` roster sync (m19
 // `handlers-unbound` group, #248; F-155's own finding, now built).
@@ -26,9 +27,6 @@ import type { OrgId } from "@chartwarden/types";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS } from "../jobs/index";
 import { OnCallRosterSyncQueueRepository } from "../jobs/repository";
-
-/** §3.3 — a machine-driven debounce trigger names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 export interface RosterSyncDebounceConsumerDeps {
   readonly db: DbClient;

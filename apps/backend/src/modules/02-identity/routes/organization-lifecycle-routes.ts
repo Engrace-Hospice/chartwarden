@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/02-identity/routes/organization-lifecycle-routes.ts — §11 D19 (#205 hard
 // half). The ONE route the M35 spec's own worked example names: "a `platform_admin` suspends the org
 // via M2 admin route" (§11 D19). Gated on `org.manage` (packages/auth/src/permissions/contributed.ts —
@@ -12,15 +13,13 @@
 // question: the CALLER's own membership in the org their session is bound to, not the id this route
 // wants to attribute the transition to, which may be a platform-ops actor's membership in a
 // DIFFERENT org than the one being suspended).
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   OrganizationLifecycleEvent,
   OrganizationLifecycleWriter,
 } from "../organization-lifecycle";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const PERMISSION_KEY = "org.manage";
 const ABAC_PREDICATE = "organization_lifecycle_platform_ops";

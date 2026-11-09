@@ -1,3 +1,12 @@
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import type { RichBody } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type {
+  MedicationQuestionActorRef,
+  MedicationQuestionService,
+  ValidateLinks,
+} from "../medication-questions/medication-question-service";
 // apps/backend/src/modules/36-messaging/routes/medication-question-routes.ts - WP 3.10 "Ask a nurse about a medication"
 // (ADR-0067).
 //
@@ -10,19 +19,10 @@
 // uses (passed in as a closure over the request), so a server-built body widens nothing. Flag off (`messaging.medication_questions`
 // AND `messaging.tasks`): POST is the uniform 404; the options read answers 200 `{enabled:false}`. Org and actor are
 // always the request context. The Idempotency-Key header is enforced by the shared guard and replayed by the M1 middleware.
-import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
-import type { RichBody } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type {
-  MedicationQuestionActorRef,
-  MedicationQuestionService,
-  ValidateLinks,
-} from "../medication-questions/medication-question-service";
+import { actorRefOf } from "./actor";
 import { AskMedicationQuestionBodySchema } from "./medication-question-typebox";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface MedicationQuestionRouteDeps {
   readonly service: MedicationQuestionService;
@@ -52,12 +52,6 @@ export const DISABLED_MEDICATION_QUESTIONS: MedicationQuestionRouteDeps = {
   },
 };
 
-function actorOf(request: FastifyRequest): MedicationQuestionActorRef {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
-
 export function registerMedicationQuestionRoutes(
   app: FastifyInstance,
   deps: MedicationQuestionRouteDeps,
@@ -83,7 +77,7 @@ export function registerMedicationQuestionRoutes(
       },
     },
     async (request, reply) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       const body = parse(AskMedicationQuestionBodySchema, request.body);
       const result = await service.ask(
@@ -116,7 +110,7 @@ export function registerMedicationQuestionRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       return service.options(actor, id);
     },

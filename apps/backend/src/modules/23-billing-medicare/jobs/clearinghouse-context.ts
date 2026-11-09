@@ -5,11 +5,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
+import { type ClearinghouseContext, clearinghouseUsageFromEnv } from "@chartwarden/x12-837-client";
 import { and, eq } from "drizzle-orm";
 import type { ClearinghouseContextPort } from "./clearinghouse-submission";
 
-export const CLEARINGHOUSE_USAGE_ENV = "CLEARINGHOUSE_USAGE";
 export const CLEARINGHOUSE_PAYER_ID_ENV = "CLEARINGHOUSE_PAYER_ID";
 export const CLAIMMD_M23_PAYER_ROUTES_ENV = "CLAIMMD_M23_PAYER_ROUTES";
 export const CLAIMMD_ACCOUNT_REFERENCE_ENV = "CLAIMMD_ACCOUNT_REFERENCE";
@@ -26,30 +25,6 @@ export type ClaimMdM23PayerRoute = {
 };
 
 type EnvMap = Readonly<Record<string, string | undefined>>;
-
-/** `test` reaches only vendor test mode. Defaults to production exactly when NODE_ENV is production. */
-export function clearinghouseUsageFromEnv(env: EnvMap): ClearinghouseContext["usage"] {
-  if (env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd") {
-    const accountUsage = env.CLAIMMD_ACCOUNT_USAGE?.trim();
-    if (accountUsage !== "test" && accountUsage !== "production") {
-      throw new Error("CLAIMMD_ACCOUNT_USAGE must be test or production for Claim.MD routing");
-    }
-    const sharedUsage = env[CLEARINGHOUSE_USAGE_ENV]?.trim();
-    if (sharedUsage && sharedUsage !== accountUsage) {
-      throw new Error("CLEARINGHOUSE_USAGE conflicts with CLAIMMD_ACCOUNT_USAGE");
-    }
-    return accountUsage;
-  }
-  const raw = env[CLEARINGHOUSE_USAGE_ENV]?.trim();
-  if (!raw) return env.NODE_ENV === "production" ? "production" : "test";
-  if (raw !== "test" && raw !== "production") {
-    throw new Error(`${CLEARINGHOUSE_USAGE_ENV} must be "test" or "production" (or unset)`);
-  }
-  if (raw === "test" && env.NODE_ENV === "production") {
-    throw new Error(`${CLEARINGHOUSE_USAGE_ENV}=test is refused in production`);
-  }
-  return raw;
-}
 
 export interface ClearinghouseContextDeps {
   readonly db: DbClient;

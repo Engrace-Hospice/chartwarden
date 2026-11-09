@@ -25,5 +25,5 @@ export type ClaimReplaceResponse = Static<typeof ClaimReplaceResponse>;
 
 // Errors (per §4.2 patterns):
 //   409 CLAIM_NOT_REPLACEABLE — predecessor is not in an adjudicated/replaceable state
-//   412 STALE_VERSION         — If-Match / ifVersion mismatch
+//   409 STALE_VERSION         — If-Match / ifVersion mismatch
 //   403 STEP_UP_REQUIRED      — M2 billing-submit session profile not satisfied

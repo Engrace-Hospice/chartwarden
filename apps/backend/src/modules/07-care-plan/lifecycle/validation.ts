@@ -116,7 +116,7 @@ export function checkDpoaGoalConsent(source: GoalSource, agentConsentActive: boo
 
 /**
  * §2.3 / §7.7 — optimistic concurrency: a PATCH carries the row `version` it read (`If-Match` / ETag);
- * a mismatch against the current row version is a stale write and is refused with 412.
+ * a mismatch against the current row version is a stale write and is refused with 409 STALE_VERSION.
  */
 export function checkOptimisticConcurrency(expectedVersion: number, currentVersion: number): void {
   require_(

@@ -3,7 +3,7 @@
 // M27 is not yet implemented → forward-seam DENY-STUB. M27 registers the real
 // `CostReportFilingStatusReader` / `CostReportProvider` / `CostReportValidationReader` over this stub
 // when it lands (P2C).
-import { FORWARD_SEAM_UNAVAILABLE, type ForwardSeamMetric } from "./forward-seam";
+import type { ForwardSeamMetric } from "./forward-seam";
 
 export interface ReportingCostReportConsumer {
   /** M27 `CostReportFilingStatusReader` — filing-status rollup (forward seam). */
@@ -13,15 +13,3 @@ export interface ReportingCostReportConsumer {
   /** M27 `CostReportValidationReader` — validation-finding rollup (forward seam). */
   validationFindings(organizationId: string): Promise<ForwardSeamMetric>;
 }
-
-export const denyStubReportingCostReportConsumer: ReportingCostReportConsumer = {
-  async filingStatus(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-  async costReportAggregate(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-  async validationFindings(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-};

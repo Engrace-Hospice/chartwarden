@@ -1,3 +1,16 @@
+import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import {
+  NotFoundError,
+  type OnCallDirectoryRole,
+  ROLE_SEND_PERMISSION,
+  URGENT_SEND_PERMISSION,
+  UnauthorizedError,
+} from "@chartwarden/types";
+import type { RichBody } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { RoleSendService } from "../oncall-directory/role-send-service";
+import type { ValidateLinks } from "../urgent/urgent-service";
 // apps/backend/src/modules/36-messaging/routes/role-send-routes.ts - ADR-0081 (PROPOSED): role-based send ("message the on-call RN").
 //
 //   GET  /api/v1/messaging/channels/:id/role-send/resolution?role&patient_id   who covers the role NOW (the sender confirms this person)
@@ -11,18 +24,7 @@
 // procedure wording. The tenant flag `messaging.role_send` off is the uniform 404 for EVERYONE: it is the first preHandler on both routes (so a
 // caller without a key or with a malformed body learns nothing) and is checked again in the service, before any router call. The
 // resolution is never cached. Org and actor are always the request context.
-import { requirePermission } from "@chartwarden/auth";
-import {
-  NotFoundError,
-  type OnCallDirectoryRole,
-  ROLE_SEND_PERMISSION,
-  URGENT_SEND_PERMISSION,
-  UnauthorizedError,
-} from "@chartwarden/types";
-import type { RichBody } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { RoleSendService } from "../oncall-directory/role-send-service";
-import type { ValidateLinks } from "../urgent/urgent-service";
+import { actorRefOf } from "./actor";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { type OnCallRouteDeps, buildPatientGate } from "./oncall-routes";
 import {
@@ -32,8 +34,6 @@ import {
   SendRoleMessageBodySchema,
 } from "./role-send-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface RoleSendRouteDeps {
   readonly service: RoleSendService;
@@ -70,12 +70,6 @@ export const DISABLED_ROLE_SEND: RoleSendRouteDeps = {
     },
   },
 };
-
-function actorOf(request: FastifyRequest): { orgId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
 
 export function registerRoleSendRoutes(
   app: FastifyInstance,
@@ -138,7 +132,7 @@ export function registerRoleSendRoutes(
     async (request, reply) => {
       const { id } = parse(ChannelParamsSchema, request.params);
       const q = parse(RoleSendResolutionQuerySchema, request.query);
-      const out = await deps.service.resolve(actorOf(request), {
+      const out = await deps.service.resolve(actorRefOf(request), {
         channelId: id,
         patientId: q.patient_id,
         role: q.role as OnCallDirectoryRole,
@@ -175,7 +169,7 @@ export function registerRoleSendRoutes(
       },
     },
     async (request, reply) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       const body = parse(SendRoleMessageBodySchema, request.body);
       const result = await deps.service.send(

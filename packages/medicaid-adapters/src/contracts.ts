@@ -19,11 +19,7 @@ export type { Cents, IsoDate, IsoDateTime, OrgId, PatientId, ProviderEntityId };
 export type MedicaidClaimId = string;
 export type MedicaidClaimLineId = string;
 export type RbArrangementId = string;
-export type RbDayId = string;
-export type MedicaidEligibilityCheckId = string;
-export type MedicareClaimId = string; // M23 claim id (logical, COB)
 export type McoId = string; // M40 state_medicaid_mco id
-export type StateRateScheduleId = string; // M40 logical
 /** Two-letter US state code (the per-claim adapter routing key, §1.1). */
 export type StateCode = string;
 
@@ -50,38 +46,10 @@ export type MedicaidClaimState =
   | "VOIDED"
   | "ABANDONED";
 
-export const MEDICAID_CLAIM_STATES: readonly MedicaidClaimState[] = [
-  "DRAFT",
-  "VALIDATING",
-  "FAILED_VALIDATION",
-  "READY",
-  "AWAITING_MEDICARE_PRIMARY",
-  "FAILED_MEDICARE_PRIMARY",
-  "SUBMITTED",
-  "POLLING",
-  "ACK_PENDING",
-  "ACK_TIMEOUT",
-  "ACK_ACCEPTED",
-  "ACK_REJECTED",
-  "ACK_PARTIAL",
-  "PAID",
-  "DENIED",
-  "REPLACED",
-  "VOIDED",
-  "ABANDONED",
-] as const;
-
 export type MedicaidClaimKind = "combined_hospice_rb" | "hospice_only" | "rb_only";
 
 /** `m24_claim_line_loc` — Medicaid hospice LOC including the NF Room & Board line. */
 export type MedicaidLevelOfCare = "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
-export const MEDICAID_LOCS: readonly MedicaidLevelOfCare[] = [
-  "RHC",
-  "CHC",
-  "IRC",
-  "GIP",
-  "NF_RB",
-] as const;
 
 export type MedicaidTob = "811" | "812" | "813" | "814" | "817" | "818";
 
@@ -102,15 +70,6 @@ export type MedicaidChannel =
   | "sftp"
   | "portal"
   | "state_proprietary";
-
-export type MedicaidSubmissionResult =
-  | "pending"
-  | "accepted_sync"
-  | "pending_async"
-  | "rejected_sync"
-  | "transport_failure"
-  | "timeout"
-  | "cancelled";
 
 /** M18 EVV bracket state (reused vocabulary; D9). `unresolved_missing` always blocks. */
 export type EvvBracketState =

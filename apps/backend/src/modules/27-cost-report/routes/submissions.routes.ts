@@ -6,14 +6,12 @@
 // auto-rule-suggestion pipeline). Reads gate `cost_report.read`; recording an acknowledgment gates
 // `cost_report.record_acknowledgment` (the §4.6 `inOrg` default — recording a MAC response is not a
 // provider-scoped edit). The acknowledgment carries `Idempotency-Key` (§4.1). Org/actor binding server-side.
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   CostReportIdParamsSchema,
   RecordAcknowledgmentBodySchema,
   SubmissionParamsSchema,
-  parse,
 } from "./cost-report-typebox";
 import { P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";

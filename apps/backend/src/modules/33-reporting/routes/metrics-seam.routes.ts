@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/metrics-seam.routes.ts — M33 (§4.1 #42 / §4.3).
 //
 // The internal published-seam HTTP endpoint backing `MetricsProvider.getDashboardMetric` — consumed by
@@ -7,9 +8,9 @@
 // service holds the key); the read runs through the injected service → `withReportSession` /
 // MetricsProvider. Returns a `null` value + `isForwardSeamDenyStub:true` when the metric is not yet
 // materialized (a forward-seam MV). Org/actor binding is ALWAYS server-side (request.context).
-import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
+import { actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";
 import { MetricKeyParamsSchema, MetricSeamQuerySchema, parse } from "./reporting-typebox";
 

@@ -12,7 +12,7 @@ export interface M36ReminderSweepWorkerDeps
   readonly sweep: (orgId: string) => Promise<ReminderSweepSummary>;
 }
 
-export async function reminderSweepTick(
+async function reminderSweepTick(
   deps: Pick<M36ReminderSweepWorkerDeps, "activeOrgs" | "onError" | "sweep">,
 ): Promise<ReminderSweepSummary> {
   const totals = { raised: 0, dropped: 0, failed: 0 };

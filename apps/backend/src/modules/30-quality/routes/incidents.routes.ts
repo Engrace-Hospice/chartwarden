@@ -31,9 +31,9 @@
 // `request.context` via `actorOf`/`writeActorOf`), NEVER read off the body. The service drives the pure
 // reducers (it does not re-implement state logic) and emits the §4.10 `m30.incident.*` events transactionally.
 import { requireAbac, requirePermission, resolveActorPermissions } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { actorOf, writeActorOf } from "./actor";
 import { assertPatientInScope } from "./patient-scope";
 import {
   AbuseAllegationListQuerySchema,

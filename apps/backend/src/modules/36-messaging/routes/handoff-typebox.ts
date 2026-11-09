@@ -1,3 +1,4 @@
+import { Uuid, pageLimit } from "@chartwarden/shared/route-kit";
 import {
   HANDOFF_ACTIONS,
   HANDOFF_CLOSE_REASONS,
@@ -9,9 +10,7 @@ import {
 // Ids are canonical uuids. Counts and the policy minutes are transport-checked loosely here on purpose: the service owns the
 // typed 422 codes (HANDOFF_ITEMS_REQUIRED, HANDOFF_TOO_MANY_ITEMS, HANDOFF_POLICY_INVALID) so the client sees a stable code.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
 const literals = <T extends string>(values: readonly T[]) =>
   Type.Union(values.map((v) => Type.Literal(v)));
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
@@ -21,25 +20,25 @@ const OFFER_TRANSPORT_MAX_ITEMS = 1000;
 const PREFILL_MAX_PATIENTS = 50;
 const ACCEPT_MAX_ITEMS = 250;
 
-export const HandoffParamsSchema = Type.Object({ handoffId: Uuid });
+export const HandoffParamsSchema = Type.Object({ handoffId: Uuid() });
 
 export const ListHandoffsQuerySchema = Type.Object({
   scope: Type.Optional(literals(["incoming", "outgoing"] as const)),
   state: Type.Optional(literals(["active", "closed", "all"] as const)),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  limit: pageLimit({ max: 100 }),
 });
 
 export const PrefillBodySchema = Type.Object(
-  { patient_ids: Type.Array(Uuid, { minItems: 1, maxItems: PREFILL_MAX_PATIENTS }) },
+  { patient_ids: Type.Array(Uuid(), { minItems: 1, maxItems: PREFILL_MAX_PATIENTS }) },
   { additionalProperties: false },
 );
 
 export const OfferHandoffBodySchema = Type.Object(
   {
-    to_user_id: Uuid,
+    to_user_id: Uuid(),
     items: Type.Array(
       Type.Object(
-        { kind: literals(HANDOFF_ITEM_KINDS), ref_id: Uuid, patient_id: Uuid },
+        { kind: literals(HANDOFF_ITEM_KINDS), ref_id: Uuid(), patient_id: Uuid() },
         { additionalProperties: false },
       ),
       { maxItems: OFFER_TRANSPORT_MAX_ITEMS },
@@ -49,12 +48,12 @@ export const OfferHandoffBodySchema = Type.Object(
 );
 
 export const AcceptHandoffBodySchema = Type.Object(
-  { item_ids: Type.Array(Uuid, { minItems: 1, maxItems: ACCEPT_MAX_ITEMS }) },
+  { item_ids: Type.Array(Uuid(), { minItems: 1, maxItems: ACCEPT_MAX_ITEMS }) },
   { additionalProperties: false },
 );
 
 export const DeclineHandoffBodySchema = Type.Object(
-  { item_ids: Type.Optional(Type.Array(Uuid, { minItems: 1, maxItems: ACCEPT_MAX_ITEMS })) },
+  { item_ids: Type.Optional(Type.Array(Uuid(), { minItems: 1, maxItems: ACCEPT_MAX_ITEMS })) },
   { additionalProperties: false },
 );
 
@@ -70,15 +69,15 @@ const ItemSummarySchema = Type.Object({
   still_open: Type.Optional(Type.Boolean()),
 });
 
-export const HandoffItemSchema = Type.Object({
-  id: Type.String({ format: "uuid" }),
-  patient_id: nullable(Type.String({ format: "uuid" })),
+const HandoffItemSchema = Type.Object({
+  id: Uuid(),
+  patient_id: nullable(Uuid()),
   patient_display_name: nullable(Type.String()),
   mrn_suffix: nullable(Type.String()),
   kind: literals(HANDOFF_ITEM_KINDS),
-  ref_id: nullable(Type.String({ format: "uuid" })),
+  ref_id: nullable(Uuid()),
   state: literals(HANDOFF_ITEM_STATES),
-  accountable_user_id: Type.String({ format: "uuid" }),
+  accountable_user_id: Uuid(),
   accountable_display_name: nullable(Type.String()),
   resolved_at: nullable(Type.String({ format: "date-time" })),
   summary: ItemSummarySchema,
@@ -92,11 +91,11 @@ const ItemCountsSchema = Type.Object({
   cancelled: Type.Integer(),
 });
 
-export const HandoffSchema = Type.Object({
-  id: Type.String({ format: "uuid" }),
-  from_user_id: Type.String({ format: "uuid" }),
+const HandoffSchema = Type.Object({
+  id: Uuid(),
+  from_user_id: Uuid(),
   from_display_name: nullable(Type.String()),
-  to_user_id: Type.String({ format: "uuid" }),
+  to_user_id: Uuid(),
   to_display_name: nullable(Type.String()),
   state: literals(HANDOFF_STATES),
   offered_at: Type.String({ format: "date-time" }),
@@ -125,7 +124,7 @@ export const HandoffListResponseSchema = Type.Object({
 export const CaseloadResponseSchema = Type.Object({
   patients: Type.Array(
     Type.Object({
-      patient_id: Type.String({ format: "uuid" }),
+      patient_id: Uuid(),
       display_name: Type.String(),
       mrn_suffix: nullable(Type.String()),
     }),
@@ -135,11 +134,11 @@ export const CaseloadResponseSchema = Type.Object({
 export const PrefillResponseSchema = Type.Object({
   patients: Type.Array(
     Type.Object({
-      patient_id: Type.String({ format: "uuid" }),
+      patient_id: Uuid(),
       items: Type.Array(
         Type.Object({
           kind: literals(HANDOFF_ITEM_KINDS),
-          ref_id: Type.String({ format: "uuid" }),
+          ref_id: Uuid(),
           status: Type.Optional(Type.String()),
           occurred_at: Type.Optional(Type.String()),
         }),

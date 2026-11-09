@@ -86,13 +86,6 @@ export const RATIO_STATUS_TONE: Record<string, StatusTone> = {
   unavailable: "neutral",
 };
 
-/** `volunteer_hour_entry_source` — §2.2.7 ledger numerator sources. */
-export const HOUR_SOURCE_TONE: Record<string, StatusTone> = {
-  encounter: "success",
-  volunteer_admin_hours: "progress",
-  manual_adjustment: "warning",
-};
-
 /** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
 export function toneOf(
   map: Record<string, StatusTone>,

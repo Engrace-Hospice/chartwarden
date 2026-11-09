@@ -9,7 +9,7 @@
  *                   3-strikes unreachable streak (the detector's SQL and route 17's guard) and never count in M30;
  *   timeline        route 52 reads both row families newest first with cursor paging; reach is the plan's (an unassigned counselor gets 404); a bereavement
  *                   volunteer sees no touchpoint outcome and the sealed notes are never returned;
- *   config + sweep  routes 42/43 (oversight only, If-Match 0 for the first write, 412 stale, the deferred birthday mailing refused); the sweep drafts one run
+ *   config + sweep  routes 42/43 (oversight only, If-Match 0 for the first write, 409 stale, the deferred birthday mailing refused); the sweep drafts one run
  *                   per occurrence however many ticks run (ON CONFLICT DO NOTHING), none for a disabled config, snapshotting the wording;
  *   generate        refuses empty wording (422); the compare-and-set claim lets exactly one of two callers win; the batch is selected SET-BASED through the
  *                   pure eligibility rule over every active plan's contacts (opt-out ROWS decide, not contact status; a closed plan and another tenant's contacts
@@ -20,7 +20,7 @@
  *   download        a ready run's URL comes through M22's org-level seam (aggregate-type allowlist, ledger row), is never cached, and carries a read audit
  *                   that names the run; the real seam over the real tables refuses a patient's document and another tenant's;
  *   confirm-mailed  re-checks eligibility over the rendered contacts, flags `excluded_after_render`, moves ready -> mailed, emits ids and counts only; a stale
- *                   version is 412, a second confirm 409; a mailed batch is never downloaded again (409 MAILING_RUN_ALREADY_MAILED);
+ *                   version is 409 STALE_VERSION, a second confirm 409; a mailed batch is never downloaded again (409 MAILING_RUN_ALREADY_MAILED);
  *   race            two overlapping generate jobs render through the REAL DocumentRenderer: each attempt files its own document, the download serves the
  *                   compare-and-set winner's PDF, and an attempt whose PDF names a family excluded since its re-check is abandoned, never made ready;
  *   log pass        the sweep writes the activity rows in chunks of 500, set-based and idempotent, for the mailed items only;
@@ -779,7 +779,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
     const monthDayIn = (days: number) =>
       new Date(Date.now() + days * 86_400_000).toISOString().slice(5, 10);
 
-    it("a never-configured key reads as a disabled default at version 0; oversight writes it with If-Match 0, a stale version is 412, a counselor is 403", async () => {
+    it("a never-configured key reads as a disabled default at version 0; oversight writes it with If-Match 0, a stale version is 409, a counselor is 403", async () => {
       const before = (await call("GET", "/api/v1/bereavement/mailings/config", "don")).json();
       expect(before.map((c: { mailingKey: string }) => c.mailingKey)).toEqual([
         "newsletter_quarterly",
@@ -817,7 +817,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
       expect(
         (await call("PUT", cfgUrl("newsletter_quarterly"), "don", body(), { "if-match": '"0"' }))
           .statusCode,
-      ).toBe(412);
+      ).toBe(409);
       expect(
         (await call("PUT", cfgUrl("decedent_birthday"), "don", body(), { "if-match": '"0"' }))
           .statusCode,
@@ -988,7 +988,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
             { "if-match": '"0"' },
           )
         ).statusCode,
-      ).toBe(412);
+      ).toBe(409);
     });
 
     it("two callers racing one generate: exactly one claims the run", async () => {
@@ -1486,7 +1486,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
             "if-match": '"9"',
           })
         ).statusCode,
-      ).toBe(412);
+      ).toBe(409);
       const res = await call("POST", `${runs}/${run}/confirm-mailed`, "don", undefined, {
         "if-match": '"3"',
       });

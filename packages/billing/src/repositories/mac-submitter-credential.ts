@@ -130,7 +130,7 @@ export class MacSubmitterCredentialRepository {
     const size = pageSizeOf(limit);
     const where = and(
       eq(M.organizationId, organizationId),
-      keysetBefore(M.createdAt, M.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(M.createdAt, M.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -138,7 +138,7 @@ export class MacSubmitterCredentialRepository {
       .where(where)
       .orderBy(desc(M.createdAt), desc(M.id))
       .limit(size + 1);
-    return buildCursorPage(rows.map(toSafe), size, (r) => ({
+    return buildCursorPage(organizationId, rows.map(toSafe), size, (r) => ({
       createdAt: r.createdAt.toISOString(),
       id: r.id,
     }));
@@ -149,7 +149,7 @@ export class MacSubmitterCredentialRepository {
    * when the persisted `version` matches `expectedVersion`, bumping `version` + `updated_at`. A rotated
    * secret arrives pre-encrypted in `patch.clientSecretCipher` (+ `clientSecretDekVersion`). On a version
    * mismatch returns `VERSION_CONFLICT` carrying the current persisted version (or `null` when the row
-   * vanished) so the service can surface a 412. Returns the SAFE projection on success.
+   * vanished) so the service can surface a 409 STALE_VERSION. Returns the SAFE projection on success.
    */
   async updateWithVersion(
     id: string,

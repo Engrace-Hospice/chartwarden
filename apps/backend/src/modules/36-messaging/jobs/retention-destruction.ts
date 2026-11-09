@@ -60,13 +60,13 @@ export const DESTRUCTION_BATCH_SIZE = 500;
 /** Batches per certificate per run; the rest resumes next run (an approved certificate stays approved until it drains). */
 export const DESTRUCTION_MAX_BATCHES_PER_CERTIFICATE = 40;
 /** Approved certificates acted on per org per run. */
-export const DESTRUCTION_MAX_CERTIFICATES_PER_RUN = 6;
+const DESTRUCTION_MAX_CERTIFICATES_PER_RUN = 6;
 /** An approved certificate is acted on only this long after the scan opened it; later it is refused (a new scan opens a fresh one). */
-export const CERTIFICATE_VALIDITY_DAYS = 35;
+const CERTIFICATE_VALIDITY_DAYS = 35;
 /** Attempts at recording a committed batch (audit plus spending the count) before the destroyed ids are reported on the error. */
-export const BATCH_RECORD_ATTEMPTS = 3;
+const BATCH_RECORD_ATTEMPTS = 3;
 /** Expired approvals named in a run row (the rest are not listed; none is ever acted on). */
-export const EXPIRED_REPORT_LIMIT = 50;
+const EXPIRED_REPORT_LIMIT = 50;
 /**
  * A reservation whose batch is still `reserved` after this long is treated as stranded (a crash between the delete and the settle) and
  * reconciled. Deliberately far longer than any delete transaction can run, so a live executor is never raced.
@@ -76,13 +76,13 @@ export const STRANDED_BATCH_AFTER_HOURS = 6;
  * The delete step refuses to run when its reservation is older than this (it refunds instead). Must stay well under STRANDED_BATCH_AFTER_HOURS:
  * a reconcile reads "gone" ids from committed state, so a delete that could still commit after a reconcile would be counted as refunded.
  */
-export const MAX_RESERVATION_AGE_HOURS = 5;
+const MAX_RESERVATION_AGE_HOURS = 5;
 /** Statement and lock timeouts of the destructive transaction (a few statements, so the whole transaction ends far inside the stranded threshold). */
-export const DELETE_STATEMENT_TIMEOUT_MS = 600_000;
-export const DELETE_LOCK_TIMEOUT_MS = 60_000;
+const DELETE_STATEMENT_TIMEOUT_MS = 600_000;
+const DELETE_LOCK_TIMEOUT_MS = 60_000;
 /** The whole destructive transaction (PG18 transaction_timeout) and its idle gaps. MAX_RESERVATION_AGE_HOURS + this < STRANDED_BATCH_AFTER_HOURS by construction. */
-export const DELETE_TRANSACTION_TIMEOUT_MS = 1_800_000;
-export const DELETE_IDLE_IN_TRANSACTION_TIMEOUT_MS = 180_000;
+const DELETE_TRANSACTION_TIMEOUT_MS = 1_800_000;
+const DELETE_IDLE_IN_TRANSACTION_TIMEOUT_MS = 180_000;
 /** Stranded batches reconciled per org per run. */
 export const RECONCILE_MAX_BATCHES_PER_RUN = 50;
 
@@ -124,7 +124,7 @@ export interface RetentionDestructionDeps {
 }
 
 /** A batch's rows are gone but recording it failed after the retries: the ids are here (ids only) so they are never lost. */
-export class DestructionUnrecordedError extends Error {
+class DestructionUnrecordedError extends Error {
   constructor(
     readonly certificateId: string,
     readonly destroyedMessageIds: readonly string[],

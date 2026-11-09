@@ -1,3 +1,9 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  CSV_EXPORT_ROW_CAP,
+  CsvExportRowCapExceeded,
+  PdfRowLimitExceeded,
+} from "@chartwarden/reporting";
 // apps/backend/src/modules/33-reporting/routes/exports.routes.ts — M33 (§4.1 #32–#34).
 //
 // The three export formats (D10):
@@ -11,16 +17,10 @@
 // `reportable_scope` predicate M33 OWNS, M3). PDF/XLSX are idempotency-required (the exportId is the
 // `Idempotency-Key` so M22 renders at-most-once across a redelivered request). Org/actor binding is ALWAYS
 // server-side (request.context, never the body). Mirrors the M33 schedules/views route shape.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
-import {
-  CSV_EXPORT_ROW_CAP,
-  CsvExportRowCapExceeded,
-  PdfRowLimitExceeded,
-} from "@chartwarden/reporting";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { type PreHandler, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import type { CsvSinkPort, M33ExportDrilldownRouteService } from "./export-drilldown-service";
 import { parse } from "./reporting-typebox";
 import { ExportRequest, ViewIdParams } from "./write-typebox";

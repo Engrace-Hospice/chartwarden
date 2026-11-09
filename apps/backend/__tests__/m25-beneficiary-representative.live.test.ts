@@ -744,7 +744,7 @@ describe.skipIf(!DB_URL)(
       expect(Number(serviceWon) + rawRows.rowCount).toBe(1);
       if (!serviceWon) {
         expect(((results[0] as PromiseRejectedResult).reason as { code?: string }).code).toBe(
-          "VERSION_CONFLICT",
+          "STALE_VERSION",
         );
       }
       const row = await apptRow(id);
@@ -1050,7 +1050,7 @@ describe.skipIf(!DB_URL)(
         headers: WRITE(v + 5),
       });
       expect(stale.statusCode).toBe(409);
-      expect((stale.json() as { error: { code: string } }).error.code).toBe("VERSION_CONFLICT");
+      expect((stale.json() as { error: { code: string } }).error.code).toBe("STALE_VERSION");
       const ok = await verify.inject({
         method: "POST",
         url: `/api/v1/representative-appointments/${id}/activate`,

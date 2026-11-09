@@ -1,3 +1,4 @@
+import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
 import {
   ACK_ADDRESSED_ROLES,
   ACK_CLASSES,
@@ -10,7 +11,6 @@ import {
 // never a silently ignored filter. The response is ids, enums, counts and instants; no message text, no patient name.
 import { type TSchema, Type } from "@sinclair/typebox";
 
-const UuidOut = Type.String({ format: "uuid" });
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 const oneOf = <T extends readonly string[]>(values: T) =>
   Type.Union(values.map((v) => Type.Literal(v)));
@@ -19,22 +19,21 @@ export const UnacknowledgedQuerySchema = Type.Object(
   {
     status: Type.Optional(oneOf(ACK_QUEUE_STATUSES)),
     overdue: Type.Optional(Type.Boolean()),
-    cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: ACK_QUEUE_LIMIT_MAX })),
+    ...pageQuery({ max: ACK_QUEUE_LIMIT_MAX }),
   },
   { additionalProperties: false },
 );
 
 const Item = Type.Object({
   restricted: Type.Boolean(),
-  id: nullable(UuidOut),
-  channel_id: nullable(UuidOut),
-  message_id: nullable(UuidOut),
-  patient_id: nullable(UuidOut),
+  id: nullable(Uuid()),
+  channel_id: nullable(Uuid()),
+  message_id: nullable(Uuid()),
+  patient_id: nullable(Uuid()),
   ack_class: oneOf(ACK_CLASSES),
   addressed_role: nullable(oneOf(ACK_ADDRESSED_ROLES)),
   status: oneOf(ACK_QUEUE_STATUSES),
-  assigned_user_id: nullable(UuidOut),
+  assigned_user_id: nullable(Uuid()),
   assigned_display_name: nullable(Type.String()),
   requested_at: Type.String({ format: "date-time" }),
   deadline_at: Type.String({ format: "date-time" }),
@@ -44,13 +43,13 @@ const Item = Type.Object({
   escalation_note: nullable(oneOf(ACK_ESCALATION_NOTES)),
   delivery_failed: Type.Boolean(),
   requester_display_name: nullable(Type.String()),
-  request_ref: UuidOut,
+  request_ref: Uuid(),
 });
 
 export const UnacknowledgedResponseSchema = Type.Object({
   items: Type.Array(Item),
   next_cursor: nullable(Type.String()),
-  audit_request_id: nullable(UuidOut),
+  audit_request_id: nullable(Uuid()),
   complete: Type.Boolean(),
   filtered: Type.Boolean(),
   counts: Type.Object({

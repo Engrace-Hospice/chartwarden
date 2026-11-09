@@ -1,4 +1,5 @@
 import { composeGuards, requireAbac, requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 // apps/backend/src/modules/36-messaging/routes/oncall-routes.ts - WP 4.12 (ADR-0080).
@@ -19,8 +20,6 @@ import type { OnCallCoverageService } from "../oncall-directory/oncall-coverage-
 import type { RoleSendPorts } from "../oncall-directory/role-send-service";
 import { parse } from "./messaging-typebox";
 import { OnCallCoverageQuerySchema, OnCallCoverageResponseSchema } from "./oncall-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OnCallRouteDeps {
   readonly service: OnCallCoverageService;

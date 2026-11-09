@@ -9,6 +9,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@chartwarden/db": "workspace:*"
+    "@chartwarden/db": "workspace:*",
+    "@chartwarden/shared": "workspace:*"
   }
 }

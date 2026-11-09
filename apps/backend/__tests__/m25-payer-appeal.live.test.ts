@@ -606,7 +606,7 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     // a stale version is a conflict
     expect(
       (await fx.refused(appealSvc().move(A(), first.id, "close", {}, rev.version)))?.code,
-    ).toBe("VERSION_CONFLICT");
+    ).toBe("STALE_VERSION");
     // the next level is opened manually, after the prior one is decided
     const second = await appealSvc().open(A(), denial, { priorLevelCaseId: first.id });
     const c2 = await appealSvc().getCase(A(), second.id);

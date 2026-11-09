@@ -4,7 +4,7 @@
 // billing NPI comes from the provider entity (M1 owns the table, the composition root injects the reader), never from a request.
 // The payer id is the one the bound clearinghouse routes the plan on (commercial_payer_route), supplied by the send gate.
 import { randomUUID } from "node:crypto";
-import { clearinghouseUsageFromEnv } from "../../23-billing-medicare/jobs/clearinghouse-context";
+import { clearinghouseUsageFromEnv } from "@chartwarden/x12-837-client";
 import type { CommercialContextPort } from "./service";
 
 export interface CommercialContextDeps {

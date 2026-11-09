@@ -1,9 +1,9 @@
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — GAP-074: the four M25 screens were GET-only although the backend carries
 // the denial ladder, the appeal lifecycle and the ERA manual match. The net asserts on RECORDED FETCH CALLS
 // (method, path, If-Match header, body) rather than on a spy over the client, so a control re-wired to a handler
 // that never fires still fails. The server decides everything: refusals are asserted verbatim, and the manual
 // match sends ONLY what the GAP-073 contract accepts (claim id + rationale).
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -210,7 +210,7 @@ describe("M25 denial work", () => {
       status: 409,
       body: {
         error: {
-          code: "VERSION_CONFLICT",
+          code: "STALE_VERSION",
           message: "modified by another writer (current version 9)",
         },
       },

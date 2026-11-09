@@ -3,8 +3,8 @@ import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import type { ClaimMdEraReviewService } from "../ingest/claimmd-era-review";
 import { actorOf } from "./actor";
-import { clampLimit } from "./concurrency";
 import { P } from "./guards";
+import { clampLimit } from "./m25-typebox";
 
 const READ = P("remittance.read");
 const Params = Type.Object(

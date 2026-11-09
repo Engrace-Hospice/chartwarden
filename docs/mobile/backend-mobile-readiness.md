@@ -37,9 +37,9 @@ en double.
 | Signatures | réutilisable avec adaptateur | guards permission/ABAC/step-up et transitions serveur | écran plein, version affichée, preuve serveur avant succès, reprise après step-up |
 | Socket.IO | backend compatible, device à vérifier | handshake cookie, origin web allowlist, org/user/session dérivés serveur, rooms serveur, recheck révocation | prouver `extraHeaders.Cookie` sur transports iOS/Android ; reconnect avec relecture REST ; aucun event client→serveur |
 | Push | modification backend nécessaire | M36 delivery endpoints et Web Push VAPID | ajouter type de device/token natif, FCM Android et APNs iOS (direct ou FCM relay), rotation/révocation/logout |
-| SecureStore | adaptateur natif nécessaire | interface `SecureStorePort` générique, web adapter localStorage | implémentation Expo SecureStore ; limiter aux petits secrets/session, politique de migration/erreur/purge |
+| SecureStore | adaptateur natif nécessaire | aucune interface aujourd'hui (`SecureStorePort` de l'ADR-0035 à créer avec son premier appelant) | implémentation Expo SecureStore ; limiter aux petits secrets/session, politique de migration/erreur/purge |
 | AsyncStorage | politique seulement | aucun contrat mobile | préférences non sensibles uniquement ; jamais PHI, token, réponse patient, message ou draft clinique |
-| Capabilities ports | réutilisable comme interfaces | geolocation, camera, biometric, secure store, push, filesystem, network | implémenter des adapters Expo ; corriger la documentation historique Capacitor sans importer `web-adapters.ts` |
+| Capabilities ports | à créer avec le premier appelant | seul `NetworkStatusPort` existe ; geolocation, camera, biometric, secure store, push, filesystem à ajouter | implémenter des adapters Expo ; corriger la documentation historique Capacitor sans importer `web-adapters.ts` |
 
 ## Authentification et erreurs
 

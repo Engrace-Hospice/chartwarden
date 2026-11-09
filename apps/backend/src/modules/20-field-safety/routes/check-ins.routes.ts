@@ -9,9 +9,9 @@
 // ROW 1 IS THE ONLY WRITE IN THIS FILE WITHOUT AN `If-Match`. There is no row yet — the post either
 // fulfils an obligation or stands alone (`ad_hoc`), and §2.5's optimistic concurrency has nothing to
 // compare. The idempotency key is what protects a double-tapped button on one bar of signal.
+import { rejectOffsetPagination, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_SELF, ABAC_SELF_OR_SUPERVISOR, P } from "./guards";
 import {
   AmendCheckInBody,

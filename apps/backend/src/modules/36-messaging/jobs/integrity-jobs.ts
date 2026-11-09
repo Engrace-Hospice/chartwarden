@@ -62,7 +62,7 @@ export interface M36IntegrityJobDeps {
 }
 
 /** What the audit row for a failed GCM/auth decode records as the "computed" hash (never body text). */
-export const DECRYPT_FAILED = "decrypt-failed";
+const DECRYPT_FAILED = "decrypt-failed";
 
 /**
  * Consecutive DECRYPT_FAILED rows (counted per table: heads, then revisions) after which per-row mismatch rows stop

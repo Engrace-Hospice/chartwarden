@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/29-external-interfaces/routes/store-drizzle.ts — M29-T08 the PRODUCTION M29Store.
 //
 // The Drizzle-backed repo the §4.1/§4.2 routes run against. Every org-scoped statement opens `withOrgContext`
@@ -43,7 +44,6 @@ import {
   type ProposalSnapshot,
   decideProposal,
 } from "../proposals/decision";
-import { decodeObservationCursor, encodeObservationCursor } from "./lab-list-scope";
 import { throwReviewRefusal } from "./store";
 import type {
   CredentialSummary,
@@ -953,7 +953,7 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
           return { items: [] };
         }
         const limit = filter.limit ?? 50;
-        const cursor = decodeObservationCursor(filter.cursor);
+        const cursor = decodeKeysetCursor(orgId, filter.cursor, "instant");
         const conds = [eq(OBS.organizationId, orgId)];
         if (filter.patientId) conds.push(eq(OBS.patientId, filter.patientId));
         if (filter.loincCode) conds.push(eq(OBS.loincCode, filter.loincCode));
@@ -976,7 +976,7 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
           );
         }
         if (cursor) {
-          const d = new Date(cursor.d);
+          const d = new Date(cursor.a);
           conds.push(
             or(
               lt(OBS.observationDate, d),
@@ -996,8 +996,8 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
         return rows.length > limit && last
           ? {
               items,
-              nextCursor: encodeObservationCursor({
-                d: last.observationDate.toISOString(),
+              nextCursor: encodeCursor(orgId, {
+                a: last.observationDate.toISOString(),
                 id: last.id,
               }),
             }

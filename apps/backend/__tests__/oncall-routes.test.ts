@@ -55,13 +55,9 @@ import {
   M19_VENDOR_SESSION_PERMISSION_KEYS,
 } from "../src/modules/19-oncall/permission-keys";
 import {
-  InvalidCursorError,
   MissingOutboxPayloadError,
   type StateHistoryInsert,
   UnknownTriageEffectError,
-  decodeCursor,
-  encodeCursor,
-  ifMatchVersion,
   layDispositionSummary,
   runEffects,
 } from "../src/modules/19-oncall/routes/index";
@@ -873,50 +869,6 @@ describe("M19-T07 §4.8 m36 delivery-failure trigger", () => {
         at,
       }),
     ).toEqual({ kind: "idempotent_skip", triageCallId: CALL_ID });
-  });
-});
-
-// ── §4.1.1 cursor pagination + §2.5 concurrency ──────────────────────────────────────────────────────
-
-describe("M19-T07 §4.1.1 / §2.5 route-boundary policy", () => {
-  it("round-trips a signed cursor for the org that minted it", () => {
-    const token = encodeCursor(ORG, { a: "2026-07-31T22:30:00.000Z", id: CALL_ID });
-    expect(decodeCursor(ORG, token)).toEqual({ a: "2026-07-31T22:30:00.000Z", id: CALL_ID });
-  });
-
-  it("a cursor minted for one org does NOT verify for another (the enumeration guard)", () => {
-    const token = encodeCursor(ORG, { a: "2026-07-31T22:30:00.000Z", id: CALL_ID });
-    expect(() => decodeCursor("другая-org", token)).toThrow(InvalidCursorError);
-  });
-
-  it("a TAMPERED cursor throws rather than silently serving page 1", () => {
-    const token = encodeCursor(ORG, { a: "2026-07-31T22:30:00.000Z", id: CALL_ID });
-    const [body] = token.split(".");
-    expect(() => decodeCursor(ORG, `${body}.forged`)).toThrow(InvalidCursorError);
-    expect(() => decodeCursor(ORG, "not-a-cursor")).toThrow(InvalidCursorError);
-  });
-
-  it("an ABSENT cursor is the first page, not an error", () => {
-    expect(decodeCursor(ORG, undefined)).toBeNull();
-    expect(decodeCursor(ORG, null)).toBeNull();
-  });
-
-  it("If-Match parses an integer version and tolerates weak-ETag quoting", () => {
-    expect(ifMatchVersion({ headers: { "if-match": "3" } })).toBe(3);
-    expect(ifMatchVersion({ headers: { "if-match": 'W/"3"' } })).toBe(3);
-  });
-
-  it("a required If-Match that is absent or non-numeric is 428, never coerced to 0", () => {
-    expect(() => ifMatchVersion({ headers: {} }, true)).toThrow(/If-Match/);
-    expect(() => ifMatchVersion({ headers: { "if-match": "" } }, true)).toThrow(/If-Match/);
-    expect(() => ifMatchVersion({ headers: { "if-match": "abc" } }, true)).toThrow(/If-Match/);
-  });
-
-  it("the page envelope has NO total_count field (§4.1.1 / §8.3.4)", () => {
-    // A count on a PHI list is an enumeration oracle. The type has no field for it; this asserts the
-    // runtime shape agrees.
-    const token = encodeCursor(ORG, { a: "x", id: "y" });
-    expect(typeof token).toBe("string");
   });
 });
 

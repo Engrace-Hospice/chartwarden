@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m6-discharge-cosigned.ts — the D18 gate release
 // (M16 spec §2.2 `receiveCosign`, §2.6, §4.3.1 `receiveCosignAndReleaseGate`).
 //
@@ -21,7 +22,7 @@
 //
 // NOT A REQUEST. The relay tick has no ambient request context: every read/write runs in an org-explicit
 // `withOrgContext`, and the publisher is the bound M16 catalog-validating one.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { IsoInstant } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
@@ -31,9 +32,6 @@ import { runEffects } from "../routes/effects-runner";
 import type { WriteOutboxPort } from "../routes/write-service";
 
 const PLAN = schema.bereavementPlan;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M16_DISCHARGE_COSIGNED_CONSUMER = {
   eventName: "m6.discharge.cosigned",

@@ -4,25 +4,17 @@
 // move: no behaviour differs from when these lived inline.
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import { ConsentRouteError } from "@chartwarden/consent";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyRequest } from "fastify";
 import type { ConsentStaffActor } from "../access-scope";
 import { accessActorOf } from "./consent-guards";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The authenticated actor the service layer scopes against (server-derived, never the body). */
 export function scopedActorOf(request: FastifyRequest): ConsentStaffActor {
   const actor = accessActorOf(request);
   if (!actor) throw new UnauthorizedError();
   return actor;
-}
-
-export function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 /** Server-authenticated command provenance. Body fields can never forge these identifiers. */

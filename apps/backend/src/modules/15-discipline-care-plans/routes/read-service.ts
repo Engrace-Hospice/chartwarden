@@ -1,3 +1,4 @@
+import type { CursorPage, PageSizePolicy } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/15-discipline-care-plans/routes/read-service.ts — the M15 READ service
 // interface (the §4.1 GET surface) + its response DTOs.
 //
@@ -11,7 +12,6 @@
 // narrative on a summary, no revocation reason on a gate list. Free-text that the M4 trigger denylists is
 // surfaced only where the route's permission key names it.
 import type { M15ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 import type { RedactedCategory } from "./disclosure";
 
 /** §4.1 route 1 — a plan as the worklist sees it. */
@@ -324,3 +324,13 @@ export interface M15ReadService {
     } & InternalListQuery,
   ): Promise<CursorPage<SupervisoryCadenceRowView>>;
 }
+
+/** §4.6.1 page sizes, per the route table (routes 1 / 4 / 19 / 25 / 26 / 28). */
+export const M15_PAGE_SIZES = {
+  plans: { defaultSize: 25, maxSize: 100 },
+  versions: { defaultSize: 20, maxSize: 50 },
+  gates: { defaultSize: 25, maxSize: 100 },
+  relevantElements: { defaultSize: 50, maxSize: 200 },
+  riskFactors: { defaultSize: 25, maxSize: 100 },
+  supervisoryCadence: { defaultSize: 50, maxSize: 200 },
+} as const satisfies Record<string, PageSizePolicy>;

@@ -1,3 +1,9 @@
+import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { NotFoundError, URGENT_SEND_PERMISSION, UnauthorizedError } from "@chartwarden/types";
+import type { RichBody } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { UrgentActorRef, UrgentService, ValidateLinks } from "../urgent/urgent-service";
 // apps/backend/src/modules/36-messaging/routes/urgent-routes.ts - WP 4.1 "Urgent clinical" (ADR-0068).
 //
 //   POST /api/v1/messaging/channels/:id/urgent-messages          send an SBAR message to ONE qualified colleague, marked urgent
@@ -7,16 +13,10 @@
 // The ONLY writer of `message.urgency`. It does not page, escalate or track a response from anyone, and the message text is never
 // inspected. Flag off (`messaging.urgent_clinical` AND `messaging.sbar`): POST is the uniform 404; the options read answers
 // 200 `{enabled:false}`. Org and actor are always the request context.
-import { requirePermission } from "@chartwarden/auth";
-import { NotFoundError, URGENT_SEND_PERMISSION, UnauthorizedError } from "@chartwarden/types";
-import type { RichBody } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { UrgentActorRef, UrgentService, ValidateLinks } from "../urgent/urgent-service";
+import { actorRefOf } from "./actor";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { SendUrgentMessageBodySchema } from "./urgent-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface UrgentRouteDeps {
   readonly service: UrgentService;
@@ -47,12 +47,6 @@ export const DISABLED_URGENT: UrgentRouteDeps = {
   },
 };
 
-function actorOf(request: FastifyRequest): UrgentActorRef {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
-
 export function registerUrgentRoutes(
   app: FastifyInstance,
   deps: UrgentRouteDeps,
@@ -81,7 +75,7 @@ export function registerUrgentRoutes(
       },
     },
     async (request, reply) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       const body = parse(SendUrgentMessageBodySchema, request.body);
       const result = await service.send(
@@ -112,7 +106,7 @@ export function registerUrgentRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       return service.options(actor, id);
     },

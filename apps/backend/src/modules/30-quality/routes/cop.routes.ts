@@ -14,9 +14,9 @@
 // citation rows cursor-paginated per §4.1.2. Org/actor binding is ALWAYS server-side (`request.context`,
 // never the body). Mirrors M33 routes/definitions.routes.ts.
 import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { actorOf, writeActorOf } from "./actor";
 import {
   CitationIdParamsSchema,
   CopCitationListQuerySchema,

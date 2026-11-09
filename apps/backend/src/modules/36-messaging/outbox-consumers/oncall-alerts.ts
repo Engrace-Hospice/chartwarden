@@ -34,9 +34,9 @@ export const M19_COVERAGE_GAP_ALERT_TYPE = "m19.oncall.coverage_gap_detected" as
 export const M19_CALLBACK_SLA_ALERT_TYPE = "m19.triage.callback_sla_breached" as const;
 export const M19_ESCALATION_SLA_ALERT_TYPE = "m19.triage.escalation_sla_breached" as const;
 
-export const M36_ONCALL_ALERT_CONSUMER = "m36.oncall-alerts" as const;
+const M36_ONCALL_ALERT_CONSUMER = "m36.oncall-alerts" as const;
 
-export const M36_ONCALL_ALERT_EVENT_TYPES = [
+const M36_ONCALL_ALERT_EVENT_TYPES = [
   "m19.oncall_shift.coverage_gap",
   "m19.triage_call.callback_sla_breached",
   "m19.triage_call.escalation_sla_breached",

@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/38-terminology/jobs/loader-store-db.ts — the production {@link LoaderStorePort} over
 // Drizzle + the migration-0364 `terminology_loader_*` SECURITY DEFINER functions (GAP-108).
 //
@@ -6,7 +7,7 @@
 // run as the NOLOGIN `terminology_loader` role. Reads are plain selects (the platform-shared `USING (true)` policies).
 // A deterministic refusal raised by a function (`TERMINOLOGY_<REASON>: …`) becomes a `LoaderDataError` so the
 // orchestrator fails the version; any other error propagates and the job retries.
-import { type DbClient, schema } from "@chartwarden/db";
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import {
   type ActivationSummary,
   type LicenseAttestation,
@@ -21,7 +22,7 @@ import {
 } from "@chartwarden/terminology-loader";
 import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { isUniqueViolation, terminologyRefusalOf } from "../db-errors";
+import { terminologyRefusalOf } from "../db-errors";
 
 const VER = schema.codeSystemVersions;
 const CS = schema.codeSystems;

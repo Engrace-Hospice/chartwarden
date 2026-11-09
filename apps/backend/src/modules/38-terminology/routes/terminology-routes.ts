@@ -1,4 +1,5 @@
 import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/38-terminology/routes/terminology-routes.ts — M38-T06 the terminology
 // route inventory (M38 spec §4.1–4.2; the §4.4 permission handshake; §7.4 canonical lockdown).
 //
@@ -51,9 +52,6 @@ import {
   parse,
 } from "./terminology-typebox";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 /**
  * Minimal feature-flag port for the §7.7 semantic-search gate. Structurally identical to M1's
  * `FeatureFlagReader` so boot wiring passes the same reader; when absent every flag reads off —
@@ -92,13 +90,6 @@ export interface TerminologyRouteDeps {
 
 /** The §7.3 report surface the remediation route calls (see ../remediation-service.ts). */
 export type RemediationService = ReturnType<typeof createRemediationService>;
-
-/** The org-scoped actor (org binding is server-side: the context, never the body). */
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 /** Parse an optional `asOf` date string into a Date (provider defaults to "today" when absent). */
 function asOfDate(asOf: string | undefined): Date | undefined {

@@ -17,9 +17,9 @@
 // request field is the control. What the list DOES surface is `adapterRegistered` — whether an adapter for
 // the configured key is actually loaded — so an admin can see a dead binding before 2 a.m. rather than
 // when a call needs handing off.
+import { rejectOffsetPagination, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import {
   CreateProtocolBody,

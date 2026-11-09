@@ -1,22 +1,5 @@
-// apps/backend/src/modules/36-messaging/routes/ack-routes.ts - WP 4.2 acknowledgment requests (ADR-0069).
-//
-//   POST /api/v1/messaging/escalations                        ask one qualified colleague to respond to a message the caller wrote
-//                                                              (messaging.send + messaging.urgent.send + Idempotency-Key + rate limit)
-//   GET  /api/v1/messaging/escalations/:id                    one request + its history           (messaging.read; the channel must be visible)
-//   GET  /api/v1/messaging/channels/:id/escalations           the requests of one channel          (messaging.read + channel_visibility)
-//   POST /api/v1/messaging/escalations/:id/acknowledge        the assignee takes clinical responsibility (messaging.urgent.receive)
-//   POST /api/v1/messaging/escalations/:id/reassign           the sender or assignee names someone else (messaging.read; rate limit)
-//   POST /api/v1/messaging/escalations/:id/resolve            the assignee closes it after acknowledging (messaging.urgent.receive)
-//   GET  /api/v1/messaging/escalations/:id/reassign-candidates          ADR-0078: who the sender/assignee may hand it to (messaging.read)
-//   GET  /api/v1/messaging/escalations/:id/supervisor-reassign-candidates  ADR-0078: the same for a supervisor (messaging.read + messaging.review)
-//   POST /api/v1/messaging/escalations/:id/supervisor-reassign          ADR-0078: a supervisor moves a WAITING request to an eligible colleague
-//                                                              with a required fixed reason code (messaging.read + messaging.review + Idempotency-Key + rate limit)
-//
-// Acknowledgment is an explicit POST by the assigned, still-qualified user. No GET, no read receipt, no reaction and no deep-link
-// open ever writes here. The tenant flag `messaging.ack_requests` gates CREATING a request (off => the uniform 404); a request that
-// already exists can always be settled, because stranding an open safety item would be worse than the flag being a hard off. A missing,
-// malformed, other-tenant or hidden-channel id is ONE 404. Org and actor are always the request context. No timers, tiers or paging.
 import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   type AckSupervisorReasonCode,
   NotFoundError,
@@ -35,10 +18,27 @@ import {
   ReassignAckBodySchema,
   SupervisorReassignBodySchema,
 } from "./ack-typebox";
+// apps/backend/src/modules/36-messaging/routes/ack-routes.ts - WP 4.2 acknowledgment requests (ADR-0069).
+//
+//   POST /api/v1/messaging/escalations                        ask one qualified colleague to respond to a message the caller wrote
+//                                                              (messaging.send + messaging.urgent.send + Idempotency-Key + rate limit)
+//   GET  /api/v1/messaging/escalations/:id                    one request + its history           (messaging.read; the channel must be visible)
+//   GET  /api/v1/messaging/channels/:id/escalations           the requests of one channel          (messaging.read + channel_visibility)
+//   POST /api/v1/messaging/escalations/:id/acknowledge        the assignee takes clinical responsibility (messaging.urgent.receive)
+//   POST /api/v1/messaging/escalations/:id/reassign           the sender or assignee names someone else (messaging.read; rate limit)
+//   POST /api/v1/messaging/escalations/:id/resolve            the assignee closes it after acknowledging (messaging.urgent.receive)
+//   GET  /api/v1/messaging/escalations/:id/reassign-candidates          ADR-0078: who the sender/assignee may hand it to (messaging.read)
+//   GET  /api/v1/messaging/escalations/:id/supervisor-reassign-candidates  ADR-0078: the same for a supervisor (messaging.read + messaging.review)
+//   POST /api/v1/messaging/escalations/:id/supervisor-reassign          ADR-0078: a supervisor moves a WAITING request to an eligible colleague
+//                                                              with a required fixed reason code (messaging.read + messaging.review + Idempotency-Key + rate limit)
+//
+// Acknowledgment is an explicit POST by the assigned, still-qualified user. No GET, no read receipt, no reaction and no deep-link
+// open ever writes here. The tenant flag `messaging.ack_requests` gates CREATING a request (off => the uniform 404); a request that
+// already exists can always be settled, because stranding an open safety item would be worse than the flag being a hard off. A missing,
+// malformed, other-tenant or hidden-channel id is ONE 404. Org and actor are always the request context. No timers, tiers or paging.
+import { actorRefOf } from "./actor";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The supervisory key of WP 4.9 (migration 1103): the same audience as the unacknowledged queue. */
 const REVIEW_PERMISSION = "messaging.review";
@@ -78,12 +78,6 @@ export const DISABLED_ACK: AckRouteDeps = {
     supervisorReassign: OFF,
   },
 };
-
-function actorOf(request: FastifyRequest): AckActorRef {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
 
 const PATIENT_AUDIT = {
   resourceKind: "message_acknowledgment_request",
@@ -127,7 +121,7 @@ export function registerAckRoutes(
       config: { auditRead: PATIENT_AUDIT },
     },
     async (request, reply) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       const body = parse(CreateAckBodySchema, request.body);
       const result = await service.create(actor, {
         messageId: body.message_id,
@@ -149,7 +143,7 @@ export function registerAckRoutes(
         },
       },
     },
-    async (request) => service.get(actorOf(request), parseOr404(request.params)),
+    async (request) => service.get(actorRefOf(request), parseOr404(request.params)),
   );
 
   app.get(
@@ -160,7 +154,7 @@ export function registerAckRoutes(
     },
     async (request) => {
       const { id } = parse(ChannelParamsSchema, request.params);
-      return service.listForChannel(actorOf(request), id);
+      return service.listForChannel(actorRefOf(request), id);
     },
   );
 
@@ -169,7 +163,7 @@ export function registerAckRoutes(
     { preHandler: [idParam, guards.read, urgentReceive], config: { auditRead: PATIENT_AUDIT } },
     async (request) => {
       parse(EmptyAckBodySchema, request.body ?? {});
-      return service.acknowledge(actorOf(request), parseOr404(request.params));
+      return service.acknowledge(actorRefOf(request), parseOr404(request.params));
     },
   );
 
@@ -178,7 +172,11 @@ export function registerAckRoutes(
     { preHandler: [idParam, guards.read, ...limited], config: { auditRead: PATIENT_AUDIT } },
     async (request) => {
       const body = parse(ReassignAckBodySchema, request.body);
-      return service.reassign(actorOf(request), parseOr404(request.params), body.assigned_user_id);
+      return service.reassign(
+        actorRefOf(request),
+        parseOr404(request.params),
+        body.assigned_user_id,
+      );
     },
   );
 
@@ -187,7 +185,7 @@ export function registerAckRoutes(
     { preHandler: [idParam, guards.read, urgentReceive], config: { auditRead: PATIENT_AUDIT } },
     async (request) => {
       parse(EmptyAckBodySchema, request.body ?? {});
-      return service.resolve(actorOf(request), parseOr404(request.params));
+      return service.resolve(actorRefOf(request), parseOr404(request.params));
     },
   );
 
@@ -199,7 +197,7 @@ export function registerAckRoutes(
       // It discloses colleague names for a patient's request: read-audited against the request (the response carries no patient id).
       config: { auditRead: CANDIDATES_AUDIT },
     },
-    async (request) => service.reassignCandidates(actorOf(request), parseOr404(request.params)),
+    async (request) => service.reassignCandidates(actorRefOf(request), parseOr404(request.params)),
   );
 
   // ADR-0078: the supervisor routes name no channel, message or patient and read no conversation. The candidate read is audited against
@@ -212,7 +210,7 @@ export function registerAckRoutes(
       config: { auditRead: CANDIDATES_AUDIT },
     },
     async (request) =>
-      service.supervisorReassignCandidates(actorOf(request), parseOr404(request.params)),
+      service.supervisorReassignCandidates(actorRefOf(request), parseOr404(request.params)),
   );
 
   app.post(
@@ -224,7 +222,7 @@ export function registerAckRoutes(
     async (request) => {
       const body = parse(SupervisorReassignBodySchema, request.body);
       return service.supervisorReassign(
-        actorOf(request),
+        actorRefOf(request),
         parseOr404(request.params),
         body.assigned_user_id,
         // The schema admits only the fixed set; the typebox union helper widens it to string.

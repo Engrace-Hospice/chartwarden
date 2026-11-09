@@ -63,7 +63,7 @@ export class WageIndexFactorRepository {
     const size = pageSizeOf(limit);
     const where = and(
       eq(W.fiscalYearStarting, fiscalYearStarting),
-      keysetBefore(W.loadedAt, W.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(W.loadedAt, W.id, decodeCursor(String(fiscalYearStarting), cursor)),
     );
     const rows = await this.db
       .select()
@@ -71,6 +71,9 @@ export class WageIndexFactorRepository {
       .where(where)
       .orderBy(desc(W.loadedAt), desc(W.id))
       .limit(size + 1);
-    return buildCursorPage(rows, size, (r) => ({ createdAt: r.loadedAt.toISOString(), id: r.id }));
+    return buildCursorPage(String(fiscalYearStarting), rows, size, (r) => ({
+      createdAt: r.loadedAt.toISOString(),
+      id: r.id,
+    }));
   }
 }

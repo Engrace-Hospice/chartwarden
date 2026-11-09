@@ -23,6 +23,9 @@ import {
   registerSchedulingRoutes,
 } from "../src/modules/17-scheduling/index";
 
+/** A fresh Idempotency-Key — every M17/M18 mutating route requires one (ADR-0021). */
+const idem = () => ({ "idempotency-key": randomUUID() });
+
 const ORG = "org_a";
 const NOW = "2026-07-01T00:00:00.000Z";
 const CLIN_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -105,7 +108,7 @@ async function filePto(app: ReturnType<typeof makeServer>, member: string, targe
   const res = await app.inject({
     method: "POST",
     url: "/api/v1/time-off",
-    headers: as(member),
+    headers: { ...as(member), ...idem() },
     payload: PTO(target),
   });
   return res;
@@ -117,7 +120,7 @@ describe("GAP-051 — availability own-vs-any", () => {
     const res = await app.inject({
       method: "PUT",
       url: `/api/v1/availability/${CLIN_B}`,
-      headers: as(CLIN_A),
+      headers: { ...as(CLIN_A), ...idem() },
       payload: AVAIL,
     });
     expect(res.statusCode).toBe(403);
@@ -129,7 +132,7 @@ describe("GAP-051 — availability own-vs-any", () => {
     const res = await app.inject({
       method: "PUT",
       url: `/api/v1/availability/${CLIN_A}`,
-      headers: as(CLIN_A),
+      headers: { ...as(CLIN_A), ...idem() },
       payload: AVAIL,
     });
     expect(res.statusCode).toBe(200);
@@ -141,7 +144,7 @@ describe("GAP-051 — availability own-vs-any", () => {
     const res = await app.inject({
       method: "PUT",
       url: `/api/v1/availability/${CLIN_B}`,
-      headers: as(SUP),
+      headers: { ...as(SUP), ...idem() },
       payload: AVAIL,
     });
     expect(res.statusCode).toBe(200);
@@ -163,14 +166,14 @@ describe("GAP-051 — time-off own-vs-any", () => {
     const denied = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${id}/cancel`,
-      headers: as(CLIN_A),
+      headers: { ...as(CLIN_A), ...idem() },
       payload: {},
     });
     expect(denied.statusCode).toBe(403);
     const own = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${id}/cancel`,
-      headers: as(CLIN_B),
+      headers: { ...as(CLIN_B), ...idem() },
       payload: {},
     });
     expect(own.statusCode).toBe(200);
@@ -183,7 +186,7 @@ describe("GAP-051 — time-off own-vs-any", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${id}/cancel`,
-      headers: as(SUP),
+      headers: { ...as(SUP), ...idem() },
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -216,7 +219,7 @@ describe("GAP-051 — time-off own-vs-any", () => {
     const ok = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${others}/approve`,
-      headers: as(SUP),
+      headers: { ...as(SUP), ...idem() },
       payload: {},
     });
     expect(ok.statusCode).toBe(200);
@@ -224,7 +227,7 @@ describe("GAP-051 — time-off own-vs-any", () => {
     const self = await app.inject({
       method: "POST",
       url: `/api/v1/time-off/${own}/approve`,
-      headers: as(SUP),
+      headers: { ...as(SUP), ...idem() },
       payload: {},
     });
     expect(self.statusCode).toBe(409);
@@ -238,7 +241,7 @@ describe("GAP-051 — time-off own-vs-any", () => {
       const res = await app.inject({
         method: "POST",
         url: `/api/v1/time-off/${id}/${verb}`,
-        headers: as(CLIN_A),
+        headers: { ...as(CLIN_A), ...idem() },
         payload: { reason: "x".repeat(25) },
       });
       expect(res.statusCode).toBe(403);

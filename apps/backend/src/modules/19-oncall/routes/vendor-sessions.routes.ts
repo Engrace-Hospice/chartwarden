@@ -25,11 +25,11 @@
 //
 // None of these is the binder's job. The seam writes the binding; proving the vendor may HAVE one is
 // this module's, because this module owns the vendor row and the policy.
+import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { actorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import { BindVendorSessionBody, parse } from "./m19-typebox";
 

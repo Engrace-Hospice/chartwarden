@@ -99,7 +99,7 @@ représentatifs que trois écrans de listes similaires et donneront des exemples
 - `FilterBar` : recherche, filtres rapides en chips, filtres avancés dans popover/drawer,
   compteur de filtres, clear-all, vues sauvegardées ultérieurement et synchronisation URL quand
   le filtre est partageable/non sensible.
-- `MetricCard`/`KpiStrip` : tonalité (`neutral`, `info`, `success`, `warning`, `danger`),
+- `KpiCard`/`KpiStrip` : tonalité (`neutral`, `info`, `success`, `warning`, `danger`),
   comparaison ou tendance optionnelle, état sélectionné et version compacte responsive.
 - `DetailPanel` : en desktop à droite de la table ; en tablette/mobile drawer focus-trappé avec
   retour du focus à la ligne d’origine ; fermeture Escape, bouton explicite et URL/état de
@@ -152,7 +152,7 @@ Les composants existants `StatusPill`, `EmptyState`, `LoadingSpinner`, `Modal` e
 
 ### Phase 2 — composants de données et layouts — terminée le 2026-08-19
 
-1. Mettre en place `DataTable`, `Pagination`, `FilterBar`, `MetricCard`, `DetailPanel` et les
+1. Mettre en place `DataTable`, `Pagination`, `FilterBar`, `KpiCard`, `DetailPanel` et les
    comportements responsive/drawer.
 2. Formaliser les variantes Work Queue et Dashboard au-dessus des layouts déjà existants, afin
    d’éviter qu’un écran recode ses paddings, colonnes ou panneaux.
@@ -161,13 +161,13 @@ Les composants existants `StatusPill`, `EmptyState`, `LoadingSpinner`, `Modal` e
 
 **Sortie :** la file de travail et le dashboard peuvent être construits sans table, filtre,
 badge ou panneau fait localement. Livré : `DataTable` typé à colonnes prioritaires responsive,
-`CursorPagination` honnête vis-à-vis des API à curseur, `MetricCard`, `FilterBar` avec compteur
+`CursorPagination` honnête vis-à-vis des API à curseur, `KpiCard`, `FilterBar` avec compteur
 et reset, KPI enrichis, et panneau de détail qui devient un drawer mobile avec fermeture Escape
 et restauration du focus.
 
 ### Phase 3 — écran pilote 1 : Patient List / Census — terminée le 2026-08-19
 
-1. Remplacer les KPI locaux par `MetricCard` et connecter leurs clics aux filtres réels lorsque
+1. Remplacer les KPI locaux par `KpiCard` et connecter leurs clics aux filtres réels lorsque
    la métrique est actionnable.
 2. Mettre en forme recherche/filtres, table de census et pagination curseur ; conserver le
    masquage MBI/consentement et les limitations de caseload du serveur.

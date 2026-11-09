@@ -423,6 +423,8 @@ describe.skipIf(!DB_URL)("GAP-044 — M15 crons, LIVE Postgres", () => {
       membershipId: null,
       roles: [],
       sessionClass: "staff",
+      actorKind: "user",
+      stepUpRecent: false,
       locationIds: [],
     });
     const query = (org: string) => ({ providerEntityId: peOf[org] as string, fiscalYear: 2026 });

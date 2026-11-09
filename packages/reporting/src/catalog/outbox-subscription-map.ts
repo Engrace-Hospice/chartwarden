@@ -156,7 +156,7 @@ export const OUTBOX_SUBSCRIPTION_MAP: Readonly<Record<string, readonly string[]>
 // tier (its `materialized_view_metadata.refresh_strategy='nightly'`), which the dispatcher enforces.
 
 /** Every topic the incremental tier listens on (both the invalidating + the explicitly-nightly `[]` rows). */
-export const OUTBOX_SUBSCRIPTION_TOPICS: readonly string[] = Object.freeze(
+const OUTBOX_SUBSCRIPTION_TOPICS: readonly string[] = Object.freeze(
   Object.keys(OUTBOX_SUBSCRIPTION_MAP),
 );
 

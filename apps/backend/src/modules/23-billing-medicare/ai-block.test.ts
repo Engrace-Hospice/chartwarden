@@ -1,14 +1,15 @@
-import type { FastifyReply, FastifyRequest } from "fastify";
 // apps/backend/src/modules/23-billing-medicare/ai-block.test.ts — M23 §D13 AI-BLOCK unit tests (tasks 59–62).
 //
 // The D13 AI block on M23 is ABSOLUTE and proven at four layers; this suite exercises the three that are
 // CODE (the fourth, the import boundary, is the `m23-billing-no-ai-platform` dependency-cruiser rule, proven
 // by `bun run arch:fitness`):
 //   • the boot validator over M32's prompt-template registry — empty-safe pass + fail-on-M23-target;
-//   • the per-route `actor_kind='ai_*'` reject guard (rejectAiActor, from ./routes/actor.ts);
+//   • the per-route `actor_kind='ai_*'` reject guard (rejectAiActor, from @chartwarden/shared/route-kit);
 //   • the only-admitted read-only advisory reader deny-stub (never throws, never gates);
 //   • the AI-governance audit channel separation (advisory display → AI-gov channel, not operational).
 // PURE: no DB, no real Fastify, no network. The guard is unit-tested against a structurally-minimal request.
+import { rejectAiActor } from "@chartwarden/shared/route-kit";
+import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import {
   ADVISORY_DISPLAY_EVENT_TYPE,
@@ -24,7 +25,6 @@ import {
   validateAiBlockForBilling,
   validateBillingAiBlockAtBoot,
 } from "./ai-block";
-import { rejectAiActor } from "./routes/actor";
 
 // A tiny in-memory registry double (M32 is a placeholder; the real registry is M32-owned).
 const registryOf = (templates: readonly PromptTemplateDescriptor[]): PromptTemplateRegistry => ({
@@ -129,7 +129,6 @@ describe("outputTypeTargetsBilling — owned-table family matcher", () => {
 
 // ── §D13 per-route actor_kind='ai_*' reject guard (rejectAiActor) ──────────────────────────────────────────
 describe("rejectAiActor — the per-route AI-principal reject guard", () => {
-  const reply = {} as FastifyReply;
   const requestWithActorKind = (actorKind: string | undefined): FastifyRequest =>
     ({
       context: actorKind === undefined ? { attributes: {} } : { attributes: { actorKind } },
@@ -137,25 +136,25 @@ describe("rejectAiActor — the per-route AI-principal reject guard", () => {
 
   it("REJECTS an ai_* principal with a structured 403 (D13)", async () => {
     const guard = rejectAiActor();
-    await expect(guard(requestWithActorKind("ai_assistant"), reply)).rejects.toThrow(
-      /AI principals cannot create or modify billing records/i,
+    await expect(guard(requestWithActorKind("ai_assistant"))).rejects.toThrow(
+      /AI principals cannot create or modify/i,
     );
-    await expect(guard(requestWithActorKind("ai_agent"), reply)).rejects.toThrow();
+    await expect(guard(requestWithActorKind("ai_agent"))).rejects.toThrow();
   });
 
   it("ADMITS a human / system / integration / missing actor kind (fail-closed only on the ai_ prefix)", async () => {
     const guard = rejectAiActor();
-    await expect(guard(requestWithActorKind("user"), reply)).resolves.toBeUndefined();
-    await expect(guard(requestWithActorKind("system"), reply)).resolves.toBeUndefined();
-    await expect(guard(requestWithActorKind("integration"), reply)).resolves.toBeUndefined();
-    await expect(guard(requestWithActorKind(undefined), reply)).resolves.toBeUndefined();
+    await expect(guard(requestWithActorKind("user"))).resolves.toBeUndefined();
+    await expect(guard(requestWithActorKind("system"))).resolves.toBeUndefined();
+    await expect(guard(requestWithActorKind("integration"))).resolves.toBeUndefined();
+    await expect(guard(requestWithActorKind(undefined))).resolves.toBeUndefined();
   });
 
   it("does not over-match a non-ai actor kind that merely contains 'ai' mid-string", async () => {
     const guard = rejectAiActor();
     // Only a leading `ai_` prefix is an AI principal; 'maintainer' / 'paid_user' must pass.
-    await expect(guard(requestWithActorKind("maintainer"), reply)).resolves.toBeUndefined();
-    await expect(guard(requestWithActorKind("paid_user"), reply)).resolves.toBeUndefined();
+    await expect(guard(requestWithActorKind("maintainer"))).resolves.toBeUndefined();
+    await expect(guard(requestWithActorKind("paid_user"))).resolves.toBeUndefined();
   });
 });
 

@@ -3,15 +3,16 @@
  * itself runs on import).
  */
 import { blankComments } from "./check-abac-composed";
+import { stripSqlComments } from "./lib/gate-scan";
 
 /**
  * A copy of `src` with comments removed so prose ("PARTITION BY LIST(...)" in a note) is not mistaken for DDL.
  * `.ts` sources go through the single-pass tokenizer (`//` and block comments, string/template literals respected,
- * so a `//` inside a string or a `/* // *\/` comment cannot mis-pair); SQL strips `--` and block comments.
+ * so a `//` inside a string or a `/* // *\/` comment cannot mis-pair); SQL goes through `stripSqlComments`.
  */
 export function stripCommentsForScan(src: string, file: string): string {
   if (file.endsWith(".ts")) return blankComments(src);
-  return src.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  return stripSqlComments(src);
 }
 
 /** Rule 1 (ADR-0022 D1.1): a partitioned table's UNIQUE/PK index must include the partition column. */

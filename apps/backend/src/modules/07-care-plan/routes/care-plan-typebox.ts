@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 import type { CarePlanOverdueStatus, RelevantCarePlanElements } from "@chartwarden/types";
 // apps/backend/src/modules/07-care-plan/routes/care-plan-typebox.ts — M7-T05 TypeBox route schemas
@@ -7,16 +8,7 @@ import type { CarePlanOverdueStatus, RelevantCarePlanElements } from "@chartward
 // concurrency: the three PATCH routes carry the read version in the `If-Match` header (NOT the body —
 // see ./concurrency.ts); the POST state-change routes carry it in the body as `ifVersion`.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 // Slice ids are synthetic (`cp_1`); routes accept a loose id param. Cross-module ids (patientId) are
 // validated as uuids per §4.3.
@@ -161,8 +153,7 @@ export const DiscontinueInterventionSchema = Type.Object({
 
 // ── List queries ──────────────────────────────────────────────────────────────────────────────────
 export const VersionListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 export const RelevantElementsQuerySchema = Type.Object({
   patientId: Type.String({ format: "uuid" }),

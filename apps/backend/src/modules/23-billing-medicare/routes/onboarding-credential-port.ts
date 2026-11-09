@@ -4,12 +4,13 @@
 //
 // The body is the tenant route's (`UpsertMacCredentialBodySchema`), parsed here with M23's own schema. The service
 // view carries only a `hasSecret` flag and the safe identifiers (§3.6): no secret ever leaves through this port.
+import { parse } from "@chartwarden/shared/route-kit";
 import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
 } from "../../../bootstrap/onboarding-credential-port";
 import type { M23ReadActor, M23WriteActor } from "./actor";
-import { UpsertMacCredentialBodySchema, parse } from "./billing-typebox";
+import { UpsertMacCredentialBodySchema } from "./billing-typebox";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
 

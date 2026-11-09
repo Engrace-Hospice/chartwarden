@@ -1,3 +1,4 @@
+import { Uuid, pageLimit } from "@chartwarden/shared/route-kit";
 import {
   REVIEW_ACTIONS,
   REVIEW_CAUSES,
@@ -11,22 +12,20 @@ import {
 // response). Ids are canonical uuids. The close reason is a closed enum here (a typed 422 names the field); there is no
 // free-text justification anywhere - the code is the justification.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
 const literals = <T extends string>(values: readonly T[]) =>
   Type.Union(values.map((v) => Type.Literal(v)));
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 
-export const ReviewParamsSchema = Type.Object({ reviewItemId: Uuid });
+export const ReviewParamsSchema = Type.Object({ reviewItemId: Uuid() });
 
 export const ListReviewItemsQuerySchema = Type.Object({
   state: Type.Optional(literals(["open", "resolved", "all"] as const)),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  limit: pageLimit({ max: 100 }),
 });
 
 export const ReassignReviewBodySchema = Type.Object(
-  { to_user_id: Uuid },
+  { to_user_id: Uuid() },
   { additionalProperties: false },
 );
 
@@ -40,31 +39,31 @@ const ReviewTaskSchema = Type.Object({
   clinical_concern: Type.Boolean(),
   needs_owner: Type.Boolean(),
   due_at: nullable(Type.String({ format: "date-time" })),
-  assignee_user_id: Type.String({ format: "uuid" }),
+  assignee_user_id: Uuid(),
   assignee_display_name: nullable(Type.String()),
-  created_by_user_id: Type.String({ format: "uuid" }),
+  created_by_user_id: Uuid(),
   created_by_display_name: nullable(Type.String()),
-  message_id: Type.String({ format: "uuid" }),
-  channel_id: Type.String({ format: "uuid" }),
+  message_id: Uuid(),
+  channel_id: Uuid(),
 });
 
-export const ReviewItemSchema = Type.Object({
-  id: Type.String({ format: "uuid" }),
+const ReviewItemSchema = Type.Object({
+  id: Uuid(),
   source: nullable(literals(REVIEW_SOURCES)),
   cause: nullable(literals(REVIEW_CAUSES)),
   state: literals(REVIEW_STATES),
   resolution: nullable(literals(REVIEW_RESOLUTIONS)),
   resolution_reason: nullable(literals(TASK_CLOSE_REASONS)),
   restricted: Type.Boolean(),
-  patient_id: nullable(Type.String({ format: "uuid" })),
+  patient_id: nullable(Uuid()),
   patient_display_name: nullable(Type.String()),
   mrn_suffix: nullable(Type.String()),
   item_kind: literals(REVIEW_ITEM_KINDS),
-  item_id: nullable(Type.String({ format: "uuid" })),
+  item_id: nullable(Uuid()),
   task: nullable(ReviewTaskSchema),
-  reassigned_to_user_id: nullable(Type.String({ format: "uuid" })),
+  reassigned_to_user_id: nullable(Uuid()),
   reassigned_to_display_name: nullable(Type.String()),
-  resolved_by_user_id: nullable(Type.String({ format: "uuid" })),
+  resolved_by_user_id: nullable(Uuid()),
   resolved_by_display_name: nullable(Type.String()),
   resolved_at: nullable(Type.String({ format: "date-time" })),
   created_at: Type.String({ format: "date-time" }),
