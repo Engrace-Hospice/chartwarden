@@ -1,35 +1,40 @@
 /**
- * M1 `idempotency.cleanup` — the sweeper must purge expired `idempotency_key` rows in EVERY organization status.
+ * M1 `idempotency.cleanup` — the sweeper must purge expired `idempotency_key` rows in EVERY organization status, and must never
+ * delete a live claim.
  *
- * It enumerated only `active` orgs (the enumerator's default), so an org in `created` (the onboarding orgs, where
- * platform operators write onboarding data with an Idempotency-Key), `suspended` or `closed` kept its expired rows
- * forever. The 24 h replay window of the request fingerprint is only a window if the rows really go.
+ * It enumerated only `active` orgs (the enumerator's default), so an org in `created` (the onboarding orgs, where platform
+ * operators write onboarding data with an Idempotency-Key), `suspended` or `closed` kept its expired rows forever. The 24 h replay
+ * window of the request fingerprint is only a window if the rows really go. And it SELECTs the expired ids and DELETEs them in a
+ * second statement: `putPending` can reclaim an expired key in between (resetting the same row id to a fresh 24 h pending claim),
+ * so the DELETE re-checks `expires_at`.
  *
- * LIVE by necessity: the table is RLS-forced (the delete runs per org under the NOBYPASSRLS `chartwarden_app` role),
- * and the org list is read through the separately-pooled platform login (a BYPASSRLS role with SELECT on `organization`).
+ * LIVE by necessity: the table is RLS-forced (the delete runs per org under the NOBYPASSRLS `chartwarden_app` role), and the org
+ * list is read through the REAL platform login (`chartwarden_platform_login`, built by scripts/db/provision-runtime-roles.ts) under
+ * the real bypass auditor, whose `platform.bypass_invoked` audit row is asserted.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:idempotency:cleanup:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import {
+  IDEMPOTENCY_CLEANUP_JOB_ID,
   buildIdempotencyCleanupOrgs,
   runIdempotencyCleanup,
   wireIdempotencyCleanupTenancy,
 } from "../src/bootstrap/jobs/idempotency-cleanup";
-import { IDEMPOTENCY_CLEANUP_JOB_ID } from "../src/bootstrap/jobs/idempotency-cleanup";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
+import { m34PlatformBypassAuditor } from "../src/index";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const PLATFORM_ROLE = "chartwarden_platform_live_test";
-const PLATFORM_PASSWORD = "platform_live_test";
+const PLATFORM_PASSWORD = "platform-live-password-1334";
 
 const ORGS = {
   created: "11111111-1111-4111-8111-111100130001",
@@ -74,6 +79,17 @@ describe.skipIf(!DB_URL)(
         );
       }
       await applyMigrations();
+      // The REAL provisioning script: the carrier role with its enumerated grants + the BYPASSRLS platform login.
+      const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
+        cwd: join(__dirname, "../../.."),
+        env: {
+          ...process.env,
+          PROVISION_DATABASE_URL: DB_URL,
+          CHARTWARDEN_PLATFORM_PASSWORD: PLATFORM_PASSWORD,
+        },
+        encoding: "utf8",
+      });
+      expect(provisioned.status, provisioned.stderr).toBe(0);
       for (const [name, id] of Object.entries(ORGS)) {
         const status: Status = (STATUSES as readonly string[]).includes(name)
           ? (name as Status)
@@ -84,26 +100,24 @@ describe.skipIf(!DB_URL)(
         );
       }
       await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
-      // The platform login's stand-in: BYPASSRLS, SELECT on `organization` only (the real role is created out-of-band by ops).
-      await admin.query(
-        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${PLATFORM_ROLE}') THEN
-         CREATE ROLE ${PLATFORM_ROLE} LOGIN BYPASSRLS PASSWORD '${PLATFORM_PASSWORD}'; END IF; END $$;`,
-      );
-      await admin.query(`GRANT USAGE ON SCHEMA public TO ${PLATFORM_ROLE}`);
-      await admin.query(`GRANT SELECT ON organization TO ${PLATFORM_ROLE}`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       const platformUrl = new URL(DB_URL as string);
-      platformUrl.username = PLATFORM_ROLE;
+      platformUrl.username = "chartwarden_platform_login";
       platformUrl.password = PLATFORM_PASSWORD;
       platformHandle = createDbClient({ connectionString: platformUrl.toString() });
       store = createDbIdempotencyStore(handle.db);
       wireIdempotencyCleanupTenancy();
-    }, 180_000);
+    }, 300_000);
 
     afterAll(async () => {
       await platformHandle?.close();
       await handle?.close();
       await admin?.end();
+    });
+
+    // Every test seeds its own rows over an empty table: none depends on what another left behind.
+    beforeEach(async () => {
+      await admin.query("DELETE FROM idempotency_key");
     });
 
     /** One key per org, through the real store; `expired` back-dates it past its TTL. */
@@ -124,14 +138,24 @@ describe.skipIf(!DB_URL)(
           [org],
         )
       ).rows.map((r) => r.key);
+    const bypassRows = async (): Promise<number> =>
+      (
+        await admin.query<{ n: number }>(
+          "SELECT count(*)::int AS n FROM audit_event WHERE event_type = 'platform.bypass_invoked' AND correlation_id LIKE $1",
+          [`platform-bypass:${IDEMPOTENCY_CLEANUP_JOB_ID}:%`],
+        )
+      ).rows[0]?.n ?? 0;
     const enumerateAll = () =>
-      buildIdempotencyCleanupOrgs({ platformDb: platformHandle.db, auditBypass: async () => {} });
+      buildIdempotencyCleanupOrgs({
+        platformDb: platformHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+      });
 
     it("the ACTIVE-ONLY default leaves created, suspended and closed orgs' expired rows (the defect)", async () => {
       for (const status of STATUSES) await seed(ORGS[status], "defect-expired", true);
       const activeOnly = buildActiveOrgEnumerator({
         platformDb: platformHandle.db,
-        auditBypass: async () => {},
+        auditBypass: m34PlatformBypassAuditor,
         jobId: IDEMPOTENCY_CLEANUP_JOB_ID,
         reason: "live: the active-only default",
       });
@@ -151,21 +175,103 @@ describe.skipIf(!DB_URL)(
 
       const purged = await runIdempotencyCleanup({ db: handle.db, activeOrgs: enumerateAll() });
 
-      // 4 orgs x "live-expired" + the 3 "defect-expired" rows the active-only default left behind.
-      expect(purged).toBe(7);
+      expect(purged).toBe(4); // one expired row per status
       for (const status of STATUSES) {
-        const keys = await keysOf(ORGS[status]);
-        expect(keys, status).toEqual(["live-unexpired"]);
+        expect(await keysOf(ORGS[status]), status).toEqual(["live-unexpired"]);
       }
       // another org's unexpired row is untouched
       expect(await keysOf(ORGS.other)).toEqual(["other-unexpired"]);
     });
 
+    it("the enumeration goes through the platform bypass auditor: a platform.bypass_invoked audit row names the cleanup job", async () => {
+      const before = await bypassRows();
+      await runIdempotencyCleanup({ db: handle.db, activeOrgs: enumerateAll() });
+      expect(await bypassRows()).toBe(before + 1);
+    });
+
     it("a second pass is a no-op (reentrant): nothing live is ever deleted", async () => {
-      const purged = await runIdempotencyCleanup({ db: handle.db, activeOrgs: enumerateAll() });
-      expect(purged).toBe(0);
-      for (const status of STATUSES) expect(await keysOf(ORGS[status])).toEqual(["live-unexpired"]);
-      expect(await keysOf(ORGS.other)).toEqual(["other-unexpired"]);
+      for (const status of STATUSES) {
+        await seed(ORGS[status], "re-unexpired", false);
+        await seed(ORGS[status], "re-expired", true);
+      }
+      expect(await runIdempotencyCleanup({ db: handle.db, activeOrgs: enumerateAll() })).toBe(4);
+      expect(await runIdempotencyCleanup({ db: handle.db, activeOrgs: enumerateAll() })).toBe(0);
+      for (const status of STATUSES) expect(await keysOf(ORGS[status])).toEqual(["re-unexpired"]);
+    });
+
+    /** `db` with a hook that runs once, right after the sweeper's SELECT of the expired ids and before its DELETE. */
+    function afterSweeperSelect(db: typeof handle.db, hook: () => Promise<void>): typeof handle.db {
+      let fired = false;
+      const hookSelect = (builder: unknown): unknown =>
+        new Proxy(builder as object, {
+          get(target, prop) {
+            const value = Reflect.get(target, prop, target);
+            if (prop === "limit") {
+              return (n: number) =>
+                Promise.resolve((value as (n: number) => unknown).call(target, n)).then(
+                  async (rows) => {
+                    if (!fired) {
+                      fired = true;
+                      await hook();
+                    }
+                    return rows;
+                  },
+                );
+            }
+            if (typeof value !== "function") return value;
+            return (...args: unknown[]) =>
+              hookSelect((value as (...a: unknown[]) => unknown).apply(target, args));
+          },
+        });
+      const wrapTx = (tx: object): object =>
+        new Proxy(tx, {
+          get(target, prop) {
+            const value = Reflect.get(target, prop, target);
+            if (typeof value !== "function") return value;
+            if (prop === "select") {
+              return (...args: unknown[]) =>
+                hookSelect((value as (...a: unknown[]) => unknown).apply(target, args));
+            }
+            return value.bind(target);
+          },
+        });
+      return new Proxy(db as object, {
+        get(target, prop) {
+          const value = Reflect.get(target, prop, target);
+          if (typeof value !== "function") return value;
+          if (prop === "transaction") {
+            return (cb: (tx: object) => unknown, ...rest: unknown[]) =>
+              (value as (...a: unknown[]) => unknown).call(
+                target,
+                (tx: object) => cb(wrapTx(tx)),
+                ...rest,
+              );
+          }
+          return value.bind(target);
+        },
+      }) as typeof handle.db;
+    }
+
+    it("a key reclaimed between the sweeper's SELECT and its DELETE is a live claim and survives; the sweeper never re-runs a handler", async () => {
+      await seed(ORGS.active, "reclaimed", true);
+      await seed(ORGS.active, "still-expired", true);
+      const hooked = afterSweeperSelect(handle.db, async () => {
+        // exactly what putPending does for an expired key: the SAME row id, a fresh 24 h pending claim
+        expect(await store.putPending(ORGS.active, "reclaimed", "claimed-again")).toBe(true);
+      });
+      const purged = await runIdempotencyCleanup({
+        db: hooked,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORGS.active }] },
+      });
+      expect(purged).toBe(1); // only the row that was still expired; the reclaimed claim is not counted as purged
+      expect(await keysOf(ORGS.active)).toEqual(["reclaimed"]);
+      const row = (
+        await admin.query<{ state: string; request_hash: string }>(
+          "SELECT state::text AS state, request_hash FROM idempotency_key WHERE organization_id = $1 AND key = 'reclaimed'",
+          [ORGS.active],
+        )
+      ).rows[0];
+      expect(row).toEqual({ state: "pending", request_hash: "claimed-again" });
     });
   },
 );
