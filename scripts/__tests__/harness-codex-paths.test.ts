@@ -100,6 +100,13 @@ describe("isInteractiveShell — a shell the guard cannot follow (Codex's write_
     "python",
     "node",
     "env bash",
+    "timeout 10 bash",
+    "timeout --signal TERM 10 python3",
+    "timeout -s KILL -k 2s 10s psql",
+    "timeout --kill-after=2s --foreground 10 node",
+    "/usr/bin/timeout -- 10 bash",
+    "chroot /mnt bash",
+    "nsenter --target 1 --mount bash",
     "psql",
     "bash -l",
     "bash --login",
@@ -267,6 +274,8 @@ describe("isInteractiveShell — a shell the guard cannot follow (Codex's write_
     "docker compose start app",
     "docker-compose start app",
     "ls",
+    "timeout 10 ls",
+    "timeout --signal TERM 10 ls",
   ])("allows %j", (cmd) => expect(isInteractiveShell(cmd)).toBe(false));
 });
 

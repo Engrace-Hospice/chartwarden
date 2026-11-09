@@ -553,6 +553,29 @@ function program(seg: string): { prog: string; args: string[]; assigns: string[]
   let lastWrapper = "";
   while (k < w.length) {
     const word = w[k] ?? "";
+    if (word.replace(/^.*\//, "") === "timeout") {
+      lastWrapper = "timeout";
+      k++;
+      while (k < w.length) {
+        const option = w[k] ?? "";
+        if (option === "--") {
+          k++;
+          break;
+        }
+        if (/^(?:-s|-k|--signal|--kill-after)$/.test(option)) {
+          k += 2;
+          continue;
+        }
+        if (/^--(?:signal|kill-after)=/.test(option) || /^-/.test(option)) {
+          k++;
+          continue;
+        }
+        break;
+      }
+      // GNU and BSD timeout both place one duration operand before the child command.
+      if (k < w.length) k++;
+      continue;
+    }
     const takesValue = WRAPPER_FLAG_VALUE.get(word);
     if (ASSIGNMENT.test(word)) k++;
     else if (takesValue && k + 1 < w.length) {
@@ -1022,6 +1045,7 @@ function interactiveInvocation(p: Parsed): boolean {
   const terminalInput = ins.some((path) => TERMINAL_INPUT.test(path));
   const explicitInput = !terminalInput && ins.length + docs.length > 0;
 
+  if (/^(chroot|nsenter)$/.test(prog)) return true;
   if (prog === "rlwrap") return true;
   if (/^(docker-compose|podman-compose)$/.test(prog)) {
     if (args.some((a) => /^(?:attach|exec|run)$/.test(a))) return true;

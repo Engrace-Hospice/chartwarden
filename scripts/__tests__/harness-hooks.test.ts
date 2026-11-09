@@ -268,6 +268,13 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
   it("refuses a bare interactive shell or REPL, and allows the same programs running a script", () => {
     for (const command of [
       "bash",
+      "timeout 10 bash",
+      "timeout --signal TERM 10 python3",
+      "timeout -s KILL -k 2s 10s psql",
+      "timeout --kill-after=2s --foreground 10 node",
+      "/usr/bin/timeout -- 10 bash",
+      "chroot /mnt bash",
+      "nsenter --target 1 --mount bash",
       "bash -l",
       "bash -o vi",
       "zsh -o SH_WORD_SPLIT",
@@ -424,6 +431,8 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       "docker-compose start app",
       "bash -o vi -- scripts/x.sh",
       "bun run test",
+      "timeout 10 ls",
+      "timeout --signal TERM 10 ls",
     ]) {
       expect(shell(command).out, command).toBeNull();
     }
