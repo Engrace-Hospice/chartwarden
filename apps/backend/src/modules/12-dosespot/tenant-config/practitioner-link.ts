@@ -17,7 +17,10 @@
 //   the enrolment gate the confirmation must be by the row's own member, of the current link and NPI, at the claim and again at the record.
 //   linker != confirmer the member recorded as having MADE the link (`linked_by_membership_id`, migration 1433) cannot confirm it (409
 //                      DOSESPOT_LINK_SELF_CONFIRM, and the confirm write re-checks it), and the enrolment gate refuses a link whose linker is its
-//                      confirmer. Application code: the roster route records the acting administrator's membership.
+//                      confirmer. Application code: the roster route records the acting administrator's membership. A link with NO recorded
+//                      maker (it predates the column, or was written outside the roster route) cannot be confirmed either (409
+//                      DOSESPOT_LINK_MAKER_UNKNOWN, and the confirm write re-checks it): its maker could have been the member, so an
+//                      administrator must link them again, which records one.
 // Audited with ids only (the roster row, the physician record, the actor) in a row the write-audit trigger of this table also takes;
 // that row, like any column of the table, carries the NPI (public provider data), so "ids only" describes this service's own entry.
 import type { DbClient } from "@chartwarden/db";
@@ -101,6 +104,15 @@ const selfLinked = (): ChartWardenError =>
     409,
   );
 
+// A link whose maker was never recorded (it predates migration 1433's column) could have been made by the very member asked to confirm
+// it, so it cannot be confirmed as it stands: a roster administrator links them again, which records the maker.
+const makerUnknown = (): ChartWardenError =>
+  new ChartWardenError(
+    "DOSESPOT_LINK_MAKER_UNKNOWN",
+    "who made this link to a physician record was never recorded, so it cannot be confirmed as it stands; a roster administrator must link you again",
+    409,
+  );
+
 const liveLink = (row: RosterRow | null): row is RosterRow & { externalPhysicianMdmId: string } =>
   row !== null && row.revokedAt === null && row.externalPhysicianMdmId !== null;
 
@@ -154,6 +166,7 @@ export function createPractitionerLinkService(deps: PractitionerLinkDeps): Pract
       store.rosterRow(organizationId, membershipId),
     );
     if (!liveLink(row)) throw notLinked();
+    if (row.linkedByMembershipId === null) throw makerUnknown();
     if (row.linkedByMembershipId === membershipId) throw selfLinked();
     // pinned: what the prescriber was shown must still be what the roster says, and what the record carries
     if (row.externalPhysicianMdmId !== input.externalPhysicianMdmId) throw rosterChanged();

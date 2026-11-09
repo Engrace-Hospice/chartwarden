@@ -1633,10 +1633,19 @@ export function createDbDoseSpotBackend(
             existing.mdmId === externalPhysicianMdmId &&
             existing.linkedBy === membershipId &&
             linkedByMembershipId !== membershipId;
+          // A link with NO recorded maker (it predates the column) is unconfirmable (409 DOSESPOT_LINK_MAKER_UNKNOWN), so it is fixed the
+          // same way: an administrator re-saving the same link becomes its maker, and a confirmation made while the maker was unknown is
+          // cleared, so the member confirms again under the recorded maker.
+          const reassertsUnattributedLink =
+            existing !== undefined &&
+            Boolean(externalPhysicianMdmId) &&
+            existing.mdmId === externalPhysicianMdmId &&
+            existing.linkedBy === null;
           const linkAsserted =
             (Boolean(externalPhysicianMdmId) && existing?.mdmId !== externalPhysicianMdmId) ||
             (existing !== undefined && existing.revokedAt !== null) ||
-            reassertsSelfLink;
+            reassertsSelfLink ||
+            reassertsUnattributedLink;
           const linker = { linkedByMembershipId };
           const row = firstOrThrow(
             await tx
@@ -1656,7 +1665,7 @@ export function createDbDoseSpotBackend(
                   ...(externalPhysicianMdmId ? { externalPhysicianMdmId } : {}),
                   // a re-link carries nothing of the previous one: no stale NPI, and the PRESCRIBER's confirmation was of the old link
                   ...(relinking ? { npi: null, ...NO_LINK_CONFIRMATION } : {}),
-                  ...(reassertsSelfLink ? NO_LINK_CONFIRMATION : {}),
+                  ...(reassertsSelfLink || reassertsUnattributedLink ? NO_LINK_CONFIRMATION : {}),
                   ...(linkAsserted ? linker : {}),
                   enrolledAt: at,
                   revokedAt: null,

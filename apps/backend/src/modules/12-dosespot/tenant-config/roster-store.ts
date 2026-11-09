@@ -118,8 +118,9 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
             isNull(P.revokedAt),
             // pinned: only while the row still links the record the prescriber was shown
             eq(P.externalPhysicianMdmId, input.mdmId),
-            // and only while someone else made that link (a re-link by the member themself since the read stops it here)
-            sql`${P.linkedByMembershipId} IS DISTINCT FROM ${membershipId}::uuid`,
+            // and only while someone ELSE made that link: a recorded maker other than the member (a re-link by the member themself since
+            // the read stops it here, and a link with no recorded maker, which the member could have made, is never confirmable)
+            sql`${P.linkedByMembershipId} IS NOT NULL AND ${P.linkedByMembershipId} <> ${membershipId}::uuid`,
           ),
         )
         .returning();

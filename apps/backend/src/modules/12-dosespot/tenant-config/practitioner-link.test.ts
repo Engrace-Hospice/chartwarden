@@ -40,7 +40,8 @@ function build(
           linkConfirmedMdmId: null,
           linkConfirmedNpi: null,
           linkConfirmedByMembershipId: null,
-          linkedByMembershipId: null,
+          // the roster route always records the acting administrator as the link's maker
+          linkedByMembershipId: SOMEONE_ELSE,
           ...opts.row,
         };
   const audits: {
@@ -198,6 +199,19 @@ describe("confirming", () => {
       },
     });
     expect((await both.service.view(actor())).confirmed).toBe(false);
+  });
+
+  it("is refused (409 DOSESPOT_LINK_MAKER_UNKNOWN) for a link with no recorded maker: it predates the column, so its own administrator could have made it; re-link required", async () => {
+    const unknown = build({ row: { linkedByMembershipId: null } });
+    await expect(unknown.service.confirm(actor(), pinned)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "DOSESPOT_LINK_MAKER_UNKNOWN",
+    });
+    expect(unknown.confirmed).toEqual([]);
+    expect(unknown.audits).toEqual([]);
+    // an administrator linking them again records a maker, and the confirmation is then accepted
+    unknown.setRoster({ ...(unknown.roster() as RosterRow), linkedByMembershipId: SOMEONE_ELSE });
+    expect((await unknown.service.confirm(actor(), pinned)).confirmed).toBe(true);
   });
 
   it("records the confirmation for the member's OWN row, and audits ids only (no NPI, no name)", async () => {

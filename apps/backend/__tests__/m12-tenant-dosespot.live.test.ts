@@ -112,6 +112,8 @@ const TENANT_ADMIN = "e5000000-0000-4000-8000-0000000000e5";
 const OPERATOR = "f6000000-0000-4000-8000-0000000000f6";
 const MEMBERSHIP = "e7000000-0000-4000-8000-0000000000e7";
 const OPS_MEMBERSHIP = "f8000000-0000-4000-8000-0000000000f8";
+// A roster administrator seeded as the maker of the links the suite writes directly (it is no one under test).
+const SEEDED_LINK_MAKER = "f9000000-0000-4000-8000-0000000000f9";
 const KEK = Buffer.alloc(32, 0x42).toString("base64");
 
 const CLINIC_KEY = "clinic-key-plaintext-LIVE-7f3a91c2";
@@ -342,9 +344,11 @@ describe.skipIf(!DB_URL)(
       opts: { confirmed?: boolean } = {},
     ): Promise<SeededPhysician> {
       const linked = physician ?? (await seedPhysician());
+      // `linked_by_membership_id`: the roster route always records the acting administrator as the link's maker, and a link with NO
+      // recorded maker is unconfirmable (the SoD cases below cover that); a seeded roster administrator that is no one under test
       await admin.query(
-        "INSERT INTO dosespot_prescriber (organization_id, membership_id, external_physician_mdm_id, enrolled_at) VALUES ($1,$2,$3,now())",
-        [org, membershipId, linked.id],
+        "INSERT INTO dosespot_prescriber (organization_id, membership_id, external_physician_mdm_id, linked_by_membership_id, enrolled_at) VALUES ($1,$2,$3,$4,now())",
+        [org, membershipId, linked.id, SEEDED_LINK_MAKER],
       );
       if (opts.confirmed !== false && linked.npi !== null) {
         // the trigger wants the declared actor to be the member's own user, whoever writes: so the seed declares it
@@ -2018,6 +2022,51 @@ describe.skipIf(!DB_URL)(
           expect(await enrollment.enroll(tenantActor(ORG_A), m.membershipId)).toMatchObject({
             enrolledWithDoseSpot: true,
           });
+        });
+
+        it("a link with NO recorded maker (it predates the column) cannot be confirmed (409 DOSESPOT_LINK_MAKER_UNKNOWN); an administrator re-saving it records themself as its maker and the member then confirms", async () => {
+          const m = await newMember();
+          await link(m, MEMBERSHIP);
+          await admin.query(
+            "UPDATE dosespot_prescriber SET linked_by_membership_id=NULL WHERE membership_id=$1",
+            [m.membershipId],
+          );
+          expect(await errorCode(linkService.confirm(asMember(m), pin(m)))).toBe(
+            "DOSESPOT_LINK_MAKER_UNKNOWN",
+          );
+          // the statement-level guard too, straight at the store (no service pre-check in front of it)
+          expect(
+            await withOrgContext(tdb, { organizationId: ORG_A, userId: m.userId }, (tx) =>
+              createDrizzleRosterStore(tx as unknown as DbClient).confirmLink(
+                ORG_A,
+                m.membershipId,
+                { mdmId: m.physician.id, npi: m.physician.npi as string, at: new Date() },
+              ),
+            ),
+          ).toBeNull();
+          expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+          await link(m, MEMBERSHIP);
+          expect(await linkerOf(m.membershipId)).toBe(MEMBERSHIP);
+          expect((await linkService.confirm(asMember(m), pin(m))).confirmed).toBe(true);
+        });
+
+        it("re-saving a link with no recorded maker clears a confirmation made while the maker was unknown", async () => {
+          const m = await newMember();
+          await link(m, MEMBERSHIP);
+          await admin.query(
+            "UPDATE dosespot_prescriber SET linked_by_membership_id=NULL WHERE membership_id=$1",
+            [m.membershipId],
+          );
+          await asDeclaredUser(
+            m.userId,
+            `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
+               link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+            [m.membershipId, m.physician.id, m.physician.npi],
+          );
+          await link(m, MEMBERSHIP);
+          expect(await linkerOf(m.membershipId)).toBe(MEMBERSHIP);
+          expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+          expect((await linkService.view(asMember(m))).confirmed).toBe(false);
         });
 
         it("a link recorded under a platform operator's membership counts as another linker: the prescriber's own confirmation is accepted", async () => {
