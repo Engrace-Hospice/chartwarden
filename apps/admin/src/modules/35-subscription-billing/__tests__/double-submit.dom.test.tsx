@@ -204,7 +204,9 @@ describe("refund request submit", () => {
         .split(" ")
         .map((id) => document.getElementById(id)?.textContent ?? "")
         .join(" ");
-    expect(described()).toMatch(/0\/40 characters — too short, 40 needed/);
+    // Untouched: a neutral count, not an error yet.
+    expect(described()).toMatch(/0\/40 characters/);
+    expect(described()).not.toMatch(/too short/);
     fireEvent.change(detail, { target: { value: "x".repeat(40) } });
     expect(described()).toMatch(/40\/40 characters/);
     expect(described()).not.toMatch(/too short/);
@@ -212,6 +214,7 @@ describe("refund request submit", () => {
     fireEvent.change(detail, { target: { value: "short" } });
     fireEvent.submit(form());
     const alert = await screen.findByText("Describe the reason in at least 40 characters.");
+    expect(described()).toMatch(/5\/40 characters — too short, 40 needed/);
     fireEvent.change(detail, { target: { value: "still short" } });
     expect(screen.getByText("Describe the reason in at least 40 characters.")).toBe(alert);
     // The PHI warning stays beside the error, and the field is described by both.

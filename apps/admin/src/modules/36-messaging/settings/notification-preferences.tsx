@@ -134,7 +134,7 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
         {CATEGORIES.map((category) => (
           <fieldset key={category} className="wx-form-stack">
             <legend>{humanize(category)}</legend>
-            <dl className="wx-kv">
+            <dl className="wx-kv is-middle">
               {SEVERITIES.map((severity) => (
                 <div key={severity}>
                   <dt>{humanize(severity)}</dt>

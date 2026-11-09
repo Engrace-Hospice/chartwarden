@@ -109,7 +109,7 @@ export function InvitationCard({
       </div>
       {loadError ? <InlineAlert tone="error">Could not load invitations.</InlineAlert> : null}
       {rows === null && !loadError ? <LoadingSpinner label="Loading invitations…" /> : null}
-      {rows?.length === 0 ? <p>No invitation on record.</p> : null}
+      {rows?.length === 0 ? <p className="wx-row-sub">No invitation on record.</p> : null}
       {rows && rows.length > 0 ? (
         <UnstyledList className="wx-fact-list">
           {rows.map((i) => (

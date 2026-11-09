@@ -157,9 +157,10 @@ export function RefundNew(): JSX.Element {
               hint={
                 <>
                   Do not include patient information.{" "}
-                  <span className={detailShort ? "wx-nums wx-text-error" : "wx-nums"}>
+                  {/* Neutral until a submit is attempted: an untouched form isn't an error yet. */}
+                  <span className={attempted && detailShort ? "wx-nums wx-text-error" : "wx-nums"}>
                     {form.detail.trim().length}/{MIN_REFUND_REASON} characters
-                    {detailShort ? ` — too short, ${MIN_REFUND_REASON} needed` : ""}
+                    {attempted && detailShort ? ` — too short, ${MIN_REFUND_REASON} needed` : ""}
                   </span>
                 </>
               }

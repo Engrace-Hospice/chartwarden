@@ -492,7 +492,7 @@ function OnboardingCard({
           )}
         </>
       ) : (
-        <span>
+        <span className="wx-row-sub">
           {tenant.status === "active"
             ? "Onboarding is complete."
             : "Onboarding is closed for this tenant."}

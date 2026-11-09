@@ -446,6 +446,7 @@
     margin: 0;
     padding-left: 1.25rem;
     list-style: disc;
+    font-size: 0.8125rem;
   }
   /* Tenant hub cards: 1 / 2 / 3 columns; a child with .wx-grid-span-all takes the whole row. */
   .wx-card-grid {
@@ -745,6 +746,30 @@
   }
   .wx-kv dt {
     color: var(--color-on-surface-variant);
+  }
+  /* A key beside a row of controls (checkbox rows): centre the key on the row instead of top-aligning it. */
+  .wx-kv.is-middle {
+    align-items: center;
+  }
+  /* A fieldset card's legend reads as the card heading, not a caption cut into the top border. */
+  fieldset.wx-drawer-card > legend {
+    float: left;
+    width: 100%;
+    margin-bottom: 0.75rem;
+    padding: 0;
+    color: var(--color-on-surface);
+    font-size: 0.9375rem;
+    font-weight: 700;
+  }
+  fieldset.wx-drawer-card > legend + * {
+    clear: both;
+  }
+  /* A sub-group legend inside a card: a small subheading. */
+  fieldset.wx-form-stack > legend {
+    padding: 0;
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+    font-weight: 600;
   }
   .wx-kv dd {
     margin: 0;
