@@ -167,7 +167,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   /** The ops notices raised for one notice's late-filing event (the ops details carry no notice id: matched by the event id). */
   async function opsNoticesFor(noeId: string) {
     const ids = (await eventRows("m23.noe.filed_externally_late", "noeId", noeId)).map((r) => r.id);
-    return lateOpsNotices.filter((n) => ids.includes(n.correlationId));
+    return lateOpsNotices.filter((n) => ids.includes(String(n.correlationId)));
   }
   async function firstPeriodId(admissionId: string): Promise<string> {
     const { rows } = await admin.query(

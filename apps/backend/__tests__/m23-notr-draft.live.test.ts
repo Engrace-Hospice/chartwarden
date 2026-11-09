@@ -760,7 +760,7 @@ describe.skipIf(!DB_URL)(
         }),
       ]);
       expect(
-        lateOpsNotices.filter((n) => lateEvents.some((e) => e.id === n.correlationId)),
+        lateOpsNotices.filter((n) => lateEvents.some((e) => e.id === String(n.correlationId))),
       ).toEqual([
         expect.objectContaining({
           kind: "m23.notice_filed_late",
