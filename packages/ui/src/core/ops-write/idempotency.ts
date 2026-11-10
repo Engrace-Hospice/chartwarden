@@ -10,8 +10,13 @@
 // A screen that never supplies a key needs none of this: the API client applies the same renewal rule (`keepsKey`) to every keyless
 // mutating request, keyed by method + URL + If-Match + body (api/idempotency-middleware.ts). A request that supplies its own key,
 // as `sendWrite` / `useOpsWrite` do from this keeper, is never touched by that middleware, so the two do not interfere.
-import { useRef } from "react";
-import { keyIdleTooLong, keyPastMaxAge, newIdempotencyKey } from "./idempotency-key";
+import { useEffect, useRef } from "react";
+import {
+  keyIdleTooLong,
+  keyPastMaxAge,
+  newIdempotencyKey,
+  registerHeldKeys,
+} from "./idempotency-key";
 
 /** One attempt of an intent: its key, and the time of the intent's FIRST attempt, stable across retries until it settles. */
 export interface IdempotencyAttempt {
@@ -89,9 +94,11 @@ export function createIdempotencyKeeper(
   };
 }
 
-/** A keeper that lives as long as the component that submits (one per form or dialog). */
+/** A keeper that lives as long as the component that submits (one per form or dialog); dropped with the other held keys when the session ends. */
 export function useIdempotencyKeeper(): IdempotencyKeeper {
   const ref = useRef<IdempotencyKeeper | null>(null);
   if (ref.current === null) ref.current = createIdempotencyKeeper();
-  return ref.current;
+  const keeper = ref.current;
+  useEffect(() => registerHeldKeys(() => keeper.settled()), [keeper]);
+  return keeper;
 }

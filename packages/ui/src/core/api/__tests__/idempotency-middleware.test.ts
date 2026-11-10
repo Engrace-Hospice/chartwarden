@@ -7,13 +7,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   IDEMPOTENCY_KEY_MAX_AGE_MS,
   IDEMPOTENCY_KEY_TTL_MS,
+  MAX_TRACKED_INTENTS,
   freshIdempotencyKeyHeaders,
   keepsKey,
 } from "../../ops-write/idempotency-key";
 import { clearIdempotencyKeys, createApiClient } from "../client";
 import {
   MAX_FINGERPRINT_BODY_CHARS,
-  MAX_TRACKED_INTENTS,
   createIdempotencyKeys,
   fingerprintOf,
 } from "../idempotency-middleware";

@@ -29,6 +29,7 @@
 // does not reload the page. A sign-out that reloads discards the table with the page.
 import type { Middleware } from "openapi-fetch";
 import {
+  MAX_TRACKED_INTENTS,
   isInFlightDuplicate,
   keepsKey,
   keyIdleTooLong,
@@ -41,12 +42,9 @@ export const MUTATING_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PA
 
 const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
-/**
- * At most this many IDLE intents hold a key; past it the least recently used idle one is forgotten (it gets a new key on its next
- * retry). An intent whose request is still in flight is never evicted by the cap (a bulk action may fire more of them than this), only
- * by IDEMPOTENCY_KEY_MAX_AGE_MS (ops-write/idempotency-key.ts).
- */
-export const MAX_TRACKED_INTENTS = 64;
+// MAX_TRACKED_INTENTS (ops-write/idempotency-key.ts) caps the IDLE intents that hold a key; past it the least recently used idle one is
+// forgotten (it gets a new key on its next retry). An intent whose request is still in flight is never evicted by the cap (a bulk
+// action may fire more of them than this), only by IDEMPOTENCY_KEY_MAX_AGE_MS.
 
 /** A body longer than this is not fingerprinted: the request goes out on a fresh key every time. */
 export const MAX_FINGERPRINT_BODY_CHARS = 64 * 1024;

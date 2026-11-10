@@ -5,6 +5,7 @@
 // ../ops-write/idempotency-key, a React-free file with no imports) — NO @chartwarden/* import, so `packages/ui` stays a leaf and the
 // frontend never compile-imports the backend.
 import createClient, { type Client, type ClientOptions, type Middleware } from "openapi-fetch";
+import { clearHeldKeys } from "../ops-write/idempotency-key";
 import { MUTATING_METHODS, createIdempotencyKeys } from "./idempotency-middleware";
 import type { paths } from "./schema";
 
@@ -28,13 +29,14 @@ function warnAboutUnknownClient(): void {
 }
 
 /**
- * Forget every Idempotency-Key the client is holding for an unanswered write, so the next person to use this page does not inherit the
- * last one's. The client never does this by itself (not every 401 is a dead session). Call it where the app decides the session is
+ * Forget every Idempotency-Key held for an unanswered write (the client's own table AND every mounted screen's attempt keys and keeper), so
+ * the next person to use this page does not inherit the last one's. The client never does this by itself (not every 401 is a dead session). Call it where the app decides the session is
  * over (the shell's session-expired signal, the portal session guard, the admin actor-session 401) and from every sign-out that does
  * NOT reload the page (a reload discards the table with the page). Returns false, and warns once in development, when `client` is not
  * one `createApiClient` built, so a wrong wiring is not a silent no-op.
  */
 export function clearIdempotencyKeys(client: ApiClient): boolean {
+  clearHeldKeys(); // every mounted screen's attempt keys and keeper, not only the client's own table
   const clear = idempotencyTables.get(client);
   if (clear === undefined) {
     warnAboutUnknownClient();

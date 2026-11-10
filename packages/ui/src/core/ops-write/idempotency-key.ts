@@ -72,6 +72,12 @@ export const IDEMPOTENCY_KEY_TTL_MS = 15 * MS_PER_MINUTE;
  */
 export const IDEMPOTENCY_KEY_MAX_AGE_MS = 60 * MS_PER_MINUTE;
 
+/**
+ * At most this many intents hold a key at once (the API client's table and every screen's attempt-key table); past it the least recently
+ * used idle one is forgotten and gets a new key on its next retry.
+ */
+export const MAX_TRACKED_INTENTS = 64;
+
 /** True once an intent is past the hard cap from its first attempt. */
 export function keyPastMaxAge(firstAttemptAt: number, now: number): boolean {
   return now - firstAttemptAt >= IDEMPOTENCY_KEY_MAX_AGE_MS;
@@ -101,4 +107,21 @@ export function keepsKey(status: number, body: unknown): boolean {
  */
 export function freshIdempotencyKeyHeaders(): Record<string, string> {
   return { "Idempotency-Key": newIdempotencyKey() };
+}
+
+const heldKeyClearers = new Set<() => void>();
+
+/**
+ * Register a table of held keys (a mounted screen's attempt keys or keeper) so the app can drop them all when the session ends:
+ * `clearHeldKeys()`. Returns the unregister, for the component's cleanup. Held keys belong to one session; the next person to use this
+ * page must not inherit them.
+ */
+export function registerHeldKeys(clear: () => void): () => void {
+  heldKeyClearers.add(clear);
+  return () => heldKeyClearers.delete(clear);
+}
+
+/** Drop every registered table of held keys. Called by `clearIdempotencyKeys(client)`, which the apps call where the session ends. */
+export function clearHeldKeys(): void {
+  for (const clear of heldKeyClearers) clear();
 }
