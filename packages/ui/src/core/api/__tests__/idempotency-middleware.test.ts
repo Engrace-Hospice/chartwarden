@@ -717,6 +717,13 @@ describe("the middleware and keepsKey agree on every answer", () => {
       keeps: true,
     },
     {
+      label: "409 stuck key (a final answer for that key)",
+      step: envelope(409, "IDEMPOTENCY_KEY_STUCK"),
+      status: 409,
+      body: { error: { code: "IDEMPOTENCY_KEY_STUCK", message: "m" } },
+      keeps: false,
+    },
+    {
       label: "409 business CONFLICT",
       step: envelope(409, "CONFLICT"),
       status: 409,

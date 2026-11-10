@@ -4,7 +4,14 @@
 // step-up: a step-up denial sends the user to /step-up and back, and the reason survives the round trip in the in-memory ceremony
 // draft store (never browser storage: a reason can carry PHI). Messages are server text; this panel never logs them.
 import { COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH } from "@chartwarden/types";
-import { Button, InlineAlert, StatusPill, TextAreaField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  InlineAlert,
+  StatusPill,
+  TextAreaField,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -82,6 +89,7 @@ function OverrideForm({
   onDone: () => void;
 }): JSX.Element {
   const client = useApiClient();
+  const attempt = useAttemptKey();
   const navigate = useNavigate();
   const key = draftKey(claimId, resultId);
   const restored = loadDraft<string>(key);
@@ -120,15 +128,20 @@ function OverrideForm({
     setError(null);
     saveDraft(key, reason);
     try {
-      const { error: err, response } = await client.POST(
-        "/api/v1/billing/commercial/claims/{id}/validation-results/{resultId}/override",
-        {
-          params: {
-            path: { id: claimId, resultId },
-            header: { "Idempotency-Key": crypto.randomUUID() },
-          },
-          body: { reason: reason.trim() },
-        },
+      // One key per override intent (this result, this reason): a retry after a lost reply replays, never records the override twice.
+      const { error: err, response } = await attempt.run(
+        `override|${claimId}|${resultId}|${reason.trim()}`,
+        (idempotencyKey) =>
+          client.POST(
+            "/api/v1/billing/commercial/claims/{id}/validation-results/{resultId}/override",
+            {
+              params: {
+                path: { id: claimId, resultId },
+                header: { "Idempotency-Key": idempotencyKey },
+              },
+              body: { reason: reason.trim() },
+            },
+          ),
       );
       if (err) {
         const code = (err as { error?: { code?: string } }).error?.code;

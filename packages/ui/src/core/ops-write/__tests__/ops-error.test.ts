@@ -198,6 +198,34 @@ describe("describeOpsError", () => {
   });
 });
 
+describe("describeOpsError and the stuck-key 409", () => {
+  it("tells the operator to check the record, in its own words, not the server's header jargon", () => {
+    const failure = describeOpsError(
+      envelope(
+        "IDEMPOTENCY_KEY_STUCK",
+        "The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this key: read the resource to see whether the change was applied, and use a new key only if it was not.",
+      ),
+      { status: 409 },
+    );
+
+    expect(failure.kind).toBe("refused"); // keep the form: nothing was stale
+    expect(failure.message).toBe(
+      "We could not confirm whether that change was saved. Check the record before trying again.",
+    );
+    expect(failure.message).not.toContain("Idempotency-Key");
+  });
+
+  it("lets a screen's own sentence for the code win", () => {
+    const failure = describeOpsError(
+      envelope("IDEMPOTENCY_KEY_STUCK", "m"),
+      { status: 409 },
+      { IDEMPOTENCY_KEY_STUCK: "Open the plan to see whether it saved." },
+    );
+
+    expect(failure.message).toBe("Open the plan to see whether it saved.");
+  });
+});
+
 describe("describeOpsError and the in-flight duplicate 409", () => {
   const IN_FLIGHT_SENTENCE = "Idempotency-Key request is still being processed";
 

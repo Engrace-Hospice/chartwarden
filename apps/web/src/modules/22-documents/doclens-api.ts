@@ -10,8 +10,8 @@
 // Every write returns a discriminated result rather than throwing, because each caller renders the
 // failure in place, and because the SERVER's error `code` decides the copy (`VISION_DISAGREEMENT_
 // REASON_REQUIRED`, `SUD_DETECTION_UNRESOLVED`, a 403 licence refusal). `Idempotency-Key` is attached to
-// every mutating request by the client middleware (`createApiClient`); the two routes that REQUIRE one
-// (SUD review, complete) also get an explicit key so the requirement is visible at the call site.
+// every mutating request by the client middleware (`createApiClient`), one per write intent (kept across a lost reply, renewed by any
+// answer), including the two routes that REQUIRE one (SUD review, complete).
 import type { ApiClient, operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
@@ -76,12 +76,6 @@ function failure<T>(status: number | undefined, body: unknown, forbidden: string
   return { ok: false, status: s, code, message: copy };
 }
 
-/** A fresh idempotency key; the client middleware adds one too, but these routes REQUIRE it. */
-const idemKey = (): Record<string, string> =>
-  typeof globalThis.crypto?.randomUUID === "function"
-    ? { "Idempotency-Key": globalThis.crypto.randomUUID() }
-    : {};
-
 /** Same-origin URL of one rendered source page (cookie session, like every API call — vite proxies `/api`). */
 export const pageImageUrl = (batchId: string, page: number): string =>
   `/api/v1/intake/uploads/${encodeURIComponent(batchId)}/pages/${page}/image`;
@@ -142,7 +136,6 @@ export async function resolveSud(
   const { data, error, response } = await client.POST("/api/v1/intake/uploads/{id}/sud-review", {
     params: { path: { id: batchId } },
     body: reason ? { outcome, reason } : { outcome },
-    headers: idemKey(),
   });
   if (error || !data)
     return failure(
@@ -168,7 +161,6 @@ export async function resolveIdentity(
     {
       params: { path: { id: batchId } },
       body: { pageFrom, resolution, reason },
-      headers: idemKey(),
     },
   );
   if (error || !data)
@@ -190,7 +182,6 @@ export async function relinkBatch(
   const { data, error, response } = await client.POST("/api/v1/intake/uploads/{id}/relink", {
     params: { path: { id: batchId } },
     body: { ...to, reason },
-    headers: idemKey(),
   });
   if (error || !data)
     return failure(response?.status, error, "Moving a fax needs intake review access.");
@@ -204,7 +195,6 @@ export async function completeReview(
   const { data, error, response } = await client.POST("/api/v1/intake/reviews/{id}/complete", {
     params: { path: { id: reviewId } },
     body: { attestationConfirmed: true },
-    headers: idemKey(),
   });
   if (error || !data)
     return failure(response?.status, error, "You are not permitted to complete this review.");

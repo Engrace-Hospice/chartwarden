@@ -112,6 +112,15 @@ export function createAttemptKey(
   };
 }
 
+/**
+ * The attempt keys of module-level API functions, which have no component to hold a hook: one table for the page, built the same way as a
+ * screen's and dropped with it when the session ends. A function that sends a write whose contract DECLARES the Idempotency-Key header (so
+ * the key cannot simply be left to the API client) wraps its request in `sharedAttemptKeys.run(fingerprint, (key) => ...)`, the
+ * fingerprint naming the intent (route, ids, version, body). Everything else leaves the key to the client.
+ */
+export const sharedAttemptKeys: AttemptKey = createAttemptKey();
+registerHeldKeys(sharedAttemptKeys.clear);
+
 /** A screen's attempt keys: one stable object per component, dropped with the other held keys when the session ends. */
 export function useAttemptKey(): AttemptKey {
   const ref = useRef<AttemptKey | null>(null);

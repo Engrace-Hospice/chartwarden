@@ -144,6 +144,17 @@ describe("sendWrite and the 409 that says an earlier request under the key is st
     expect(seen[1]).toBe(seen[0]);
   });
 
+  it("renews the key on the stuck-key 409: it is the server's final answer for that key, so the next user-initiated attempt starts fresh", async () => {
+    seen.length = 0;
+    const keeper = createIdempotencyKeeper(counter());
+    const stuck = { error: { code: "IDEMPOTENCY_KEY_STUCK", message: "m" } };
+
+    await sendWrite(keeper, "same", reply(409, stuck));
+    await sendWrite(keeper, "same", reply(409, stuck));
+
+    expect(seen[1]).not.toBe(seen[0]);
+  });
+
   it("renews the key on a plain business 409 CONFLICT, which is the app's own answer", async () => {
     seen.length = 0;
     const keeper = createIdempotencyKeeper(counter());

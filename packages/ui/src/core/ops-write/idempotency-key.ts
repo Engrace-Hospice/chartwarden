@@ -89,6 +89,19 @@ export function keyIdleTooLong(lastAttemptAt: number, now: number): boolean {
 }
 
 /**
+ * The code the server answers with when the first request under this key stayed pending past its limit (409). It is a FINAL answer for that
+ * key, not an in-flight duplicate: the first request's outcome is unknown and the server says not to retry on this key. So the key is NOT
+ * kept (`keepsKey` is false: it renews like any other answer, and no screen retries on it by itself); the next user-initiated attempt is a
+ * new intent on a new key, and the screen's job (describeOpsError) is to tell the user to check the record first.
+ */
+export const IDEMPOTENCY_KEY_STUCK_CODE = "IDEMPOTENCY_KEY_STUCK";
+
+/** The server says the first request under this key never finished and its outcome is unknown (see {@link IDEMPOTENCY_KEY_STUCK_CODE}). */
+export function isKeyStuck(status: number, body: unknown): boolean {
+  return status === 409 && envelopeOf(body)?.code === IDEMPOTENCY_KEY_STUCK_CODE;
+}
+
+/**
  * Whether the key must survive this answer, i.e. the next attempt of the same intent reuses it: a gateway page (the app never saw the
  * attempt) or an in-flight duplicate (the first attempt is still unresolved). Every other answer, success or refusal, is the app's own
  * outcome of that attempt, so the next attempt is a new intent on a new key: the server caches a completed answer (refusals included)

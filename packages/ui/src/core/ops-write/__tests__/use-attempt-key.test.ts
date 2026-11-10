@@ -10,7 +10,7 @@ import {
   keepsKey,
   registerHeldKeys,
 } from "../idempotency-key";
-import { createAttemptKey } from "../use-attempt-key";
+import { createAttemptKey, sharedAttemptKeys } from "../use-attempt-key";
 
 const GATEWAY_PAGE = "<html>Bad gateway</html>";
 const IN_FLIGHT_MESSAGE = "Idempotency-Key request is still being processed";
@@ -47,6 +47,11 @@ const MATRIX: readonly Row[] = [
     label: "409 legacy in-flight message",
     outcome: { status: 409, body: env("CONFLICT", IN_FLIGHT_MESSAGE) },
     keeps: true,
+  },
+  {
+    label: "409 stuck key (a final answer for that key)",
+    outcome: { status: 409, body: env("IDEMPOTENCY_KEY_STUCK") },
+    keeps: false,
   },
   { label: "409 business CONFLICT", outcome: { status: 409, body: env("CONFLICT") }, keeps: false },
   {
@@ -281,5 +286,41 @@ describe("held keys and the end of a session", () => {
     stopA();
 
     expect(cleared).toEqual(["a"]);
+  });
+});
+
+describe("sharedAttemptKeys: the attempt keys of module-level API functions (no component to hold a hook)", () => {
+  const lost = async () => {
+    throw new TypeError("Failed to fetch");
+  };
+
+  it("holds a key across a request that got no answer and renews it on an answer, like a screen's own", async () => {
+    const keys: string[] = [];
+    const send = (reply: "lost" | "answered") => async (key: string) => {
+      keys.push(key);
+      if (reply === "lost") return lost();
+      return answer(200);
+    };
+
+    await sharedAttemptKeys.run("shared|a", send("lost")).catch(() => undefined);
+    await sharedAttemptKeys.run("shared|a", send("answered"));
+    await sharedAttemptKeys.run("shared|a", send("answered"));
+
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it("is dropped with the other held keys when the session ends", async () => {
+    const keys: string[] = [];
+    const send = async (key: string) => {
+      keys.push(key);
+      return lost();
+    };
+    await sharedAttemptKeys.run("shared|b", send).catch(() => undefined);
+
+    clearHeldKeys();
+    await sharedAttemptKeys.run("shared|b", send).catch(() => undefined);
+
+    expect(keys[1]).not.toBe(keys[0]);
   });
 });

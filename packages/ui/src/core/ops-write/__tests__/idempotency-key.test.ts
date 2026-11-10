@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   IDEMPOTENCY_IN_FLIGHT_CODE,
   IDEMPOTENCY_KEY_MAX_AGE_MS,
+  IDEMPOTENCY_KEY_STUCK_CODE,
   IDEMPOTENCY_KEY_TTL_MS,
   LEGACY_IN_FLIGHT_MESSAGE,
   freshIdempotencyKeyHeaders,
   isGatewayPage,
   isInFlightDuplicate,
+  isKeyStuck,
   keepsKey,
   keyIdleTooLong,
   keyPastMaxAge,
@@ -63,12 +65,40 @@ describe("isInFlightDuplicate", () => {
   });
 });
 
+describe("isKeyStuck", () => {
+  it("is the 409 IDEMPOTENCY_KEY_STUCK code: the server says the first request under this key never finished and its outcome is unknown", () => {
+    expect(isKeyStuck(409, { error: { code: IDEMPOTENCY_KEY_STUCK_CODE, message: "m" } })).toBe(
+      true,
+    );
+  });
+
+  it("is not any other 409, nor the in-flight duplicate, nor the same code on another status", () => {
+    expect(isKeyStuck(409, { error: { code: IDEMPOTENCY_IN_FLIGHT_CODE } })).toBe(false);
+    expect(isKeyStuck(409, LEGACY_IN_FLIGHT)).toBe(false);
+    expect(isKeyStuck(409, { error: { code: "CONFLICT" } })).toBe(false);
+    expect(isKeyStuck(409, undefined)).toBe(false);
+    expect(isKeyStuck(500, { error: { code: IDEMPOTENCY_KEY_STUCK_CODE } })).toBe(false);
+  });
+
+  it("is never an in-flight duplicate: it is a final answer for that key, so the key is not kept", () => {
+    const body = { error: { code: IDEMPOTENCY_KEY_STUCK_CODE, message: "m" } };
+    expect(isInFlightDuplicate(409, body)).toBe(false);
+    expect(keepsKey(409, body)).toBe(false);
+  });
+});
+
 describe("keepsKey: the intended contract, case by case", () => {
   it.each([
     [GATEWAY_5XX, "<html>Bad gateway</html>", true, "a gateway page that never reached the app"],
     [504, undefined, true, "an empty gateway timeout"],
     [409, { error: { code: IDEMPOTENCY_IN_FLIGHT_CODE } }, true, "an in-flight duplicate"],
     [409, LEGACY_IN_FLIGHT, true, "an in-flight duplicate from an older server"],
+    [
+      409,
+      { error: { code: IDEMPOTENCY_KEY_STUCK_CODE } },
+      false,
+      "a stuck key (a final answer for that key)",
+    ],
     [200, {}, false, "a success"],
     [204, undefined, false, "a success with no body"],
     [403, { error: { code: "STEP_UP_REQUIRED" } }, false, "a cached-refusal-to-be (403)"],
