@@ -163,6 +163,39 @@ describe("LocationsPanel", () => {
     expect(body.providerEntityId).toBe("pe-1");
   });
 
+  it("reloads the wizard when the refusal says the step moved", async () => {
+    const client = stubClient({
+      ...reads([ENTITY], []),
+      POST: { [LOCATIONS]: () => refused(409, "TENANT_NOT_ONBOARDING") },
+    });
+    const { onChanged } = mount(client);
+    await fill();
+    submit();
+    await screen.findByRole("alert");
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("lists a field error that has no input beside the form", async () => {
+    const client = stubClient({
+      ...reads([ENTITY], []),
+      POST: {
+        [LOCATIONS]: () =>
+          refused(422, "VALIDATION_FAILED", "invalid", [
+            { field: "addressLine2", code: "invalid", message: "That address line is not valid." },
+          ]),
+      },
+    });
+    mount(client);
+    await fill();
+    submit();
+    expect(await screen.findByText("That address line is not valid.")).toBeTruthy();
+  });
+
+  it("labels the status in words, not as the stored value", async () => {
+    mount(stubClient(reads([ENTITY], [{ ...LOCATION, status: "on_hold" }])));
+    expect(await screen.findByText("On Hold")).toBeTruthy();
+  });
+
   it("asks for a provider entity first when there is none", async () => {
     mount(stubClient(reads([], [])));
     expect(await screen.findByText(/add a provider entity first/i)).toBeTruthy();

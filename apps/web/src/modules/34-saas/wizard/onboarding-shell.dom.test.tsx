@@ -3,7 +3,7 @@
 // view is read once when the bare route resumes onto a step, a refused background call never bounces an onboarding screen, and nothing
 // polls routes the server confines while the organization is onboarding.
 import { createApiClient } from "@chartwarden/ui";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "../../../shell/app";
 import {
@@ -133,5 +133,14 @@ describe("the wizard in the real app shell", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(reads(INBOX)).toBe(0);
     expect(reads(FLAGS)).toBe(0);
+  });
+
+  it("keeps the notification bell quiet while confined: it opens to 'No notifications', never 'could not be loaded'", async () => {
+    mountAt("/admin/setup", "onboarding");
+    await screen.findByRole("heading", { name: "Agency setup" });
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    expect(await screen.findByText("No notifications")).toBeTruthy();
+    expect(screen.queryByText("Notifications could not be loaded.")).toBeNull();
+    expect(reads(INBOX)).toBe(0);
   });
 });
