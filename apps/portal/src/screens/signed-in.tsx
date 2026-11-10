@@ -1,4 +1,11 @@
-import { Button, CenteredCardLayout, Glyph, InlineAlert, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  CenteredCardLayout,
+  Glyph,
+  InlineAlert,
+  clearIdempotencyKeys,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -176,6 +183,7 @@ export function PortalSignedIn(): JSX.Element {
   async function leave(): Promise<void> {
     generation.current++;
     await signOut();
+    clearIdempotencyKeys(client); // no page reload here: the next person to sign in must not inherit this session's unanswered writes
     navigate("/", { replace: true });
   }
 

@@ -193,6 +193,8 @@ describe("ClaimEditor — type of bill", () => {
     await waitFor(() =>
       expect(POST).toHaveBeenCalledWith("/api/v1/claims/{id}/validate", {
         params: { path: { id: CLAIM } },
+        // a re-run always asks for a fresh run: its own key, never the client's per-intent key
+        headers: { "Idempotency-Key": expect.any(String) },
       }),
     );
     await waitFor(() => expect(GET.mock.calls.length).toBeGreaterThan(2)); // reloaded
