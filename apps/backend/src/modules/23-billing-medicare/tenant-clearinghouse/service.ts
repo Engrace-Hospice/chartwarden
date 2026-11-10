@@ -404,12 +404,11 @@ export function createTenantClearinghouseService(
   deps: TenantClearinghouseServiceDeps,
 ): TenantClearinghouseService {
   const now = deps.now ?? (() => new Date());
-  /** `recordedAt` is the record's If-Match token, so a replacement must advance even when the clock has not. */
-  const nextBaaRecordedAt = (previous: Date | null): Date => {
+  /** Row and BAA timestamps must advance even when the clock stalls or moves backward; `recordedAt` is an If-Match token. */
+  const nextRowTimestamp = (row: Pick<ConfigRow, "baaRecordedAt" | "updatedAt">): Date => {
     const candidate = now();
-    return previous && candidate.getTime() <= previous.getTime()
-      ? new Date(previous.getTime() + 1)
-      : candidate;
+    const floor = Math.max(row.baaRecordedAt?.getTime() ?? 0, row.updatedAt.getTime());
+    return candidate.getTime() <= floor ? new Date(floor + 1) : candidate;
   };
 
   const verifiableBy = (vendor: string | null): ClearinghouseConfigView["verifiableBy"] => {
@@ -599,7 +598,10 @@ export function createTenantClearinghouseService(
     });
     let updated: ConfigRow | null;
     try {
-      updated = await store.update(row.organizationId, row.version, { ...full, updatedAt: now() });
+      updated = await store.update(row.organizationId, row.version, {
+        ...full,
+        updatedAt: nextRowTimestamp(row),
+      });
     } catch (err) {
       if (isFingerprintViolation(err)) throw accountInUse();
       throw err;
@@ -620,7 +622,7 @@ export function createTenantClearinghouseService(
   ): Promise<ConfigRow> {
     const updated = await store.update(row.organizationId, row.version, {
       ...patch,
-      updatedAt: now(),
+      updatedAt: nextRowTimestamp(row),
     });
     if (!updated)
       throw versionConflict("the clearinghouse config changed while it was being updated");
@@ -855,7 +857,7 @@ export function createTenantClearinghouseService(
         baaVendor: row.vendor,
         baaEffectiveDate: record.effectiveDate,
         baaDocumentRef: record.documentRef,
-        baaRecordedAt: nextBaaRecordedAt(row.baaRecordedAt),
+        baaRecordedAt: nextRowTimestamp(row),
         baaRecordedByMembershipId: actor.membershipId,
         // a changed record has not been looked at: the operator verifies it again
         ...BAA_VERIFICATION_CLEARED,

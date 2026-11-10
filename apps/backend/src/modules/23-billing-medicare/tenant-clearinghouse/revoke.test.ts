@@ -118,6 +118,31 @@ describe("the operator revokes a tenant's vendor BAA", () => {
     });
   });
 
+  it("does not reuse an old BAA pin after a same-millisecond vendor change cleared the record", async () => {
+    const { store, service } = await liveTenant();
+    const stalePin = await pinOf(service, store);
+
+    await service.put(
+      store,
+      TENANT,
+      { vendor: "stedi", mode: "production", secret: "fake-stedi-key-not-a-secret#2" },
+      await versionOf(service, store),
+    );
+    await service.recordBaa(store, TENANT, {
+      ...BAA,
+      documentRef: "Stedi BAA, contract folder 9",
+    });
+
+    const currentPin = await pinOf(service, store);
+    expect(currentPin.recordedAt).not.toBe(stalePin.recordedAt);
+    expect(await codeOf(service.verifyBaa(store, OPERATOR, stalePin))).toBe(
+      "CLEARINGHOUSE_BAA_CHANGED",
+    );
+    await expect(service.verifyBaa(store, OPERATOR, currentPin)).resolves.toMatchObject({
+      baa: { verified: { at: expect.any(String) } },
+    });
+  });
+
   it("voids the verification, takes a live config out of service and records who, the closed reason and the ticket", async () => {
     const { store, service } = await liveTenant();
 
