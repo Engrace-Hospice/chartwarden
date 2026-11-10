@@ -1787,7 +1787,7 @@ describe("service: an operator's switch out of outside (order, any status, the m
     });
 
     it("leaves the mode alone and answers the typed 503 (outcome unknown, logged) when the vendor cannot be read again", async () => {
-      const { service, log, warned } = harness({
+      const { service, log, warned, warnedContexts } = harness({
         commitFails: lostConnection,
         afterCommitFailure: "unreadable",
       });
@@ -1797,6 +1797,13 @@ describe("service: an operator's switch out of outside (order, any status, the m
       });
       expect(log).not.toContain("restoreNone");
       expect(warned).toHaveLength(1);
+      // the commit's own error is not a log field (the redactor only rebuilds `err`): its class and SQLSTATE are
+      expect(warnedContexts[0]).not.toHaveProperty("commitError");
+      expect(warnedContexts[0]).toMatchObject({
+        organizationId: TARGET_ORG,
+        commitSqlstate: null,
+        commitErrorType: "Error",
+      });
     });
 
     it.each(["08P01", "57P01", "40003", "XX000"])(

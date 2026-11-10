@@ -165,7 +165,14 @@ export function createClearinghousePut(ctx: ClearinghousePutDeps) {
     } catch (readError) {
       deps.warn?.(
         "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer and the vendor could not be read again; the billing mode was left as set",
-        { organizationId: target.organizationId, err: readError, commitError },
+        // `err` is the one key the logger's serializer rebuilds from an allowlist: the commit's own error (which can carry statement
+        // text) is never logged as a field of its own, only its class and SQLSTATE, as the "still reads as outside" warning below does.
+        {
+          organizationId: target.organizationId,
+          err: readError,
+          commitSqlstate: sqlStatesInChain(commitError)[0] ?? null,
+          commitErrorType: commitError instanceof Error ? commitError.name : typeof commitError,
+        },
       );
       throw new ChartWardenError(
         "CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN",
