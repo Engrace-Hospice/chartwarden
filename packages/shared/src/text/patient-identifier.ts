@@ -1,29 +1,47 @@
-// @chartwarden/shared — a patient-identifier screen for operator free text (pure). Lifted from M34's onboarding/phi-screen.ts +
-// evidence.ts (and hardened since: any whitespace/punctuation separator, digit-by-digit spacing) so every module that stores an operator-typed note (M34's wizard, M23's NPI
-// verification evidence, M35's add-on grant reason) screens it with the SAME rule: a module may not import another feature
-// module (the manifest has no M23->M34 or M35->M34 edge), but a leaf is importable by all.
+// @chartwarden/shared — a patient-identifier screen for operator free text (pure). Lifted from M34's onboarding/phi-screen.ts
+// + evidence.ts (and hardened since) so every module that stores an operator-typed note (M34's wizard, M23's NPI verification
+// evidence, M35's add-on grant reason) screens it with the SAME rule: a module may not import another feature module (the
+// manifest has no M23->M34 or M35->M34 edge), but a leaf is importable by all.
 //
 // Evidence notes, reasons and blocker text are typed by an operator, stored on a tenant-readable row and copied into the
 // audit trail; none of them is a place for a patient. This is a best-effort guard against an accident (a customer's SSN read
-// out on a call and pasted in), not a defence against someone hiding one. It errs on the side of refusing: a nine-digit
-// ticket number is refused too, and the operator cites the document by name instead.
+// out on a call and pasted in), not a defence against someone hiding one.
+//
+// IT ERRS TOWARD REFUSING, and these are refused on purpose (the operator cites the document or ticket by name instead):
+// a nine-digit ticket number; a ZIP+4 ("78701-1234"); a nine-digit number with a decimal point ("rate 12345.6789"); a dotted
+// version shaped 3.2.4 ("100.10.1000"); nine single digits in a list ("steps 1, 2, 3, 4, 5, 6, 7, 8, 9"); and a standalone
+// number grouped in threes ("123,456,789", e.g. an amount over a hundred million). A longer chain of digit groups
+// ("1,234,567,890", an IP address "192.168.001.020") is not read as a three-by-three number.
+//
+// WHAT AN SSN LOOKS LIKE HERE: nine decimal digits (any script's: \p{Nd}) as 3-2-4 groups, as 3-3-3 groups standing alone, or
+// as nine single digits, with anything that is not a letter or a number between the groups (whitespace, control characters,
+// punctuation, symbols such as | + = ~ $ ^, dashes of every kind, slashes, underscores), up to ten characters in a row.
+// Letters are never separators, so "ticket 123 of 45 and 6789" is not a number.
 //
 // The MBI rule follows `packages/billing/src/dde/notes.ts` (ADR-0052 D7): the text is NFKD-normalised, combining marks are
 // dropped, what is left is squashed to letters and digits (spaces, dashes and zero-width characters vanish) and ANY
 // 11-character MBI-shaped window is a hit.
-// KNOWN GAP (accepted, as there): a Cyrillic/Greek lookalike for a letter or digit is not folded, so it slips through.
+//
+// KNOWN GAPS (accepted): a Cyrillic/Greek lookalike for a letter or digit is not folded; digits written as words ("nine zero
+// zero ..."); digits interleaved with letters; an identifier in another grouping (2-3-4, 4-5) or encoded (hex, base64); a value
+// split across sentences; non-ASCII digits inside an MBI (its squash keeps ASCII letters and digits only).
 import { ChartWardenError } from "@chartwarden/types";
 
-// SEPARATOR between digit groups: any whitespace, Unicode space, or punctuation (hyphen, en/em dash, the non-breaking
-// hyphen U+2011, slash, underscore, dot, comma, colon ...), up to three of them in a row ("900 - 12 - 3456", "900  12  3456").
-// Letters never separate: "ticket 123 of 45 ..." is not a number.
-const SEP = "[\\s\\p{Z}\\p{P}]";
-// 3-2-4 digit groups with any such separator (or none) between them. SSA never issues some of these, but the screen has no
-// registry to consult and no reason to wave anything through.
-const SSN_GROUPED = new RegExp(`(?<!\\d)\\d{3}${SEP}{0,3}\\d{2}${SEP}{0,3}\\d{4}(?!\\d)`, "u");
-// Nine SINGLE digits, each set apart by separators ("9 0 0 1 2 3 4 5 6", "9-0-0-..."). Every digit must stand alone, so an
-// amount ("$1,234,567.89"), a date or a phone number, whose digits come in runs, is never read as one.
-const SSN_SPACED = new RegExp(`(?<!\\d)\\d(?:${SEP}{1,3}\\d){8}(?!\\d)`, "u");
+const ND = "\\p{Nd}"; // any decimal digit, of any script
+const SEP = "[^\\p{L}\\p{N}]"; // anything that is neither a letter nor a number
+const GAP = `${SEP}{0,10}`;
+const GAP1 = `${SEP}{1,10}`;
+// 3-2-4 groups. SSA never issues some of these, but the screen has no registry to consult and no reason to wave anything
+// through. Adjacent digits may not continue the value on either side; more digit groups beyond a separator may (it is refused).
+const SSN_GROUPED = new RegExp(`(?<!${ND})${ND}{3}${GAP}${ND}{2}${GAP}${ND}{4}(?!${ND})`, "u");
+// 3-3-3 groups, only when the nine digits stand alone: not part of a longer chain of digit groups.
+const SSN_THREES = new RegExp(
+  `(?<!${ND}${GAP})${ND}{3}${GAP1}${ND}{3}${GAP1}${ND}{3}(?!${GAP}${ND})`,
+  "u",
+);
+// Nine SINGLE digits, each set apart by separators ("9 0 0 1 2 3 4 5 6"). Every digit must stand alone, so a number whose
+// digits come in runs (an amount, a date, a phone number) is never read as one.
+const SSN_SPACED = new RegExp(`(?<!${ND})${ND}(?:${GAP1}${ND}){8}(?!${ND})`, "u");
 
 // CMS MBI: position 1 is 1-9, positions 2, 5, 8 and 9 are letters, 3 and 6 a letter or digit, 4, 7, 10 and 11 digits;
 // the letters S, L, O, I, B and Z are never used.
@@ -41,7 +59,7 @@ const normalise = (text: string): string => text.normalize("NFKD").replace(/[\p{
 /** True when the text holds something shaped like a US Social Security number. */
 export function looksLikeSsn(text: string): boolean {
   const folded = normalise(text);
-  return SSN_GROUPED.test(folded) || SSN_SPACED.test(folded);
+  return SSN_GROUPED.test(folded) || SSN_THREES.test(folded) || SSN_SPACED.test(folded);
 }
 
 /** True when the text holds something shaped like a Medicare Beneficiary Identifier. */
