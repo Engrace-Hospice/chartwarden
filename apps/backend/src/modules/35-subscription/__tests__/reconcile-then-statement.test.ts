@@ -1,7 +1,7 @@
 // The hourly statement sweep applies "a tenant that bills outside ChartWarden pays no billing percentage" again before it computes a
 // statement (the wizard's sync is best effort), and a reconcile that fails never blocks the statement.
 import { describe, expect, it } from "vitest";
-import { reconcileThenStatement } from "../billing-runtime/workers";
+import { reconcileOutsideModes, reconcileThenStatement } from "../billing-runtime/workers";
 
 describe("reconcileThenStatement", () => {
   it("reconciles the org first, then computes its statement", async () => {
@@ -53,5 +53,33 @@ describe("reconcileThenStatement", () => {
       "org-1",
     );
     expect(calls).toEqual(["org-1"]);
+  });
+});
+
+describe("reconcileOutsideModes", () => {
+  it("visits the full current-contract population, including non-live organizations", async () => {
+    const calls: string[] = [];
+    await reconcileOutsideModes(
+      async (organizationId) => void calls.push(organizationId),
+      undefined,
+      new Set(["onboarding-org", "paused-org", "live-org"]),
+    );
+    expect(calls).toEqual(["onboarding-org", "paused-org", "live-org"]);
+  });
+
+  it("logs one organization's failure and continues with the rest", async () => {
+    const calls: string[] = [];
+    const logs: Record<string, unknown>[] = [];
+    await reconcileOutsideModes(
+      async (organizationId) => {
+        calls.push(organizationId);
+        if (organizationId === "paused-org") throw new Error("temporary");
+      },
+      (_message, detail) => logs.push(detail),
+      ["paused-org", "onboarding-org"],
+    );
+    expect(calls).toEqual(["paused-org", "onboarding-org"]);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ organizationId: "paused-org" });
   });
 });

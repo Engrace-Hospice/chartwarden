@@ -8,6 +8,8 @@ export interface WriteResult<T> {
   readonly value: T;
   readonly resourceId: string;
   readonly changedFields?: readonly string[];
+  /** False for a successful idempotent retry that changed no onboarding evidence. */
+  readonly dataChanged?: boolean;
   /** Non-sensitive facts for the audit row (counts, codes, kinds). */
   readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }

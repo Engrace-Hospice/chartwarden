@@ -6,6 +6,17 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-10 — Operators can revoke a tenant clearinghouse BAA from the onboarding console
+
+The admin onboarding clearinghouse card now exposes the BAA-revocation contract added on 2026-11-09. An authorized operator chooses one
+of the closed reason codes and supplies an operator ticket; the console sends no free-text reason and pins the request to the BAA's
+`recordedAt`. The card shows current and previous revocation facts. When a tenant re-records the same document that was revoked, verification
+requires the operator to review that history and send `acknowledgePreviousRevocation: true` explicitly. Revocation rate limits answer 429;
+stale records and the BAA-specific conflict codes are shown as actionable failures and the current record is reloaded.
+
+The hourly M35 repair for “outside means billing mode none” now enumerates every current, not-canceled contract before statement generation.
+That includes onboarding and paused tenants, which may not have a statement run and therefore could previously miss the repair.
+
 ## 2026-11-09 — A paused subscription whose end date has passed is resumed automatically
 
 **Why.** `POST /api/admin/subscriptions/{id}/pause` takes an optional `pausedUntil`. Billing already treated such a pause as over at that

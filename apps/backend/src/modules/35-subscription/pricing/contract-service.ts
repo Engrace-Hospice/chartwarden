@@ -601,7 +601,14 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         const current = modeInForceOn(found.history, today);
         const pending = pendingModeAfter(found.history, today);
         if ((pending?.billingServiceMode ?? current) === "none") return { changed: false };
-        const { effectiveOn } = await insertModeChange(tx, tenant, found.record, "none", at);
+        const { effectiveOn } = await insertModeChange(
+          tx,
+          tenant,
+          found.record,
+          "none",
+          at,
+          nextModeCreatedAt(at, found.history),
+        );
         await audit.record(tx, {
           eventType: "m35.subscription.billing_service_mode_changed",
           resourceKind: "subscription",

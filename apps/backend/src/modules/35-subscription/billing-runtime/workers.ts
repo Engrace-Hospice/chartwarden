@@ -91,8 +91,8 @@ export interface M35WorkerDeps {
     readonly stripe?: StatementStripePort;
     /**
      * The backstop for "a tenant that bills outside ChartWarden pays no billing percentage": the M34 wizard sets the mode post-commit and
-     * best effort, so a failure there is only retried by another clearinghouse change. This runs for every org BEFORE its statement is
-     * computed, and applies the rule if the org's clearinghouse is `outside` and its mode is not already none. Idempotent and cheap.
+     * best effort, so a failure there is otherwise retried only by another clearinghouse change. The hourly pricing worker runs this for
+     * every current contract, including onboarding and paused tenants with no statement run. Idempotent and cheap.
      */
     readonly reconcileOutsideMode?: (organizationId: string) => Promise<void>;
   };
@@ -121,6 +121,25 @@ export async function reconcileThenStatement(
     }
   }
   await statement(organizationId);
+}
+
+/**
+ * Reconcile every not-canceled contract, including onboarding and paused tenants that have no statement run yet. The statement sweep's
+ * own organization list is go-live filtered, so tying this repair to statement generation leaves precisely those non-live tenants stale.
+ */
+export async function reconcileOutsideModes(
+  reconcile: ((organizationId: string) => Promise<void>) | undefined,
+  log: M35JobDeps["log"],
+  organizationIds: Iterable<string>,
+): Promise<void> {
+  if (!reconcile) return;
+  for (const organizationId of organizationIds) {
+    try {
+      await reconcile(organizationId);
+    } catch (err) {
+      log?.("m35 outside billing mode reconcile failed for an org", { organizationId, err });
+    }
+  }
 }
 
 /** One Worker per bound queue. */
@@ -219,10 +238,14 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
   if (deps.pricing) {
     const pricing = deps.pricing;
     workers.push(
-      worker(M35_QUEUES.pricingStatement, () =>
+      worker(M35_QUEUES.pricingStatement, async () => {
+        // Reconcile the current-contract population first. This deliberately includes onboarding and paused organizations: neither is
+        // guaranteed to reach statement generation, but both may hold a contract whose mode must be none while billing outside.
+        const current = await listContractedOrgIds(jobs.platformRunner, "current", nowOf(jobs));
+        await reconcileOutsideModes(pricing.reconcileOutsideMode, jobs.log, current);
         // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
         // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
-        runStatementSweep(
+        await runStatementSweep(
           {
             platformRunner: jobs.platformRunner,
             keyProvider: pricing.keyProvider,
@@ -232,16 +255,8 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
             ...(jobs.now ? { now: jobs.now } : {}),
             ...(jobs.log ? { log: jobs.log } : {}),
           },
-          // The outside-mode backstop runs for every org BEFORE its statement (a failure of it never blocks the statement).
-          (organizationId, statement) =>
-            reconcileThenStatement(
-              pricing.reconcileOutsideMode,
-              jobs.log,
-              statement,
-              organizationId,
-            ),
-        ),
-      ),
+        );
+      }),
     );
   }
   return workers;

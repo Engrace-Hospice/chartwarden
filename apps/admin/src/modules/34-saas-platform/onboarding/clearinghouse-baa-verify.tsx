@@ -33,12 +33,17 @@ export function VerifyBaa({
   const mayVerify = useCan(ONBOARDING_KEYS.clearinghouseVerifyBaa);
   const [open, setOpen] = useState(false);
   const [stale, setStale] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [ackError, setAckError] = useState(false);
   const baa = view.baa && !view.baa.verified ? view.baa : null;
+  const needsRevocationAcknowledgement = baa?.previousRevocation?.sameDocument === true;
 
   function close(): void {
     write.clear();
     setOpen(false);
     setStale(false);
+    setAcknowledged(false);
+    setAckError(false);
   }
 
   // The BAA is gone or already verified (by someone else): close the prompt rather than let it pop open for the next one recorded.
@@ -49,11 +54,20 @@ export function VerifyBaa({
 
   async function verify(reason: string): Promise<void> {
     if (!baa) return;
+    if (needsRevocationAcknowledgement && !acknowledged) {
+      setAckError(true);
+      return;
+    }
     const pin = baa.recordedAt;
-    const outcome = await write.run(`baa:${pin}:${reason}`, (key) =>
+    const outcome = await write.run(`baa:${pin}:${reason}:${acknowledged}`, (key) =>
       client.POST("/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify", {
         params: { path: { orgSlug }, header: { "Idempotency-Key": key, "If-Match": pin } },
-        body: { reason },
+        body: {
+          reason,
+          ...(needsRevocationAcknowledgement
+            ? { acknowledgePreviousRevocation: acknowledged }
+            : {}),
+        },
       }),
     );
     if (outcome.ok) {
@@ -75,6 +89,8 @@ export function VerifyBaa({
         onClick={() => {
           write.clear();
           setStale(false);
+          setAcknowledged(false);
+          setAckError(false);
           setOpen(true);
         }}
       >
@@ -83,7 +99,31 @@ export function VerifyBaa({
       <RecordSaveDialog
         open={open && baa !== null}
         title="Verify the vendor BAA"
-        description="Confirm you have seen the signed agreement this record points to."
+        description={
+          <>
+            <p>Confirm you have seen the signed agreement this record points to.</p>
+            {needsRevocationAcknowledgement ? (
+              <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  onChange={(event) => {
+                    setAcknowledged(event.target.checked);
+                    setAckError(false);
+                  }}
+                />
+                <span>
+                  I reviewed the previous revocation and knowingly verify this record even though it points to the same document.
+                  {ackError ? (
+                    <span role="alert" style={{ display: "block" }}>
+                      This acknowledgement is required.
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+            ) : null}
+          </>
+        }
         confirmLabel="Verify BAA"
         stale={stale}
         record={
