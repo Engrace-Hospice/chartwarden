@@ -21,6 +21,7 @@
 import { userInfo } from "node:os";
 
 import { switchesHarness } from "./harness-switch";
+import { relativeTo } from "./path-alias";
 import {
   BARE,
   COMMENT,
@@ -1346,15 +1347,19 @@ function collapse(p: string): string {
   return head === "~" ? (body ? `~/${body}` : "~") : body;
 }
 
-/** An absolute path inside the repo or the home directory, written relative to it (`~/…`). */
+/**
+ * An absolute path inside the repo or the home directory, written relative to it (`~/…`). A path is inside
+ * whatever its spelling: upper case, the `/System/Volumes/Data` firmlink, `/tmp` for `/private/tmp`.
+ */
 function relativise(norm: string, ctx: BashContext): string {
   if (!norm.startsWith("/")) return norm;
   const root = ctx.root ? collapse(trimSlashes(ctx.root)) : "";
-  if (root && norm === root) return "";
-  if (root && norm.startsWith(`${root}/`)) return norm.slice(root.length + 1);
+  const inRoot = root ? relativeTo(norm, root) : null;
+  if (inRoot !== null) return inRoot;
   const home = homeOf(ctx);
-  if (home && norm === home) return "~";
-  return home && norm.startsWith(`${home}/`) ? `~/${norm.slice(home.length + 1)}` : norm;
+  const inHome = home ? relativeTo(norm, home) : null;
+  if (inHome === null) return norm;
+  return inHome === "" ? "~" : `~/${inHome}`;
 }
 
 const HERE = /^(?:\$\{?PWD\}?|\$\(pwd\)|`pwd`)(?=\/|$)/;
