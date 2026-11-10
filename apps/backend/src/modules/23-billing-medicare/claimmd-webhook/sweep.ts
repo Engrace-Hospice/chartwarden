@@ -460,6 +460,22 @@ async function recentFailedReceipts(
   };
 }
 
+const SQLSTATE = /^[0-9A-Z]{5}$/;
+
+/**
+ * What a failed count is logged as, with no message text (it can embed the query and its bound values): the 5-character SQLSTATE
+ * when the database raised one, else the error's class name. Drizzle wraps a failure in a DrizzleQueryError whose `name` is just
+ * "Error" and whose `cause` is the driver's error, so the SQLSTATE is read off the cause (or the error itself) and the class name
+ * off the constructor.
+ */
+function failureClass(err: unknown): string {
+  for (const candidate of [(err as { cause?: unknown } | null)?.cause, err]) {
+    const code = (candidate as { code?: unknown } | null | undefined)?.code;
+    if (typeof code === "string" && SQLSTATE.test(code)) return code;
+  }
+  return err instanceof Error ? err.constructor.name : "Error";
+}
+
 /**
  * Runs one of the sweep's warning counts in a SAVEPOINT. These counts run inside the sweep's own transaction, so a failing one
  * (a lock timeout, a dropped index) would otherwise abort it and roll back every settlement of the sweep, every minute. A failure is
@@ -474,7 +490,7 @@ async function countInSavepoint<T>(
   try {
     return await tx.transaction(async (sp) => count(sp as unknown as DbClient));
   } catch (err) {
-    (deps.warn ?? deps.log)?.(event, { errorClass: (err as Error | undefined)?.name ?? "Error" });
+    (deps.warn ?? deps.log)?.(event, { errorClass: failureClass(err) });
     return undefined;
   }
 }

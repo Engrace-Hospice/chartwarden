@@ -1,9 +1,10 @@
 // The sweep's two warning counts (receipts waiting under another key id; receipts that went terminal `failed` in the last
 // day) run INSIDE the sweep's own transaction. A count that fails there must not abort the transaction and roll back every
-// settlement the sweep just made, every minute: each runs in a savepoint, is logged by error class only, and counts as zero.
+// settlement the sweep just made, every minute: each runs in a savepoint, is logged by SQLSTATE or error class only, and counts as zero.
 // And the failed-receipt summary goes through the alert sink ONCE when the count rises from zero, not every sweep.
 import type { DbClient } from "@chartwarden/db";
 import type { SQL } from "drizzle-orm";
+import { DrizzleQueryError } from "drizzle-orm/errors";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,19 +18,26 @@ const dialect = new PgDialect();
 const NOW = new Date("2026-11-09T12:00:00.000Z");
 const SECRET = "900-12-3456"; // synthetic: area 9xx is never issued
 
+/**
+ * The failure production sees: Drizzle 0.45 wraps the driver's error in a DrizzleQueryError whose `name` stays "Error" and whose
+ * message embeds the query and its bound values; the SQLSTATE is on the cause.
+ */
+const databaseFailure = (sqlstate: string | undefined) => () =>
+  new DrizzleQueryError(
+    "select count(*) from claimmd_webhook_event where x = $1",
+    [SECRET],
+    Object.assign(new Error(`driver: ${SECRET}`), sqlstate ? { code: sqlstate } : {}),
+  );
+
 /** A transaction that answers every statement with no rows, throws on the ones matching `failOn`, and records its savepoints. */
-function fakeTransaction(failOn: RegExp) {
+function fakeTransaction(failOn: RegExp, failure: () => Error = databaseFailure("22012")) {
   let depth = 0;
   const ran: Array<{ sql: string; savepointDepth: number }> = [];
   const tx = {
     execute: async (query: SQL) => {
       const text = dialect.sqlToQuery(query).sql;
       ran.push({ sql: text, savepointDepth: depth });
-      if (failOn.test(text)) {
-        throw Object.assign(new Error(`count failed, payload ${SECRET}`), {
-          name: "FakeDatabaseError",
-        });
-      }
+      if (failOn.test(text)) throw failure();
       return { rows: [] };
     },
     transaction: async <T>(run: (sp: unknown) => Promise<T>): Promise<T> => {
@@ -72,10 +80,32 @@ describe("a failing warning count never aborts the sweep", () => {
       expect(result).toEqual({ seen: 0, outcomes: {} }); // the sweep completed
       const failing = ran.find((r) => failOn.test(r.sql));
       expect(failing?.savepointDepth).toBe(1); // it ran inside a savepoint
-      expect(logs).toEqual([{ event, detail: { errorClass: "FakeDatabaseError" } }]);
-      expect(JSON.stringify(logs)).not.toContain(SECRET); // the error class, never its message
+      // the SQLSTATE off the wrapped cause, never the message (which embeds the query and its bound values)
+      expect(logs).toEqual([{ event, detail: { errorClass: "22012" } }]);
+      expect(JSON.stringify(logs)).not.toContain(SECRET);
     },
   );
+
+  it.each([
+    ["a wrapped driver error with no SQLSTATE", databaseFailure(undefined), "DrizzleQueryError"],
+    [
+      "a wrapped error whose code is not a SQLSTATE",
+      databaseFailure("ECONNRESET"),
+      "DrizzleQueryError",
+    ],
+    ["a bare error", () => new Error(`boom ${SECRET}`), "Error"],
+    [
+      "a bare error carrying a SQLSTATE",
+      () => Object.assign(new Error("x"), { code: "40P01" }),
+      "40P01",
+    ],
+    ["a non-error throw", () => "text" as unknown as Error, "Error"],
+  ])("logs %s as its class name or SQLSTATE only", async (_label, failure, expected) => {
+    const { tx } = fakeTransaction(RECENT_FAILED_COUNT, failure);
+    const logs: Array<Record<string, unknown>> = [];
+    await runClaimMdWebhookSweep(deps(tx, { warn: (_event, detail) => logs.push(detail) }));
+    expect(logs).toEqual([{ errorClass: expected }]);
+  });
 
   it("still runs the other count after one fails, and says nothing about a count it could not take (no zero that would re-arm the alert)", async () => {
     const { tx, ran } = fakeTransaction(RECENT_FAILED_COUNT);

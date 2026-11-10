@@ -922,7 +922,8 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
         ).toBeGreaterThanOrEqual(1);
         expect(logs).toHaveLength(1);
         expect(logs[0]?.event).toBe(event);
-        expect(Object.keys(logs[0]?.detail ?? {})).toEqual(["errorClass"]);
+        // the SQLSTATE of `SELECT 1 / 0` (division_by_zero), read off Drizzle's wrapped cause, and nothing else
+        expect(logs[0]?.detail).toEqual({ errorClass: "22012" });
         expect(JSON.stringify(logs)).not.toMatch(/c1|division/);
       },
     );
