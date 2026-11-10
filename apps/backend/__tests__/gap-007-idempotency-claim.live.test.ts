@@ -241,7 +241,12 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       | "read-then-503"
       | "autocommit-then-500"
       | "writer-fn-autocommit-then-500"
-      | "writer-fn-in-tx-then-500" = "commit-then-500";
+      | "writer-fn-in-tx-then-500"
+      | "open-write-then-500"
+      | "refused-commit" = "commit-then-500";
+    // M3: a sibling transaction that has written but not committed when the response is built.
+    let openTransaction: Promise<unknown> = Promise.resolve();
+    let commitOpenTransaction: () => void = () => undefined;
 
     const probeRows = async () =>
       Number((await admin.query("SELECT count(*)::int AS n FROM idem_probe")).rows[0].n);
@@ -261,6 +266,14 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
            SET search_path = pg_catalog, public AS $$ INSERT INTO idem_probe (n) VALUES (p) $$`,
       );
       await admin.query("GRANT EXECUTE ON FUNCTION idem_probe_writer(int) TO chartwarden_app");
+      // L6: a COMMIT the server refuses (a deferred foreign key checked at COMMIT) applied nothing.
+      await admin.query("CREATE TABLE idem_parent (id int PRIMARY KEY)");
+      await admin.query(
+        `CREATE TABLE idem_child (id serial PRIMARY KEY, parent_id int NOT NULL
+           REFERENCES idem_parent (id) DEFERRABLE INITIALLY DEFERRED)`,
+      );
+      await admin.query("GRANT ALL ON idem_parent, idem_child TO chartwarden_app");
+      await admin.query("GRANT USAGE ON SEQUENCE idem_child_id_seq TO chartwarden_app");
       app = Fastify();
       app.decorateRequest("context", undefined as never);
       app.addHook("onRequest", async (request) => {
@@ -276,6 +289,26 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
             (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(sql`SELECT 1`),
           ); // a guard-style read transaction: it COMMITs, but writes nothing
           return reply.code(503).send({ error: { code: "DEGRADED" } });
+        }
+        if (mode === "open-write-then-500") {
+          const gate = new Promise<void>((resolve) => {
+            commitOpenTransaction = resolve;
+          });
+          openTransaction = withOrgContext(handle.db, scope, async (tx) => {
+            await insertProbe(tx, runs); // written, held open
+            await gate;
+          });
+          await new Promise((resolve) => setTimeout(resolve, 100)); // the INSERT has reached the server
+          throw new Error("a sibling step failed");
+        }
+        if (mode === "refused-commit") {
+          await withOrgContext(handle.db, scope, (tx) =>
+            (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(
+              // run 1: the parent row is missing, so the deferred foreign key fails when the transaction COMMITs
+              sql`INSERT INTO idem_child (parent_id) VALUES (${runs === 1 ? 999 : 1})`,
+            ),
+          );
+          return reply.code(201).send({ saved: true });
         }
         if (mode === "writer-fn-autocommit-then-500") {
           await handle.db.execute(sql`SELECT idem_probe_writer(${runs})`); // autocommit: durable once it returns
@@ -380,6 +413,37 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       expect(await probeRows()).toBe(before); // nothing was durable
       expect((await post("live-rollback-500")).statusCode).toBe(500);
       expect(runs).toBe(2); // the retry ran (and rolled back again)
+    });
+
+    it("a write still OPEN in a sibling transaction when the 500 is built: cached, its late COMMIT cannot land under a freed key", async () => {
+      mode = "open-write-then-500";
+      runs = 0;
+      const before = await probeRows();
+      expect((await post("live-open-write-500")).statusCode).toBe(500);
+      commitOpenTransaction(); // the sibling now COMMITs, after the answer
+      await openTransaction;
+      expect(await probeRows()).toBe(before + 1);
+      expect(await rowFor(ORG_A, "live-open-write-500")).toMatchObject([
+        { state: "complete", status: "500" },
+      ]);
+      expect((await post("live-open-write-500")).statusCode).toBe(500); // the replay, not a second run
+      expect(runs).toBe(1);
+      expect(await probeRows()).toBe(before + 1);
+    });
+
+    it("a COMMIT the server REFUSED (deferred foreign key, 23503) applied nothing: the key is released and the retry runs", async () => {
+      mode = "refused-commit";
+      runs = 0;
+      await admin.query("INSERT INTO idem_parent (id) VALUES (1) ON CONFLICT DO NOTHING");
+      const childRows = async () =>
+        Number((await admin.query("SELECT count(*)::int AS n FROM idem_child")).rows[0].n);
+      expect((await post("live-refused-commit")).statusCode).toBe(500);
+      expect(await childRows()).toBe(0);
+      expect(await rowFor(ORG_A, "live-refused-commit")).toEqual([]); // released
+      const retry = await post("live-refused-commit");
+      expect(retry.statusCode).toBe(201);
+      expect(runs).toBe(2);
+      expect(await childRows()).toBe(1);
     });
 
     it("a read-only transaction (a guard's) followed by a 503: released, it never counted as a commit", async () => {
