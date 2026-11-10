@@ -109,7 +109,7 @@ export async function reconcileThenStatement(
     } catch (err) {
       log?.("m35 outside billing mode reconcile failed for an org", {
         organizationId,
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
     }
   }
