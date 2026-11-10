@@ -189,3 +189,85 @@ describe("EntityLookupField name and description", () => {
     );
   });
 });
+
+describe("EntityLookupField paging by keyboard", () => {
+  const THIRD = {
+    id: "33333333-3333-3333-3333-333333333333",
+    label: "Adeyemi, Ruth",
+    searchLabel: "Adeyemi, Ruth",
+  };
+  const CLOSE_DELAY_MS = 120;
+
+  function renderPaged() {
+    const loadOptions = vi.fn(async ({ cursor }: { cursor: string | null }) =>
+      cursor ? { options: [THIRD], nextCursor: null } : { options: OPTIONS, nextCursor: "page-2" },
+    );
+    render(
+      <>
+        <EntityLookupField label="Patient" value="" onChange={vi.fn()} loadOptions={loadOptions} />
+        <button type="button">after</button>
+      </>,
+    );
+    return { loadOptions };
+  }
+  const openPopup = async (user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> => {
+    await user.click(screen.getByRole("combobox"));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    return screen.getByRole("button", { name: "Load more" });
+  };
+  const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("Tab from the input reaches Load more and the popup stays open under the keyboard user", async () => {
+    const user = userEvent.setup();
+    renderPaged();
+    const more = await openPopup(user);
+    await user.tab();
+    expect(document.activeElement).toBe(more);
+    // Longer than the close delay that used to unmount the button from under the focus.
+    await pause(CLOSE_DELAY_MS * 2);
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    expect(screen.getByRole("combobox").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("activating Load more from the keyboard appends the page and returns focus to the input once the button is gone", async () => {
+    const user = userEvent.setup();
+    const { loadOptions } = renderPaged();
+    await openPopup(user);
+    await user.tab();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+    expect(loadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "page-2" }));
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox")));
+    expect(screen.getByRole("listbox")).toBeTruthy();
+  });
+
+  it("Escape on Load more closes the popup and puts focus back in the input", async () => {
+    const user = userEvent.setup();
+    renderPaged();
+    await openPopup(user);
+    await user.tab();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("combobox"));
+  });
+
+  it("still closes when focus moves on past the popup", async () => {
+    const user = userEvent.setup();
+    renderPaged();
+    await openPopup(user);
+    await user.tab(); // Load more
+    await user.tab(); // the control after the field
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "after" }));
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  });
+
+  it("keeps the arrow-key combobox semantics: ArrowDown still moves through the options", async () => {
+    const user = userEvent.setup();
+    renderPaged();
+    await openPopup(user);
+    await user.keyboard("{ArrowDown}");
+    const input = screen.getByRole("combobox");
+    expect(input.getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("option")[0]?.id);
+  });
+});

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { CSSProperties, JSX, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, FocusEvent, JSX, KeyboardEvent, ReactNode } from "react";
 
+import { useRestoreFocus } from "../hooks/use-restore-focus";
 import { t } from "../theme/tokens";
 import { Button } from "./button";
 import { FieldFrame } from "./fields";
@@ -72,6 +73,8 @@ export function EntityLookupField({
   const listId = `${inputId}-list`;
   const labelId = `${inputId}-label`;
   const closeTimer = useRef<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const popupRef = useRef<HTMLSpanElement>(null);
   // Newest-wins guard: a slow earlier response (or one that lands after unmount) never overwrites a later one.
   const requestSeq = useRef(0);
   useEffect(
@@ -92,6 +95,9 @@ export function EntityLookupField({
   const [selectedValue, setSelectedValue] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // "Load more" disables while it loads (dropping keyboard focus) and goes away after the last page: focus returns to it, else to the input.
+  const captureFocus = useRestoreFocus(loadingMore, () => inputRef.current);
 
   const display = open
     ? query
@@ -152,16 +158,34 @@ export function EntityLookupField({
     return () => window.clearTimeout(handle);
   }, [disabled, load, open]);
 
-  function focus(): void {
+  const inPopup = (node: EventTarget | null): boolean =>
+    node instanceof Node && popupRef.current?.contains(node) === true;
+
+  function focus(event: FocusEvent<HTMLInputElement>): void {
     if (disabled) return;
     if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    // Already open (focus returning from "Load more", or restored after it loaded): the query and the results stay as they were.
+    if (open || inPopup(event.relatedTarget)) return;
     setOpen(true);
     setQuery("");
     setActiveIndex(-1);
   }
 
-  function blur(): void {
+  // Focus leaving the input or the popup closes it, unless it is moving between the two: Tab from the input must be able to reach
+  // the popup's "Load more" button, which the 120ms close below would otherwise unmount from under the keyboard user.
+  function blur(event: FocusEvent<HTMLElement>): void {
+    if (inPopup(event.relatedTarget) || event.relatedTarget === inputRef.current) return;
     closeTimer.current = window.setTimeout(() => setOpen(false), 120);
+  }
+
+  // Escape inside the popup (on "Load more") closes it and hands focus back to the input, like Escape in the input.
+  function onPopupKeyDown(event: KeyboardEvent<HTMLSpanElement>): void {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation(); // dismiss the listbox only, not an enclosing modal
+    setOpen(false);
+    setActiveIndex(-1);
+    inputRef.current?.focus();
   }
 
   function select(option: EntityLookupOption): void {
@@ -233,6 +257,7 @@ export function EntityLookupField({
       {({ describedBy, invalid }) => (
         <span style={shellStyle}>
           <input
+            ref={inputRef}
             id={inputId}
             type="search"
             role="combobox"
@@ -280,9 +305,12 @@ export function EntityLookupField({
           {open ? (
             // biome-ignore lint/a11y/useFocusableInteractive: focus stays in the combobox input; option buttons are intentionally removed from the tab order
             <span
+              ref={popupRef}
               // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
               id={listId}
               role="listbox"
+              onBlur={blur}
+              onKeyDown={onPopupKeyDown}
               aria-labelledby={labelId}
               style={popoverStyle(appearance)}
             >
@@ -359,7 +387,10 @@ export function EntityLookupField({
                     tone="secondary"
                     loading={loadingMore}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => void load(nextCursor, true)}
+                    onClick={() => {
+                      captureFocus();
+                      void load(nextCursor, true);
+                    }}
                   >
                     Load more
                   </Button>
