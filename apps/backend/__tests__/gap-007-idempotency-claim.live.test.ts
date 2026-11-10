@@ -234,8 +234,12 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
   describe("a retryable failure frees the key only if nothing committed (real transactions)", () => {
     let app: FastifyInstance;
     let runs = 0;
-    let mode: "commit-then-500" | "rollback-then-500" | "commit-then-deadlock" | "read-then-503" =
-      "commit-then-500";
+    let mode:
+      | "commit-then-500"
+      | "rollback-then-500"
+      | "commit-then-deadlock"
+      | "read-then-503"
+      | "autocommit-then-500" = "commit-then-500";
 
     const probeRows = async () =>
       Number((await admin.query("SELECT count(*)::int AS n FROM idem_probe")).rows[0].n);
@@ -263,6 +267,12 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
             (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(sql`SELECT 1`),
           ); // a guard-style read transaction: it COMMITs, but writes nothing
           return reply.code(503).send({ error: { code: "DEGRADED" } });
+        }
+        if (mode === "autocommit-then-500") {
+          // No transaction block: drizzle sends this through pool.query (pg-pool's own checkout), the path whose callback may
+          // resume in another async context. It is durable the moment it succeeds.
+          await handle.db.execute(sql`INSERT INTO idem_probe (n) VALUES (${runs})`);
+          throw new Error("failed after an autocommit write");
         }
         if (mode === "rollback-then-500") {
           await withOrgContext(handle.db, scope, async (tx) => {
@@ -311,6 +321,16 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       expect(first.statusCode).toBe(409);
       expect(first.json().error.code).toBe("CONCURRENT_UPDATE");
       expect((await post("live-commit-deadlock")).statusCode).toBe(409);
+      expect(runs).toBe(1);
+      expect(await probeRows()).toBe(before + 1);
+    });
+
+    it("an AUTOCOMMIT write (no transaction block, via pool.query) followed by a 500: cached, the row is written once", async () => {
+      mode = "autocommit-then-500";
+      runs = 0;
+      const before = await probeRows();
+      expect((await post("live-autocommit-500")).statusCode).toBe(500);
+      expect((await post("live-autocommit-500")).statusCode).toBe(500);
       expect(runs).toBe(1);
       expect(await probeRows()).toBe(before + 1);
     });
