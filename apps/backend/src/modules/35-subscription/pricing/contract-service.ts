@@ -23,6 +23,8 @@ import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { BillingServiceMode } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import { desc, eq } from "drizzle-orm";
+import { refuseForeignAmbientOrg } from "../../../bootstrap/ambient-org-guard";
+import { currentSubscriptionOrder } from "../routes/current-subscription";
 import type { M35WriteActor } from "../routes/service";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
 import { utcDateOf } from "./census-daily";
@@ -30,6 +32,7 @@ import {
   type ModeHistoryRow,
   modeChangeEffectiveOn,
   modeInForceOn,
+  nextModeCreatedAt,
   pendingModeAfter,
 } from "./contract-mode";
 import { type ContractRecord, selectNewestContract } from "./contract-select";
@@ -139,6 +142,8 @@ export interface ContractService {
   /** A platform operator's read of a tenant's contract and statements; it writes a structured read-audit row naming the operator. */
   platformView(actor: M35WriteActor, orgSlug: string): Promise<PlatformPricingView>;
   tenantView(organizationId: string, userId: string): Promise<TenantPricingView>;
+  /** The current live billing-service mode on the tenant pool, or null without a live contract. */
+  billingServiceModeForOrg(organizationId: string): Promise<BillingServiceMode | null>;
 }
 
 export interface ContractServiceDeps {
@@ -169,6 +174,24 @@ export async function orgHasContract(
   return (await selectNewestContract(tx, "current", at, organizationId)) !== null;
 }
 
+/** The billing service mode in force today for the newest live contract, on the tenant pool. */
+export async function readBillingServiceMode(
+  db: DbClient,
+  organizationId: string,
+  at: Date = new Date(),
+): Promise<BillingServiceMode | null> {
+  refuseForeignAmbientOrg(organizationId, "BillingServiceModeReader");
+  return withOrgContext(db, { organizationId, userId: "" }, async (scoped) => {
+    const loaded = await loadContract(
+      scoped as unknown as WriteTx,
+      "live",
+      at,
+      organizationId,
+    );
+    return loaded ? modeInForceOn(loaded.history, utcDateOf(at)) : null;
+  });
+}
+
 async function requirePlan(tx: WriteTx, planSlug: string): Promise<PlanRow> {
   const [plan] = await tx.select().from(PL).where(eq(PL.slug, planSlug)).limit(1);
   // An unknown slug and a non-contracted one answer the same 404: a probe cannot tell the census plans from nothing.
@@ -196,7 +219,7 @@ async function resumeIfSigned(
     .select()
     .from(SUB)
     .where(eq(SUB.organizationId, tenant.organizationId))
-    .orderBy(desc(SUB.createdAt));
+    .orderBy(...currentSubscriptionOrder());
   const open = subs.find((s) => s.status !== "canceled");
   if (!open) return null;
   const found = await loadContract(tx, "live", at, tenant.organizationId);
@@ -315,6 +338,7 @@ async function signContract(tx: WriteTx, ctx: SignContext): Promise<SignedContra
   await recordSigning(tx, ctx, sub.id);
   const history: ModeHistoryRow[] = [
     {
+      id: first.id,
       billingServiceMode: first.billingServiceMode,
       effectiveFrom: first.effectiveFrom,
       createdAt: first.createdAt,
@@ -337,6 +361,7 @@ async function insertModeChange(
   record: ContractRecord,
   mode: BillingServiceMode,
   at: Date,
+  createdAt: Date,
 ) {
   const [statement] = await tx
     .select({ id: SS.id })
@@ -354,6 +379,7 @@ async function insertModeChange(
       contractId: record.contract.id,
       billingServiceMode: mode,
       effectiveFrom: effectiveOn,
+      createdAt,
     })
     .returning();
   if (!row) throw new ChartWardenError("PERSIST_FAILED", "the mode write returned no row", 500);
@@ -506,7 +532,14 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (mode === (pending?.billingServiceMode ?? current)) {
           return platformViewOf(record, found.bands, found.history, today, signature);
         }
-        const { row, effectiveOn } = await insertModeChange(tx, tenant, record, mode, at);
+        const { row, effectiveOn } = await insertModeChange(
+          tx,
+          tenant,
+          record,
+          mode,
+          at,
+          nextModeCreatedAt(at, found.history),
+        );
         await audit.record(tx, {
           eventType: "m35.subscription.billing_service_mode_changed",
           resourceKind: "subscription",
@@ -519,6 +552,7 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         const history: ModeHistoryRow[] = [
           ...found.history,
           {
+            id: row.id,
             billingServiceMode: row.billingServiceMode,
             effectiveFrom: row.effectiveFrom,
             createdAt: row.createdAt,
@@ -655,6 +689,9 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         };
       });
     },
+
+    billingServiceModeForOrg: (organizationId) =>
+      readBillingServiceMode(deps.db, organizationId, now()),
   };
 }
 

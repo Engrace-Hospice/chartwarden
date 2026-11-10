@@ -6,6 +6,44 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — A paused subscription whose end date has passed is resumed automatically
+
+**Why.** `POST /api/admin/subscriptions/{id}/pause` takes an optional `pausedUntil`. Billing already treated such a pause as over at that
+date, but nothing changed the stored status, so the subscription read `paused` (in the admin list, the tenant's own view and the
+claims-billing entitlement) until an operator remembered to resume it.
+
+- An hourly sweep (`m35.subscription-pause-resume`) now resumes a subscription that is `paused` with a `pausedUntil` that has passed: `status`
+  becomes `active` and `pausedAt` and `pausedUntil` become `null`. Until the sweep runs (normally within the hour; longer if the worker is late
+  or skips the row) the stored status still reads `paused`, and billing still counts the pause as over at its date.
+- The resume is announced with the same `m35.subscription.resumed` event an operator's resume publishes; `resumedAt` is the pause's end
+  date, not the instant the sweep ran. The subscription's status history (`reasonCode` `platform_ops_pause_lapsed`, no actor) is dated at
+  that end date too, so a statement for the month the pause ended in does not change when the sweep runs.
+- The sweep visits active organizations only, and acts on the organization's newest subscription only. A pause with no end date, a pause
+  whose date is ahead, an organization suspension (which pauses with no end date) and an older, superseded subscription are never resumed by
+  it. The newest subscription's pause is also left alone when an older subscription of the organization is live.
+- When the platform suspends an organization (`m2.organization.suspended`) while an operator's dated pause is still running, the pause
+  becomes open-ended: `pausedUntil` is cleared, the subscription's status history gains a `paused` to `paused` row (`reasonCode`
+  `org_suspended_by_platform_admin`) dated at the suspension, and `m35.subscription.paused` is published again with `pausedUntil: null`.
+  The suspended organization stays unbilled past the old date until it is reactivated.
+- `POST /api/v1/subscription/resume` (the tenant's own resume of a non-contracted subscription) now reads the subscription under the same row
+  lock, so it cannot announce a resume the sweep has just made, and it answers `409 SUBSCRIPTION_NOT_PAUSED` for a subscription that is
+  neither paused nor scheduled to cancel (it used to answer `200`, touch `updatedAt` and publish `m35.subscription.resumed` again).
+  Resuming a subscription scheduled to cancel at period end still clears the schedule; it no longer publishes `m35.subscription.resumed`,
+  which means "resumed from paused".
+- `POST /api/v1/subscription/resume` also answers `409 SUBSCRIPTION_CANCELED` for a canceled subscription (it is final), even when it still
+  carries a cancel-at-period-end schedule: it used to answer `200`, flip the schedule and clear the pause columns of a canceled row.
+- `POST /api/admin/subscriptions/{id}/resume` and `POST /api/v1/subscription/resume` answer `409 SUBSCRIPTION_OTHER_LIVE_EXISTS` when the
+  organization already has another live subscription (an organization can hold one live subscription; a paused one does not count). They used
+  to fail with a raw `500` from the database's unique index. The tenant response says to contact support; the operator response says to cancel
+  or pause the other subscription by id. The hourly sweep then resumes this one on its next tick (or an operator can resume it again by hand).
+  The sweep and organization-activation consumer both leave such a pause alone and raise the same dedicated operator notice (ids only) at most
+  once a day per subscription until it is unblocked.
+- `POST /api/admin/subscriptions/{id}/resume` answers `409 SUBSCRIPTION_SUPERSEDED` when the requested paused row is older than the
+  organization's current subscription. It no longer resurrects an older row behind a newer paused subscription.
+- An organization's current subscription is the subscription with the newest `startedAt`; rows that share that instant are ordered by the
+  higher `id`. Subscription readers and writers use that ordering, so the tenant's view, the resume routes, the lifecycle consumer and the
+  sweep agree on which subscription is current. Contract selection retains its separate `createdAt`, `id` ordering.
+- No request or response shape changes.
 ## 2026-11-09 — Onboarding-step catalog writes name their operator; the notice list moves behind the notice key
 
 - `POST /api/v1/platform/onboarding-templates` now requires an `Idempotency-Key` header and a `reason` (8-500 characters after
@@ -249,7 +287,6 @@ means choosing the billing mode the vendor billing calls for, which only an oper
   onboarding step 2, so an omitted label is stored as `"unassigned"`. A label that is sent must still be `starter`, `standard` or `enterprise`.
 
 ---
-
 ## 2026-11-09 — More operator free-text fields refuse a patient identifier (`422 EVIDENCE_LOOKS_LIKE_PHI`)
 
 **Why.** Text typed by an operator and stored on a row a tenant can read, or copied into the audit trail, is no place for a patient.
