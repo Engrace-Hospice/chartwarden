@@ -41,7 +41,16 @@ function Frame({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
+/**
+ * The wizard of the tenant in the address. Keyed by its slug: the router keeps this screen mounted when only the slug changes, and one
+ * tenant's view, typed forms and drafts must never carry over to another tenant.
+ */
 export function TenantOnboardingWizard(): JSX.Element {
+  const { orgSlug = "" } = useParams<{ orgSlug: string }>();
+  return <WizardFor key={orgSlug} />;
+}
+
+function WizardFor(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { orgSlug = "", stepKey } = useParams<{ orgSlug: string; stepKey?: string }>();

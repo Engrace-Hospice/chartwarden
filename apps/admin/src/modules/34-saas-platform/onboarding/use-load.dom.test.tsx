@@ -49,3 +49,24 @@ describe("useLoad", () => {
     expect(hook.result.current.stale).toBe(false);
   });
 });
+
+describe("useLoad: a change of key", () => {
+  it("never renders the previous key's data under the new key, not even for one frame", async () => {
+    const seen: string[] = [];
+    const hook = renderHook(
+      ({ k }: { k: string }) => {
+        const loaded = useLoad<{ n: number }>(k, async () =>
+          k === "a" ? { data: { n: 1 } } : new Promise(() => undefined),
+        );
+        seen.push(`${k}:${loaded.data?.n ?? "none"}`);
+        return loaded;
+      },
+      { initialProps: { k: "a" } },
+    );
+    await waitFor(() => expect(hook.result.current.data).toEqual({ n: 1 }));
+    hook.rerender({ k: "b" });
+    expect(hook.result.current.data).toBeNull();
+    expect(seen).not.toContain("b:1");
+    expect(seen).toContain("a:1");
+  });
+});

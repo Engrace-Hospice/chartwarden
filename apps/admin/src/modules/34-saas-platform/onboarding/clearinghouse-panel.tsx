@@ -154,6 +154,8 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const [noteError, setNoteError] = useState<string | null>(null);
   const [notePhiFree, setNotePhiFree] = useState(false);
   const [testProblem, setTestProblem] = useState<string | null>(null);
+  // What a connection check settled, in words (announced): the fact list changes too, but a screen reader is told nothing by that.
+  const [verifiedNote, setVerifiedNote] = useState("");
   const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
   const write = useOpsWrite();
 
@@ -277,8 +279,15 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       return;
     }
     // An attestation runs no vendor test; a connection test that reports nothing is not a pass.
-    setTestProblem(
-      current?.verifiableBy === "attestation" ? null : testProblemOf(outcome.data.test?.outcome),
+    const problem =
+      current?.verifiableBy === "attestation" ? null : testProblemOf(outcome.data.test?.outcome);
+    setTestProblem(problem);
+    setVerifiedNote(
+      problem !== null
+        ? ""
+        : current?.verifiableBy === "attestation"
+          ? "The connection was attested."
+          : "The connection test passed.",
     );
     setAttesting(false);
     setNote("");
@@ -338,6 +347,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
           </>
         ) : null}
         {testProblem ? <InlineAlert tone="warning">{testProblem}</InlineAlert> : null}
+        {/* always mounted, so a screen reader announces the text when it appears */}
+        <output className="wx-row-sub" aria-live="polite">
+          {verifiedNote}
+        </output>
         {modeUnconfirmed ? <ModeUnconfirmedNotice orgSlug={orgSlug} /> : null}
         {canWrite && available && !editing ? (
           <div className="wx-drawer-actions">
@@ -356,6 +369,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
                 tone="secondary"
                 onClick={() => {
                   setTestProblem(null);
+                  setVerifiedNote("");
                   if (current?.verifiableBy === "attestation") setAttesting(true);
                   else {
                     write.clear();
@@ -404,7 +418,15 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       ) : null}
 
       {attesting && canWrite ? (
-        <section className="wx-drawer-card" aria-label="Verify the connection">
+        <form
+          className="wx-drawer-card"
+          aria-label="Verify the connection"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            askToAttest();
+          }}
+        >
           <div className="wx-drawer-card-head">
             <h3>Verify the connection</h3>
           </div>
@@ -422,10 +444,9 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             }}
             error={noteError ?? write.failure?.fieldErrors.evidenceNote ?? undefined}
           />
-          <label className="inline-flex min-h-11 items-center gap-2">
+          <label className="wx-action-check">
             <input
               type="checkbox"
-              className="size-5"
               checked={notePhiFree}
               onChange={(e) => setNotePhiFree(e.target.checked)}
             />
@@ -443,9 +464,9 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             >
               Cancel
             </Button>
-            <Button onClick={askToAttest}>Continue</Button>
+            <Button type="submit">Continue</Button>
           </div>
-        </section>
+        </form>
       ) : null}
 
       <RecordSaveDialog

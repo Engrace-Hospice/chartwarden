@@ -27,6 +27,7 @@ import { releaseDraftKey } from "./onboarding/permissions";
 import { useLoad } from "./onboarding/use-load";
 import { isOnboardingOpen } from "./onboarding/wizard-model";
 import { cap } from "./saas-status";
+import { useReveal } from "./use-reveal";
 
 const STATUS_TONE: Record<string, StatusTone> = {
   draft: "neutral",
@@ -157,7 +158,7 @@ function Body({
         </Button>
       </div>
       {/* always mounted, so a screen reader announces the text when it appears */}
-      <output className="wx-row-sub" aria-live="polite" style={{ display: "block" }}>
+      <output className="wx-row-sub" aria-live="polite">
         {released === null
           ? ""
           : released === 0
@@ -186,27 +187,27 @@ export function TenantClearinghouseCard({
     const { pathname, search, hash } = location;
     navigate({ pathname, search, hash }, { replace: true, state: null });
   }, [location, navigate]);
-  const [shown, setShown] = useState(restoredReason !== undefined);
+  const reveal = useReveal(restoredReason !== undefined);
   const [filingsOpen, setFilingsOpen] = useState(false);
   return (
     <>
       <section className="wx-drawer-card" aria-label="Clearinghouse">
         <div className="wx-drawer-card-head">
           <h3>Clearinghouse</h3>
-          {shown ? undefined : (
-            <Button tone="secondary" size="sm" onClick={() => setShown(true)}>
-              Show clearinghouse
-            </Button>
-          )}
+          <Button tone="secondary" size="sm" {...reveal.toggleProps} onClick={reveal.onToggle}>
+            Show clearinghouse
+          </Button>
         </div>
-        {shown ? (
-          <Body
-            orgSlug={orgSlug}
-            tenantStatus={tenantStatus}
-            onOpenFilings={() => setFilingsOpen(true)}
-            restoredReason={restoredReason}
-            returnedFromStepUp={returnedFromStepUp}
-          />
+        {reveal.mounted ? (
+          <div id={reveal.sectionId} hidden={!reveal.open}>
+            <Body
+              orgSlug={orgSlug}
+              tenantStatus={tenantStatus}
+              onOpenFilings={() => setFilingsOpen(true)}
+              restoredReason={restoredReason}
+              returnedFromStepUp={returnedFromStepUp}
+            />
+          </div>
         ) : (
           <span className="wx-row-sub">
             Reading the clearinghouse and the contract's billing mode is recorded in the audit

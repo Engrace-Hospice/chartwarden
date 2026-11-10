@@ -872,3 +872,21 @@ describe("TenantClearinghouseCard: each control is gated on its own key", () => 
     });
   }
 });
+
+describe("TenantClearinghouseCard: the Show clearinghouse toggle", () => {
+  it("stays on the page as an aria-expanded toggle: collapsing keeps focus and does not read the clearinghouse again", async () => {
+    const client = mount(CLAIMMD);
+    const toggle = screen.getByRole("button", { name: "Show clearinghouse" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(await screen.findByText("Claim.MD")).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+    fireEvent.click(toggle);
+    expect(screen.getByText("Claim.MD")).toBeTruthy();
+    expect(reads(client, CH)).toBe(1);
+  });
+});

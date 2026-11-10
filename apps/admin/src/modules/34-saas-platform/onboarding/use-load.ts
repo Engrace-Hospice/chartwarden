@@ -24,7 +24,12 @@ export function useLoad<T>(key: string, load: () => Promise<FetchResult<T>>): Lo
   const guard = useRequestGuard();
   const loadRef = useRef(load);
   loadRef.current = load;
-  const [data, setData] = useState<T | null>(null);
+  const keyRef = useRef(key);
+  keyRef.current = key;
+  // The data is stored WITH the key it was loaded for and shown only under that key: when `key` changes (another tenant, with no
+  // remount) the old tenant's data is never rendered, not even for the one frame before the effect below clears it.
+  const [loaded, setLoaded] = useState<{ key: string; data: T | null } | null>(null);
+  const data = loaded !== null && loaded.key === key ? loaded.data : null;
   const [failure, setFailure] = useState<OpsFailure | null>(null);
   const [loading, setLoading] = useState(true);
   const [stale, setStale] = useState(false);
@@ -32,6 +37,7 @@ export function useLoad<T>(key: string, load: () => Promise<FetchResult<T>>): Lo
   const reload = useCallback(
     async (silent = false) => {
       const isCurrent = guard();
+      const requestKey = keyRef.current;
       if (!silent) {
         setLoading(true);
         setFailure(null);
@@ -53,7 +59,7 @@ export function useLoad<T>(key: string, load: () => Promise<FetchResult<T>>): Lo
         if (silent) setStale(true);
         else setFailure(describeOpsError(result.error, result.response ?? null, WIZARD_ERROR_COPY));
       } else {
-        setData(result.data ?? null);
+        setLoaded({ key: requestKey, data: result.data ?? null });
         setStale(false);
       }
       setLoading(false);
@@ -63,7 +69,7 @@ export function useLoad<T>(key: string, load: () => Promise<FetchResult<T>>): Lo
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` is the intentional trigger; the loader is read through a ref.
   useEffect(() => {
-    setData(null);
+    setLoaded(null);
     void reload();
   }, [key, reload]);
 

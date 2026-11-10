@@ -823,3 +823,43 @@ describe("ClearinghousePanel: the billing mode banner", () => {
     expect(client.GET.mock.calls.some((c) => c[0] === SUBSCRIPTION)).toBe(false);
   });
 });
+
+describe("ClearinghousePanel: what a connection check says", () => {
+  it("an outcome this screen does not know is a generic failure, never nothing", async () => {
+    mount(
+      { ...CLAIMMD, baa: VERIFIED_BAA },
+      { POST: { [VERIFY]: () => ok({ config: CLAIMMD, test: { outcome: "throttled" } }) } },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Run the connection test" }));
+    confirm("Checking the credential the tenant sent", "Run test");
+    expect(await screen.findByText(/did not report a result this screen understands/)).toBeTruthy();
+  });
+
+  it("a test that reports nothing is not a pass", async () => {
+    mount({ ...CLAIMMD, baa: VERIFIED_BAA }, { POST: { [VERIFY]: () => ok({ config: CLAIMMD }) } });
+    fireEvent.click(await screen.findByRole("button", { name: "Run the connection test" }));
+    confirm("Checking the credential the tenant sent", "Run test");
+    expect(await screen.findByText(/did not report a result this screen understands/)).toBeTruthy();
+  });
+
+  it("a passed test is announced in words", async () => {
+    mount(
+      { ...CLAIMMD, baa: VERIFIED_BAA },
+      { POST: { [VERIFY]: () => ok({ config: CLAIMMD, test: { outcome: "ok" } }) } },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Run the connection test" }));
+    confirm("Checking the credential the tenant sent", "Run test");
+    const live = await screen.findByText("The connection test passed.");
+    expect(live.tagName).toBe("OUTPUT");
+    expect(live.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("the attestation is a real form", async () => {
+    const stedi: ClearinghouseView = { ...CLAIMMD, vendor: "stedi", verifiableBy: "attestation" };
+    mount(stedi);
+    fireEvent.click(await screen.findByRole("button", { name: "Verify the connection" }));
+    const form = screen.getByRole("form", { name: "Verify the connection" });
+    fireEvent.submit(form);
+    expect(screen.getByText(/Say what was checked and by whom/)).toBeTruthy();
+  });
+});

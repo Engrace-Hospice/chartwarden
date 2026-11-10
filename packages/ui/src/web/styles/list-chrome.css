@@ -461,6 +461,20 @@
   .wx-form-field.wide {
     grid-column: 1 / -1;
   }
+  /* A fieldset that only groups (a name for assistive tech, a focus target): no browser border, margin or padding. */
+  .wx-fieldset-plain {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+  }
+  /* A field with its own controls beside the input (a file field with its upload button): the full row of a .wx-form-grid. */
+  .wx-form-field-wide {
+    display: grid;
+    gap: 0.5rem;
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
   .wx-form-field input,
   .wx-form-field select,
   .wx-form-field textarea {

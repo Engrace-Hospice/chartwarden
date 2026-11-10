@@ -370,3 +370,28 @@ describe("MacPanel: a server refusal of one field", () => {
     expect(screen.queryByText(/Some details need attention/)).toBeNull();
   });
 });
+
+describe("MacPanel: focus when the Add button goes", () => {
+  it("after the first credential is saved, focus lands on that credential's Replace button, not on the page", async () => {
+    let saved = false;
+    const { client } = mount([], {
+      GET: {
+        [ENTITIES]: () => ok({ items: [PE] }),
+        [MAC]: () => ok({ items: saved ? [CRED] : [] }),
+      },
+      POST: {
+        [MAC]: () => {
+          saved = true;
+          return ok(CRED, 201);
+        },
+      },
+    });
+    await screen.findByText(/No MAC credential yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add MAC credential" }));
+    fill();
+    save("Customer sent their Noridian enrolment");
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const replace = await screen.findByRole("button", { name: /Replace credential for/ });
+    await waitFor(() => expect(document.activeElement).toBe(replace));
+  });
+});

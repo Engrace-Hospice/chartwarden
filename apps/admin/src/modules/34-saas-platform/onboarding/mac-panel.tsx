@@ -12,7 +12,7 @@ import {
   useApiClient,
   useStepUpDraft,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { bodyFingerprint } from "./body-digest";
 import { FailureNotice } from "./failure-notice";
@@ -20,7 +20,7 @@ import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
-import { useEditorFocus } from "./use-editor-focus";
+import { refocusEditorReturn, useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
 import { isAboutAnInput } from "./wizard-errors";
@@ -113,6 +113,8 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const [clientSecret, setClientSecret] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [asking, setAsking] = useState(false);
+  // A save closed the editor: once the list has been read again, focus is put back (see the effect below).
+  const [returnFocus, setReturnFocus] = useState(false);
   // The reason typed before a field refusal closed the prompt: the operator fixes the field and confirms again, not types it twice.
   const [lastReason, setLastReason] = useState("");
   const write = useOpsWrite();
@@ -182,6 +184,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       setLastReason("");
       setEditing(null);
       setClientSecret("");
+      setReturnFocus(true);
       await Promise.all([credentials.reload(true), ctx.refresh()]);
     } else if (isAboutAnInput(outcome.failure)) {
       // The form is still open with what was typed: the prompt gets out of the way so the error is read beside its input.
@@ -208,6 +211,12 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     errors[field] ?? write.failure?.fieldErrors[field];
   const creating = editing !== null && editing.pinnedVersion === null;
   const editorHeading = useEditorFocus(editing !== null && canWrite, "mac");
+  // The "Add" button the editor opened from is gone once a credential exists: focus goes to that credential's Replace button.
+  useEffect(() => {
+    if (!returnFocus || editing !== null || items.length === 0) return;
+    refocusEditorReturn("mac");
+    setReturnFocus(false);
+  }, [returnFocus, editing, items.length]);
 
   return (
     <StepFrame ctx={ctx}>
@@ -257,6 +266,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
                         size="sm"
                         tone="tertiary"
                         aria-label={`Replace credential for ${entityName(c.providerEntityId)}`}
+                        data-editor-return="mac"
                         onClick={() => open(c)}
                       >
                         Replace
