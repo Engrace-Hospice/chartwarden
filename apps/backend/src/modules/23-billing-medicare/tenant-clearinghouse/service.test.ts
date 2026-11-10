@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { ChartWardenError } from "@chartwarden/types";
+import { CLEARINGHOUSE_RELEASE_QUIET_DAYS, ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryConfigStore } from "./config-store-memory";
 import { MAX_HELD_CREDENTIALS } from "./credential-reservation";
@@ -638,6 +638,47 @@ describe("tenant clearinghouse service: choosing", () => {
     ).toBe("no error");
   });
 
+  describe("the vendor lock ends with the credential release's quiet window (CH-1)", () => {
+    const DAY = 86_400_000;
+    const NOW = new Date("2026-11-09T12:00:00Z");
+    /** A production claimmd config whose latest production submission was reserved `daysAgo` days ago. */
+    async function lockedAt(daysAgo: number) {
+      const store = createInMemoryConfigStore();
+      const service = createTenantClearinghouseService({
+        cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+        probes: {},
+        now: () => NOW,
+      });
+      await service.put(
+        store,
+        ACTOR,
+        { vendor: "claimmd", mode: "production", secret: FAKE_KEY },
+        undefined,
+      );
+      store.setProductionAttempts(ORG, true, new Date(NOW.getTime() - daysAgo * DAY));
+      return { store, service };
+    }
+    const switchToStedi = (
+      s: Awaited<ReturnType<typeof lockedAt>>,
+    ): ReturnType<TenantClearinghouseService["put"]> =>
+      s.service.put(
+        s.store,
+        ACTOR,
+        { vendor: "stedi", mode: "production", secret: `${FAKE_KEY}-stedi` },
+        1,
+      );
+
+    it("keeps the lock while the latest production submission is inside the window", async () => {
+      const s = await lockedAt(CLEARINGHOUSE_RELEASE_QUIET_DAYS - 1);
+      expect(await codeOf(switchToStedi(s))).toBe("CLEARINGHOUSE_VENDOR_LOCKED");
+    });
+
+    it("lets the tenant switch once the window has passed, so a one-time production claim never locks it forever", async () => {
+      const s = await lockedAt(CLEARINGHOUSE_RELEASE_QUIET_DAYS + 1);
+      expect(await codeOf(switchToStedi(s))).toBe("no error");
+    });
+  });
+
   it("reports a platform-env fallback for an org that has no row", async () => {
     const store = createInMemoryConfigStore();
     const service = createTenantClearinghouseService({
@@ -926,6 +967,20 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
     expect(
       await codeOf(service.verifyBaa(store, OPERATOR, { recordedAt: "2000-01-01T00:00:00.000Z" })),
     ).toBe("CLEARINGHOUSE_BAA_CHANGED");
+  });
+
+  it("asserts the lane in the service (F7): a platform operator cannot record the tenant's BAA, and the tenant lane cannot verify it", async () => {
+    const { store, service } = await verifiedClaimMd();
+    expect(await codeOf(service.recordBaa(store, OPERATOR, BAA))).toBe(
+      "CLEARINGHOUSE_BAA_TENANT_ONLY",
+    );
+    expect((await service.view(store, ORG)).baa).toBeNull();
+
+    await service.recordBaa(store, ACTOR, BAA);
+    const pin = await pinOf(service, store);
+    expect(await codeOf(service.verifyBaa(store, ACTOR, pin))).toBe("FORBIDDEN");
+    expect((await service.view(store, ORG)).baa?.verified).toBeNull();
+    expect(await codeOf(service.verifyBaa(store, OPERATOR, pin))).toBe("no error");
   });
 
   it("re-recording the same BAA is a no-op; a changed record voids the verification and takes a live config out of service", async () => {

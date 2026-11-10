@@ -494,6 +494,31 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     expect(duplicated.rowCount).toBe(0);
   });
 
+  it("migration 1461 revokes the dead onboarding.manage_own grant from tenant administrator roles only, and re-applying it is a no-op", async () => {
+    // The state 1329 left: an `administrator` role holding the key beside the org_admin that holds it.
+    await admin.query(
+      `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'administrator','administrator','admin_executive')
+       ON CONFLICT (organization_id, key) DO NOTHING`,
+      [ORG_L],
+    );
+    await apply(sqlFiles().filter((f) => f.startsWith("1329_")));
+    const holdersOf = async (roleKey: string) =>
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
+            WHERE rp.permission_key = 'onboarding.manage_own' AND r.key = $2 AND r.organization_id = $1`,
+          [ORG_L, roleKey],
+        )
+      ).rows[0].n as number;
+    expect(await holdersOf("administrator")).toBe(1);
+    expect(await holdersOf("org_admin")).toBe(1);
+    for (const _again of [1, 2]) {
+      await apply(sqlFiles().filter((f) => f.startsWith("1461_")));
+      expect(await holdersOf("administrator")).toBe(0); // the dead grant is gone
+      expect(await holdersOf("org_admin")).toBe(1); // the key the predicate admits is untouched
+    }
+  });
+
   it("refuses an out-of-order step on the platform and the tenant roles, and changes nothing", async () => {
     const ccn = await taskId(T_A, "ccn_registered");
     const platformRefusal = await refusal(

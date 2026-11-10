@@ -281,4 +281,38 @@ describe.skipIf(!DB_URL)("M25 Claim.MD appeal reports - LIVE Postgres", () => {
     );
     expect(alerts.every((a) => !JSON.stringify(a).includes("CN-"))).toBe(true); // no control number in a notice
   });
+
+  // Migration 1460 replaced 1324's mis-parenthesised `reason` check, which read (A AND B) OR C and so never constrained a
+  // `timeline` or `recorded_only` row. Asserted at the database, not through the consumer, which already complied.
+  it("the reason check: only a recorded_only report carries a reason, and it always does", async () => {
+    const d = await denial("CN-CHK");
+    const caseId = (
+      await fx.admin.query(
+        `INSERT INTO payer_appeal_case (organization_id, provider_entity_id, denial_case_id, payer_id, program, level_kind, level_label)
+         VALUES ($1,$2,$3,$4,'commercial','internal','Check level') RETURNING id`,
+        [ORG, fx.pe1, d, commercial],
+      )
+    ).rows[0].id as string;
+    let n = 0;
+    const insert = (disposition: string, reason: string | null, withCase: boolean) => {
+      n += 1;
+      return fx.admin.query(
+        `INSERT INTO payer_appeal_vendor_report (organization_id, provider_entity_id, source_event_key, vendor,
+           vendor_status, control_number, denial_case_id, payer_appeal_case_id, disposition, reason, reported_at)
+         VALUES ($1,$2,$3,'claimmd','created','CN-CHK',$4,$5,$6,$7, now())`,
+        [ORG, fx.pe1, `reason-chk-${n}`, d, withCase ? caseId : null, disposition, reason],
+      );
+    };
+    await expect(insert("timeline", "not_linked", true)).rejects.toThrow(
+      /payer_appeal_vendor_report_reason_chk/,
+    );
+    await expect(insert("recorded_only", null, false)).rejects.toThrow(
+      /payer_appeal_vendor_report_reason_chk/,
+    );
+    await expect(insert("linked", "not_linked", true)).rejects.toThrow(
+      /payer_appeal_vendor_report_reason_chk/,
+    );
+    await expect(insert("timeline", null, true)).resolves.toBeDefined();
+    await expect(insert("recorded_only", "no_denial", false)).resolves.toBeDefined();
+  });
 });

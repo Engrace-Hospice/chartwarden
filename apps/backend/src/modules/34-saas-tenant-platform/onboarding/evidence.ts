@@ -8,8 +8,11 @@
 // jsonb cannot hold it, so it would otherwise surface as a 500), every other control character except tab and newline
 // is stripped, and text that looks like a patient identifier (an SSN or MBI) is refused with a friendly 422 that never
 // echoes the value.
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { ChartWardenError } from "@chartwarden/types";
-import { looksLikePatientIdentifier } from "./phi-screen";
+
+// The one screen every wizard free text shares now lives in @chartwarden/shared (M23 and M35 screen with it too).
+export { assertNoPatientIdentifier };
 
 export const EVIDENCE_NOTE_MAX = 2000;
 export const EVIDENCE_REF_MAX = 500;
@@ -30,17 +33,6 @@ const refuse = (code: string, field: string, message: string): ChartWardenError 
 
 /** Every control character (\p{Cc}) except tab and newline. */
 const STRIPPED_CONTROL = /[^\P{Cc}\t\n]/gu;
-
-/** Refuses (422, never echoing the value) text that holds a patient identifier. The one screen every wizard free text shares. */
-export function assertNoPatientIdentifier(field: string, text: string): void {
-  if (looksLikePatientIdentifier(text)) {
-    throw refuse(
-      "EVIDENCE_LOOKS_LIKE_PHI",
-      field,
-      `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title.`,
-    );
-  }
-}
 
 /**
  * The shared text hygiene: refuse NUL, strip the other control characters, trim, and refuse a patient identifier.

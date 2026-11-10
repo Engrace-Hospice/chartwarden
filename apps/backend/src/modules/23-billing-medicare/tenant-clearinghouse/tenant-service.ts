@@ -47,8 +47,6 @@ export interface TenantClearinghouseRouteService {
   activate(actor: M23WriteActor): Promise<ClearinghouseConfigView>;
 }
 
-/** The refusal that is audited even though its write rolled back (credential-reservation.ts). */
-
 export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly db: DbClient;
   readonly service: TenantClearinghouseService;
@@ -56,7 +54,13 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly audit: ClearinghouseAuditPort;
   /** Post-commit, best effort. */
   readonly onChanged?: (organizationId: string) => Promise<void>;
+  /** `onChanged` failed after the change committed: the wizard step did not settle (the change itself stands). */
   readonly logError?: (cause: unknown, context: { organizationId: string }) => void;
+  /**
+   * The `denied` audit row of a refused credential could not be written (the refusal rolled its own transaction back, so the row is on
+   * a new one). Its own hook, so the log line does not say the onboarding settle failed when it did not.
+   */
+  readonly logRefusalAuditError?: (cause: unknown, context: { organizationId: string }) => void;
 }): TenantClearinghouseRouteService {
   const { db, service, audit } = deps;
   const inOrg = <T>(actor: M23ReadActor, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
@@ -133,7 +137,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
         });
       });
     } catch (cause) {
-      deps.logError?.(cause, { organizationId: actor.organizationId });
+      deps.logRefusalAuditError?.(cause, { organizationId: actor.organizationId });
     }
   }
 

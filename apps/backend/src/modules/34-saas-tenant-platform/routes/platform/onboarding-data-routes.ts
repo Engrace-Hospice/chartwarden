@@ -50,6 +50,11 @@ export interface OnboardingDataRouteDeps {
   readonly clearinghouseVerifyRateLimit?: PreHandler;
   /** Per-user cap on the signed-BAA upload (each one stores an object of up to 10 MiB); fail-open. Absent = unlimited. */
   readonly baaUploadRateLimit?: PreHandler;
+  /**
+   * Per-target-tenant cap on the clearinghouse `PUT` (its 409 CLEARINGHOUSE_ACCOUNT_IN_USE says a credential is held elsewhere, the
+   * same oracle the tenant's own PUT is capped for). Production wires it fail-CLOSED. Absent = unlimited (tests only).
+   */
+  readonly clearinghousePutRateLimit?: PreHandler;
 }
 
 const READ_KEY = "tenant_onboarding_data.read_platform";
@@ -58,11 +63,11 @@ const PLATFORM_OPS = "tenant_lifecycle_platform_ops";
 /** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice has its own pair of keys (platform_ops only). */
 const CLEARINGHOUSE_READ_KEY = "tenant_clearinghouse.read_platform";
 const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
-/** Owner decision D2: verifying the BAA a tenant recorded for its own vendor account is its own key (a separable duty). */
+/** Owner decision D2: verifying the BAA a tenant recorded for its own vendor account is its own permission key (the platform_ops role holds them all). */
 const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
-/** Owner decision 2026-11-08: releasing the clearinghouse credentials a tenant still holds is its own key (a separable duty). */
+/** Owner decision 2026-11-08: releasing the clearinghouse credentials a tenant still holds is its own permission key (the platform_ops role holds them all). */
 const CLEARINGHOUSE_RELEASE_KEY = "tenant_clearinghouse.release_credential_platform";
-/** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own key (a separable duty). */
+/** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own permission key (the platform_ops role holds them all). */
 const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
 /**
  * The signed BAA upload (onboarding step 3) has its own key, NOT `documents.upload`: the one route behind it files one document kind
@@ -247,6 +252,9 @@ export function registerOnboardingDataRoutes(
   const BAA_UPLOAD: readonly PreHandler[] = deps.baaUploadRateLimit
     ? [...BAA_DOCUMENT_UPLOAD, deps.baaUploadRateLimit]
     : BAA_DOCUMENT_UPLOAD;
+  const CLEARINGHOUSE_PUT: readonly PreHandler[] = deps.clearinghousePutRateLimit
+    ? [...CLEARINGHOUSE_WRITE, deps.clearinghousePutRateLimit]
+    : CLEARINGHOUSE_WRITE;
   const slugOf = (request: FastifyRequest): string =>
     parse(OrgSlugParamsSchema, request.params).orgSlug;
   const idParamsOf = (request: FastifyRequest) =>
@@ -379,7 +387,7 @@ export function registerOnboardingDataRoutes(
 
   app.put(
     "/api/v1/platform/tenants/:orgSlug/clearinghouse",
-    { preHandler: [...CLEARINGHOUSE_WRITE] },
+    { preHandler: [...CLEARINGHOUSE_PUT] },
     async (request, reply) => {
       const op = operatorOf(request);
       const { reason, fields } = splitReason(

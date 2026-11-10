@@ -236,6 +236,7 @@ const PRICING_OPERATOR = {
 function makeServer(
   calls: Call[],
   clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>,
+  clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>,
 ) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
@@ -258,6 +259,7 @@ function makeServer(
     onboardingData: {
       service: recordingService(calls),
       ...(clearinghouseVerifyRateLimit ? { clearinghouseVerifyRateLimit } : {}),
+      ...(clearinghousePutRateLimit ? { clearinghousePutRateLimit } : {}),
     },
   });
   return app;
@@ -819,6 +821,56 @@ describe("the verify limiter counts per TARGET tenant (re-review L7)", () => {
     for (let i = 0; i < 3; i++) expect((await verifyOf(app, "tenant-b")).statusCode).toBe(200);
     expect((await verifyOf(app, "tenant-b")).statusCode).toBe(429); // tenant-b's own cap, 3/3
     for (let i = 0; i < 3; i++) expect((await verifyOf(app, "tenant-c")).statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+// CH-6: the platform PUT returns the same 409 CLEARINGHOUSE_ACCOUNT_IN_USE oracle as the tenant's own PUT, so it carries the same
+// cap (CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT, fail-closed), counted per TARGET tenant like the verify limiter above.
+describe("the clearinghouse PUT limiter (CH-6)", () => {
+  const BODY = {
+    vendor: "claimmd",
+    mode: "test",
+    secret: "fake-key-not-a-secret#1",
+    reason: "ticket CHG-1",
+  };
+  const putOf = (app: ReturnType<typeof makeServer>, slug: string) =>
+    app.inject({
+      method: "PUT",
+      url: `/api/v1/platform/tenants/${slug}/clearinghouse`,
+      headers: fresh(),
+      payload: BODY,
+    });
+  const limiter = (store = createInMemoryRateLimitStore()) =>
+    createRouteRateLimit({
+      store,
+      limit: { perUser: 2, perOrg: 50, windowMs: 60_000, failMode: "closed" },
+      keyPrefix: "t-put",
+      scopeOf: targetTenantScopeOf,
+    }) as unknown as (request: never, reply: never) => Promise<void>;
+
+  it("caps the PUT per operator and target tenant (429), and another tenant keeps its own budget", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls, undefined, limiter());
+    expect((await putOf(app, "tenant-b")).statusCode).toBe(201);
+    expect((await putOf(app, "tenant-b")).statusCode).toBe(201);
+    expect((await putOf(app, "tenant-b")).statusCode).toBe(429);
+    expect((await putOf(app, "tenant-c")).statusCode).toBe(201);
+    expect(calls.filter((c) => c.method === "putClearinghouse")).toHaveLength(3); // the 429 never reached the service
+    await app.close();
+  });
+
+  it("fails CLOSED with a typed 503 when the limiter's store is down, and never calls the service", async () => {
+    const calls: Call[] = [];
+    const down = {
+      increment: async () => {
+        throw new Error("store down");
+      },
+    };
+    const app = makeServer(calls, undefined, limiter(down));
+    const res = await putOf(app, "tenant-b");
+    expect(res.statusCode, res.body).toBe(503);
+    expect(calls.filter((c) => c.method === "putClearinghouse")).toEqual([]);
     await app.close();
   });
 });

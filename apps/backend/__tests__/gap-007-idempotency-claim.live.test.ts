@@ -136,6 +136,33 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
     });
   });
 
+  describe("store.release frees only the claimant's own pending row", () => {
+    it("deletes a pending row with the matching fingerprint, so the key can be claimed again", async () => {
+      await store.putPending(ORG_A, "rel-own", "mine");
+      await store.release(ORG_A, "rel-own", "mine");
+      expect(await rowFor(ORG_A, "rel-own")).toEqual([]);
+      expect(await store.putPending(ORG_A, "rel-own", "mine")).toBe(true);
+    });
+
+    it("leaves a pending row another fingerprint owns, and never deletes a completed response", async () => {
+      await store.putPending(ORG_A, "rel-other", "owner");
+      await store.release(ORG_A, "rel-other", "intruder");
+      expect(await rowFor(ORG_A, "rel-other")).toHaveLength(1);
+
+      await store.complete(ORG_A, "rel-other", { status: "201", body: { id: 1 } });
+      await store.release(ORG_A, "rel-other", "owner");
+      expect(await rowFor(ORG_A, "rel-other")).toEqual([
+        { state: "complete", request_hash: "owner", status: "201" },
+      ]);
+    });
+
+    it("RLS: another tenant's release on the same key string deletes nothing", async () => {
+      await store.putPending(ORG_A, "rel-tenant", "h");
+      await store.release(ORG_B, "rel-tenant", "h");
+      expect(await rowFor(ORG_A, "rel-tenant")).toHaveLength(1);
+    });
+  });
+
   describe("applyIdempotency over the DB store", () => {
     let app: FastifyInstance;
     let handlerRuns = 0;

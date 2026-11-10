@@ -4186,6 +4186,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // database (slice boots) the platform binding stays the one binding, as before.
   const clearinghouseSecretCipher = buildClearinghouseSecretCipherFromEnv(process.env);
   const clearinghouseFallback = platformFallbackFromEnv(process.env);
+  const claimMdNoticeUploadsEnabled = process.env.M23_CLAIMMD_NOTICE_UPLOAD_ENABLED === "true";
+  const noticeUploadWarnedOrgs = new Set<string>();
+  const warnOnceWhenNoticesCannotSend = ({
+    organizationId,
+    vendor,
+  }: { readonly organizationId: string; readonly vendor: string }): void => {
+    if (vendor !== "claimmd" || claimMdNoticeUploadsEnabled) return;
+    if (noticeUploadWarnedOrgs.has(organizationId)) return;
+    noticeUploadWarnedOrgs.add(organizationId);
+    app.log.warn(
+      { organizationId },
+      "M23_CLAIMMD_NOTICE_UPLOAD_ENABLED is not true: this organization's own Claim.MD account cannot send its NOE / NOTR (the upload is refused NOT_WIRED and the notice is not filed); set the flag before its CMS deadlines matter",
+    );
+  };
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
@@ -4197,6 +4211,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         onAnomaly: (anomaly, context) =>
           app.log.warn({ anomaly, ...context }, "Clearinghouse anomaly"),
         claimMdRequestCounter: rateLimitStore ?? null,
+        // A tenant's own Claim.MD account sends NOE / NOTR only while M23_CLAIMMD_NOTICE_UPLOAD_ENABLED=true (a deployment-wide
+        // switch, off by default): without it the notice stays held (NOT_WIRED) and its deadline is at risk. Boot cannot see which
+        // organizations are live on Claim.MD (the config table has no platform-carrier grant), so say it once per org, the first
+        // time its account is bound in this process.
+        onTenantAccountBound: warnOnceWhenNoticesCannotSend,
       })
     : null;
   const clearinghouseBinding = tenantClearinghouse?.binding ?? platformClearinghouseBinding;
@@ -4225,7 +4244,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           }),
         })
       : undefined;
-  const claimMdNoticeUploadsEnabled = process.env.M23_CLAIMMD_NOTICE_UPLOAD_ENABLED === "true";
   const claimMdNoticeEvidence =
     platformClearinghouseBinding.vendor === "claimmd" && dbHandle
       ? createClaimMdNoticeEvidenceStore({
@@ -7105,6 +7123,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 keyPrefix: "m34-baa-upload",
                 scopeOf: targetTenantScopeOf,
               }),
+              // The platform PUT answers the same 409 CLEARINGHOUSE_ACCOUNT_IN_USE as the tenant's, so it is capped the same way:
+              // per target tenant, and fail-closed (with the limiter's store down the oracle would be unbounded: a typed 503).
+              clearinghousePutRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-clearinghouse-put",
+                scopeOf: targetTenantScopeOf,
+              }),
               service: buildDrizzleOnboardingDataService({
                 db: dbHandle.db,
                 // After a write commits the advance sweep settles the step the data satisfies (best effort).
@@ -7620,6 +7646,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     app.log.error(
                       { err: cause, ...context },
                       "tenant clearinghouse: onboarding settle failed",
+                    ),
+                  // The `denied` audit row of a refused credential could not be written: a different failure, its own line.
+                  logRefusalAuditError: (cause, context) =>
+                    app.log.error(
+                      { err: cause, ...context },
+                      "tenant clearinghouse: credential-refusal audit write failed",
                     ),
                 }),
                 readService: buildDrizzleM23ReadService(dbHandle.db, {
@@ -15914,9 +15946,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       ? `Tenant clearinghouses: per organization (${clearinghouseFallback.orgIds.size} served by the platform env binding)`
       : "Tenant clearinghouses: off (no database)",
   );
+  if (tenantClearinghouse && clearinghouseFallback.orgIds.size > 0) {
+    // These organizations send PHI under the PLATFORM's vendor BAA, not one the tenant holds: name them (ids only) so the list is auditable.
+    app.log.info(
+      { fallbackOrgIds: [...clearinghouseFallback.orgIds] },
+      "Tenant clearinghouses: organizations served by the platform env binding (CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS)",
+    );
+  }
   if (tenantClearinghouse && !process.env.CLEARINGHOUSE_PAYER_ID?.trim()) {
+    // With a Claim.MD platform vendor the variable cannot be set (it refuses to boot: Claim.MD routes only through
+    // CLAIMMD_M23_PAYER_ROUTES), so "set it" is wrong advice there: a tenant on Stedi has no X12 payer id on such a deployment.
     app.log.warn(
-      "CLEARINGHOUSE_PAYER_ID is not set: tenant clearinghouse claims will fail as a payer gap until it names the X12 payer id of an active M40 payer",
+      process.env.CLEARINGHOUSE_VENDOR?.trim() === "claimmd"
+        ? "CLEARINGHOUSE_PAYER_ID cannot be set while CLEARINGHOUSE_VENDOR=claimmd (Claim.MD routes only through CLAIMMD_M23_PAYER_ROUTES, and the variable refuses to boot): a tenant on Claim.MD needs a payer route, and a tenant on Stedi has no X12 payer id on this deployment, so its claims fail as a payer gap"
+        : "CLEARINGHOUSE_PAYER_ID is not set: tenant clearinghouse claims will fail as a payer gap until it names the X12 payer id of an active M40 payer",
     );
   }
   app.log.info({ ddeProvider: ddeBinding.vendor ?? "manual" }, "DDE access provider binding");
