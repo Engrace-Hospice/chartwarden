@@ -208,6 +208,7 @@ export {
   createDrizzlePatientSyncSnapshotResolver,
   describeM12AdapterPosture,
   describeM12EnvFallbackWarning,
+  describeM12PlatformFlagWarnings,
   describeM12DeferredQueues,
   registerM12CronWorkers,
   scheduleM12Jobs,

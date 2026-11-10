@@ -764,6 +764,7 @@ import {
   createWebhookBodyCipher,
   describeM12AdapterPosture,
   describeM12EnvFallbackWarning,
+  describeM12PlatformFlagWarnings,
   getDoseSpotNppesDirectory,
   getDoseSpotPhysicianDirectory,
   getDoseSpotPractitionerDirectory,
@@ -3894,6 +3895,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     resolver: m12TenantConfig,
     onBreakerEdge: (edge) => m12BreakerEdges.record(edge),
   });
+  // CW-AC-21 / CW-BA-01: the two flags that decide where prescriptions go are operating policy, not machine-checked. Said loudly, once per
+  // boot of every process role (the worker is the one that sends), before any server exists to log through.
+  for (const warning of describeM12PlatformFlagWarnings(process.env)) console.warn(`⚠️  ${warning}`);
   // M35 §5.2 platform-ops admin surface runs its cross-tenant reads/writes through a SEPARATE platform
   // credential — NOT the tenant `chartwarden_app` pool. The six PLATFORM-ONLY M35 tables
   // (revenue_recognition_snapshot, stripe_webhook_event, patient_pseudonym_key, stripe_api_call_audit,
@@ -7211,8 +7215,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   ),
                   readService: buildDrizzleM24ReadService(dbHandle.db),
                 }),
+                // shared by the tax-id write and the DoseSpot lane's post-commit steps (settle, alert): the error rides under `err`, the key
+                // the logger's PHI-safe serializer redacts, with nothing else bound but the org id
                 logError: (err, context) =>
-                  app.log.error({ err, ...context }, "tax-id encryption failed"),
+                  app.log.error(
+                    { err, ...context },
+                    "platform onboarding-data: a post-commit step failed (tax-id encryption, or the DoseSpot settle or alert)",
+                  ),
                 logAuditError: (err, context) =>
                   app.log.error(
                     { err, ...context },
