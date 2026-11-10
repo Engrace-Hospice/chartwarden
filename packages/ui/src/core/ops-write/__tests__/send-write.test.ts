@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { createApiClient } from "../../api/client";
 import { createIdempotencyKeeper } from "../idempotency";
-import { reachedNoOne, sendWrite, settleWrite, writeRefused } from "../send-write";
+import { isGatewayPage, reachedNoOne, sendWrite, settleWrite, writeRefused } from "../send-write";
 
 const counter = () => {
   let n = 0;
@@ -117,5 +117,37 @@ describe("sendWrite keeps one Idempotency-Key per user intent", () => {
     expect(reachedNoOne(answer(GATEWAY_5XX))).toBe(true);
     // The app's own 500 (it carries the envelope) WAS cached under the key.
     expect(reachedNoOne(answer(500, { error: { code: "PERSIST_FAILED" } }))).toBe(false);
+  });
+});
+
+describe("isGatewayPage (the one definition the API client's own Idempotency-Key middleware shares)", () => {
+  it("is a 5xx whose body is not the API error envelope", () => {
+    expect(isGatewayPage(GATEWAY_5XX, "<html>Bad gateway</html>")).toBe(true);
+    expect(isGatewayPage(GATEWAY_5XX, undefined)).toBe(true);
+    expect(isGatewayPage(503, null)).toBe(true);
+    expect(isGatewayPage(500, { error: {} })).toBe(true);
+    expect(isGatewayPage(500, { error: { code: 5 } })).toBe(true);
+    expect(isGatewayPage(500, { message: "busy" })).toBe(true);
+  });
+
+  it("is not a 5xx the app answered, nor any status below 500", () => {
+    expect(isGatewayPage(500, { error: { code: "PERSIST_FAILED" } })).toBe(false);
+    expect(isGatewayPage(409, undefined)).toBe(false);
+    expect(isGatewayPage(404, "<html>gone</html>")).toBe(false);
+    expect(isGatewayPage(200, undefined)).toBe(false);
+  });
+
+  it("agrees with reachedNoOne on an openapi-fetch shaped result", () => {
+    const result = (status: number, error?: unknown) => ({ error, response: { status } });
+    for (const [status, error] of [
+      [502, undefined],
+      [502, "<html/>"],
+      [500, { error: { code: "X" } }],
+      [409, { error: { code: "X" } }],
+      [404, undefined],
+    ] as const) {
+      expect(reachedNoOne(result(status, error))).toBe(isGatewayPage(status, error));
+    }
+    expect(reachedNoOne({})).toBe(false); // no response at all
   });
 });

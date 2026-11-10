@@ -1,9 +1,10 @@
 // @chartwarden/ui — typed REST API client (F0-T02, ADR-0032).
 // Wraps openapi-fetch over the generated `paths` (from docs/api/openapi.json via
 // `bun run client:gen`) and attaches the ChartWarden auth + correlation-id headers.
-// Leaf-safe: depends only on `openapi-fetch` + the generated schema — NO @chartwarden/* import,
-// so `packages/ui` stays a leaf and the frontend never compile-imports the backend.
+// Leaf-safe: depends only on `openapi-fetch`, the generated schema and the pure helpers beside it in this package (the Idempotency-Key
+// middleware) — NO @chartwarden/* import, so `packages/ui` stays a leaf and the frontend never compile-imports the backend.
 import createClient, { type Client, type ClientOptions, type Middleware } from "openapi-fetch";
+import { MUTATING_METHODS, createIdempotencyKeyMiddleware } from "./idempotency-middleware";
 import type { paths } from "./schema";
 
 /** The typed client: `client.GET("/api/v1/patients/{id}", { params: { path: { id } } })`. */
@@ -47,34 +48,6 @@ function defaultCorrelationId(): string | undefined {
     return crypto.randomUUID();
   return undefined;
 }
-
-/** Methods that mutate state — the ones the backend's `requireIdempotencyKey` guard can gate (TASK-020). */
-const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-/**
- * §4.1.1 — every mutating request carries an `Idempotency-Key` so a network-level retry replays
- * instead of double-executing. Routes that don't require the header ignore it harmlessly; routes that
- * do (`requireIdempotencyKey`, ADR-0032/TASK-020) are satisfied without every call site remembering to
- * set one by hand. A caller-supplied key (e.g. to make a deliberate retry share the original's key) is
- * never overwritten.
- *
- * `If-Match` (§7.7 optimistic concurrency) is NOT auto-generated here — the caller must read the row
- * version first, so it is passed explicitly per call via the typed `params.header["If-Match"]` option
- * openapi-fetch derives from the enrichment's `headers` (scripts/openapi/enrichments.ts).
- */
-const idempotencyKey: Middleware = {
-  onRequest({ request }) {
-    if (
-      MUTATING_METHODS.has(request.method) &&
-      !request.headers.has("Idempotency-Key") &&
-      typeof crypto !== "undefined" &&
-      typeof crypto.randomUUID === "function"
-    ) {
-      request.headers.set("Idempotency-Key", crypto.randomUUID());
-    }
-    return request;
-  },
-};
 
 /** Read a single cookie's value by name (browser only — SSR/tests without `document` read nothing). */
 function readCookie(name: string): string | undefined {
@@ -126,7 +99,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
   };
   client.use(headers);
-  client.use(idempotencyKey);
+  // §4.1.1 — every mutating request carries an `Idempotency-Key`, so a retry after a request that got no answer replays instead of
+  // double-executing, for every caller of this client with no per-screen code. The key is held per intent (method + URL + body): kept
+  // across a request that got no answer (and a gateway page that never reached the app), renewed by any real answer. A caller-supplied
+  // key (the kit's `sendWrite` / `useOpsWrite`) is never overwritten or tracked. Rules and bounds: ./idempotency-middleware.ts.
+  // `If-Match` (§7.7 optimistic concurrency) is NOT auto-generated — the caller must read the row version first, so it is passed
+  // explicitly per call via the typed `params.header["If-Match"]` option openapi-fetch derives from the enrichment's `headers`
+  // (scripts/openapi/enrichments.ts).
+  client.use(createIdempotencyKeyMiddleware());
   client.use(csrfToken);
   if (onResponseStatus) {
     client.use({

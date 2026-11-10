@@ -22,11 +22,20 @@ export function writeRefused(result: WriteResponse): boolean {
   return response.ok === false || response.status >= 400;
 }
 
-/** A gateway error page: a 5xx whose body is not the API's error envelope never reached the app, so nothing was cached under the key. */
-export function reachedNoOne(result: WriteResponse): boolean {
-  if (!writeRefused(result) || (result.response?.status ?? 0) < 500) return false;
-  const code = (result.error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
+/**
+ * A gateway error page: a 5xx whose body is not the API's error envelope (`{ error: { code: string } }`) never reached the app, so
+ * nothing was cached under the key. The ONE definition: `reachedNoOne` (an openapi-fetch result) and the API client's own
+ * Idempotency-Key middleware (a status plus the parsed body) both read it from here.
+ */
+export function isGatewayPage(status: number, body: unknown): boolean {
+  if (status < 500) return false;
+  const code = (body as { error?: { code?: unknown } } | null | undefined)?.error?.code;
   return typeof code !== "string";
+}
+
+/** `isGatewayPage` over an openapi-fetch result: a 5xx is always a refusal, so only the status and the error body are read. */
+export function reachedNoOne(result: WriteResponse): boolean {
+  return isGatewayPage(result.response?.status ?? 0, result.error);
 }
 
 export type SettledWrite<R extends WriteResponse> =

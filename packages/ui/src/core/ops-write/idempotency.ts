@@ -1,14 +1,16 @@
 // @chartwarden/ui core — one Idempotency-Key per attempt (§4.1.1).
 //
-// The API client mints a fresh key for every request that carries none, so a retry after a network failure is NOT a replay: the
-// server cannot tell it from a second write. The platform console's writes (a location, a credential, a contract) must not double
-// up, so an attempt holds ONE key:
+// A write must not double up when its reply is lost (a location, a credential, a contract), so an attempt holds ONE key:
 //   - the same body keeps the same key, so a retry replays instead of writing twice;
 //   - a changed body gets a new key (the same key with a different body is not safe);
 //   - once the server has ANSWERED, the next attempt starts on a new key. The server caches whatever it answered under the key,
 //     refusals included (a 403 STEP_UP_REQUIRED, a 409, a 422), so a retry on the same key after re-verifying would be handed the
 //     cached refusal and could never succeed. Only a request that got no answer at all (the network dropped it) retries on its key.
+// The keeper holds that rule for a screen that supplies its own key (a form or dialog, via `sendWrite` / `useOpsWrite`). The API client
+// applies the same rule on its own to every mutating request that carries no key (api/idempotency-middleware.ts), keyed by method + URL
+// + body; a request that supplies a key is never touched by it, so the two do not interfere.
 import { useRef } from "react";
+import { newIdempotencyKey } from "./idempotency-key";
 
 export interface IdempotencyKeeper {
   /** The key for an attempt with this body (JSON text or any stable fingerprint). */
@@ -17,13 +19,9 @@ export interface IdempotencyKeeper {
   settled(): void;
 }
 
-function randomKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
-    return crypto.randomUUID();
-  return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-export function createIdempotencyKeeper(newKey: () => string = randomKey): IdempotencyKeeper {
+export function createIdempotencyKeeper(
+  newKey: () => string = newIdempotencyKey,
+): IdempotencyKeeper {
   let current: { readonly fingerprint: string; readonly key: string } | null = null;
   return {
     keyFor(fingerprint) {
