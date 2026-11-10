@@ -3,13 +3,14 @@
 // approves here (fresh step-up, a reason), and only then does the tenant go active. The panel shows where it stands and offers
 // exactly what this operator can do in that state.
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { type JSX, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { GoLivePanel } from "./go-live-panel";
 import {
   ONBOARDING_OPERATOR,
   ORG_SLUG,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -76,10 +77,11 @@ function mount(
   view: WizardView,
   extra: Parameters<typeof stubClient>[0] = {},
   session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
+  at: Parameters<typeof renderAt>[0] = "/x",
 ) {
   const client = stubClient(extra);
   const ctx = panelCtx(view, "go_live_checklist_complete");
-  renderAt("/x", [{ path: "/x", element: <GoLivePanel ctx={ctx} /> }], client, session);
+  renderAt(at, [{ path: "/x", element: <GoLivePanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -248,41 +250,85 @@ describe("GoLivePanel: awaiting approval", () => {
     expect(client.POST.mock.calls[0]?.[0]).toBe(REVOKE);
   });
 
+  const approveWith = (reason = "Checked everything with the officer") => {
+    fireEvent.click(screen.getByRole("button", { name: "Approve go-live" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+  };
+
   it.each([
     ["GO_LIVE_SAME_PERSON", /different operator must approve/i],
     ["GO_LIVE_APPROVER_WROTE_BAA", /You recorded this tenant's BAA/],
-    ["ORGANIZATION_ACTIVATION_FAILED", /Approve again to retry/],
   ])("tells the operator what %s means", async (code, words) => {
     mount(ready(), { POST: { [APPROVE]: () => refused(409, code, "x") } });
-    fireEvent.click(screen.getByRole("button", { name: "Approve go-live" }));
-    fireEvent.change(screen.getByLabelText(/^Reason/), {
-      target: { value: "Checked everything with the officer" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    approveWith();
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText(words)).toBeTruthy();
   });
 
-  it("lists every guard that failed when approval is refused, and what is still open", async () => {
-    mount(ready(), {
+  // The server answers 503, not 409: the approval IS recorded, only opening the organization failed. The prompt stays so the operator
+  // can approve again (it only finishes the activation), and the reference is quoted because it is not their doing.
+  it("an organization that could not be opened (503 ORGANIZATION_ACTIVATION_FAILED) says approve again, quotes the reference and keeps the prompt", async () => {
+    const { ctx } = mount(ready(), {
+      POST: { [APPROVE]: () => refused(503, "ORGANIZATION_ACTIVATION_FAILED", "x") },
+    });
+    approveWith();
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText(/Approve again to retry/)).toBeTruthy();
+    expect(within(dialog).getByText(/Reference: corr-test/)).toBeTruthy();
+    expect(ctx.refresh).not.toHaveBeenCalled();
+  });
+
+  it("ACTIVATION_GUARDS_FAILED lists each failing guard and each step still open in plain words, never a raw key, and reloads the view", async () => {
+    const { ctx } = mount(ready(), {
       POST: {
         [APPROVE]: () =>
-          refused(409, "GO_LIVE_GUARDS_FAILED", "approval refused", [
-            {
-              field: "baaExecuted",
-              code: "GUARD_FAILED",
-              message: "the latest platform BAA must be executed",
-            },
-          ]),
+          refused(
+            409,
+            "ACTIVATION_GUARDS_FAILED",
+            "the tenant cannot go live yet: canonicalTasksComplete, baaExecuted not satisfied",
+            [
+              { field: "guard", code: "canonicalTasksComplete", message: "Required steps remain" },
+              { field: "templateKey", code: "locations_seeded", message: "Locations is pending" },
+              { field: "guard", code: "baaExecuted", message: "The BAA is not executed" },
+              { field: "guard", code: "aNewGuard", message: "A brand-new check does not pass" },
+            ],
+          ),
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Approve go-live" }));
-    fireEvent.change(screen.getByLabelText(/^Reason/), {
-      target: { value: "Checked everything with the officer" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    approveWith();
     const dialog = await screen.findByRole("dialog");
-    expect(await within(dialog).findByText(/approval refused/)).toBeTruthy();
+    expect(await within(dialog).findByText("Every required step is done or skipped")).toBeTruthy();
+    expect(within(dialog).getByText("Locations is pending")).toBeTruthy();
+    expect(within(dialog).getByText(/signed agreement filed for this tenant/)).toBeTruthy();
+    // a guard this screen has no words for is still listed (with the server's sentence), never dropped
+    expect(within(dialog).getByText("A brand-new check does not pass")).toBeTruthy();
+    expect(dialog.textContent).not.toMatch(/canonicalTasksComplete|baaExecuted/);
+    await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
+  });
+
+  it("a state-moved refusal (GO_LIVE_NOT_ATTESTED) closes the prompt, reloads the view and is read on the page", async () => {
+    const { ctx } = mount(ready(), {
+      POST: { [APPROVE]: () => refused(409, "GO_LIVE_NOT_ATTESTED", "x") },
+    });
+    approveWith();
+    expect(await screen.findByText(/has not attested readiness yet/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
+  });
+
+  it("keeps the reason typed in the approve prompt through a Re-verify and reopens it on the return", async () => {
+    const typed = "Checked the BAA and the officer's attestation";
+    mount(ready(), { POST: { [APPROVE]: () => refused(403, "STEP_UP_REQUIRED", "x") } });
+    approveWith(typed);
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    expect(await screen.findByText("step-up page")).toBeTruthy();
+    expect(JSON.stringify({ ...window.sessionStorage })).not.toContain(typed);
+    cleanup();
+
+    mount(ready(), {}, ONBOARDING_OPERATOR, RETURNED_FROM_STEP_UP);
+    expect(((await screen.findByLabelText(/^Reason/)) as HTMLTextAreaElement).value).toBe(typed);
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
   });
 
   it("an expired attestation can only be revoked", () => {

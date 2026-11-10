@@ -4,6 +4,7 @@
 import {
   Button,
   InlineAlert,
+  type OpsFailure,
   REASON_RULES,
   ReasonDialog,
   StatusPill,
@@ -20,7 +21,9 @@ import { AttestCard, attestDraftKey } from "./attest-card";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { RecordSaveDialog } from "./record-save-dialog";
+import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
+import { viewHasMoved } from "./wizard-errors";
 import { OWNER_LABEL, isSystemSkip } from "./wizard-model";
 
 const STEP_TONE: Record<string, StatusTone> = {
@@ -117,6 +120,11 @@ export function StepFrame({
   // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
   const typedReason = useRef(decideDraft?.reason ?? "");
   const write = useOpsWrite();
+  // A refusal that says the step moved under the operator (settled elsewhere, tenant no longer onboarding): the view is read again and
+  // the refusal is read on the page, where the prompt or card that met it used to be.
+  const [moved, setMoved] = useState<OpsFailure | null>(null);
+  // "Mark done with evidence" goes while its card is open: focus moves into the card and comes back to that button when it closes.
+  const attestHeading = useEditorFocus(attesting && actions.canAttest && !settledByPanel, "attest");
 
   /** The props a skip / re-open prompt shares: the typed reason survives a Re-verify, and is dropped with the prompt. */
   const reasonKeeping = (kind: "skip" | "reopen") => ({
@@ -130,8 +138,10 @@ export function StepFrame({
         reason: typedReason.current,
       }),
   });
-  const closeDialog = (): void => {
+  /** Closes the prompt and drops a refusal it had not shown the operator yet, unless `keepFailure` (the step moved: read it on the page). */
+  const closeDialog = (keepFailure = false): void => {
     typedReason.current = "";
+    if (!keepFailure) write.clear();
     setDialog(null);
   };
 
@@ -153,6 +163,9 @@ export function StepFrame({
     );
     if (outcome.ok) {
       closeDialog();
+      await ctx.refresh();
+    } else if (viewHasMoved(outcome.failure)) {
+      closeDialog(true);
       await ctx.refresh();
     }
   }
@@ -188,8 +201,19 @@ export function StepFrame({
 
       <EvidenceCard ctx={ctx} />
 
-      {attesting ? <AttestCard ctx={ctx} onCancel={() => setAttesting(false)} /> : null}
+      {attesting ? (
+        <AttestCard
+          ctx={ctx}
+          headingRef={attestHeading}
+          onCancel={() => setAttesting(false)}
+          onMoved={(refusal) => {
+            setAttesting(false);
+            setMoved(refusal);
+          }}
+        />
+      ) : null}
 
+      {moved && !attesting ? <FailureNotice failure={moved} orgSlug={orgSlug} /> : null}
       {failure && !dialog ? <FailureNotice failure={failure} orgSlug={orgSlug} /> : null}
       {actions.reopenBlockedBy === "go_live_pending" ? (
         <InlineAlert tone="info">
@@ -200,13 +224,22 @@ export function StepFrame({
 
       <div className="wx-drawer-actions">
         {actions.canAttest && !settledByPanel && !attesting ? (
-          <Button onClick={() => setAttesting(true)}>Mark done with evidence</Button>
+          <Button
+            data-editor-return="attest"
+            onClick={() => {
+              setMoved(null);
+              setAttesting(true);
+            }}
+          >
+            Mark done with evidence
+          </Button>
         ) : null}
         {actions.canSkip ? (
           <Button
             tone="secondary"
             onClick={() => {
               write.clear();
+              setMoved(null);
               setDialog("skip");
             }}
           >
@@ -218,6 +251,7 @@ export function StepFrame({
             tone="secondary"
             onClick={() => {
               write.clear();
+              setMoved(null);
               setDialog("reopen");
             }}
           >
@@ -236,7 +270,7 @@ export function StepFrame({
         orgSlug={orgSlug}
         {...reasonKeeping("skip")}
         onConfirm={(reason) => void decide("skip", reason)}
-        onCancel={closeDialog}
+        onCancel={() => closeDialog()}
       />
       <RecordSaveDialog
         open={dialog === "reopen"}
@@ -248,7 +282,7 @@ export function StepFrame({
         orgSlug={orgSlug}
         {...reasonKeeping("reopen")}
         onConfirm={(reason) => void decide("reopen", reason)}
-        onCancel={closeDialog}
+        onCancel={() => closeDialog()}
       />
     </div>
   );
