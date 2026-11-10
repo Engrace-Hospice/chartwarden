@@ -1,11 +1,12 @@
 // Slice 2 (tenant pricing) — the shipped platform audit mapping cannot be overwritten by its own detail, and a plan write that returns no row
 // is a typed 500 (PERSIST_FAILED), never a bare Error the error envelope would not recognise.
+import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
-import type { DbClient } from "@chartwarden/db";
 import { buildContractService } from "../pricing/contract-service";
 import { buildPricingPlanService } from "../pricing/plan-service";
 import { type PlatformAuditRow, buildPlatformAuditPort } from "../pricing/ports";
+import type { PlatformAuditEntry } from "../pricing/ports";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
 
 describe("buildPlatformAuditPort: the context keeps the operator, the tenant and the reason a detail field would like to rewrite", () => {
@@ -240,5 +241,129 @@ describe("a select-then-insert race surfaces as a 409, not a raw unique violatio
       .catch((e) => e);
     expect(error).toBeInstanceOf(ChartWardenError);
     expect(error).toMatchObject({ code: "SUBSCRIPTION_EXISTS", statusCode: 409 });
+  });
+});
+
+describe("a price change is auditable: the structured audit row names the operator AND the figures", () => {
+  const actor = {
+    organizationId: "o",
+    userId: "user-1",
+    roles: [],
+    membershipId: "membership-1",
+    stepUpRecent: true,
+  };
+  const reason = "a reason long enough";
+  const row = (perUserPriceCents: number) => ({
+    id: "p1",
+    tier: "census_banded",
+    slug: "fam-v1",
+    familySlug: "fam",
+    version: 1,
+    name: "Plan",
+    description: null,
+    currencyCode: "USD",
+    basePriceCents: 100,
+    isActive: false,
+    publishedAt: null,
+    deprecatedAt: null,
+    supersedesPlanId: null,
+    perUserPriceCents,
+    billingSoftwareBps: 100,
+    managedBillingBps: 400,
+    contractTermMonths: 12,
+    implementationFeeCents: 5000,
+    minimumMonthlyCents: null,
+    createdAt: new Date("2026-11-01T00:00:00Z"),
+    updatedAt: new Date("2026-11-01T00:00:00Z"),
+  });
+  const bands = [
+    { minAdc: 0, monthlyFeeCents: 100_000 },
+    { minAdc: 10, monthlyFeeCents: 200_000 },
+  ];
+
+  /** replaceDraft / publish over a transaction whose update returns `after`; the audit rows are captured. */
+  function run(action: "draft_updated" | "published", before: object, after: object) {
+    const audited: PlatformAuditEntry[] = [];
+    const queue: unknown[][] = action === "published" ? [[before], bands] : [[before]];
+    const chain = (rows: unknown[]): unknown => {
+      const proxy: unknown = new Proxy(() => undefined, {
+        get: (_t, prop) =>
+          prop === "then" ? (resolve: (v: unknown) => void) => resolve(rows) : () => proxy,
+        apply: () => proxy,
+      });
+      return proxy;
+    };
+    const tx = {
+      select: () => chain(queue.shift() ?? []),
+      insert: () => chain([]),
+      update: () => chain([after]),
+      delete: () => chain([]),
+    } as unknown as WriteTx;
+    const service = buildPricingPlanService({
+      platformRunner: (fn) => fn(tx),
+      audit: { record: async (_tx, entry) => void audited.push(entry) },
+    });
+    const done =
+      action === "published"
+        ? service.publish(actor, "p1", reason)
+        : service.replaceDraft(
+            actor,
+            "p1",
+            {
+              name: "Plan",
+              perUserPriceCents: (after as { perUserPriceCents: number }).perUserPriceCents,
+              bands,
+              billingSoftwareBps: 100,
+              managedBillingBps: 400,
+              contractTermMonths: 12,
+              implementationFeeCents: 5000,
+              minimumMonthlyCents: null,
+            },
+            reason,
+          );
+    return done.then(() => audited);
+  }
+
+  it("m35.plan.draft_updated carries the new figures, the band table and a digest of them", async () => {
+    const [entry] = await run("draft_updated", row(1000), row(1250));
+    expect(entry).toMatchObject({
+      eventType: "m35.plan.draft_updated",
+      operator: { userId: "user-1", membershipId: "membership-1" },
+    });
+    expect(entry?.detail).toMatchObject({
+      planSlug: "fam-v1",
+      version: 1,
+      currencyCode: "USD",
+      perUserPriceCents: 1250,
+      billingSoftwareBps: 100,
+      managedBillingBps: 400,
+      contractTermMonths: 12,
+      implementationFeeCents: 5000,
+      minimumMonthlyCents: null,
+      bands: "0:100000,10:200000",
+    });
+    expect(entry?.detail?.figuresSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("m35.plan.published carries them too, and the digest moves with any figure", async () => {
+    const [draftUpdated] = await run("draft_updated", row(1000), row(1250));
+    const [published] = await run("published", row(1250), {
+      ...row(1250),
+      publishedAt: new Date("2026-11-02T00:00:00Z"),
+      isActive: true,
+    });
+    const [other] = await run("published", row(1300), {
+      ...row(1300),
+      publishedAt: new Date("2026-11-02T00:00:00Z"),
+      isActive: true,
+    });
+    expect(published?.eventType).toBe("m35.plan.published");
+    expect(published?.detail).toMatchObject({
+      perUserPriceCents: 1250,
+      bands: "0:100000,10:200000",
+    });
+    // the same figures hash the same wherever they are recorded; a different price is a different digest
+    expect(published?.detail?.figuresSha256).toBe(draftUpdated?.detail?.figuresSha256);
+    expect(other?.detail?.figuresSha256).not.toBe(published?.detail?.figuresSha256);
   });
 });

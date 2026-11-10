@@ -615,6 +615,19 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         operatorMembershipId: OPERATOR_MEMBERSHIP,
       });
       expect(rows.some((r) => r.context.reason === "superseded by v2")).toBe(true);
+      // who set this price, and to what: the figures and their digest ride the same row as the operator (F-5)
+      const priced = rows.filter((r) =>
+        ["m35.plan.draft_updated", "m35.plan.published"].includes(r.event_type),
+      );
+      expect(priced.length).toBeGreaterThan(0);
+      for (const r of priced) {
+        expect(r.context).toMatchObject({
+          operatorMembershipId: OPERATOR_MEMBERSHIP,
+          figuresSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          perUserPriceCents: expect.any(Number),
+          bands: expect.stringMatching(/^\d+:\d+(,\d+:\d+)*$/),
+        });
+      }
     });
 
     it("the app role (a tenant) writes none of the pricing tables", async () => {

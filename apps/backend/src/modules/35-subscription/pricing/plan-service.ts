@@ -11,6 +11,7 @@
 // Every write runs on the platform runner, validates with the same pure rules the math uses, takes the operator and a reason, and
 // writes one structured audit row beside the row-level audit trigger. The legacy flat-tier routes (`/api/admin/plans`) cannot create
 // or publish a census_banded plan, so none of these rules can be bypassed through them.
+import { createHash } from "node:crypto";
 import { schema } from "@chartwarden/db";
 import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import {
@@ -211,6 +212,30 @@ function planText(input: PlanPricingInput): { name: string; description: string 
   };
 }
 
+/**
+ * The prices a plan row carries, as flat audit-detail fields, with a SHA-256 over them (prices are not PHI). The row-level audit trigger
+ * holds the before and after of the plan row but not who changed it (the platform transaction sets no user), and the structured audit
+ * row used to hold only the plan's slug and version: so "who set this price, and to what" was not answerable from either. Now this
+ * row names the operator AND the figures, and the digest joins it to a row-trigger diff or an invoice query without comparing columns.
+ */
+export function planFiguresDetail(plan: PricingPlanView): Record<string, string | number | null> {
+  const figures = {
+    currencyCode: plan.currencyCode,
+    perUserPriceCents: plan.perUserPriceCents,
+    billingSoftwareBps: plan.billingSoftwareBps,
+    managedBillingBps: plan.managedBillingBps,
+    minimumMonthlyCents: plan.minimumMonthlyCents,
+    contractTermMonths: plan.contractTermMonths,
+    implementationFeeCents: plan.implementationFeeCents,
+    // `minAdc:monthlyFeeCents`, lowest band first
+    bands: plan.bands.map((b) => `${b.minAdc}:${b.monthlyFeeCents}`).join(","),
+  };
+  return {
+    ...figures,
+    figuresSha256: createHash("sha256").update(JSON.stringify(figures)).digest("hex"),
+  };
+}
+
 /** The cheapest band's fee: the plan's "from" price, kept in the legacy `base_price_cents` so the MRR snapshot and plan lists read a floor. */
 const floorPriceCents = (bands: readonly CensusBand[]): number =>
   [...bands].sort((a, b) => a.minAdc - b.minAdc)[0]?.monthlyFeeCents ?? 0;
@@ -224,7 +249,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
     tx: WriteTx,
     actor: M35WriteActor,
     eventType: string,
-    plan: Pick<PricingPlanView, "id" | "slug" | "version">,
+    plan: PricingPlanView,
     reason: string,
   ): Promise<void> {
     await audit().record(tx, {
@@ -234,7 +259,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
       organizationId: null,
       operator: { userId: actor.userId, membershipId: actor.membershipId },
       reason,
-      detail: { planSlug: plan.slug, version: plan.version },
+      detail: { planSlug: plan.slug, version: plan.version, ...planFiguresDetail(plan) },
     });
   }
 
