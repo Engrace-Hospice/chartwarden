@@ -32,10 +32,12 @@
 // does not match.
 //
 // BLOCKED. The newest pause cannot be resumed while an OLDER subscription of the organization is live (one live per organization). It then
-// stays `paused`, so it is reported to operators (log and `onPauseBlocked`, the ops alert sink) once a day per subscription until an
-// operator cancels or pauses the older one; the next tick resumes it. The two resume routes refuse the same state with a typed 409.
+// stays `paused`, so it is reported to operators (log and `onPauseBlocked`, the ops alert sink: billing-runtime/pause-blocked-report.ts,
+// shared with the org-lifecycle consumer) once a day per subscription until an operator cancels or pauses the older one; the next tick
+// resumes it. The two resume routes refuse the same state with a typed 409.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { isPauseLapsed, pauseLapsed } from "../pricing/contract-select";
 import { PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
@@ -46,78 +48,37 @@ import {
 } from "../routes/current-subscription";
 import { resumedColumns, resumedEventIntent, resumedLedgerRow } from "../routes/resume-transition";
 import { type M35JobDeps, runM35Fanout } from "./jobs";
+import { forgetBlocked, forgetBlockedOutside, reportBlockedPause } from "./pause-blocked-report";
 
 const S = schema.subscriptionRow;
 const SH = schema.subscriptionStateHistory;
 
 /** How long a lapsed pause's row lock may be waited for before that org's run fails (it retries next hour; the other orgs continue). */
-const LOCK_TIMEOUT_MS = 5_000;
-/** A blocked pause is reported to operators again after this long (not every hour). */
-const BLOCKED_REPORT_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
+export const LOCK_TIMEOUT_MS = 5_000;
 export interface PauseResumeDeps extends M35JobDeps {
-  /** Overrides the row-lock wait (LOCK_TIMEOUT_MS): tests only. */
+  /** Overrides the row-lock wait (LOCK_TIMEOUT_MS): tests only. A positive whole number of milliseconds (see {@link lockTimeoutOf}). */
   readonly lockTimeoutMs?: number;
+}
+
+/**
+ * The row-lock wait this run uses. An override must be a positive whole number of milliseconds: PostgreSQL reads 0 as "no timeout", which
+ * would let one stuck holder stall the whole sweep, so a bad value fails the run closed (before anything is opened) instead of widening it.
+ */
+function lockTimeoutOf(deps: Pick<PauseResumeDeps, "lockTimeoutMs">): number {
+  const override = deps.lockTimeoutMs;
+  if (override === undefined) return LOCK_TIMEOUT_MS;
+  if (!Number.isInteger(override) || override <= 0) {
+    throw new ChartWardenError(
+      "PAUSE_RESUME_LOCK_TIMEOUT_INVALID",
+      "the pause-resume lock timeout must be a positive whole number of milliseconds (0 would disable it)",
+      500,
+    );
+  }
+  return override;
 }
 
 /** `paused` with an end date that has passed at `now`: the ONE lapse predicate (contract-select.ts), plus the row's status. */
 const lapsedPause = (now: Date) => and(eq(S.status, "paused"), pauseLapsed(now));
-
-/**
- * The blocked pauses this process has reported, by subscription id: reported again only after a day, and forgotten as soon as the
- * subscription is no longer blocked (resumed, moved by another writer, no longer the organization's newest), so being blocked AGAIN is
- * reported at once. In memory: a restart reports it again, which is the right direction to err in.
- */
-const blockedReports = new Map<string, { readonly organizationId: string; readonly at: number }>();
-
-/** Forget the reports of every organization the sweep did not list (suspended, closed: it never visits them again to clear them). */
-function forgetBlockedOutside(visited: ReadonlySet<string>): void {
-  for (const [id, report] of blockedReports) {
-    if (!visited.has(report.organizationId)) blockedReports.delete(id);
-  }
-}
-
-function forgetBlocked(organizationId: string, keepSubscriptionId?: string): void {
-  for (const [id, report] of blockedReports) {
-    if (report.organizationId === organizationId && id !== keepSubscriptionId) {
-      blockedReports.delete(id);
-    }
-  }
-}
-
-/**
- * The newest pause cannot be resumed while an OLDER subscription of the organization is live (resuming would break one-live-per-org). It
- * stays `paused` (and the claims-billing entitlement denies it) until someone acts, so it must not depend on someone reading a log line:
- * once per day per subscription it is logged AND raised through `onPauseBlocked` (the composition root binds the ops alert sink; ids only).
- * The operator cancels or pauses the older subscription by id and the next tick resumes this one.
- */
-function reportBlocked(
-  deps: M35JobDeps,
-  blocked: { organizationId: string; subscriptionId: string; olderLiveSubscriptionId: string },
-  now: Date,
-): void {
-  forgetBlocked(blocked.organizationId, blocked.subscriptionId);
-  const last = blockedReports.get(blocked.subscriptionId);
-  if (last && now.getTime() - last.at < BLOCKED_REPORT_INTERVAL_MS) return;
-  blockedReports.set(blocked.subscriptionId, {
-    organizationId: blocked.organizationId,
-    at: now.getTime(),
-  });
-  deps.log?.("m35 lapsed pause not resumed: an older subscription of the organization is live", {
-    organizationId: blocked.organizationId,
-    subscriptionId: blocked.subscriptionId,
-  });
-  try {
-    deps.onPauseBlocked?.(blocked);
-  } catch (err) {
-    // an alert sink that fails must not fail the org's run (it has committed) or hide the next org: logged, under `err` (the PHI-safe key)
-    deps.log?.("m35 blocked-pause alert failed", {
-      organizationId: blocked.organizationId,
-      subscriptionId: blocked.subscriptionId,
-      err,
-    });
-  }
-}
 
 type Outcome =
   | { readonly kind: "none" }
@@ -145,6 +106,7 @@ export async function runPauseResumeForOrg(
   organizationId: string,
 ): Promise<number> {
   const now = (deps.now ?? (() => new Date()))();
+  const lockTimeoutMs = lockTimeoutOf(deps);
   const outcome = await withOrgContext(
     deps.db,
     { organizationId, userId: "" },
@@ -153,7 +115,7 @@ export async function runPauseResumeForOrg(
       const peeked = await selectNewestSubscription(tx, organizationId);
       if (!peeked || !isPauseLapsed(peeked, now)) return { kind: "none" };
       await tx.execute(
-        sql`SELECT set_config('lock_timeout', ${String(deps.lockTimeoutMs ?? LOCK_TIMEOUT_MS)}, true)`,
+        sql`SELECT set_config('lock_timeout', ${String(lockTimeoutMs)}, true)`,
       );
       const sub = await lockNewestSubscription(tx, organizationId);
       if (!sub || !isPauseLapsed(sub, now)) return { kind: "none" };
@@ -179,12 +141,13 @@ export async function runPauseResumeForOrg(
     },
   );
   if (outcome.kind === "blocked") {
-    reportBlocked(
+    reportBlockedPause(
       deps,
       {
         organizationId,
         subscriptionId: outcome.subscriptionId,
         olderLiveSubscriptionId: outcome.olderLiveSubscriptionId,
+        trigger: "lapsed_pause",
       },
       now,
     );
