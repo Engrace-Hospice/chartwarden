@@ -388,3 +388,51 @@ describe("a directory change the guard cannot model leaves the directory unknown
     expect(d("\\tee scripts/harness/x < /tmp/in")).toBe("ask");
   });
 });
+
+// A bare file name is a secret only when a file of that name exists where the command runs, so `cat server.key` is
+// judged against the files that are there. That test ran against the START directory only: after a `cd` into the
+// directory that holds the key, `cat server.key` found nothing and was allowed.
+describe("a secret file is found in the directory a cd left the command in", () => {
+  const FILES = new Set([
+    `${ROOT}/deploy/production/tls/server.key`,
+    `${ROOT}/apps/backend/id_rsa`,
+    `${ROOT}/apps/backend/package.json`,
+  ]);
+  const onDisk = {
+    root: ROOT,
+    home: HOME,
+    cwd: ROOT,
+    exists: (p: string) => FILES.has(p.startsWith("/") ? p : `${ROOT}/${p}`),
+  };
+
+  it.each([
+    "cd deploy/production/tls && cat server.key",
+    "cd deploy/production/tls; cat server.key",
+    "(cd deploy/production/tls && cat server.key)",
+    "cd deploy && cd production && cd tls && cat server.key",
+    "cd deploy/production/tls || true; cat server.key",
+    "cd apps/backend && cat id_rsa",
+    "cd apps/backend && head -1 id_rsa",
+    "cd deploy/production/tls && base64 server.key",
+    "cd deploy/production/tls && xxd server.key",
+    "cd deploy/production/tls && cp server.key /tmp/k",
+    "cd deploy/production/tls && grep -n BEGIN server.key",
+    "cd deploy/production/tls && cat < server.key",
+    'cd "$KEYDIR" && cat server.key',
+    "cd $(dirname $KEY) && cat server.key",
+  ])("denies %s", (cmd) => expect(d(cmd, onDisk)).toBe("deny"));
+
+  it.each([
+    "cat server.key",
+    "cd apps/web && cat server.key",
+    "cd deploy/production/tls && ls",
+    "cd deploy/production/tls; ls -la",
+    "cd apps/backend && cat package.json",
+    "cd apps/backend; cat package.json",
+    "cd apps/backend && grep -rn 'server.key' src",
+    'cd "$KEYDIR" && cat package.json',
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd, onDisk);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});

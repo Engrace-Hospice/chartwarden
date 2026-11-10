@@ -206,6 +206,51 @@ describe("finding 9: cwd and repo root are compared as real paths, not as text",
   });
 });
 
+// A bare name such as `server.key` is a secret when a file of that name exists where the command runs; the guard
+// asks the filesystem, so after a `cd` it must ask in the directory the `cd` leads to, not only the starting one.
+describe("a key file is refused in the directory a cd leads to, from both agents", () => {
+  const root = repo();
+  put(root, "apps/backend/id_rsa", "x");
+  const bash = (command: string, workdir?: string) => ({
+    claude: claude(root, { tool_name: "Bash", tool_input: { command } }),
+    codex: codex(root, { tool_name: "Bash", tool_input: { command, workdir } }),
+  });
+
+  it.each([
+    "cd deploy/production/tls && cat server.key",
+    "cd deploy/production/tls; base64 server.key",
+    "(cd deploy/production/tls && xxd server.key)",
+    "cd apps/backend && cat id_rsa",
+  ])("denies `%s`", (command) => {
+    const r = bash(command);
+    expect(decision(r.claude), command).toBe("deny");
+    expect(decision(r.codex), command).toBe("deny");
+  });
+
+  it("denies the same read from a Codex workdir, where the start directory is the workdir", () => {
+    const r = codex(root, {
+      tool_name: "Bash",
+      tool_input: { command: "cd production/tls && cat server.key", workdir: "deploy" },
+    });
+    expect(decision(r)).toBe("deny");
+    const here = codex(root, {
+      tool_name: "Bash",
+      tool_input: { command: "cat server.key", workdir: "deploy/production/tls" },
+    });
+    expect(decision(here)).toBe("deny");
+  });
+
+  it.each([
+    "cd apps/backend && cat package.json",
+    "cd apps/web && cat server.key",
+    "cd deploy/production/tls && ls",
+  ])("allows the everyday `%s`", (command) => {
+    const r = bash(command);
+    expect(decision(r.claude), command).toBeUndefined();
+    expect(decision(r.codex), command).toBeUndefined();
+  });
+});
+
 describe("finding 10: MCP strings are judged exactly as an apply_patch path is", () => {
   const root = repo();
   const mcp = (input: Record<string, unknown>) =>

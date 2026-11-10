@@ -2066,6 +2066,33 @@ function nestedAgentVerdict(
   return null;
 }
 
+/**
+ * Does the bare word name a file in any directory the command may be running in? `cd deploy/production/tls &&
+ * cat server.key` reads a key the start directory does not hold, so each candidate is asked, not only the first.
+ * A directory the guard cannot resolve counts as a hit for a program that reads files: a key-looking name there
+ * is not worth the doubt.
+ */
+function namesFileIn(
+  word: string,
+  dirs: readonly Cwd[],
+  ctx: BashContext,
+  readsFiles: boolean,
+): boolean {
+  if (ctx.exists?.(word)) return true;
+  const root = ctx.root ? trimSlashes(ctx.root) : "";
+  for (const dir of dirs) {
+    if (dir === null) {
+      if (readsFiles) return true;
+      continue;
+    }
+    const rel = resolvePath(word, dir, ctx);
+    if (rel === null) continue;
+    const abs = rel.startsWith("/") ? rel : rel.startsWith("~") ? null : `${root}/${rel}`;
+    if (abs !== null && root && (ctx.exists?.(abs) ?? false)) return true;
+  }
+  return false;
+}
+
 // A secret file named by something the guard cannot evaluate: `cat $(printf '.%s' env)`.
 const FILE_READER =
   /^(cat|head|tail|less|more|sed|awk|gawk|grep|egrep|fgrep|base64|xxd|od|strings|tac|nl|bat|hexdump|cut|sort|diff)$/;
@@ -2385,11 +2412,15 @@ function classifySegment(
           `\`${echo(t)}\` expands onto a live secret file (.env, key material). Name the file you need, and not a secret one.`,
         );
       }
-      const byName = SECRET_BY_NAME.test(t);
-      const pathLike = t.includes("/") || (ctx.exists?.(t) ?? false);
-      if (!byName && !pathLike) continue;
       const why = secretPathReason(t);
-      if (why) {
+      if (!why) continue;
+      // A bare word is a file only if one of that name exists where the command runs; a path or a `.env` name is
+      // judged as written.
+      const pathLike =
+        SECRET_BY_NAME.test(t) ||
+        t.includes("/") ||
+        namesFileIn(t, here, ctx, FILE_READER.test(prog));
+      if (pathLike) {
         return deny(
           `\`${echo(t)}\` is ${why}. Agents do not read secrets or dumps; use .env.example for shape, and ask the human for any value you truly need.`,
         );
