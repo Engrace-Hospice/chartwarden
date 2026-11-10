@@ -1131,7 +1131,9 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashV
     scriptOnStdin ||= readsScriptFromStdin(parsed, index);
     seq = nextDir(seq, parsed.prog, parsed.args, ctx);
     const moved = nextDirs(here, parsed.prog, parsed.args, ctx);
-    after = moved ?? here;
+    // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
+    // that follows `||` the next `&&` command may be in the old directory as well as in X.
+    after = moved ? (part.joiner === "||" ? joinDirs(here, moved) : moved) : here;
     if (moved) anywhere = joinDirs(anywhere, moved);
   });
   // `$( … )` and backticks run wherever the command around them runs.
