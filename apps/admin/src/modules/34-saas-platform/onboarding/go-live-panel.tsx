@@ -9,24 +9,25 @@ import {
   InlineAlert,
   REASON_RULES,
   UnstyledList,
+  stashStepUpMemoryDraft,
   useApiClient,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
 import { useOpsWrite } from "./use-ops-write";
+import { guardLabel, viewHasMoved } from "./wizard-errors";
 import { GO_LIVE_STEP_KEY, type WizardStep } from "./wizard-model";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const GUARD_COPY: Readonly<Record<string, string>> = {
-  canonicalTasksComplete: "Every required step is done or skipped",
-  baaExecuted: "The latest BAA is executed, with the signed agreement filed for this tenant",
-  baaExpiryClearsNinetyDays: "The executed BAA has more than 90 days left",
-};
+/** The refusal that lists what still fails: the dialog stays open on it (nothing moved, the operator reads the list). */
+const GUARDS_FAILED_CODE = "ACTIVATION_GUARDS_FAILED";
 
 const isSettled = (s: WizardStep): boolean => s.status === "done" || s.status === "skipped";
 const stepHref = (orgSlug: string, key: string): string =>
@@ -34,11 +35,25 @@ const stepHref = (orgSlug: string, key: string): string =>
 
 type Dialog = "approve" | "revoke" | null;
 
+/** What a Re-verify keeps of the approve / revoke prompt: which one was open and the reason typed in it (free text: memory only). */
+interface DecideDraft {
+  readonly dialog: "approve" | "revoke";
+  readonly reason: string;
+}
+const decideDraftKey = (orgSlug: string): string => `wizard:${orgSlug}:go-live:decide`;
+
 export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const client = useApiClient();
   const { orgSlug, view } = ctx;
   const { goLive } = view;
-  const [dialog, setDialog] = useState<Dialog>(null);
+  // Back from Re-verify the prompt reopens with the reason that was typed (only while the attestation is still there to decide on).
+  const restored = useStepUpMemoryDraft<DecideDraft>(decideDraftKey(orgSlug));
+  const [dialog, setDialog] = useState<Dialog>(
+    restored && goLive.state === "awaiting_approval" ? restored.dialog : null,
+  );
+  const [seedReason, setSeedReason] = useState(restored?.reason ?? "");
+  // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
+  const typedReason = useRef(restored?.reason ?? "");
   // The outcome banner belongs to the state its action leads to (and the one it was written in, until the wizard reloads): any other
   // state, e.g. the officer attesting again after a revoke, is a new situation and does not inherit it.
   const [done, setDone] = useState<{
@@ -69,7 +84,29 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     goLive.state === "awaiting_approval" && expiresAt !== null && expiresAt <= Date.now();
   const daysLeft =
     expiresAt === null ? null : Math.max(Math.ceil((expiresAt - Date.now()) / DAY_MS), 0);
-  const failing = goLive.failedGuards.filter((g) => g in GUARD_COPY);
+  const failing = goLive.failedGuards;
+
+  /** The props an approve / revoke prompt shares: the typed reason survives a Re-verify, and is dropped with the prompt. */
+  const reasonKeeping = (kind: "approve" | "revoke") => ({
+    ...(restored?.dialog === kind && seedReason !== "" ? { initialReason: seedReason } : {}),
+    onReasonChange: (reason: string) => {
+      typedReason.current = reason;
+    },
+    onReverify: () =>
+      stashStepUpMemoryDraft<DecideDraft>(decideDraftKey(orgSlug), {
+        dialog: kind,
+        reason: typedReason.current,
+      }),
+  });
+  const closePrompt = (): void => {
+    typedReason.current = "";
+    setSeedReason("");
+    setDialog(null);
+  };
+  const cancelPrompt = (): void => {
+    write.clear();
+    closePrompt();
+  };
 
   async function decide(kind: "approve" | "revoke", reason: string): Promise<void> {
     const body = { reason };
@@ -87,7 +124,7 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           }),
     );
     if (outcome.ok) {
-      setDialog(null);
+      closePrompt();
       setDone(
         kind === "approve"
           ? {
@@ -103,6 +140,11 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               left: false,
             },
       );
+      await ctx.refresh();
+    } else if (viewHasMoved(outcome.failure)) {
+      // The state the operator decided in has changed (the attestation is gone, stale or expired, the tenant moved on): the view is read
+      // again. The prompt closes, except on a guard list, which is read where it was shown; the refusal is read on the page.
+      if (outcome.failure.code !== GUARDS_FAILED_CODE) closePrompt();
       await ctx.refresh();
     }
   }
@@ -125,7 +167,7 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     },
     ...failing.map((g) => ({
       key: g,
-      label: GUARD_COPY[g] as string,
+      label: guardLabel(g),
       state: "blocked" as const,
     })),
   ];
@@ -185,8 +227,8 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               </InlineAlert>
             ) : null}
             <InlineAlert tone="info">
-              A different operator approves than the one who recorded the BAA. Approving re-checks
-              every activation guard and opens the tenant's organization.
+              A different operator approves than the one who recorded or uploaded the BAA. Approving
+              re-checks every activation guard and opens the tenant's organization.
             </InlineAlert>
             {mayDecide ? (
               <div className="wx-drawer-actions">
@@ -232,6 +274,10 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           </>
         ) : null}
 
+        {write.failure && dialog === null ? (
+          <FailureNotice failure={write.failure} orgSlug={orgSlug} />
+        ) : null}
+
         {done && (goLive.state === done.to || (goLive.state === done.from && !done.left)) ? (
           <div ref={outcome} tabIndex={-1}>
             <InlineAlert tone="success">{done.message}</InlineAlert>
@@ -247,8 +293,9 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Approve"
         write={write}
         orgSlug={orgSlug}
+        {...reasonKeeping("approve")}
         onConfirm={(reason) => void decide("approve", reason)}
-        onCancel={() => setDialog(null)}
+        onCancel={cancelPrompt}
       />
       <RecordSaveDialog
         open={dialog === "revoke"}
@@ -259,8 +306,9 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Revoke"
         write={write}
         orgSlug={orgSlug}
+        {...reasonKeeping("revoke")}
         onConfirm={(reason) => void decide("revoke", reason)}
-        onCancel={() => setDialog(null)}
+        onCancel={cancelPrompt}
       />
     </StepFrame>
   );

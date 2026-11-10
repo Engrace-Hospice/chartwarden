@@ -142,3 +142,61 @@ describe("TenantInventory: onboarding progress", () => {
     expect(await screen.findByText("hub")).toBeTruthy();
   });
 });
+
+describe("TenantInventory: the attention strip says what it counted", () => {
+  const mountPage = (page: { hasMore: boolean }) => {
+    const GET = vi.fn(async () => ({ data: { items: ROWS, nextCursor: null, ...page } }));
+    render(
+      <MemoryRouter initialEntries={["/tenants"]}>
+        <ApiClientProvider client={{ GET } as unknown as ApiClient}>
+          <ToastProvider>
+            <Routes>
+              <Route path="/tenants" element={<TenantInventory />} />
+            </Routes>
+          </ToastProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+  };
+
+  it("counts every tenant when the list is complete", async () => {
+    mountPage({ hasMore: false });
+    const strip = await screen.findByRole("region", { name: "Needs your attention" });
+    expect(within(strip).getByText(/1 tenant is waiting for a go-live approval\./)).toBeTruthy();
+    expect(within(strip).queryByText(/Counted from the tenants listed below/)).toBeNull();
+  });
+
+  it("says 'on this page' when more tenants exist than the page shows, so the count is never read as complete", async () => {
+    mountPage({ hasMore: true });
+    const strip = await screen.findByRole("region", { name: "Needs your attention" });
+    expect(
+      within(strip).getByText(/1 tenant is waiting for a go-live approval on this page/),
+    ).toBeTruthy();
+    expect(within(strip).getByText(/Counted from the tenants listed below/)).toBeTruthy();
+  });
+
+  it("names a tenant's next step by the server's own title", async () => {
+    const titled = [
+      row("cedar", "onboarding", {
+        doneCount: 1,
+        totalCount: 13,
+        currentStepKey: "plan_contract",
+        currentStepTitle: "Plan & contract",
+        goLiveState: "not_ready",
+      }),
+    ];
+    const GET = vi.fn(async () => ({ data: { items: titled, nextCursor: null, hasMore: false } }));
+    render(
+      <MemoryRouter initialEntries={["/tenants"]}>
+        <ApiClientProvider client={{ GET } as unknown as ApiClient}>
+          <ToastProvider>
+            <Routes>
+              <Route path="/tenants" element={<TenantInventory />} />
+            </Routes>
+          </ToastProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Next: Plan & contract")).toBeTruthy();
+  });
+});

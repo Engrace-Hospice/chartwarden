@@ -49,7 +49,6 @@ export async function reportUnboundWithWork(
   const at = (input.now ?? Date.now)();
   const key = `${input.organizationId}:${input.queue}`;
   if (at - (lastAlertAt.get(key) ?? Number.NEGATIVE_INFINITY) < ALERT_QUIET_MS) return;
-  lastAlertAt.set(key, at);
   deps.log?.({ event: "clearinghouse.unbound_with_work", code: input.code ?? "CH_NOT_WIRED" });
   try {
     await deps.alerts?.dispatch({
@@ -62,6 +61,9 @@ export async function reportUnboundWithWork(
         ...(input.code ? { code: input.code } : {}),
       },
     });
+    // Only a dispatch that went out starts the quiet window: this alert is the one signal that the org's work is held, so a router
+    // that threw must be tried again on the next tick, not silenced for six hours.
+    lastAlertAt.set(key, at);
   } catch (err) {
     // an alert router that is down must not turn one tenant's setup into a failed tick for all of them
     deps.log?.({

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 // Step 12, People: compliance officer. The officer attests go-live readiness, so the operator picks a member of the tenant's own staff
 // by name (ChartWarden staff are refused), says why, and the server binds the role where the member lacks it.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { OfficerPanel } from "./officer-panel";
 import {
   ORG_SLUG,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -39,10 +40,15 @@ const view = (over = {}) =>
     ],
     over,
   );
-function mount(items: unknown[], extra: Parameters<typeof stubClient>[0] = {}, v = view()) {
+function mount(
+  items: unknown[],
+  extra: Parameters<typeof stubClient>[0] = {},
+  v = view(),
+  at: Parameters<typeof renderAt>[0] = "/x",
+) {
   const client = stubClient({ GET: { [MEMBERS]: () => ok({ items }) }, ...extra });
   const ctx = panelCtx(v, "compliance_officer_assigned");
-  renderAt("/x", [{ path: "/x", element: <OfficerPanel ctx={ctx} /> }], client);
+  renderAt(at, [{ path: "/x", element: <OfficerPanel ctx={ctx} /> }], client);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -53,10 +59,54 @@ describe("OfficerPanel", () => {
     const group = await screen.findByRole("group", { name: "Tenant staff" });
     const names = within(group)
       .getAllByRole("radio")
-      .map((r) => r.getAttribute("aria-label") ?? "");
+      .map((r) => r.closest("label")?.textContent ?? "");
     expect(names[0]).toContain("Ada Admin");
     expect(names[1]).toContain("Bea Nurse");
     expect(within(group).getByText(/Compliance officer role/)).toBeTruthy();
+  });
+
+  // Label in name: the radio is named by its visible label, so what a screen-reader user hears includes "Compliance officer role".
+  it("names each radio by its visible label, role included (no aria-label that drops it)", async () => {
+    mount(members);
+    const radio = await screen.findByRole("radio", { name: /Ada Admin.*Compliance officer role/ });
+    expect(radio.hasAttribute("aria-label")).toBe(false);
+    expect(screen.getByRole("group", { name: "Tenant staff" }).hasAttribute("aria-label")).toBe(
+      false,
+    );
+  });
+
+  it("offers Try again when the staff could not be loaded, and shows them once it works", async () => {
+    let reads = 0;
+    mount([], {
+      GET: {
+        [MEMBERS]: () =>
+          ++reads === 1 ? refused(503, "UNAVAILABLE", "down") : ok({ items: members }),
+      },
+    });
+    expect(await screen.findByText(/Could not load the tenant's staff/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("radio", { name: /Ada Admin/ })).toBeTruthy();
+    expect(screen.queryByText(/Could not load the tenant's staff/)).toBeNull();
+  });
+
+  it("keeps the picked member and the typed reason through a Re-verify, from memory only", async () => {
+    const typed = "Customer named Bea on the kickoff call, CHG-4411";
+    const handlers = { PUT: { [OFFICER]: () => refused(403, "STEP_UP_REQUIRED", "x") } };
+    mount(members, handlers);
+    fireEvent.click(await screen.findByRole("radio", { name: /Bea Nurse/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Assign compliance officer" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: typed } });
+    fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    expect(await screen.findByText("step-up page")).toBeTruthy();
+    expect(JSON.stringify({ ...window.sessionStorage })).not.toContain(typed);
+    cleanup();
+
+    mount(members, handlers, view(), RETURNED_FROM_STEP_UP);
+    expect(((await screen.findByLabelText(/^Reason/)) as HTMLTextAreaElement).value).toBe(typed);
+    expect((screen.getByRole("radio", { name: /Bea Nurse/ }) as HTMLInputElement).checked).toBe(
+      true,
+    );
   });
 
   it("says when the tenant has no staff yet", async () => {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { WIZARD_ERROR_COPY } from "./wizard-errors";
+import {
+  GUARD_COPY,
+  WIZARD_ERROR_COPY,
+  guardFailureLines,
+  guardLabel,
+  isAboutAnInput,
+  viewHasMoved,
+} from "./wizard-errors";
 
 describe("WIZARD_ERROR_COPY", () => {
   it("a proxy 413 (no envelope) does not claim the API's 10 MiB limit and routes an under-limit file to engineering", () => {
@@ -17,5 +24,56 @@ describe("WIZARD_ERROR_COPY", () => {
     const copy = WIZARD_ERROR_COPY.STALE_VERSION ?? "";
     expect(copy).toContain("changed since you opened it");
     expect(copy).toContain("enter your change again");
+  });
+});
+
+describe("isAboutAnInput", () => {
+  it("is true for a validation refusal that names a field other than the reason", () => {
+    expect(isAboutAnInput({ kind: "validation", fieldErrors: { npi: "x" } })).toBe(true);
+    expect(isAboutAnInput({ kind: "validation", fieldErrors: { reason: "x", npi: "y" } })).toBe(
+      true,
+    );
+  });
+  it("is false when only the reason is refused, or for any other kind of refusal", () => {
+    expect(isAboutAnInput({ kind: "validation", fieldErrors: { reason: "x" } })).toBe(false);
+    expect(isAboutAnInput({ kind: "conflict", fieldErrors: {} })).toBe(false);
+  });
+});
+
+describe("viewHasMoved", () => {
+  it.each([
+    "ONBOARDING_TASK_CHANGED",
+    "ONBOARDING_STEP_ALREADY_SETTLED",
+    "ONBOARDING_STEP_NOT_SETTLED",
+    "TENANT_NOT_ONBOARDING",
+    "GO_LIVE_NOT_ATTESTED",
+    "GO_LIVE_ATTESTATION_STALE",
+    "ACTIVATION_GUARDS_FAILED",
+  ])("%s says the view on screen is out of date", (code) => {
+    expect(viewHasMoved({ code })).toBe(true);
+  });
+  it("is false for a refusal that says nothing moved, and for no code", () => {
+    expect(viewHasMoved({ code: "GO_LIVE_SAME_PERSON" })).toBe(false);
+    expect(viewHasMoved({ code: null })).toBe(false);
+  });
+});
+
+describe("guardLabel", () => {
+  it("uses the operator's words for a known guard", () => {
+    expect(guardLabel("baaExecuted")).toBe(GUARD_COPY.baaExecuted);
+  });
+  it("shows an unknown guard with the server's sentence, else a generic line that names it: never dropped, never a bare key", () => {
+    expect(guardLabel("aNewGuard", "The new check does not pass")).toBe(
+      "The new check does not pass",
+    );
+    expect(guardLabel("aNewGuard")).toBe("A go-live check does not pass (aNewGuard)");
+  });
+  it("lists each failing guard then each open step, in the order the server gave them", () => {
+    expect(
+      guardFailureLines([
+        { field: "guard", code: "baaExecuted", message: "x" },
+        { field: "templateKey", code: "locations_seeded", message: "Locations is pending" },
+      ]),
+    ).toEqual([GUARD_COPY.baaExecuted, "Locations is pending"]);
   });
 });

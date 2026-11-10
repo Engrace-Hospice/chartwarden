@@ -27,6 +27,7 @@ import type {
   SubscriptionStatus,
 } from "@chartwarden/types";
 import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
+import { safeErrorMessage } from "../../../bootstrap/redact-database-error";
 import {
   createDrizzleDunningStore,
   createDrizzleInvoiceStore,
@@ -292,11 +293,13 @@ export async function runWebhookHandlerSweep(
       );
     } catch (err) {
       failed += 1;
-      const message = err instanceof Error ? err.message : String(err);
+      // a database error's message carries its bound values: the column gets the redacted form, the log gets the error itself under `err`
+      // (the logger's PHI-safe serializer)
+      const message = safeErrorMessage(err, { bare: true });
       deps.log?.("stripe webhook handling failed", {
         eventId: row.id,
         eventType: row.eventType,
-        error: message,
+        err,
       });
       await deps.platformRunner((tx) =>
         tx

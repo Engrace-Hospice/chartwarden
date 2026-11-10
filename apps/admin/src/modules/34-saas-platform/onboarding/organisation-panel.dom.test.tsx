@@ -124,3 +124,18 @@ describe("OrganisationPanel", () => {
     expect(screen.queryByRole("button", { name: "Save profile" })).toBeNull();
   });
 });
+
+describe("OrganisationPanel: a real form", () => {
+  it("submitting the form (Enter in a field) saves, and the outcome is announced even when the facts were already met", async () => {
+    const client = stubClient({ PATCH: { [PATCH]: () => ok({}) } });
+    mount(client);
+    const live = screen.getByRole("form", { name: "Organisation profile form" });
+    fireEvent.submit(live);
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
+    const status = await screen.findByText("Profile saved.");
+    expect(status.tagName).toBe("OUTPUT");
+    // an edit makes the old confirmation stale
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Cedar Ridge 2" } });
+    expect(screen.queryByText("Profile saved.")).toBeNull();
+  });
+});

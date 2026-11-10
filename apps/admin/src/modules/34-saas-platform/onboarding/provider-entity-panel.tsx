@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { bodyFingerprint } from "./body-digest";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
@@ -23,6 +24,7 @@ import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { isAboutAnInput } from "./wizard-errors";
 
 interface Entity {
   id: string;
@@ -110,6 +112,8 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
   const [taxIdConfirm, setTaxIdConfirm] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [asking, setAsking] = useState(false);
+  // The reason typed before a field refusal closed the prompt: the operator fixes the field and confirms again, not types it twice.
+  const [lastReason, setLastReason] = useState("");
   const write = useOpsWrite();
 
   const items = list.data?.items ?? [];
@@ -126,6 +130,7 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
   }
 
   function askForReason(): void {
+    write.clear(); // an earlier refusal has been read; this attempt starts clean
     const found = validate(form, taxId, taxIdConfirm, editing?.id === null);
     setErrors(found);
     if (Object.keys(found).length === 0) setAsking(true);
@@ -153,8 +158,9 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
             fiscalYearEnd: form.fiscalYearEnd.trim(),
           }
         : common;
-    // The EIN is part of the attempt but never of its fingerprint on screen: the key follows the whole body, which includes it.
-    const outcome = await write.run(JSON.stringify(body), (key) =>
+    setLastReason(reason);
+    // The EIN is part of the body, so the key follows a DIGEST of the body: the EIN is never held outside its input.
+    const outcome = await write.run(await bodyFingerprint(body), (key) =>
       id === null
         ? client.POST("/api/v1/platform/tenants/{orgSlug}/provider-entities", {
             params: { path: { orgSlug }, header: { "Idempotency-Key": key } },
@@ -167,10 +173,13 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
     );
     if (outcome.ok) {
       setAsking(false);
+      setLastReason("");
       setEditing(null);
       setTaxId("");
       setTaxIdConfirm("");
       await Promise.all([list.reload(true), ctx.refresh()]);
+    } else if (isAboutAnInput(outcome.failure)) {
+      setAsking(false); // the form is still open with what was typed; the error is read beside its input
     }
   }
 
@@ -203,6 +212,8 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
     // the EIN is never kept: not in a stash, and not in a form that was cancelled
     setTaxId("");
     setTaxIdConfirm("");
+    setLastReason("");
+    write.clear();
     setEditing(null);
   }
 
@@ -315,16 +326,19 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
               label="Doing business as (optional)"
               value={form.doingBusinessAs}
               onChange={set("doingBusinessAs")}
+              error={fieldError("doingBusinessAs")}
             />
             <TextField
               label="Fiscal intermediary (optional)"
               value={form.fiscalIntermediary}
               onChange={set("fiscalIntermediary")}
+              error={fieldError("fiscalIntermediary")}
             />
             <TextField
               label="iQIES facility id (optional)"
               value={form.iqiesFacilityId}
               onChange={set("iqiesFacilityId")}
+              error={fieldError("iqiesFacilityId")}
             />
             {editing.id === null ? (
               <>
@@ -376,10 +390,12 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
         confirmLabel="Save"
         write={write}
         orgSlug={orgSlug}
+        initialReason={lastReason}
         onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form, id: editing?.id ?? null })}
         onConfirm={(reason) => void save(reason)}
         onCancel={() => {
           write.clear();
+          setLastReason("");
           setAsking(false);
         }}
       />

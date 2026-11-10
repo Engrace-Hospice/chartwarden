@@ -7,8 +7,9 @@
 //              choice, or a credential rotation) starts the config at `draft` for the new key (owner decision D6): what the old
 //              key earned (the connection test, the activation) is cleared, and claims work holds until it is re-verified and
 //              re-activated. A change of VENDOR also voids the vendor BAA (a new agreement); a same-vendor change keeps it.
-//              `outside` is stored `active`: nothing to verify. Once a PRODUCTION submission exists for the org, vendor and mode
-//              are locked (409), and a switch away from a vendor is refused while claims or submissions are queued.
+//              `outside` is stored `active`: nothing to verify. While a PRODUCTION submission is in flight or was sent within the
+//              last RELEASE_QUIET_DAYS (credential-reservation.ts), vendor and mode are locked (409; the window is the one the
+//              credential release uses), and a switch away from a vendor is refused while claims or submissions are queued.
 //   recordBaa  the TENANT records its own vendor BAA (effective date, a screened document reference; owner decision D2).
 //   verifyBaa  a platform OPERATOR verifies that record; activation refuses (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then.
 //   verify     draft -> verified, in three steps that never hold a transaction across the vendor call: `prepareVerify` reads and
@@ -40,9 +41,11 @@ import {
 import type { ConfigPatch, ConfigRow, ConfigStore } from "./config-store";
 import { isUniqueViolation } from "./config-store";
 import {
+  RELEASE_QUIET_DAYS,
   accountInUse,
   assertReleasable,
   backfillFingerprint,
+  hasRecentProductionTraffic,
   isFingerprintViolation,
   reserveCredential,
 } from "./credential-reservation";
@@ -446,10 +449,12 @@ export function createTenantClearinghouseService(
       if (actor.lane !== "platform") await refuseOutsideSwitchWithContract(store, organizationId);
       return;
     }
-    if (await store.hasProductionAttempts(organizationId)) {
+    // Owner decision needed (CH-1): the lock lasts as long as the old vendor can still owe this org responses, the credential
+    // release's own window (RELEASE_QUIET_DAYS), not forever: a lock with no end and no operator path would strand the tenant.
+    if (await hasRecentProductionTraffic(store, organizationId, now())) {
       throw conflict(
         "CLEARINGHOUSE_VENDOR_LOCKED",
-        "this organization has production submissions in flight; its vendor and mode cannot change until an operator migrates them",
+        `this organization has production submissions in flight or sent in the last ${RELEASE_QUIET_DAYS} days; its vendor and mode cannot change until its vendor's responses have had time to arrive`,
       );
     }
     // A config that is not active sends nothing and cannot drain what waits (the workers hold it), so the queue does not lock it:
@@ -590,6 +595,15 @@ export function createTenantClearinghouseService(
     },
 
     async recordBaa(store, actor, input) {
+      // The tenant records the BAA it holds with its own vendor; a platform operator only verifies it (separate keys, one role). The
+      // route lane already enforces this: the service says it too, so a new caller cannot record a BAA on the tenant's behalf.
+      if (actor.lane === "platform") {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_BAA_TENANT_ONLY",
+          "only the organization's own billing administrator may record its vendor BAA",
+          403,
+        );
+      }
       const record = normalizeBaaInput(input, medicareReceiptDay(now()));
       const row = await lockedRow(store, actor.organizationId);
       requireVendorAccount(row);
@@ -614,6 +628,13 @@ export function createTenantClearinghouseService(
     },
 
     async verifyBaa(store, actor, expected) {
+      if (actor.lane !== "platform") {
+        throw new ChartWardenError(
+          "FORBIDDEN",
+          "only a platform operator may verify a clearinghouse vendor BAA",
+          403,
+        );
+      }
       const row = await lockedRow(store, actor.organizationId);
       requireVendorAccount(row);
       if (!row.baaRecordedAt) {

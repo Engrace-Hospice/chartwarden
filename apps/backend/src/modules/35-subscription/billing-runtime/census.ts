@@ -12,6 +12,12 @@
 // the NEWEST key epoch recorded for it. ponytail: after a mid-period key rotation, a patient discharged before the
 // rotation exists only under the old epoch and drops out of that period's count; good enough while keys rotate
 // yearly, union the epochs if rotation ever becomes frequent.
+//
+// AUDIT. The pull is a bulk read of every active patient id of the org, by a job rather than a request, so it would leave
+// no read trail. Each pass therefore writes ONE `m35.patient_census.run` audit event per org (system actor): the org
+// (the event's own column), the period key and the counts, never an id or a pseudonym (CW-AC-35).
+import { randomUUID } from "node:crypto";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PseudonymKeyProvider,
@@ -28,6 +34,8 @@ const PAP = schema.patientActivePeriod;
 const S = schema.subscriptionRow;
 
 export const CENSUS_PAGE_SIZE = 500;
+/** The audit action one census pass writes per org (registered in @chartwarden/audit `M35_ACTION_CATALOG`). */
+export const CENSUS_AUDIT_EVENT = "m35.patient_census.run";
 /**
  * How long after the add-on ends the census still takes its final pass: one sweep interval (`m35.patient-census` runs
  * every 6 hours). ponytail: a time bound, not a marker; a manual rerun inside the interval counts again (only patients
@@ -83,6 +91,78 @@ export interface CensusResult {
   readonly inserted?: number;
 }
 
+/** Page M5's active-patient ids for the org, pseudonymize each, and insert the new `patient_active_period` rows. */
+async function pseudonymizeCensus(
+  deps: CensusDeps,
+  organizationId: string,
+  periodYearMonth: string,
+  at: Date,
+): Promise<{ readonly seen: number; readonly inserted: number }> {
+  const key = await deps.keyProvider.activeKey();
+  const pageSize = deps.pageSize ?? CENSUS_PAGE_SIZE;
+  let after: string | null = null;
+  let seen = 0;
+  let inserted = 0;
+  do {
+    const page = await deps.census.activePatientIdsPage(organizationId, { after, limit: pageSize });
+    if (page.ids.length > 0) {
+      // Raw ids are hashed here and dropped; only the 32-hex pseudonym is written.
+      const values = page.ids.map((id) => ({
+        organizationId,
+        patientPseudonym: computeBillingPseudonym(key.keyMaterial, id),
+        pseudonymKeyEpoch: key.keyEpoch,
+        periodYearMonth,
+        wasActive: true,
+        becameActiveAt: at,
+        computedAt: at,
+      }));
+      const rows = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
+        (tx as unknown as DbClient)
+          .insert(PAP)
+          .values(values)
+          .onConflictDoNothing()
+          .returning({ id: PAP.id }),
+      );
+      seen += page.ids.length;
+      inserted += rows.length;
+    }
+    after = page.nextAfter;
+  } while (after !== null);
+  return { seen, inserted };
+}
+
+/** The one job-level audit event per org per pass: the org, the period and counts only (no patient id, no pseudonym). */
+async function recordCensusRun(
+  deps: CensusDeps,
+  organizationId: string,
+  run: {
+    readonly runId: string;
+    readonly outcome: "success" | "failure";
+    readonly periodYearMonth: string;
+    readonly seen?: number;
+    readonly inserted?: number;
+  },
+): Promise<void> {
+  await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
+    audit(
+      tx as unknown as AuditExecutor,
+      { organizationId, userId: null, actorKind: "system", correlationId: run.runId },
+      {
+        eventType: CENSUS_AUDIT_EVENT,
+        resourceKind: "patient_census_run",
+        resourceId: run.runId,
+        outcome: run.outcome,
+        retentionClass: "compliance",
+        context: {
+          periodYearMonth: run.periodYearMonth,
+          ...(run.seen === undefined ? {} : { seen: run.seen }),
+          ...(run.inserted === undefined ? {} : { inserted: run.inserted }),
+        },
+      },
+    ),
+  );
+}
+
 /**
  * Census one org. Skips (counted:false) an org with no add-on, whose add-on ended before this window, or whose add-on
  * ended more than one census interval ago.
@@ -115,36 +195,33 @@ export async function runPatientCensusForOrg(
   });
   if (!scope) return { counted: false };
 
-  const key = await deps.keyProvider.activeKey();
-  const pageSize = deps.pageSize ?? CENSUS_PAGE_SIZE;
-  let after: string | null = null;
-  let seen = 0;
-  let inserted = 0;
-  do {
-    const page = await deps.census.activePatientIdsPage(organizationId, { after, limit: pageSize });
-    if (page.ids.length > 0) {
-      // Raw ids are hashed here and dropped; only the 32-hex pseudonym is written.
-      const values = page.ids.map((id) => ({
+  const runId = randomUUID();
+  let counts: { readonly seen: number; readonly inserted: number };
+  try {
+    counts = await pseudonymizeCensus(deps, organizationId, scope.periodYearMonth, at);
+  } catch (err) {
+    // The read may have happened even though the pass failed: record that it was attempted. A failure to record it must
+    // not hide the original error, so it is logged, not thrown.
+    await recordCensusRun(deps, organizationId, {
+      runId,
+      outcome: "failure",
+      periodYearMonth: scope.periodYearMonth,
+    }).catch((auditErr) =>
+      deps.log?.("m35.patient-census audit failed", {
         organizationId,
-        patientPseudonym: computeBillingPseudonym(key.keyMaterial, id),
-        pseudonymKeyEpoch: key.keyEpoch,
-        periodYearMonth: scope.periodYearMonth,
-        wasActive: true,
-        becameActiveAt: at,
-        computedAt: at,
-      }));
-      const rows = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
-        (tx as unknown as DbClient)
-          .insert(PAP)
-          .values(values)
-          .onConflictDoNothing()
-          .returning({ id: PAP.id }),
-      );
-      seen += page.ids.length;
-      inserted += rows.length;
-    }
-    after = page.nextAfter;
-  } while (after !== null);
+        err: auditErr,
+      }),
+    );
+    throw err;
+  }
+  const { seen, inserted } = counts;
+  await recordCensusRun(deps, organizationId, {
+    runId,
+    outcome: "success",
+    periodYearMonth: scope.periodYearMonth,
+    seen,
+    inserted,
+  });
 
   const m5Count = await deps.census.activePatientCount(organizationId);
   const drift = m5Count === 0 ? seen : Math.abs(m5Count - seen) / m5Count;

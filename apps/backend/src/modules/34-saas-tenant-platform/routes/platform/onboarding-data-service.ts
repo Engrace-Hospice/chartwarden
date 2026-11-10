@@ -315,6 +315,8 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     orgSlug: string,
     resourceKind: string,
     run: (target: OnboardingAuditTarget) => Promise<T>,
+    /** Extra non-sensitive counts for the audit row (what KINDS of record were returned), beside the total. */
+    detailOf?: (value: T) => Readonly<Record<string, number>>,
   ): Promise<T> {
     const target = await targetOf(orgSlug);
     const value = await run(target);
@@ -327,7 +329,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           resourceKind,
           outcome: "success",
           reason: null,
-          detail: { count: value.items.length },
+          detail: { count: value.items.length, ...(detailOf?.(value) ?? {}) },
         }),
     );
     return value;
@@ -654,12 +656,22 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
     listMembers,
     listNoticeFilings: (op, orgSlug) =>
-      read(op, orgSlug, "notice_filing", (t) =>
-        withOrgContext<DbClient, OnboardingNoticeFilingList>(
-          db,
-          { organizationId: t.organizationId, userId: op.userId },
-          (tx) => noticePort().listExternalFilings(tx, scopeOf(op, t.organizationId)),
-        ),
+      read(
+        op,
+        orgSlug,
+        "notice_filing",
+        (t) =>
+          withOrgContext<DbClient, OnboardingNoticeFilingList>(
+            db,
+            { organizationId: t.organizationId, userId: op.userId },
+            (tx) => noticePort().listExternalFilings(tx, scopeOf(op, t.organizationId)),
+          ),
+        // A notice id with its dates is an identifier of the patient it concerns (45 CFR 164.514(b)(2)): the row says which KINDS and
+        // how many were shown to the operator, never which records.
+        (list) => ({
+          noeCount: list.items.filter((i) => i.noticeKind === "noe").length,
+          notrCount: list.items.filter((i) => i.noticeKind === "notr").length,
+        }),
       ),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),

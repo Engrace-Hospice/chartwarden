@@ -6,8 +6,9 @@
 // This file is the only place the question is asked; the statement sweep, the daily census (its sweep list AND its per-org backstop),
 // the billing-service-mode seam, the platform and tenant views and the onboarding resume all call it.
 //
-//   scope "live"        a contract whose subscription is billable NOW: not canceled, not paused (the census records for these, and the
-//                       mode seam answers for these)
+//   scope "live"        a contract whose subscription is billable NOW: not canceled, and not paused unless the pause has lapsed (an admin
+//                       pause with an end date whose date has passed: nothing resumes it, so billing treats it as over at that date, the
+//                       same as the statement's pause windows do). The census records for these, and the mode seam answers for these.
 //   scope "current"     a contract that has not been canceled: live OR paused. A paused contract still belongs to the tenant (it bills
 //                       again on resume), so "does this tenant have a contract" and the billing mode that must follow its clearinghouse
 //                       choice are asked here, never against "live" (which would let a paused contract slip past both)
@@ -17,7 +18,7 @@
 //   scope "latest"      any contract, for a view
 // Newest contract first (created_at, then id: total, so the order never depends on how the planner reads the table).
 import { schema } from "@chartwarden/db";
-import { type SQL, and, desc, eq, gte, inArray, isNull, ne, notInArray, or } from "drizzle-orm";
+import { type SQL, and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or } from "drizzle-orm";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
 import type { ModeHistoryRow } from "./contract-mode";
 
@@ -60,7 +61,10 @@ export interface ContractRecord {
 }
 
 function scopeFilter(scope: ContractScope, at: Date): SQL | undefined {
-  if (scope === "live") return notInArray(SUB.status, ["canceled", "paused"]);
+  if (scope === "live") {
+    const pauseLapsed = and(isNotNull(SUB.pausedUntil), lte(SUB.pausedUntil, at));
+    return and(ne(SUB.status, "canceled"), or(ne(SUB.status, "paused"), pauseLapsed));
+  }
   if (scope === "current") return ne(SUB.status, "canceled");
   if (scope === "statements") {
     const cutoff = new Date(

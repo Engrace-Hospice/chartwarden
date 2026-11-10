@@ -10,7 +10,7 @@
 // `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` an unbound scanner does too.
 import { type DbClient, schema } from "@chartwarden/db";
 import { ChartWardenError, type OrgId } from "@chartwarden/types";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import {
   type OnboardingBaaDocumentPort,
   type OnboardingBaaDocumentRef,
@@ -29,6 +29,19 @@ import { createS3ObjectStore, s3ObjectStoreConfigFromEnv } from "./seams/index";
 const BAA_DOCUMENT_TITLE = "Business associate agreement";
 const DOCUMENT = schema.documents;
 
+/**
+ * A tenant_baa document of the organization that still EXISTS. A `destroyed_tombstone` (its content erased by the retention / destruction
+ * path) is a row that proves nothing: the agreement it names is gone, so it is not a filed BAA. `legal_hold` and `superseded` still hold
+ * the signed copy, so they count.
+ */
+const filedTenantBaa = (ref: OnboardingBaaDocumentRef) =>
+  and(
+    eq(DOCUMENT.id, ref.documentId),
+    eq(DOCUMENT.organizationId, ref.organizationId),
+    eq(DOCUMENT.aggregateType, TENANT_BAA_DOCUMENT_KIND),
+    ne(DOCUMENT.status, "destroyed_tombstone"),
+  );
+
 /** Whether `ref.documentId` is a `tenant_baa` document of `ref.organizationId` (a boolean; reads nothing else). On the caller's transaction. */
 export async function isTenantBaaDocumentFiled(
   tx: DbClient,
@@ -37,15 +50,25 @@ export async function isTenantBaaDocumentFiled(
   const [row] = await tx
     .select({ id: DOCUMENT.id })
     .from(DOCUMENT)
-    .where(
-      and(
-        eq(DOCUMENT.id, ref.documentId),
-        eq(DOCUMENT.organizationId, ref.organizationId),
-        eq(DOCUMENT.aggregateType, TENANT_BAA_DOCUMENT_KIND),
-      ),
-    )
+    .where(filedTenantBaa(ref))
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * The membership that filed (uploaded) a `tenant_baa` document of `ref.organizationId`, or null when `ref` is not one (or its creator is
+ * not recorded). One column of the same row `isTenantBaaDocumentFiled` reads; go-live approval refuses that operator.
+ */
+export async function tenantBaaDocumentUploader(
+  tx: DbClient,
+  ref: OnboardingBaaDocumentRef,
+): Promise<string | null> {
+  const [row] = await tx
+    .select({ createdBy: DOCUMENT.createdByMembershipId })
+    .from(DOCUMENT)
+    .where(filedTenantBaa(ref))
+    .limit(1);
+  return row?.createdBy ?? null;
 }
 
 /** The port over an upload service (injected so the unit test needs no object store). */

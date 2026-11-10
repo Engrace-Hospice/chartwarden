@@ -22,7 +22,7 @@ const ORG_B = "22222222-2222-4222-8222-222222222222";
 const ORG_C = "33333333-3333-4333-8333-333333333333";
 const KEY = "fake-key-not-a-secret#1";
 
-async function setup() {
+async function setup(extra: Partial<Parameters<typeof createTenantClearinghouseRuntime>[0]> = {}) {
   const cipher = buildClearinghouseSecretCipher(randomBytes(32));
   let decrypts = 0;
   const counting = {
@@ -65,6 +65,7 @@ async function setup() {
     platformBinding,
     fallbackOrgIds: new Set([ORG_C]),
     readRow: async (org) => rows.get(org) ?? null,
+    ...extra,
   });
   return { runtime, rows, put, platformBinding, decrypts: () => decrypts };
 }
@@ -91,6 +92,23 @@ describe("per-organization clearinghouse binding", () => {
     // The one stamp every per-account rule keys on (acks, ERAs, Claim.MD evidence): a tenant's own credential is `tenant`.
     expect(a?.account).toBe("tenant");
     expect(b?.account).toBe("tenant");
+  });
+
+  it("tells the composition root once per config version when an org's own account is bound (F5), and never for a platform or unbound binding", async () => {
+    const bound: { organizationId: string; vendor: string; mode: string }[] = [];
+    const { runtime, put, rows } = await setup({ onTenantAccountBound: (a) => void bound.push(a) });
+    await put(ORG_A, { vendor: "claimmd", mode: "production", secret: KEY });
+    await put(ORG_B, { vendor: "outside", mode: null });
+
+    await runtime.binding.forOrg?.(ORG_A);
+    await runtime.binding.forOrg?.(ORG_A); // cached: the same version builds nothing
+    await runtime.binding.forOrg?.(ORG_B); // outside: unbound
+    await runtime.binding.forOrg?.(ORG_C); // platform fallback: not the tenant's own account
+    expect(bound).toEqual([{ organizationId: ORG_A, vendor: "claimmd", mode: "production" }]);
+
+    rows.set(ORG_A, { ...(rows.get(ORG_A) as ConfigRow), version: 2 }); // a rotation: a new version is built again
+    await runtime.binding.forOrg?.(ORG_A);
+    expect(bound).toHaveLength(2);
   });
 
   it("serves nothing for outside, for a draft or verified config, and for an org with no row", async () => {

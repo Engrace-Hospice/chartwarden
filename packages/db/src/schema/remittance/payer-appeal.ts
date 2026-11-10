@@ -3,8 +3,10 @@
 // payer_appeal_case is one row per level of that path, separate from the Medicare appeal_case chain (its tier enum and
 // NOT NULL Medicare deadline are Medicare rules). Closed sets are text + CHECK mirrored in domain/payer-appeal-path.ts and
 // domain/payer-appeal.ts; no pgEnum. payer_id is a logical M40 id (M25 does not depend on M40). Free text is audit-scrubbed.
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -175,5 +177,11 @@ export const payerAppealVendorReport = pgTable(
   (t) => ({
     byCase: index("payer_appeal_vendor_report_case_ix").on(t.payerAppealCaseId),
     byDenial: index("payer_appeal_vendor_report_denial_ix").on(t.denialCaseId),
+    // Migration 1460 (replaces 1324's mis-parenthesised check): a report that bound or touched a case carries no reason;
+    // a `recorded_only` report always carries one.
+    reasonCheck: check(
+      "payer_appeal_vendor_report_reason_chk",
+      sql`(disposition IN ('opened','linked','timeline') AND reason IS NULL) OR (disposition = 'recorded_only' AND reason IS NOT NULL)`,
+    ),
   }),
 );

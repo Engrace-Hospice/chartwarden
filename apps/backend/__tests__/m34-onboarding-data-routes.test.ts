@@ -188,6 +188,19 @@ const GRANTS = {
     },
   ],
 };
+/** An operator who holds the generic onboarding read key but NOT the notice-filing key: the list of notice records is behind the latter. */
+const READER_WITHOUT_NOTICE_KEY = {
+  orgId: PLATFORM_ORG,
+  userId: "reader-no-notice-user",
+  grants: [
+    {
+      roleKey: "platform_ops",
+      enabled: true,
+      expiresAt: null,
+      permissionKeys: ["tenant_onboarding_data.read_platform"],
+    },
+  ],
+};
 /** An operator who may set up a tenant's clearinghouse but may NOT verify its BAA (the two duties are separable keys). */
 const WRITER_ONLY = {
   orgId: PLATFORM_ORG,
@@ -223,6 +236,7 @@ const PRICING_OPERATOR = {
 function makeServer(
   calls: Call[],
   clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>,
+  clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>,
 ) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
@@ -233,6 +247,7 @@ function makeServer(
       { ...GRANTS, userId: "support-user" },
       WRITER_ONLY,
       PRICING_OPERATOR,
+      READER_WITHOUT_NOTICE_KEY,
     ]).store,
   );
   const reg = createPredicateRegistry();
@@ -244,6 +259,7 @@ function makeServer(
     onboardingData: {
       service: recordingService(calls),
       ...(clearinghouseVerifyRateLimit ? { clearinghouseVerifyRateLimit } : {}),
+      ...(clearinghousePutRateLimit ? { clearinghousePutRateLimit } : {}),
     },
   });
   return app;
@@ -809,6 +825,56 @@ describe("the verify limiter counts per TARGET tenant (re-review L7)", () => {
   });
 });
 
+// CH-6: the platform PUT returns the same 409 CLEARINGHOUSE_ACCOUNT_IN_USE oracle as the tenant's own PUT, so it carries the same
+// cap (CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT, fail-closed), counted per TARGET tenant like the verify limiter above.
+describe("the clearinghouse PUT limiter (CH-6)", () => {
+  const BODY = {
+    vendor: "claimmd",
+    mode: "test",
+    secret: "fake-key-not-a-secret#1",
+    reason: "ticket CHG-1",
+  };
+  const putOf = (app: ReturnType<typeof makeServer>, slug: string) =>
+    app.inject({
+      method: "PUT",
+      url: `/api/v1/platform/tenants/${slug}/clearinghouse`,
+      headers: fresh(),
+      payload: BODY,
+    });
+  const limiter = (store = createInMemoryRateLimitStore()) =>
+    createRouteRateLimit({
+      store,
+      limit: { perUser: 2, perOrg: 50, windowMs: 60_000, failMode: "closed" },
+      keyPrefix: "t-put",
+      scopeOf: targetTenantScopeOf,
+    }) as unknown as (request: never, reply: never) => Promise<void>;
+
+  it("caps the PUT per operator and target tenant (429), and another tenant keeps its own budget", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls, undefined, limiter());
+    expect((await putOf(app, "tenant-b")).statusCode).toBe(201);
+    expect((await putOf(app, "tenant-b")).statusCode).toBe(201);
+    expect((await putOf(app, "tenant-b")).statusCode).toBe(429);
+    expect((await putOf(app, "tenant-c")).statusCode).toBe(201);
+    expect(calls.filter((c) => c.method === "putClearinghouse")).toHaveLength(3); // the 429 never reached the service
+    await app.close();
+  });
+
+  it("fails CLOSED with a typed 503 when the limiter's store is down, and never calls the service", async () => {
+    const calls: Call[] = [];
+    const down = {
+      increment: async () => {
+        throw new Error("store down");
+      },
+    };
+    const app = makeServer(calls, undefined, limiter(down));
+    const res = await putOf(app, "tenant-b");
+    expect(res.statusCode, res.body).toBe(503);
+    expect(calls.filter((c) => c.method === "putClearinghouse")).toEqual([]);
+    await app.close();
+  });
+});
+
 describe("read guards", () => {
   it("lists for platform_ops with the read key; a tenant admin and a keyless platform_ops are refused", async () => {
     const calls: Call[] = [];
@@ -911,6 +977,27 @@ describe("notice-filings read (the withdraw drawer's list)", () => {
     expect(keyless.statusCode).toBe(403);
     expect(calls.map((c) => c.method)).toEqual(["listNoticeFilings"]);
     expect(calls[0]?.orgSlug).toBe("tenant-b");
+    await app.close();
+  });
+
+  it("is behind the notice-filing key, not the generic onboarding read key: an operator holding only the read key is refused (403)", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const url = `${URL_BASE}/notice-filings`;
+    const readerOnly = await app.inject({
+      method: "GET",
+      url,
+      headers: { ...OPS, "x-test-user": "reader-no-notice-user" },
+    });
+    expect(readerOnly.statusCode).toBe(403);
+    // the generic onboarding reads are still open to that operator: only the notice list moved
+    const members = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/members`,
+      headers: { ...OPS, "x-test-user": "reader-no-notice-user" },
+    });
+    expect(members.statusCode).toBe(200);
+    expect(calls.map((c) => c.method)).toEqual(["listMembers"]);
     await app.close();
   });
 });
@@ -1787,7 +1874,7 @@ describe("service: an operator's switch out of outside (order, any status, the m
     });
 
     it("leaves the mode alone and answers the typed 503 (outcome unknown, logged) when the vendor cannot be read again", async () => {
-      const { service, log, warned } = harness({
+      const { service, log, warned, warnedContexts } = harness({
         commitFails: lostConnection,
         afterCommitFailure: "unreadable",
       });
@@ -1797,6 +1884,13 @@ describe("service: an operator's switch out of outside (order, any status, the m
       });
       expect(log).not.toContain("restoreNone");
       expect(warned).toHaveLength(1);
+      // the commit's own error is not a log field (the redactor only rebuilds `err`): its class and SQLSTATE are
+      expect(warnedContexts[0]).not.toHaveProperty("commitError");
+      expect(warnedContexts[0]).toMatchObject({
+        organizationId: TARGET_ORG,
+        commitSqlstate: null,
+        commitErrorType: "Error",
+      });
     });
 
     it.each(["08P01", "57P01", "40003", "XX000"])(

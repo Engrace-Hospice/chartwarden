@@ -5,6 +5,7 @@
 // add-on (migration 1321). Each write emits its `m35.claims_billing_addon.*` event through the catalog-validating
 // publisher on the SAME transaction. The tenant read (`claimsBillingForOrg`) runs on the tenant pool under RLS.
 import { type DbClient, schema } from "@chartwarden/db";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -234,6 +235,9 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
     },
 
     async grantAddon(actor, subscriptionId, args) {
+      // The reason is typed by an operator and lands on a tenant-readable row (`grant_reason`) and the granted event: it is no
+      // place for a patient, so it goes through the same identifier screen as every other operator free text (422, no write).
+      assertNoPatientIdentifier("reason", args.reason);
       const at = now();
       let trialEndsAt: Date | null = null;
       if (args.mode === "trial") {

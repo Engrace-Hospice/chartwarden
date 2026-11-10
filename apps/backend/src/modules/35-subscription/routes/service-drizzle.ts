@@ -40,7 +40,12 @@ import {
 
 // The two handles live in pricing/ports (the leaf both files read); re-exported so existing importers keep this path.
 export type { PlatformRunner, WriteTx };
-import { lockSubscription, refuseAdminTransition } from "./admin-transition";
+import {
+  PAUSED_UNTIL_PREFIX,
+  lockSubscription,
+  pauseEndOf,
+  refuseAdminTransition,
+} from "./admin-transition";
 import { redeemPromoInTx } from "./promo-redemption";
 import type {
   AckView,
@@ -1046,6 +1051,11 @@ export function buildDrizzleM35RouteService(
           .orderBy(desc(S.startedAt))
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
+        // a contracted plan's statements ignore promos, so a redemption here would be spent for nothing
+        refuseContractedPlan(
+          await loadPlan(tx, sub.planId),
+          "a tenant cannot apply a promo to a contracted subscription",
+        );
         if (sub.status !== "active" && sub.status !== "trialing") {
           throw new ConflictError("subscription is not in a promo-eligible state");
         }
@@ -1459,11 +1469,12 @@ export function buildDrizzleM35RouteService(
     async adminPauseSubscription(actor, subscriptionId, pausedUntil) {
       // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
       const audit = requireAuditPort(deps.audit);
+      // a date that is not a future instant is refused before the runner is opened
+      const at = now();
+      const until = pauseEndOf(pausedUntil, at);
       return platform(async (tx) => {
         const sub = await lockSubscription(tx, subscriptionId);
         refuseAdminTransition(sub, "pause");
-        const at = now();
-        const until = pausedUntil ? new Date(pausedUntil) : null;
         await tx
           .update(S)
           .set({ status: "paused", pausedAt: at, pausedUntil: until, updatedAt: at })
@@ -1477,6 +1488,8 @@ export function buildDrizzleM35RouteService(
           // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
           actorMembershipId: null,
           reasonCode: "platform_ops_pause",
+          // the end date, so the statement still knows it after a resume clears the row's own (an instant, not PHI)
+          reasonDetail: until ? `${PAUSED_UNTIL_PREFIX}${until.toISOString()}` : null,
         });
         await auditOperatorAction(
           audit,

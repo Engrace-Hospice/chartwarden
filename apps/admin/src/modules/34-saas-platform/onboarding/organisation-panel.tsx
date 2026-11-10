@@ -44,10 +44,13 @@ export function OrganisationPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     restored?.orgTimezone ?? view.orgProfile?.orgTimezone ?? "",
   );
   const [nameError, setNameError] = useState<string | null>(null);
+  // Saving a profile whose facts were already met changes nothing on screen, so the outcome is said (and announced) in words.
+  const [saved, setSaved] = useState(false);
   const write = useOpsWrite();
   const locked = actions.readOnlyReason !== null;
 
   async function save(): Promise<void> {
+    setSaved(false);
     if (displayName.trim().length === 0) {
       setNameError("Enter the display name.");
       return;
@@ -64,7 +67,10 @@ export function OrganisationPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         headers: { "Idempotency-Key": key },
       }),
     );
-    if (outcome.ok) await ctx.refresh();
+    if (outcome.ok) {
+      setSaved(true);
+      await ctx.refresh();
+    }
   }
 
   const facts: Fact[] = [
@@ -89,41 +95,61 @@ export function OrganisationPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         </div>
         <FactList facts={facts} ariaLabel="What settles this step" />
         <PendingAttestationWarning view={view} />
-        <TextField
-          label="Display name"
-          value={displayName}
-          disabled={locked}
-          onChange={(e) => setDisplayName(e.target.value)}
-          error={nameError ?? failure?.fieldErrors.displayName}
-        />
-        <TextField
-          label="Time zone"
-          hint="An IANA name, for example America/Denver."
-          list="wx-org-timezones"
-          value={orgTimezone}
-          disabled={locked}
-          onChange={(e) => setOrgTimezone(e.target.value)}
-          error={failure?.fieldErrors.orgTimezone}
-        />
-        <datalist id="wx-org-timezones">
-          {TIME_ZONE_SUGGESTIONS.map((zone) => (
-            <option key={zone} value={zone} />
-          ))}
-        </datalist>
-        {failure ? (
-          <FailureNotice
-            failure={failure}
-            orgSlug={orgSlug}
-            onReverify={() => stashStepUpDraft<Draft>(key, { displayName, orgTimezone })}
+        <form
+          className="wx-form-stack"
+          aria-label="Organisation profile form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!locked) void save();
+          }}
+        >
+          <TextField
+            label="Display name"
+            value={displayName}
+            disabled={locked}
+            onChange={(e) => {
+              setSaved(false);
+              setDisplayName(e.target.value);
+            }}
+            error={nameError ?? failure?.fieldErrors.displayName}
           />
-        ) : null}
-        {locked ? null : (
-          <div className="wx-drawer-actions">
-            <Button onClick={() => void save()} disabled={write.busy}>
-              {write.busy ? "Saving…" : "Save profile"}
-            </Button>
-          </div>
-        )}
+          <TextField
+            label="Time zone"
+            hint="An IANA name, for example America/Denver."
+            list="wx-org-timezones"
+            value={orgTimezone}
+            disabled={locked}
+            onChange={(e) => {
+              setSaved(false);
+              setOrgTimezone(e.target.value);
+            }}
+            error={failure?.fieldErrors.orgTimezone}
+          />
+          <datalist id="wx-org-timezones">
+            {TIME_ZONE_SUGGESTIONS.map((zone) => (
+              <option key={zone} value={zone} />
+            ))}
+          </datalist>
+          {failure ? (
+            <FailureNotice
+              failure={failure}
+              orgSlug={orgSlug}
+              onReverify={() => stashStepUpDraft<Draft>(key, { displayName, orgTimezone })}
+            />
+          ) : null}
+          {locked ? null : (
+            <div className="wx-drawer-actions">
+              <Button type="submit" disabled={write.busy}>
+                {write.busy ? "Saving…" : "Save profile"}
+              </Button>
+            </div>
+          )}
+          {/* always mounted, so a screen reader announces the text when it appears */}
+          <output className="wx-row-sub" aria-live="polite">
+            {saved ? "Profile saved." : ""}
+          </output>
+        </form>
       </section>
     </StepFrame>
   );

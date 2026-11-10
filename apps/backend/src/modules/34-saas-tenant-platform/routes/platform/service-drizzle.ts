@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 // repo/seam separately). SAFETY: the shred command requires `status='destruction_pending'` and enqueues
 // `tenant.shred` (whose worker calls the `m34_destroy_tenant_key_ring` SECURITY DEFINER fn + M4 destruction-
 // cert registry — never this request thread); this adapter never nulls DEK ciphertext directly.
+import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import {
@@ -86,7 +87,7 @@ import {
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import { readOnboardingProgress } from "./onboarding-progress-drizzle";
-import { canonicalTemplateConflict } from "./service";
+import { ONBOARDING_TEMPLATE_UPSERTED_EVENT, canonicalTemplateConflict } from "./service";
 import type {
   BaaRecordView,
   BaaRegisterListItem,
@@ -1043,6 +1044,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     async upsertOnboardingTemplate(actorUserId, args): Promise<OnboardingTemplateView> {
       return inPlatformCtx("platform-ops upsert onboarding template", async (tx) => {
+        // Names the operator for any trigger that reads app.user_id. This table's own trigger (the org-less baseline) does not: it records
+        // the change as a system row with no actor, so the operator is named by the explicit audit event below, which is the record.
+        await actingAs(tx, actorUserId);
         const T = schema.onboardingTaskTemplate;
         // A step becomes canonical (gating go-live for every tenant) only by migration: this upsert never promotes one, so the row below
         // is always written non-canonical and its UPDATE never touches `is_canonical`.
@@ -1079,7 +1083,23 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           })
           .returning();
         if (!row) throw canonicalTemplateConflict(args.key);
-        void actorUserId;
+        // The audit row that says WHO changed the step every tenant's wizard shows, and why. Platform-wide (no tenant), so it goes through
+        // the platform writer; the title and order are the catalog's own words, never a patient's.
+        await auditPlatformEvent(tx, {
+          eventType: ONBOARDING_TEMPLATE_UPSERTED_EVENT,
+          resourceKind: "onboarding_task_template",
+          outcome: "success",
+          severity: "warn",
+          correlationId: `m34-onboarding-template:${args.key}:${randomUUID()}`,
+          context: {
+            operatorUserId: actorUserId,
+            operatorMembershipId: args.operatorMembershipId,
+            reason: args.reason,
+            templateKey: row.key,
+            title: row.displayLabel,
+            canonicalOrder: row.canonicalOrder,
+          },
+        });
         return {
           id: row.key,
           key: row.key,

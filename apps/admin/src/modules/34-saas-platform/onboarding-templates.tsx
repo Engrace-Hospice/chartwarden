@@ -25,6 +25,9 @@ import {
 // server-side). requiredPermission: `onboarding_template.list`. Mirrors the M40/M36 R1 exemplars.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
+import { FailureNotice } from "./onboarding/failure-notice";
+import { RecordSaveDialog } from "./onboarding/record-save-dialog";
+import { useOpsWrite } from "./onboarding/use-ops-write";
 
 // The onboarding-template view (mirrors the backend OnboardingTemplateViewSchema).
 interface OnboardingTemplate {
@@ -257,8 +260,9 @@ function TemplateEditor({
   const [key, setKey] = useState(template?.key ?? "");
   const [title, setTitle] = useState(template?.title ?? "");
   const [order, setOrder] = useState<string>(template ? String(template.canonicalOrder) : "");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  // The step catalog is shown in every tenant's wizard: a change names its operator and says why (a reason, one Idempotency-Key).
+  const write = useOpsWrite();
+  const [asking, setAsking] = useState(false);
 
   const [attempted, setAttempted] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -276,29 +280,35 @@ function TemplateEditor({
   };
   const canSave = !readOnly && !errors.key && !errors.title && !errors.order;
 
-  async function save(): Promise<void> {
-    if (readOnly || saving) return;
+  function askForReason(): void {
+    if (readOnly || write.busy) return;
     setAttempted(true);
     if (!canSave) {
       focusFirstInvalid(bodyRef.current);
       return;
     }
-    setSaving(true);
-    setSaveError(null);
-    const { error: err } = await client.POST("/api/v1/platform/onboarding-templates", {
-      body: {
-        key: key.trim(),
-        title: title.trim(),
-        canonicalOrder: Number(order),
-        isCanonical: false,
-      },
-    });
-    setSaving(false);
-    if (err) {
-      setSaveError("Could not save the template.");
-      return;
+    write.clear();
+    setAsking(true);
+  }
+
+  async function save(reason: string): Promise<void> {
+    const body = {
+      key: key.trim(),
+      title: title.trim(),
+      canonicalOrder: Number(order),
+      isCanonical: false as const,
+      reason,
+    };
+    const outcome = await write.run(JSON.stringify(body), (idempotencyKey) =>
+      client.POST("/api/v1/platform/onboarding-templates", {
+        params: { header: { "Idempotency-Key": idempotencyKey } },
+        body,
+      }),
+    );
+    if (outcome.ok) {
+      setAsking(false);
+      onSaved();
     }
-    onSaved();
   }
 
   return (
@@ -351,16 +361,29 @@ function TemplateEditor({
             onChange={(e) => setOrder(e.target.value)}
             error={attempted ? errors.order : undefined}
           />
-          {saveError ? <InlineAlert tone="error">{saveError}</InlineAlert> : null}
+          {write.failure && !asking ? <FailureNotice failure={write.failure} orgSlug="" /> : null}
           {!readOnly ? (
             <div className="wx-drawer-actions">
-              <Button disabled={saving} onClick={() => void save()}>
-                {saving ? "Saving…" : mode === "add" ? "Add template" : "Save changes"}
+              <Button disabled={write.busy} onClick={askForReason}>
+                {mode === "add" ? "Add template" : "Save changes"}
               </Button>
             </div>
           ) : null}
         </section>
       </div>
+      <RecordSaveDialog
+        open={asking}
+        title={mode === "add" ? "Add the onboarding template" : "Save the onboarding template"}
+        description="This step is shown in every tenant's onboarding wizard."
+        confirmLabel="Save"
+        write={write}
+        orgSlug=""
+        onConfirm={(reason) => void save(reason)}
+        onCancel={() => {
+          write.clear();
+          setAsking(false);
+        }}
+      />
     </aside>
   );
 }

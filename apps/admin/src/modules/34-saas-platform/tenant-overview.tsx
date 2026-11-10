@@ -26,10 +26,13 @@ import { ContractSummary, type PlatformContract } from "./onboarding/plan-contra
 import { RecordSaveDialog } from "./onboarding/record-save-dialog";
 import { useLoad } from "./onboarding/use-load";
 import { useOpsWrite } from "./onboarding/use-ops-write";
+import { GO_LIVE_STEP_KEY } from "./onboarding/wizard-model";
 import { ProvisioningCard } from "./provisioning-card";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
 import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
+import { type OnboardingProgressView, nextStepLabel, wordedKey } from "./tenant-progress";
 import { TenantTransitionDialog } from "./tenant-transition-dialog";
+import { useReveal } from "./use-reveal";
 
 interface StatusEvent {
   id: string;
@@ -54,12 +57,7 @@ interface TenantOverview {
     destroyedAt: string | null;
   } | null;
   /** Where the tenant is in the wizard (gating steps only); the older `onboarding` counts are the fallback. */
-  onboardingProgress: {
-    doneCount: number;
-    totalCount: number;
-    currentStepKey: string | null;
-    goLiveState: string;
-  } | null;
+  onboardingProgress: OnboardingProgressView | null;
   onboarding: { totalTasks: number; doneTasks: number; currentStep: string | null };
   baa: { status: string; expiresOn: string | null } | null;
   activeGrants: number;
@@ -71,7 +69,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** `transitionReason` / `reason` both carry a minLength of 8 in the published contract. */
 const MIN_REASON = 8;
 
+/**
+ * The overview of the tenant in the address. Keyed by its slug: the router keeps this screen mounted when only the slug changes, and a
+ * tenant's state (its data, a contract revealed on request, a prompt) must never carry over to another tenant.
+ */
 export function TenantOverview(): JSX.Element {
+  const { orgSlug = "" } = useParams<{ orgSlug: string }>();
+  return <TenantOverviewFor key={orgSlug} />;
+}
+
+function TenantOverviewFor(): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
   const { orgSlug = "" } = useParams<{ orgSlug: string }>();
@@ -433,11 +440,6 @@ function LifecycleCard({
 }
 
 // ── Card 2 — Onboarding: where the tenant is in the wizard, and the one next thing to do ───────────────────────
-const stepLabel = (key: string): string => {
-  const words = key.replace(/_/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
-
 function OnboardingCard({
   tenant,
   onOpen,
@@ -445,7 +447,10 @@ function OnboardingCard({
   const progress = tenant.onboardingProgress;
   const done = progress?.doneCount ?? tenant.onboarding.doneTasks;
   const total = progress?.totalCount ?? tenant.onboarding.totalTasks;
-  const next = progress?.currentStepKey ?? tenant.onboarding.currentStep;
+  // The step's own title as the wizard shows it; the older counts carry only a key, which is worded.
+  const next =
+    (progress ? nextStepLabel(progress) : null) ??
+    (tenant.onboarding.currentStep ? wordedKey(tenant.onboarding.currentStep) : null);
   const awaitingApproval = progress?.goLiveState === "awaiting_approval";
   const inWizard = tenant.status === "onboarding" || tenant.status === "provisioning";
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -455,7 +460,7 @@ function OnboardingCard({
       cta={
         inWizard ? (
           awaitingApproval ? (
-            <Button size="sm" onClick={() => onOpen("go_live_checklist_complete")}>
+            <Button size="sm" onClick={() => onOpen(GO_LIVE_STEP_KEY)}>
               Review go-live
             </Button>
           ) : (
@@ -483,11 +488,7 @@ function OnboardingCard({
             </InlineAlert>
           ) : (
             <span className="wx-row-sub">
-              {next
-                ? `Next: ${stepLabel(next)}`
-                : total === 0
-                  ? "Not started"
-                  : "All steps are done"}
+              {next ? `Next: ${next}` : total === 0 ? "Not started" : "All steps are done"}
             </span>
           )}
         </>
@@ -504,20 +505,20 @@ function OnboardingCard({
 
 // ── Contract and billing: read on request (each read of a tenant's pricing is audited), not on every visit ─────────
 function ContractCard({ orgSlug }: { orgSlug: string }): JSX.Element {
-  const [shown, setShown] = useState(false);
+  const reveal = useReveal();
   return (
     <Card
       title="Contract and billing"
       cta={
-        shown ? undefined : (
-          <Button tone="secondary" size="sm" onClick={() => setShown(true)}>
-            Show contract and billing
-          </Button>
-        )
+        <Button tone="secondary" size="sm" {...reveal.toggleProps} onClick={reveal.onToggle}>
+          Show contract and billing
+        </Button>
       }
     >
-      {shown ? (
-        <ContractBody orgSlug={orgSlug} />
+      {reveal.mounted ? (
+        <div id={reveal.sectionId} hidden={!reveal.open}>
+          <ContractBody orgSlug={orgSlug} />
+        </div>
       ) : (
         <span className="wx-row-sub">Reading the contract is recorded in the audit trail.</span>
       )}

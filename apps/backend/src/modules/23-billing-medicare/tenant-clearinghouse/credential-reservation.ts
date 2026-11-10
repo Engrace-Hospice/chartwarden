@@ -122,14 +122,27 @@ export async function reserveCredential(
   }
 }
 
+/**
+ * True while vendor responses for the organization's production claims may still be arriving: one still in flight, or one sent within
+ * {@link RELEASE_QUIET_DAYS}. The one clock behind both the credential release and the vendor / mode lock (a lock that never expired
+ * would strand a tenant whose old vendor has long since gone quiet).
+ */
+export function hasRecentProductionTraffic(
+  store: ConfigStore,
+  organizationId: string,
+  now: Date,
+): Promise<boolean> {
+  const since = new Date(now.getTime() - RELEASE_QUIET_DAYS * DAY_MS);
+  return store.hasRecentProductionAttempts(organizationId, since);
+}
+
 /** The release refuses while vendor responses for the organization's production claims may still be arriving. */
 export async function assertReleasable(
   store: ConfigStore,
   organizationId: string,
   now: Date,
 ): Promise<void> {
-  const since = new Date(now.getTime() - RELEASE_QUIET_DAYS * DAY_MS);
-  if (await store.hasRecentProductionAttempts(organizationId, since)) {
+  if (await hasRecentProductionTraffic(store, organizationId, now)) {
     throw new ChartWardenError(
       "CLEARINGHOUSE_RESPONSES_PENDING",
       `this organization sent production claims in the last ${RELEASE_QUIET_DAYS} days (or has one in flight); its vendor responses may still arrive, so its credentials stay reserved`,

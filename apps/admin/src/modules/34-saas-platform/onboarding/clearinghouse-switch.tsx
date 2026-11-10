@@ -8,6 +8,7 @@
 import { Button, stashStepUpDraft, useApiClient, useStepUpDraft } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { bodyFingerprint } from "./body-digest";
 import {
   BLANK_CHOICE,
   type ChoiceErrors,
@@ -106,22 +107,23 @@ export function SwitchToVendor({
   async function confirm(reason: string): Promise<void> {
     const mode = form.billingServiceMode;
     if (mode === "" || pinned === null) return;
-    const outcome = await write.run(
-      `switch:${pinned}:${form.vendor}:${form.mode}:${mode}:${reason}`,
-      (key) =>
-        client.PUT(PATH, {
-          params: {
-            path: { orgSlug },
-            header: { "Idempotency-Key": key, "If-Match": String(pinned) },
-          },
-          body: {
-            vendor: form.vendor,
-            mode: form.mode,
-            secret,
-            billingServiceMode: mode,
-            reason,
-          },
-        }),
+    const body = {
+      vendor: form.vendor,
+      mode: form.mode,
+      secret,
+      billingServiceMode: mode,
+      reason,
+    };
+    // A digest of the whole body, the credential included: a corrected credential is a new attempt and must not reuse the key of
+    // the one that got no answer (the same key with another body is a 409 IDEMPOTENCY_CONFLICT).
+    const outcome = await write.run(`switch:${pinned}:${await bodyFingerprint(body)}`, (key) =>
+      client.PUT(PATH, {
+        params: {
+          path: { orgSlug },
+          header: { "Idempotency-Key": key, "If-Match": String(pinned) },
+        },
+        body,
+      }),
     );
     if (outcome.ok) {
       close();

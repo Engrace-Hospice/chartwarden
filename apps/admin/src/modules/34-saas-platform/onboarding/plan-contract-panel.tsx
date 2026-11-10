@@ -12,18 +12,22 @@ import {
   TextField,
   parsePriceCents,
   parseWholeNumber,
+  stashStepUpMemoryDraft,
   useApiClient,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { useSession } from "../../../shell/session";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
+import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { readOnlyReasonOf } from "./wizard-model";
 
 type Mode = "none" | "billing_software" | "managed_billing";
 interface Plan {
@@ -69,6 +73,25 @@ const MODES: readonly { value: Mode; label: string }[] = [
   { value: "none", label: "None (the tenant bills outside ChartWarden)" },
   { value: "billing_software", label: "Billing software" },
   { value: "managed_billing", label: "Managed billing service" },
+];
+/** What a Re-verify keeps of this step: the typed inputs, which prompt was open and its reason (free text: this tab's memory only). */
+interface Draft {
+  readonly planSlug: string;
+  readonly mode: Mode | "";
+  readonly orderFormRef: string;
+  readonly staff: string;
+  readonly census: string;
+  readonly collections: string;
+  readonly changing: boolean;
+  readonly newMode: Mode;
+  readonly dialog: "sign" | "mode";
+  readonly reason: string;
+}
+const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:plan_contract:draft`;
+/** The sign form's billing service pick: empty until chosen, never defaulted (it is a commercial term). */
+const MODE_CHOICES: readonly { value: Mode | ""; label: string }[] = [
+  { value: "", label: "Choose the billing service…" },
+  ...MODES,
 ];
 const MODE_LABEL: Record<Mode, string> = {
   none: "None",
@@ -186,24 +209,73 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
         response?: { status: number };
       }>,
   );
-  const [planSlug, setPlanSlug] = useState("");
-  const [mode, setMode] = useState<Mode>("none");
-  const [orderFormRef, setOrderFormRef] = useState("");
-  const [staff, setStaff] = useState("");
-  const [census, setCensus] = useState("");
-  const [collections, setCollections] = useState("");
+  // Back from Re-verify the form and the prompt come back as they were left, with the reason that was typed (signing needs a step-up).
+  const restored = useStepUpMemoryDraft<Draft>(draftKey(orgSlug));
+  const [planSlug, setPlanSlug] = useState(restored?.planSlug ?? "");
+  // No default: the billing service is a commercial term the operator chooses (the switch form has none either).
+  const [mode, setMode] = useState<Mode | "">(restored?.mode ?? "");
+  const [orderFormRef, setOrderFormRef] = useState(restored?.orderFormRef ?? "");
+  const [staff, setStaff] = useState(restored?.staff ?? "");
+  const [census, setCensus] = useState(restored?.census ?? "");
+  const [collections, setCollections] = useState(restored?.collections ?? "");
   const [inputError, setInputError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Preview | null>(null);
+  // A price is shown only for the inputs it was asked for: one that arrives after the operator edited them is never this form's price.
+  const [preview, setPreview] = useState<{ inputsKey: string; value: Preview } | null>(null);
   const [saved, setSaved] = useState<SignResult["planContractStep"] | null>(null);
-  const [dialog, setDialog] = useState<"sign" | "mode" | null>(null);
-  const [changing, setChanging] = useState(false);
-  const [newMode, setNewMode] = useState<Mode>("none");
+  const [dialog, setDialog] = useState<"sign" | "mode" | null>(restored?.dialog ?? null);
+  const [changing, setChanging] = useState(restored?.changing ?? false);
+  const [newMode, setNewMode] = useState<Mode>(restored?.newMode ?? "none");
+  const [seedReason, setSeedReason] = useState(restored?.reason ?? "");
+  // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
+  const typedReason = useRef(restored?.reason ?? "");
   const previewWrite = useOpsWrite();
   const write = useOpsWrite();
 
   const offered = plans.data ?? [];
   const contract = subscription.data?.contract ?? null;
   const plan = offered.find((p) => p.slug === (planSlug || offered[0]?.slug));
+  const inputsKey = JSON.stringify([
+    plan?.id ?? null,
+    mode,
+    staff.trim(),
+    census.trim(),
+    collections.trim(),
+  ]);
+
+  /** The props a sign / change prompt shares: the typed reason and the form survive a Re-verify, and the reason is dropped with the prompt. */
+  const keepReason = (kind: "sign" | "mode") => ({
+    ...(restored?.dialog === kind && seedReason !== "" ? { initialReason: seedReason } : {}),
+    onReasonChange: (reason: string) => {
+      typedReason.current = reason;
+    },
+    onReverify: () =>
+      stashStepUpMemoryDraft<Draft>(draftKey(orgSlug), {
+        planSlug,
+        mode,
+        orderFormRef,
+        staff,
+        census,
+        collections,
+        changing,
+        newMode,
+        dialog: kind,
+        reason: typedReason.current,
+      }),
+  });
+  const closePrompt = (): void => {
+    typedReason.current = "";
+    setSeedReason("");
+    setDialog(null);
+  };
+  function askToSign(): void {
+    if (mode === "") {
+      setInputError("Choose the billing service.");
+      return;
+    }
+    setInputError(null);
+    write.clear();
+    setDialog("sign");
+  }
 
   async function runPreview(): Promise<void> {
     // A blank box is not zero (Number("") is 0), and "1e3" or "0x1f" is not a census: plain digits and a decimal point only.
@@ -218,14 +290,22 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
         ? "Enter the staff accounts (a whole number)."
         : !Number.isFinite(averageDailyCensus) || averageDailyCensus < 0
           ? "Enter the average daily census."
-          : mode !== "none" && collections.trim() === ""
-            ? "Enter the expected net collections: the billing percentage is charged on them."
-            : collectionsCents === null
-              ? "Enter the expected net collections as dollars, with up to two decimals."
-              : !plan
-                ? "Pick a plan."
-                : null;
-    if (problem !== null || !plan || staffCount === null || collectionsCents === null) {
+          : mode === ""
+            ? "Choose the billing service."
+            : mode !== "none" && collections.trim() === ""
+              ? "Enter the expected net collections: the billing percentage is charged on them."
+              : collectionsCents === null
+                ? "Enter the expected net collections as dollars, with up to two decimals."
+                : !plan
+                  ? "Pick a plan."
+                  : null;
+    if (
+      problem !== null ||
+      !plan ||
+      staffCount === null ||
+      collectionsCents === null ||
+      mode === ""
+    ) {
       setInputError(problem);
       return;
     }
@@ -237,14 +317,15 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
       expectedNetCollectionsCents: collectionsCents,
       billingServiceMode: mode,
     };
+    const askedFor = inputsKey;
     const outcome = await previewWrite.run(JSON.stringify(body), () =>
       client.POST("/api/v1/platform/pricing/preview", { body }),
     );
-    if (outcome.ok) setPreview(outcome.data as unknown as Preview);
+    if (outcome.ok) setPreview({ inputsKey: askedFor, value: outcome.data as unknown as Preview });
   }
 
   async function sign(reason: string): Promise<void> {
-    if (!plan) return;
+    if (!plan || mode === "") return;
     const body = {
       planSlug: plan.slug,
       billingServiceMode: mode,
@@ -258,7 +339,7 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
       }),
     );
     if (outcome.ok) {
-      setDialog(null);
+      closePrompt();
       setSaved((outcome.data as unknown as SignResult).planContractStep);
       await Promise.all([subscription.reload(true), ctx.refresh()]);
     }
@@ -273,7 +354,7 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
       }),
     );
     if (outcome.ok) {
-      setDialog(null);
+      closePrompt();
       setChanging(false);
       await subscription.reload(true);
     }
@@ -312,6 +393,7 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
                 size="sm"
                 tone="secondary"
                 onClick={() => {
+                  write.clear();
                   setNewMode(contract.billingServiceMode);
                   setChanging(true);
                 }}
@@ -372,10 +454,7 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
                 <SelectField
                   label="Plan"
                   value={plan?.slug ?? ""}
-                  onChange={(e) => {
-                    setPlanSlug(e.target.value);
-                    setPreview(null);
-                  }}
+                  onChange={(e) => setPlanSlug(e.target.value)}
                   options={offered.map((p) => ({
                     value: p.slug,
                     label: `${p.name} (version ${p.version})`,
@@ -384,11 +463,8 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
                 <SelectField
                   label="Billing service"
                   value={mode}
-                  onChange={(e) => {
-                    setMode(e.target.value as Mode);
-                    setPreview(null);
-                  }}
-                  options={MODES}
+                  onChange={(e) => setMode(e.target.value as Mode | "")}
+                  options={MODE_CHOICES}
                 />
                 <TextField
                   label="Order form reference (optional)"
@@ -401,36 +477,27 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
                   label="Staff accounts"
                   inputMode="numeric"
                   value={staff}
-                  onChange={(e) => {
-                    setStaff(e.target.value);
-                    setPreview(null);
-                  }}
+                  onChange={(e) => setStaff(e.target.value)}
                 />
                 <TextField
                   label="Average daily census"
                   inputMode="decimal"
                   value={census}
-                  onChange={(e) => {
-                    setCensus(e.target.value);
-                    setPreview(null);
-                  }}
+                  onChange={(e) => setCensus(e.target.value)}
                 />
                 <TextField
                   label="Expected net collections a month (dollars)"
                   inputMode="decimal"
                   value={collections}
-                  onChange={(e) => {
-                    setCollections(e.target.value);
-                    setPreview(null);
-                  }}
+                  onChange={(e) => setCollections(e.target.value)}
                 />
               </div>
               {inputError ? <InlineAlert tone="error">{inputError}</InlineAlert> : null}
               {previewWrite.failure ? (
                 <FailureNotice failure={previewWrite.failure} orgSlug={orgSlug} />
               ) : null}
-              {preview && plan ? (
-                <PreviewCard preview={preview} currency={plan.currencyCode} />
+              {preview && preview.inputsKey === inputsKey && plan ? (
+                <PreviewCard preview={preview.value} currency={plan.currencyCode} />
               ) : null}
               <div className="wx-drawer-actions">
                 <Button
@@ -440,19 +507,14 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
                 >
                   Preview price
                 </Button>
-                <Button
-                  onClick={() => {
-                    write.clear();
-                    setDialog("sign");
-                  }}
-                >
-                  Sign contract
-                </Button>
+                <Button onClick={askToSign}>Sign contract</Button>
               </div>
             </>
           )}
         </section>
-      ) : null}
+      ) : (
+        <p>No contract is signed yet.</p>
+      )}
 
       {saved?.status === "pending" ? (
         <InlineAlert tone="info">
@@ -464,14 +526,17 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
         open={dialog === "sign"}
         title="Sign the contract"
         description={
-          plan ? `${plan.name}, version ${plan.version}: ${MODE_LABEL[mode]}.` : undefined
+          plan && mode !== ""
+            ? `${plan.name}, version ${plan.version}: ${MODE_LABEL[mode]}.`
+            : undefined
         }
         rule={REASON_RULES.pricing}
         confirmLabel="Sign"
         write={write}
         orgSlug={orgSlug}
+        {...keepReason("sign")}
         onConfirm={(reason) => void sign(reason)}
-        onCancel={() => setDialog(null)}
+        onCancel={closePrompt}
       />
       <RecordSaveDialog
         open={dialog === "mode"}
@@ -481,19 +546,28 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Change"
         write={write}
         orgSlug={orgSlug}
+        {...keepReason("mode")}
         onConfirm={(reason) => void changeMode(reason)}
-        onCancel={() => setDialog(null)}
+        onCancel={closePrompt}
       />
     </>
   );
 }
 
 export function PlanContractPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
-  // A locked step, or a tenant that is not onboarding, makes no contract read: every read of a tenant's pricing is audited.
-  const canLoad = ctx.actions.readOnlyReason === null;
+  // A locked step, or a tenant that is not onboarding, makes no contract read: every read of a tenant's pricing is audited. Reading is
+  // not writing: an operator whose role may read the contract but not sign it still sees it (the frame says they cannot edit).
+  const stepOpen = readOnlyReasonOf(ctx.step, ctx.view) === null;
+  const mayRead = useCan(ONBOARDING_KEYS.pricingRead);
   return (
     <StepFrame ctx={ctx} settledByPanel>
-      {canLoad ? <PlanContractBody ctx={ctx} /> : null}
+      {stepOpen && mayRead ? <PlanContractBody ctx={ctx} /> : null}
+      {stepOpen && !mayRead ? (
+        <InlineAlert tone="info">
+          Your role cannot read this tenant's contract (that needs the {ONBOARDING_KEYS.pricingRead}{" "}
+          permission).
+        </InlineAlert>
+      ) : null}
     </StepFrame>
   );
 }

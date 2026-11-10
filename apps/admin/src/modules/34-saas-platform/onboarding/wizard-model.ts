@@ -20,6 +20,7 @@ export const ONBOARDING_KEYS = {
   noticeWithdraw: "tenant_notice_filing.withdraw_platform",
   baaDocumentUpload: "tenant_baa_document.upload_platform",
   baaRegisterWrite: "platform_tenant_baa.write_platform",
+  pricingRead: "subscription.pricing_read_platform",
   pricingWrite: "subscription.onboard_platform",
   goLiveApprove: "go_live.approve_platform",
 } as const;
@@ -92,7 +93,8 @@ const NONE: Omit<StepActions, "readOnlyReason" | "reopenBlockedBy"> = {
 /** True while the wizard's steps can be worked: only an onboarding tenant (provisioning has not opened them, a live tenant closed them). */
 export const isOnboardingOpen = (tenantStatus: string): boolean => tenantStatus === "onboarding";
 
-function readOnlyReasonOf(step: WizardStep, view: WizardView): string | null {
+/** Why the step's state (not the operator's role) closes it to work: provisioning, a live tenant, a locked step. Null while it is open. */
+export function readOnlyReasonOf(step: WizardStep, view: WizardView): string | null {
   if (!isOnboardingOpen(view.tenantStatus)) {
     if (view.tenantStatus === "provisioning")
       return "This tenant is still provisioning. Steps open when provisioning finishes.";

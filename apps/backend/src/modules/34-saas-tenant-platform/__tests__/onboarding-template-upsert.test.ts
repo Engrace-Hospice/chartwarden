@@ -3,7 +3,14 @@ import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryTenantPlatformBackend } from "../routes/platform/service";
 
-const ARGS = { title: "Renamed", description: null, canonicalOrder: 9, isCanonical: false };
+const ARGS = {
+  title: "Renamed",
+  description: null,
+  canonicalOrder: 9,
+  isCanonical: false,
+  reason: "Rename a catalog step, ticket CHG-5521",
+  operatorMembershipId: "ops-m",
+};
 
 describe("upsertOnboardingTemplate", () => {
   it("refuses a canonical key with 409 ONBOARDING_TEMPLATE_CANONICAL and leaves it canonical", async () => {

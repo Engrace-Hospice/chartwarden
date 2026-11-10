@@ -7,3 +7,4 @@ export * from "./outbox-events/catalog-rows";
 export * from "./outbox/publish";
 export * from "./idempotency/idempotency";
 export * from "./crypto/webhook-payload-cipher";
+export * from "./text/patient-identifier";

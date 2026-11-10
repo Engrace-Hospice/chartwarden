@@ -108,6 +108,46 @@ describe("runAckPull with a clearinghouse per organization", () => {
     expect(reached["org-2"]?.map((c) => c.organizationId)).toEqual(["org-2"]);
   });
 
+  // CH-3: a tenant's OWN account has its own position space, exactly as M23's and M25's pulls key it (`cursorVendorKey`): an org that
+  // moves from the platform's account to its own must never resume from the platform's cursor.
+  it("keys the cursor on the account: a tenant's own claimmd account reads `claimmd@tenant`, a platform vendor its bare name", async () => {
+    const { deps } = depsFor({ "org-1": "claimmd" });
+    const keys: { organizationId: string; vendor: string }[] = [];
+    const advanced: { organizationId: string; vendor: string }[] = [];
+    const platformStedi: AckBinding = bindingOf("stedi", []); // no `account`: the platform's own env binding
+    const tenantOnly: AckWorkerDeps = {
+      ...deps,
+      activeOrgs: {
+        listActiveOrgs: async () => [{ organizationId: "org-1" }, { organizationId: "org-2" }],
+      },
+      binding: {
+        ...deps.binding,
+        forOrg: async (organizationId) =>
+          organizationId === "org-2"
+            ? platformStedi
+            : (deps.binding.forOrg as NonNullable<typeof deps.binding.forOrg>)(organizationId),
+      },
+      cursors: {
+        read: async (key) => {
+          keys.push({ organizationId: key.organizationId, vendor: key.vendor });
+          return { cursor: null, version: 0 };
+        },
+        advance: async (key) => {
+          advanced.push({ organizationId: key.organizationId, vendor: key.vendor });
+          return true;
+        },
+      },
+    };
+
+    await expect(runAckPull(tenantOnly)).resolves.toMatchObject({ failures: [] });
+
+    expect(keys).toEqual([
+      { organizationId: "org-1", vendor: "claimmd@tenant" },
+      { organizationId: "org-2", vendor: "stedi" },
+    ]);
+    expect(advanced).toEqual(keys);
+  });
+
   it("REPORTS the organization with no clearinghouse (it has an answer waiting; one alert, no failed tick) and still pulls the other", async () => {
     const { deps, reached } = depsFor({ "org-1": "stedi" });
     const alerts: { alertCode: string; organizationId: string; payload: unknown }[] = [];

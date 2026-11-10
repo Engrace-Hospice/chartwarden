@@ -195,7 +195,7 @@ describe("TenantClearinghouseCard", () => {
         { ...ONBOARDING_OPERATOR, permissions: [] },
       );
       fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
-      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+      await screen.findByText("Clearinghouse", { selector: "dt" }); // the card has loaded
       expect(screen.queryByRole("button", { name: "Verify the vendor BAA" })).toBeNull();
     });
 
@@ -297,7 +297,7 @@ describe("TenantClearinghouseCard", () => {
       ]) {
         const client = mount(choice);
         fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
-        await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+        await screen.findByText("Clearinghouse", { selector: "dt" }); // the card has loaded
         expect(screen.queryByRole("button", { name: "Verify the vendor BAA" })).toBeNull();
         expect(client.POST).not.toHaveBeenCalled();
         cleanup();
@@ -514,12 +514,12 @@ describe("TenantClearinghouseCard", () => {
           ) ?? [],
       });
       fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
-      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+      await screen.findByText("Clearinghouse", { selector: "dt" }); // the card has loaded
       expect(screen.queryByRole("button", { name: "Release earlier credentials" })).toBeNull();
       cleanup();
       renderAt("/x", [{ path: "/x", element }], client, null);
       fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
-      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+      await screen.findByText("Clearinghouse", { selector: "dt" }); // the card has loaded
       expect(screen.queryByRole("button", { name: "Release earlier credentials" })).toBeNull(); // fail closed
       cleanup();
       mountWith({ ...CLAIMMD, source: "platform_env" }, () => ok({ released: 0, config: CLAIMMD }));
@@ -890,4 +890,50 @@ describe("TenantClearinghouseCard: each control is gated on its own key", () => 
       expect(screen.getByRole("button", { name: c.stays })).toBeTruthy();
     });
   }
+});
+
+describe("TenantClearinghouseCard: the Show clearinghouse toggle", () => {
+  it("stays on the page as an aria-expanded toggle: collapsing keeps focus and does not read the clearinghouse again", async () => {
+    const client = mount(CLAIMMD);
+    const toggle = screen.getByRole("button", { name: "Show clearinghouse" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(await screen.findByText("Claim.MD")).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+    fireEvent.click(toggle);
+    expect(screen.getByText("Claim.MD")).toBeTruthy();
+    expect(reads(client, CH)).toBe(1);
+  });
+});
+
+describe("TenantClearinghouseCard: the notice records are a PHI path", () => {
+  const view = { ...CLAIMMD };
+  const mountAs = (permissions: string[]) => {
+    const client = stubClient({
+      GET: { [CH]: () => ok(view), [SUBSCRIPTION]: () => ok({ contract: null }) },
+    });
+    const element = <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />;
+    renderAt("/x", [{ path: "/x", element }], client, { ...ONBOARDING_OPERATOR, permissions });
+  };
+
+  it("offers the list to an operator holding the notice key, and not to one holding every other key", async () => {
+    mountAs(["tenant_notice_filing.withdraw_platform"]);
+    fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+    expect(
+      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" }),
+    ).toBeTruthy();
+    cleanup();
+    mountAs(
+      (ONBOARDING_OPERATOR.permissions ?? []).filter(
+        (k) => k !== "tenant_notice_filing.withdraw_platform",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+    await screen.findByText("Claim.MD");
+    expect(screen.queryByRole("button", { name: "Notices filed outside ChartWarden" })).toBeNull();
+  });
 });

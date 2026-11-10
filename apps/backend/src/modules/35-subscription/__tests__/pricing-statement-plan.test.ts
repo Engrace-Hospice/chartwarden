@@ -18,8 +18,10 @@ import {
 import {
   type ContractFacts,
   type ExistingStatement,
+  MIN_CENSUS_COVERAGE_PERCENT,
   buildStatementValues,
   figuresOf,
+  isSparseCensus,
   planMonths,
   priorPeriodLinesFor,
 } from "../pricing/statement-plan";
@@ -535,6 +537,45 @@ describe("buildStatementValues: the figures of a statement", () => {
     expect(closing).toMatchObject({ status: "final", needsReview: true });
   });
 
+  describe("a closed month billed on a sparse census is flagged for review (the month freezes on the mean of the days observed)", () => {
+    const fullMonth = facts({ liveFrom: d("2026-10-20T00:00:00Z") });
+    const nov = planMonths(fullMonth, d("2026-12-07T00:00:00Z")).find(
+      (w) => w.period.key === "2026-11",
+    )!;
+    const closeOn = (observedDays: number, finalize = true) =>
+      buildStatementValues({
+        facts: fullMonth,
+        work: { ...nov, finalize },
+        meters: {
+          daily: Array.from({ length: observedDays }, () => 12),
+          staff: { count: 4, basis: "identity_filtered" as const },
+          // nothing pending, so the census is the only reason a statement could be flagged
+          collections: { netCents: 1_500_050, remittanceCount: 3, pendingCount: 0 },
+        },
+        priorLines: [],
+        isFirstStatement: false,
+        at: d("2026-12-07T00:00:00Z"),
+      });
+
+    it("25 of 30 days down (5 observed) is flagged; one missed day (29 observed) is not", () => {
+      expect(closeOn(5)).toMatchObject({ status: "final", adcDaysObserved: 5, needsReview: true });
+      expect(closeOn(29)).toMatchObject({ status: "final", needsReview: false });
+    });
+
+    it("the threshold is MIN_CENSUS_COVERAGE_PERCENT of the live days: exactly 80% passes, one day less is flagged", () => {
+      expect(MIN_CENSUS_COVERAGE_PERCENT).toBe(80);
+      expect(closeOn(24).needsReview).toBe(false); // 24 of 30
+      expect(closeOn(23).needsReview).toBe(true);
+      expect(isSparseCensus(8, 10)).toBe(false);
+      expect(isSparseCensus(7, 10)).toBe(true);
+      expect(isSparseCensus(0, 0)).toBe(false); // no live day, nothing expected
+    });
+
+    it("an open month is never flagged on it: its days have not happened yet", () => {
+      expect(closeOn(5, false)).toMatchObject({ status: "draft", needsReview: false });
+    });
+  });
+
   it("a settlement statement reads no meter: zero staff, no census, no collections, no platform fee, no one-time fee, only its prior-period lines", () => {
     const line = {
       sourceYearMonth: "2026-11",
@@ -614,14 +655,22 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
     status: Parameters<typeof lifetimeFromTransitions>[1]["status"],
     updated: string,
     canceled: string | null = null,
+    pausedUntil: string | null = null,
   ) => ({
     status,
     canceledAt: canceled ? at(canceled) : null,
     updatedAt: at(updated),
+    pausedUntil: pausedUntil ? at(pausedUntil) : null,
   });
+  /** `lifetimeFromTransitions` as of a run on 2026-11-26 unless a test says otherwise. */
+  const lifetimeAt = (
+    transitions: Transition[],
+    row: ReturnType<typeof sub>,
+    now = at("2026-11-26T00:00:00Z"),
+  ) => lifetimeFromTransitions(transitions, row, now);
 
   it("a pause opens on a transition into paused and closes on the next one out of it", () => {
-    const life = lifetimeFromTransitions(
+    const life = lifetimeAt(
       [
         t(null, "active", "2026-10-20T00:00:00Z"),
         t("active", "paused", "2026-11-10T09:00:00Z"),
@@ -636,7 +685,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
   });
 
   it("an open pause stays open while the subscription IS paused", () => {
-    const life = lifetimeFromTransitions(
+    const life = lifetimeAt(
       [t("active", "paused", "2026-11-15T09:00:00Z")],
       sub("paused", "2026-11-15T09:00:00Z"),
     );
@@ -644,7 +693,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
   });
 
   it("an open pause on a subscription that is NOT paused (resumed by a path that wrote no history) closes at the row's updated_at, not never", () => {
-    const life = lifetimeFromTransitions(
+    const life = lifetimeAt(
       [t("active", "paused", "2026-11-15T09:00:00Z")],
       sub("active", "2026-11-20T10:00:00Z"),
     );
@@ -663,7 +712,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
   it("an open pause is closed at the NEXT transition after it, not at updated_at, which drifts on unrelated writes", () => {
     // paused 11-10, then a later row that does not leave `paused` through the ledger (the resume wrote none); the row's own
     // updated_at (11-28) moved on for an unrelated reason and must not decide when the pause ended
-    const life = lifetimeFromTransitions(
+    const life = lifetimeAt(
       [
         t("active", "paused", "2026-11-10T09:00:00Z"),
         t("active", "canceled", "2026-11-20T10:00:00Z"),
@@ -676,7 +725,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
   });
 
   it("every stale open pause is repaired: one followed by another pause closes where the next pause starts", () => {
-    const life = lifetimeFromTransitions(
+    const life = lifetimeAt(
       [
         t("active", "paused", "2026-11-05T09:00:00Z"),
         t("active", "paused", "2026-11-12T09:00:00Z"), // the first was resumed by a path that wrote no row
@@ -694,7 +743,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
   });
 
   it("a paused->paused row (a plan change during a pause) keeps the pause open", () => {
-    const life = lifetimeFromTransitions(
+    const life = lifetimeAt(
       [
         t("active", "paused", "2026-11-10T09:00:00Z"),
         t("paused", "paused", "2026-11-12T09:00:00Z"),
@@ -705,7 +754,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
   });
 
   it("a pause with a plan change inside it closes at the resume, not at the plan change", () => {
-    const life = lifetimeFromTransitions(
+    const life = lifetimeAt(
       [
         t("active", "paused", "2026-11-10T09:00:00Z"),
         t("paused", "paused", "2026-11-12T09:00:00Z"),
@@ -720,18 +769,93 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
 
   it("the end is canceled_at, else the cancel transition, else the last write; none while the subscription runs", () => {
     expect(
-      lifetimeFromTransitions([], sub("canceled", "2026-11-25T00:00:00Z", "2026-11-20T14:00:00Z"))
-        .endedAt,
+      lifetimeAt([], sub("canceled", "2026-11-25T00:00:00Z", "2026-11-20T14:00:00Z")).endedAt,
     ).toEqual(at("2026-11-20T14:00:00Z"));
     expect(
-      lifetimeFromTransitions(
+      lifetimeAt(
         [t("active", "canceled", "2026-11-19T00:00:00Z")],
         sub("canceled", "2026-11-25T00:00:00Z"),
       ).endedAt,
     ).toEqual(at("2026-11-19T00:00:00Z"));
-    expect(lifetimeFromTransitions([], sub("canceled", "2026-11-25T00:00:00Z")).endedAt).toEqual(
+    expect(lifetimeAt([], sub("canceled", "2026-11-25T00:00:00Z")).endedAt).toEqual(
       at("2026-11-25T00:00:00Z"),
     );
-    expect(lifetimeFromTransitions([], sub("active", "2026-11-25T00:00:00Z")).endedAt).toBeNull();
+    expect(lifetimeAt([], sub("active", "2026-11-25T00:00:00Z")).endedAt).toBeNull();
+  });
+
+  describe("a pause with an end date is over at that date; nothing resumes it", () => {
+    const UNTIL = "2026-12-15T00:00:00.000Z";
+    const PAUSED_AT = "2026-11-10T09:00:00Z";
+    const pauseRow = (iso: string, until: string | null = UNTIL): Transition => ({
+      ...t("active", "paused", iso),
+      detail: until ? `paused_until=${until}` : null,
+    });
+
+    it("a still-paused subscription whose date has passed stops being paused at the date", () => {
+      const life = lifetimeAt(
+        [pauseRow(PAUSED_AT)],
+        sub("paused", PAUSED_AT, null, UNTIL),
+        at("2026-12-20T00:00:00Z"),
+      );
+      expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at(UNTIL) }]);
+      // and it bills: 15 through 31 December are live (17 days), 1 through 14 paused
+      const windows = liveWindowsOf({
+        liveFrom: d("2026-11-01T00:00:00Z"),
+        endedAt: life.endedAt,
+        pauses: life.pauses,
+      });
+      expect(daysLiveInMonth(DEC, windows)).toBe(17);
+    });
+
+    it("a date still in the future changes nothing: the pause stays open", () => {
+      const life = lifetimeAt(
+        [pauseRow(PAUSED_AT)],
+        sub("paused", PAUSED_AT, null, UNTIL),
+        at("2026-12-14T23:59:59Z"),
+      );
+      expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: null }]);
+    });
+
+    it("an open-ended pause (no date) is never closed by the clock", () => {
+      const life = lifetimeAt(
+        [pauseRow(PAUSED_AT, null)],
+        sub("paused", PAUSED_AT),
+        at("2027-06-01T00:00:00Z"),
+      );
+      expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: null }]);
+    });
+
+    it("a resume AFTER the date still ends the pause at the date (the resume cleared the row's date; the ledger kept it)", () => {
+      const life = lifetimeAt(
+        [pauseRow(PAUSED_AT), t("paused", "active", "2026-12-20T09:00:00Z")],
+        sub("active", "2026-12-20T09:00:00Z"),
+        at("2026-12-21T00:00:00Z"),
+      );
+      expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at(UNTIL) }]);
+    });
+
+    it("a resume BEFORE the date ends the pause at the resume", () => {
+      const life = lifetimeAt(
+        [pauseRow(PAUSED_AT), t("paused", "active", "2026-11-20T09:00:00Z")],
+        sub("active", "2026-11-20T09:00:00Z"),
+        at("2026-12-21T00:00:00Z"),
+      );
+      expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at("2026-11-20T09:00:00Z") }]);
+    });
+
+    it("a date at or before the pause itself, or one that is not an instant, is ignored", () => {
+      const early = lifetimeAt(
+        [pauseRow(PAUSED_AT, "2026-11-01T00:00:00.000Z")],
+        sub("paused", PAUSED_AT),
+        at("2026-12-20T00:00:00Z"),
+      );
+      expect(early.pauses).toEqual([{ from: at(PAUSED_AT), to: null }]);
+      const garbage = lifetimeAt(
+        [pauseRow(PAUSED_AT, "not-a-date")],
+        sub("paused", PAUSED_AT),
+        at("2026-12-20T00:00:00Z"),
+      );
+      expect(garbage.pauses).toEqual([{ from: at(PAUSED_AT), to: null }]);
+    });
   });
 });

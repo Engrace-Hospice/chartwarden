@@ -21640,7 +21640,7 @@ export interface paths {
         /** Platform onboarding-template catalog (cursor-paginated) */
         get: operations["getApiV1PlatformOnboardingtemplates"];
         put?: never;
-        /** Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing */
+        /** Add/edit a NON-canonical onboarding template (the step catalog every tenant's wizard shows): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing, and canonical is migration-only (the database refuses the platform credential a canonical row too). onboarding_template.write + the tenant_lifecycle_platform_ops predicate + a fresh step-up; an Idempotency-Key and a `reason` (8-500 characters, screened for patient identifiers) are required, an AI actor is refused. The audit trail names the operator: the row-level trail by actor, and one m34.onboarding_template.upserted event with the operator, the reason and the step */
         post: operations["postApiV1PlatformOnboardingtemplates"];
         delete?: never;
         options?: never;
@@ -21966,7 +21966,7 @@ export interface paths {
         };
         /** A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned), and whether the tenant holds a pricing contract that is not canceled (hasContract: the server's answer to whether a switch out of outside also takes a billing mode) — platform ops; read is audited. 503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE when the contract cannot be read */
         get: operations["getApiV1PlatformTenantsByOrgSlugClearinghouse"];
-        /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. Moving a tenant that has a contract OUT of outside to a vendor requires `billingServiceMode` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one write on this route accepted outside onboarding, and only while the tenant is provisioning, onboarding, active, at risk or suspended (409 TENANT_NOT_ONBOARDING for any other status: offboarding, final export pending, retained, being destroyed, destroyed, sign-up intent; the status is read before the billing mode is written, and a refusal that cannot be audited is 503 ONBOARDING_AUDIT_UNAVAILABLE); every other write on this route is onboarding-only. Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is asked for again (idempotent), and once more if that fails; if it still cannot be confirmed the answer carries billingModeConfirmed: false and the vendor change stands (read the contract and set the mode if it is not the one chosen). If the vendor's commit fails without a definite answer from the database the vendor is read again before the mode is undone: saved, the switch stands; not saved, the mode goes back to none; unreadable, the mode is left as set and the answer is 503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN (and a commit the server gave up on can still land after the read-back saw outside, leaving a vendor with the mode put back to none: after any failed switch, read the tenant's clearinghouse and contract). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise), except the switch out of outside that names a billing service mode (in the statuses named above); an AI actor is refused */
+        /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the route allows 10 saves a minute per operator and tenant, and answers 503 when its limiter is unavailable) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. Moving a tenant that has a contract OUT of outside to a vendor requires `billingServiceMode` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one write on this route accepted outside onboarding, and only while the tenant is provisioning, onboarding, active, at risk or suspended (409 TENANT_NOT_ONBOARDING for any other status: offboarding, final export pending, retained, being destroyed, destroyed, sign-up intent; the status is read before the billing mode is written, and a refusal that cannot be audited is 503 ONBOARDING_AUDIT_UNAVAILABLE); every other write on this route is onboarding-only. Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is asked for again (idempotent), and once more if that fails; if it still cannot be confirmed the answer carries billingModeConfirmed: false and the vendor change stands (read the contract and set the mode if it is not the one chosen). If the vendor's commit fails without a definite answer from the database the vendor is read again before the mode is undone: saved, the switch stands; not saved, the mode goes back to none; unreadable, the mode is left as set and the answer is 503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN (and a commit the server gave up on can still land after the read-back saw outside, leaving a vendor with the mode put back to none: after any failed switch, read the tenant's clearinghouse and contract). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise), except the switch out of outside that names a billing service mode (in the statuses named above); an AI actor is refused */
         put: operations["putApiV1PlatformTenantsByOrgSlugClearinghouse"];
         post?: never;
         delete?: never;
@@ -22069,7 +22069,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
+        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON) and must not have recorded, last changed or uploaded the signed agreement of the governing BAA (409 GO_LIVE_APPROVER_WROTE_BAA), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
         post: operations["postApiV1PlatformTenantsByOrgSlugGoliveApprove"];
         delete?: never;
         options?: never;
@@ -22205,7 +22205,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope, not gated on its onboarding status. tenant_onboarding_data.read_platform + the platform_ops role */
+        /** The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope (the row names the operator and the count of NOEs and NOTRs shown, never which records), not gated on its onboarding status. A notice id with its dates identifies a patient's record, so this read takes the notice-filing key, not the generic onboarding read key: tenant_notice_filing.withdraw_platform + the platform_ops role */
         get: operations["getApiV1PlatformTenantsByOrgSlugNoticefilings"];
         put?: never;
         post?: never;
@@ -28261,7 +28261,7 @@ export interface paths {
         };
         /** The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.read (org-level) */
         get: operations["getApiV1TenantClearinghouse"];
-        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         put: operations["putApiV1TenantClearinghouse"];
         post?: never;
         delete?: never;
@@ -96022,7 +96022,10 @@ export interface operations {
     postApiV1PlatformOnboardingtemplates: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -96035,6 +96038,8 @@ export interface operations {
                     canonicalOrder: number;
                     /** @constant */
                     isCanonical?: false;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
                 };
             };
         };
@@ -96765,6 +96770,8 @@ export interface operations {
                                 /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
                                 totalCount: number;
                                 currentStepKey: string | null;
+                                /** @description The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step. */
+                                currentStepTitle: string | null;
                                 goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
                             } | null;
                         }[];
@@ -96853,6 +96860,8 @@ export interface operations {
                             /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
                             totalCount: number;
                             currentStepKey: string | null;
+                            /** @description The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step. */
+                            currentStepTitle: string | null;
                             goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
                         } | null;
                         latestStatusEvent: {

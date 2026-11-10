@@ -526,3 +526,99 @@ describe("TenantOnboarding wizard: skip and re-open", () => {
     expect(screen.queryByRole("button", { name: /Re-open to edit/ })).toBeNull();
   });
 });
+
+describe("TenantOnboardingWizard: a step that moved under the operator", () => {
+  const skipView = () =>
+    wizardView([
+      wizardStep("account_created", 1, { status: "done" }),
+      wizardStep("mac_configured", 2, {
+        title: "Billing: MAC credentials",
+        completionMode: "either",
+        owner: "either",
+      }),
+    ]);
+  const askToSkip = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: /Skip this step/ }));
+    fireEvent.change(screen.getByLabelText(/Reason/), {
+      target: { value: "Tenant bills outside ChartWarden" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Skip step" }));
+  };
+
+  it.each([
+    ["ONBOARDING_STEP_ALREADY_SETTLED", /already done/],
+    ["TENANT_NOT_ONBOARDING", /not in onboarding/],
+    ["ONBOARDING_TASK_CHANGED", /has been reloaded/],
+  ])(
+    "a skip refused with %s reloads the wizard, closes the prompt and says why on the page",
+    async (code, words) => {
+      const { client } = setup({ view: skipView() });
+      client.POST.mockResolvedValueOnce(refused(409, code, "x"));
+      renderAt(`${URL_BASE}/mac_configured`, ROUTES, client);
+      await screen.findByRole("button", { name: /Skip this step/ });
+      const before = client.GET.mock.calls.length;
+      await askToSkip();
+      expect(await screen.findByText(words)).toBeTruthy();
+      expect(screen.queryByLabelText(/Reason/)).toBeNull();
+      await waitFor(() => expect(client.GET.mock.calls.length).toBeGreaterThan(before));
+    },
+  );
+
+  it("a re-open refused with ONBOARDING_STEP_NOT_SETTLED reloads the wizard", async () => {
+    const { client } = setup();
+    client.POST.mockResolvedValueOnce(refused(409, "ONBOARDING_STEP_NOT_SETTLED", "x"));
+    renderAt(`${URL_BASE}/account_created`, ROUTES, client);
+    fireEvent.click(await screen.findByRole("button", { name: /Re-open to edit/ }));
+    const before = client.GET.mock.calls.length;
+    fireEvent.change(screen.getByLabelText(/Reason/), {
+      target: { value: "Display name was misspelled" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Re-open step" }));
+    expect(await screen.findByText(/Only a step that is done or skipped/)).toBeTruthy();
+    await waitFor(() => expect(client.GET.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it("a refusal that is not about the step moving does not reload, and Cancel drops it instead of popping it onto the page", async () => {
+    const { client } = setup({ view: skipView() });
+    client.POST.mockResolvedValueOnce(refused(500, "INTERNAL_ERROR", "boom"));
+    renderAt(`${URL_BASE}/mac_configured`, ROUTES, client);
+    await screen.findByRole("button", { name: /Skip this step/ });
+    const before = client.GET.mock.calls.length;
+    await askToSkip();
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText(/boom/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText(/boom/)).toBeNull();
+    expect(client.GET.mock.calls.length).toBe(before);
+  });
+
+  it("attesting a step that was already settled elsewhere reloads the wizard and closes the card with the refusal on the page", async () => {
+    const { client } = setup();
+    client.POST.mockResolvedValueOnce(refused(409, "ONBOARDING_STEP_ALREADY_SETTLED", "x"));
+    renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, client);
+    fireEvent.click(await screen.findByRole("button", { name: /Mark done with evidence/ }));
+    fireEvent.change(screen.getByLabelText(/What was checked/), {
+      target: { value: "Confirmed enrolment letter with the customer" },
+    });
+    fireEvent.change(screen.getByLabelText(/Reason/), {
+      target: { value: "Customer asked us to settle this for them" },
+    });
+    const before = client.GET.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Save and mark done" }));
+    expect(await screen.findByText(/already done/)).toBeTruthy();
+    expect(screen.queryByRole("form", { name: "Mark this step done" })).toBeNull();
+    await waitFor(() => expect(client.GET.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it("moves focus into the evidence card when it opens and back to its button when it closes", async () => {
+    const { client } = setup();
+    renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, client);
+    fireEvent.click(await screen.findByRole("button", { name: /Mark done with evidence/ }));
+    expect(document.activeElement?.textContent).toBe("Mark this step done");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Mark done with evidence/ }),
+    );
+  });
+});

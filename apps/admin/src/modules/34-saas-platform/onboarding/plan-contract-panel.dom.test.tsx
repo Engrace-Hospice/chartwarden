@@ -2,11 +2,13 @@
 // Step 2, Plan & contract: the operator picks a published census-banded plan, previews what the tenant would pay, and signs it. Signing
 // is what settles the step (the server attests it through the wizard), so there is no separate "mark done". The contract read is
 // audited per read, so it is made only when this step is open and can be acted on.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PlanContractPanel, formatCents } from "./plan-contract-panel";
 import {
+  ONBOARDING_OPERATOR,
   ORG_SLUG,
+  RETURNED_FROM_STEP_UP,
   ok,
   panelCtx,
   refused,
@@ -97,15 +99,22 @@ const PREVIEW_RESULT = {
 };
 const view = (over = {}, stepOver = {}) =>
   wizardView([wizardStep("plan_contract", 1, { title: "Plan & contract", ...stepOver })], over);
-const PLAN_READER = { userId: "u1", organizationId: "o1", permissions: ["plan.admin.read"] };
+const PLAN_READER = {
+  userId: "u1",
+  organizationId: "o1",
+  permissions: ["plan.admin.read", "subscription.pricing_read_platform"],
+};
+const chooseService = (value: string) =>
+  fireEvent.change(screen.getByLabelText("Billing service"), { target: { value } });
 function mount(
   handlers: Parameters<typeof stubClient>[0],
   v = view(),
   session?: Parameters<typeof renderAt>[3],
+  at: Parameters<typeof renderAt>[0] = "/x",
 ) {
   const client = stubClient(handlers);
   const ctx = panelCtx(v, "plan_contract");
-  renderAt("/x", [{ path: "/x", element: <PlanContractPanel ctx={ctx} /> }], client, session);
+  renderAt(at, [{ path: "/x", element: <PlanContractPanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 const NO_CONTRACT = { contract: null, statements: [] };
@@ -169,6 +178,7 @@ describe("PlanContractPanel", () => {
       POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
     });
     await screen.findByLabelText("Plan");
+    chooseService("none");
     fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Average daily census"), { target: { value: "14" } });
     fireEvent.change(screen.getByLabelText(/^Expected net collections/), {
@@ -225,6 +235,7 @@ describe("PlanContractPanel", () => {
     const preview = (): void => {
       fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
     };
+    chooseService("none");
     set("Average daily census", "14");
     for (const staff of ["1e1", "0x1f"]) {
       set("Staff accounts", staff);
@@ -321,6 +332,7 @@ describe("PlanContractPanel", () => {
       },
     });
     await screen.findByLabelText("Plan");
+    chooseService("none");
     fireEvent.click(screen.getByRole("button", { name: "Sign contract" }));
     fireEvent.change(screen.getByLabelText(/^Reason/), {
       target: { value: "Order form countersigned" },
@@ -345,6 +357,7 @@ describe("PlanContractPanel", () => {
       },
     });
     await screen.findByLabelText("Plan");
+    chooseService("none");
     fireEvent.click(screen.getByRole("button", { name: "Sign contract" }));
     fireEvent.change(screen.getByLabelText(/^Reason/), {
       target: { value: "Order form countersigned" },
@@ -401,5 +414,142 @@ describe("PlanContractPanel", () => {
     );
     expect(await screen.findByText(/Finish Organisation first/)).toBeTruthy();
     expect(client.GET.mock.calls.filter((c) => c[0] === SUB)).toHaveLength(0);
+  });
+});
+
+describe("PlanContractPanel: reading is not writing", () => {
+  const sessionWith = (...permissions: string[]) => ({ ...ONBOARDING_OPERATOR, permissions });
+  const mountAs = (session: ReturnType<typeof sessionWith>) => {
+    const client = stubClient({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok({ contract: CONTRACT, statements: [] }) },
+    });
+    const ctx = panelCtx(view(), "plan_contract", undefined, session);
+    renderAt("/x", [{ path: "/x", element: <PlanContractPanel ctx={ctx} /> }], client, session);
+    return client;
+  };
+
+  it("an operator who may read the contract but not sign it sees it, with the frame saying they cannot edit", async () => {
+    mountAs(sessionWith("subscription.pricing_read_platform", "onboarding.manage_platform"));
+    expect(await screen.findByText("Standard census bands")).toBeTruthy();
+    expect(screen.getByText(/You can view this step/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Change billing service" })).toBeNull();
+  });
+
+  it("an operator who may not read contracts is told so and no contract read is made", async () => {
+    const client = mountAs(sessionWith("subscription.onboard_platform"));
+    expect(await screen.findByText(/Your role cannot read this tenant's contract/)).toBeTruthy();
+    expect(client.GET.mock.calls.filter((c) => c[0] === SUB)).toHaveLength(0);
+  });
+});
+
+describe("PlanContractPanel: the billing service is a choice", () => {
+  const fillInputs = () => {
+    fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Average daily census"), { target: { value: "14" } });
+    fireEvent.change(screen.getByLabelText(/^Expected net collections/), {
+      target: { value: "50000" },
+    });
+  };
+
+  it("starts empty: signing or previewing without a choice asks for one and sends nothing", async () => {
+    const { client } = mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
+    });
+    await screen.findByLabelText("Plan");
+    expect((screen.getByLabelText("Billing service") as HTMLSelectElement).value).toBe("");
+    fillInputs();
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    expect(screen.getByText("Choose the billing service.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign contract" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("a price that arrives after the inputs were edited is not shown as the price of the new inputs", async () => {
+    let release: (reply: ReturnType<typeof ok>) => void = () => undefined;
+    mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: {
+        [PREVIEW]: () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      },
+    });
+    await screen.findByLabelText("Plan");
+    chooseService("none");
+    fillInputs();
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "13" } });
+    release(ok(PREVIEW_RESULT));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Preview price" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(screen.queryByText("$1,088.00")).toBeNull();
+    // asking again for the inputs as they are now shows that price
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    release(ok(PREVIEW_RESULT));
+    expect(await screen.findByText("$1,088.00")).toBeTruthy();
+  });
+});
+
+describe("PlanContractPanel: a Re-verify keeps what was typed", () => {
+  it("brings back the plan form and the sign prompt with the reason that was typed, from memory only", async () => {
+    const typed = "Order form countersigned, CHG-4411";
+    const handlers = {
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [SUB]: () => refused(403, "STEP_UP_REQUIRED", "x") },
+    };
+    mount(handlers);
+    await screen.findByLabelText("Plan");
+    chooseService("billing_software");
+    fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Order form reference (optional)"), {
+      target: { value: "OF-2026-114" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign contract" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: typed } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    expect(await screen.findByText("step-up page")).toBeTruthy();
+    expect(JSON.stringify({ ...window.sessionStorage })).not.toContain(typed);
+    cleanup();
+
+    mount(handlers, view(), undefined, RETURNED_FROM_STEP_UP);
+    expect(((await screen.findByLabelText(/^Reason/)) as HTMLTextAreaElement).value).toBe(typed);
+    expect((screen.getByLabelText("Billing service") as HTMLSelectElement).value).toBe(
+      "billing_software",
+    );
+    expect((screen.getByLabelText("Staff accounts") as HTMLInputElement).value).toBe("12");
+    expect(
+      (screen.getByLabelText("Order form reference (optional)") as HTMLInputElement).value,
+    ).toBe("OF-2026-114");
+  });
+
+  it("brings back the change-billing-service prompt the same way", async () => {
+    const handlers = {
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok({ contract: CONTRACT, statements: [] }) },
+      PUT: { [MODE]: () => refused(403, "STEP_UP_REQUIRED", "x") },
+    };
+    mount(handlers);
+    fireEvent.click(await screen.findByRole("button", { name: "Change billing service" }));
+    fireEvent.change(screen.getByLabelText("New billing service"), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review change" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Tenant bills outside ChartWarden" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    expect(await screen.findByText("step-up page")).toBeTruthy();
+    cleanup();
+
+    mount(handlers, view(), undefined, RETURNED_FROM_STEP_UP);
+    expect(((await screen.findByLabelText(/^Reason/)) as HTMLTextAreaElement).value).toBe(
+      "Tenant bills outside ChartWarden",
+    );
+    expect((screen.getByLabelText("New billing service") as HTMLSelectElement).value).toBe("none");
   });
 });

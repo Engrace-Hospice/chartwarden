@@ -24,3 +24,13 @@ export function useEditorFocus(open: boolean, returnName: string): RefObject<HTM
   }, [open, returnName]);
   return headingRef;
 }
+
+/**
+ * After a reload removed the control the editor opened from (the first credential is saved: the "Add" button goes), puts focus on the
+ * control now carrying that name (its "Replace"). It never takes focus from a control the operator has since moved to.
+ */
+export function refocusEditorReturn(returnName: string): void {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body && active.isConnected) return;
+  document.querySelector<HTMLElement>(`[data-editor-return="${returnName}"]`)?.focus();
+}

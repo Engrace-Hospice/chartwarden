@@ -17,6 +17,7 @@ import {
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { bodyFingerprint } from "./body-digest";
 import { VerifyBaa } from "./clearinghouse-baa-verify";
 import {
   BLANK_CHOICE,
@@ -48,6 +49,7 @@ import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { isAboutAnInput } from "./wizard-errors";
 
 const PATH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
 const EVIDENCE_NOTE_MIN = 8;
@@ -55,12 +57,19 @@ const EVIDENCE_NOTE_MAX = 500;
 const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:clearinghouse_selected:choice`;
 
 type Dialog = "choose" | "verify" | null;
-type TestOutcome = "ok" | "credential_rejected" | "unreachable";
-const TEST_PROBLEM: Record<Exclude<TestOutcome, "ok">, string> = {
+const TEST_PROBLEM: Readonly<Record<string, string>> = {
   credential_rejected:
     "The vendor rejected the credential. Nothing was verified; choose the clearinghouse again with the right credential.",
   unreachable: "The vendor could not be reached. Nothing was verified; try the test again shortly.",
 };
+const TEST_UNCONFIRMED =
+  "The connection test did not report a result this screen understands. Nothing was verified; try the test again, and tell engineering if it keeps happening.";
+
+/** What a finished connection test tells the operator: nothing when it passed, else the vendor's problem, else a generic failure. */
+function testProblemOf(outcome: string | undefined): string | null {
+  if (outcome === "ok") return null;
+  return (outcome !== undefined ? TEST_PROBLEM[outcome] : undefined) ?? TEST_UNCONFIRMED;
+}
 
 const CHOICE_FIELDS = ["vendor", "mode", "secret", "billingServiceMode"] as const;
 
@@ -76,14 +85,6 @@ function withServerErrors(
   }
   return merged;
 }
-
-/** A refusal that is about an input (not the reason itself): the prompt gets out of the way so the error is read beside that input. */
-const isAboutAnInput = (failure: {
-  kind: string;
-  fieldErrors: Readonly<Record<string, string>>;
-}): boolean =>
-  failure.kind === "validation" &&
-  Object.keys(failure.fieldErrors).some((field) => field !== "reason");
 
 function SummaryCard({ view }: { view: ClearinghouseView }): JSX.Element | null {
   if (view.vendor === null || view.source !== "tenant") return null;
@@ -153,6 +154,8 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const [noteError, setNoteError] = useState<string | null>(null);
   const [notePhiFree, setNotePhiFree] = useState(false);
   const [testProblem, setTestProblem] = useState<string | null>(null);
+  // What a connection check settled, in words (announced): the fact list changes too, but a screen reader is told nothing by that.
+  const [verifiedNote, setVerifiedNote] = useState("");
   const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
   const write = useOpsWrite();
 
@@ -229,7 +232,9 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
               : {}),
             reason,
           };
-    const outcome = await write.run(`choose:${pinned ?? "new"}:${JSON.stringify(body)}`, (key) =>
+    // a digest, not the body: the vendor credential is in it and is never held outside its input
+    const fingerprint = `choose:${pinned ?? "new"}:${await bodyFingerprint(body)}`;
+    const outcome = await write.run(fingerprint, (key) =>
       client.PUT(PATH, {
         params: {
           path: { orgSlug },
@@ -273,8 +278,17 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       if (isAboutAnInput(outcome.failure)) setDialog(null); // the attestation form stays open, the error under its note
       return;
     }
-    const test = outcome.data.test?.outcome as TestOutcome | undefined;
-    setTestProblem(test && test !== "ok" ? TEST_PROBLEM[test] : null);
+    // An attestation runs no vendor test; a connection test that reports nothing is not a pass.
+    const problem =
+      current?.verifiableBy === "attestation" ? null : testProblemOf(outcome.data.test?.outcome);
+    setTestProblem(problem);
+    setVerifiedNote(
+      problem !== null
+        ? ""
+        : current?.verifiableBy === "attestation"
+          ? "The connection was attested."
+          : "The connection test passed.",
+    );
     setAttesting(false);
     setNote("");
     setNotePhiFree(false);
@@ -333,6 +347,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
           </>
         ) : null}
         {testProblem ? <InlineAlert tone="warning">{testProblem}</InlineAlert> : null}
+        {/* always mounted, so a screen reader announces the text when it appears */}
+        <output className="wx-row-sub" aria-live="polite">
+          {verifiedNote}
+        </output>
         {modeUnconfirmed ? <ModeUnconfirmedNotice orgSlug={orgSlug} /> : null}
         {canWrite && available && !editing ? (
           <div className="wx-drawer-actions">
@@ -351,6 +369,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
                 tone="secondary"
                 onClick={() => {
                   setTestProblem(null);
+                  setVerifiedNote("");
                   if (current?.verifiableBy === "attestation") setAttesting(true);
                   else {
                     write.clear();
@@ -399,7 +418,15 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       ) : null}
 
       {attesting && canWrite ? (
-        <section className="wx-drawer-card" aria-label="Verify the connection">
+        <form
+          className="wx-drawer-card"
+          aria-label="Verify the connection"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            askToAttest();
+          }}
+        >
           <div className="wx-drawer-card-head">
             <h3>Verify the connection</h3>
           </div>
@@ -437,9 +464,9 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             >
               Cancel
             </Button>
-            <Button onClick={askToAttest}>Continue</Button>
+            <Button type="submit">Continue</Button>
           </div>
-        </section>
+        </form>
       ) : null}
 
       <RecordSaveDialog

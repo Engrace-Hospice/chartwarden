@@ -4,6 +4,7 @@
 // in this tab's memory only: the note, the reference and the reason are free text, and free text never goes to sessionStorage.
 import {
   Button,
+  type OpsFailure,
   REASON_RULES,
   TextAreaField,
   TextField,
@@ -14,10 +15,11 @@ import {
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
-import type { JSX } from "react";
+import type { JSX, RefObject } from "react";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { useOpsWrite } from "./use-ops-write";
+import { viewHasMoved } from "./wizard-errors";
 
 const EVIDENCE_NOTE_MAX = 2000;
 const EVIDENCE_REF_MAX = 500;
@@ -33,10 +35,16 @@ export const attestDraftKey = (orgSlug: string, stepKey: string): string =>
 
 export function AttestCard({
   ctx,
+  headingRef,
   onCancel,
+  onMoved,
 }: {
   ctx: PanelContext;
+  /** Where focus goes when the card opens (the frame returns it to the "Mark done" button when the card closes). */
+  headingRef?: RefObject<HTMLHeadingElement>;
   onCancel: () => void;
+  /** The step moved under the operator (settled elsewhere, the tenant left onboarding): the view has been read again. */
+  onMoved: (failure: OpsFailure) => void;
 }): JSX.Element {
   const client = useApiClient();
   const { orgSlug, step } = ctx;
@@ -78,6 +86,10 @@ export function AttestCard({
       () => ctx.refresh(),
     );
     if (outcome.ok) onCancel();
+    else if (viewHasMoved(outcome.failure)) {
+      await ctx.refresh();
+      onMoved(outcome.failure);
+    }
   }
 
   const failure = write.failure;
@@ -97,7 +109,9 @@ export function AttestCard({
       }}
     >
       <div className="wx-drawer-card-head">
-        <h3>Mark this step done</h3>
+        <h3 ref={headingRef} tabIndex={-1}>
+          Mark this step done
+        </h3>
       </div>
       <p className="wx-row-sub">
         You are settling this step on the tenant's behalf. The evidence and your reason are recorded

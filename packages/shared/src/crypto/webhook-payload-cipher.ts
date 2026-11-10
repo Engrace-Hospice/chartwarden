@@ -29,12 +29,15 @@ export function parseWebhookPayloadKey(base64Key: string, envName: string): Buff
 }
 
 export interface WebhookPayloadCipher {
+  /** The id this cipher stamps on what it seals (`dekRef`) and the only id it can open: a stored `dekRef` that differs is another key's. */
+  readonly keyId: string;
   encrypt(plaintext: string): { ciphertext: string; dekRef: string };
   decrypt(ciphertext: string): string;
 }
 
 export function createWebhookPayloadCipher(key: Buffer, keyId: string): WebhookPayloadCipher {
   return {
+    keyId,
     encrypt(plaintext) {
       const iv = randomBytes(IV_BYTES);
       const cipher = createCipheriv("aes-256-gcm", key, iv);

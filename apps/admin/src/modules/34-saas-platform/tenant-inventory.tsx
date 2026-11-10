@@ -25,6 +25,7 @@ import type { paths } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { GO_LIVE_STEP_KEY } from "./onboarding/wizard-model";
 import { lifecycleTone, statusLabel } from "./saas-status";
 import {
   AttentionStrip,
@@ -85,6 +86,8 @@ export function TenantInventory(): JSX.Element {
   // A slower earlier response must not overwrite a newer one.
   const guard = useRequestGuard();
   const [items, setItems] = useState<TenantSummary[]>([]);
+  // The rows are the first page: whether another page exists says if the attention strip counted every tenant.
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +124,7 @@ export function TenantInventory(): JSX.Element {
       }
       const page = data as unknown as TenantPage | undefined;
       setItems((page?.items ?? []) as TenantSummary[]);
+      setHasMore(page?.hasMore ?? false);
       setLoaded(true);
       setLoading(false);
     },
@@ -198,8 +202,9 @@ export function TenantInventory(): JSX.Element {
         {status === "" ? (
           <AttentionStrip
             tenants={items}
+            complete={!hasMore && appliedSearch === ""}
             onReview={(slug) =>
-              navigate(`/tenants/${encodeURIComponent(slug)}/onboarding/go_live_checklist_complete`)
+              navigate(`/tenants/${encodeURIComponent(slug)}/onboarding/${GO_LIVE_STEP_KEY}`)
             }
           />
         ) : null}

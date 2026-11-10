@@ -6,6 +6,32 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — Onboarding-step catalog writes name their operator; the notice list moves behind the notice key
+
+- `POST /api/v1/platform/onboarding-templates` now requires an `Idempotency-Key` header and a `reason` (8-500 characters after
+  whitespace is collapsed, screened for patient identifiers), refuses an AI actor, and leaves one `m34.onboarding_template.upserted`
+  audit event naming the operator, the reason and the step. The step catalog is shown in every tenant's wizard.
+- `GET /api/v1/platform/tenants/{orgSlug}/notice-filings` is gated on `tenant_notice_filing.withdraw_platform` (the notice-filing
+  key), no longer on `tenant_onboarding_data.read_platform`: a notice id with its dates identifies a patient's record. Its audit row
+  records the number of NOEs and NOTRs shown, never which.
+- `POST /api/v1/platform/tenants/{orgSlug}/go-live/approve` answers `409 GO_LIVE_APPROVER_WROTE_BAA` for an operator who UPLOADED the
+  signed agreement of the governing BAA, as well as one who recorded or last changed the record. A document whose content was
+  destroyed (a tombstone) no longer counts as a filed agreement.
+
+---
+
+## 2026-11-09 — The clearinghouse vendor lock ends; the platform PUT is rate limited
+
+**Vendor and mode lock.** `PUT /api/v1/tenant/clearinghouse` (and the operator's onboarding PUT) answer 409
+`CLEARINGHOUSE_VENDOR_LOCKED` only while the organization has a production submission in flight or sent one in the last
+90 days (the same window as the credential release). Before, one production claim locked vendor and mode for good.
+
+**Rate limit.** `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` now allows 10 saves a minute per operator and 30 per
+tenant, counted per target tenant, and answers 429 beyond that (503 when the limiter's store is unavailable), as the tenant's own
+PUT does: both can answer `CLEARINGHOUSE_ACCOUNT_IN_USE`, which says a credential is held elsewhere.
+
+---
+
 ## 2026-11-08 — Releasing a tenant's earlier clearinghouse credentials
 
 **New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release` frees every clearinghouse credential a

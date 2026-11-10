@@ -5,7 +5,7 @@
 import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TenantOverview } from "./tenant-overview";
 
@@ -92,6 +92,7 @@ function mount(
       <ApiClientProvider client={client as unknown as ApiClient}>
         <ToastProvider>
           <Where />
+          <Link to="/tenants/other-slug">Go to another tenant</Link>
           <Routes>
             <Route path="/tenants/:orgSlug" element={<TenantOverview />} />
             <Route path="/tenants/:orgSlug/onboarding" element={<p>wizard</p>} />
@@ -254,5 +255,50 @@ describe("TenantOverview: key rotation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rotate" }));
     expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toMatch(/at least 8/);
     expect(client.POST.mock.calls.some((c) => c[0] === DEK)).toBe(false);
+  });
+});
+
+describe("TenantOverview: the contract toggle and the next step", () => {
+  it("keeps the Show contract and billing button as an aria-expanded toggle: collapsing it neither loses focus nor reads (and audits) the contract again", async () => {
+    const client = mount();
+    const toggle = await screen.findByRole("button", { name: "Show contract and billing" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(await screen.findByText("Standard census bands")).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.isConnected).toBe(true);
+    expect(document.activeElement).toBe(toggle);
+    fireEvent.click(toggle);
+    expect(screen.getByText("Standard census bands")).toBeTruthy();
+    expect(client.GET.mock.calls.filter((c) => c[0] === SUB)).toHaveLength(1);
+  });
+
+  it("names the next step by the server's own title, as the wizard does", async () => {
+    mount({
+      onboardingProgress: {
+        doneCount: 1,
+        totalCount: 13,
+        currentStepKey: "plan_contract",
+        currentStepTitle: "Plan & contract",
+        goLiveState: "not_ready",
+      },
+    });
+    expect(await screen.findByText("Next: Plan & contract")).toBeTruthy();
+  });
+});
+
+describe("TenantOverview: another tenant in the address", () => {
+  it("starts from nothing: a contract revealed for one tenant is not read for the next without a click", async () => {
+    const client = mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Show contract and billing" }));
+    expect(await screen.findByText("Standard census bands")).toBeTruthy();
+    const readsBefore = client.GET.mock.calls.filter((c) => c[0] === SUB).length;
+    fireEvent.click(screen.getByRole("link", { name: "Go to another tenant" }));
+    const toggle = await screen.findByRole("button", { name: "Show contract and billing" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(client.GET.mock.calls.filter((c) => c[0] === SUB)).toHaveLength(readsBefore);
   });
 });

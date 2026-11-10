@@ -37,6 +37,13 @@ export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
   "messaging.redact.approve",
 ]);
 
+/**
+ * Keys withheld from the `administrator` template ONLY (`org_admin` keeps them). `onboarding.manage_own` is gated by the ABAC
+ * predicate `tenant_org_admin_role`, which admits the literal role key `org_admin`, so on `administrator` it would be a dead grant:
+ * the permission check passes and the predicate then answers 403. Migration 1461 revokes it from existing `administrator` roles.
+ */
+export const ADMINISTRATOR_EXCLUDED_KEYS: ReadonlySet<string> = new Set(["onboarding.manage_own"]);
+
 /** One permission-mirror row the planner needs. */
 export interface MirrorPermission {
   readonly key: string;
@@ -75,7 +82,9 @@ export function planRoleTemplateMaterialization(input: {
     .filter((t) => !input.existingRoleKeys.has(t.key))
     .map((t): PlannedRole => {
       const wanted = FULL_CATALOG_ROLE_KEYS.has(t.key)
-        ? fullCatalog
+        ? fullCatalog.filter(
+            (k) => t.key !== "administrator" || !ADMINISTRATOR_EXCLUDED_KEYS.has(k),
+          )
         : [...new Set([...t.floor, ...(t.grants ?? [])])];
       return {
         key: t.key,

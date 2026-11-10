@@ -76,28 +76,35 @@ The web image contains three static SPAs: the staff app at `/`, the patient/fami
 and Platform Ops in a separate document root selected only for `platform112026.chartwarden.cloud`.
 After the image release is live, point `platform112026.chartwarden.cloud` to the VPS, install the
 shared proxy snippet the vhost includes (`sudo install -m 0644 deploy/production/nginx/chartwarden-platform-proxy.conf
-/etc/nginx/snippets/`; a new host gets it from `bootstrap-vps.sh`), copy `nginx/chartwarden-platform.conf` to
+/etc/nginx/snippets/`) and the limit zones the BAA location names (`sudo install -m 0644
+deploy/production/nginx/chartwarden-platform-limits.conf /etc/nginx/conf.d/`); a new host gets both from `bootstrap-vps.sh`.
+Then copy `nginx/chartwarden-platform.conf` to
 `/etc/nginx/sites-available/`, symlink it into `sites-enabled/`, then run `nginx -t` before reloading. Issue a certificate with `certbot --nginx -d
 platform112026.chartwarden.cloud`. Preserve the existing entries in the VPS `.env.production` and add
 `https://platform112026.chartwarden.cloud` to `TRUSTED_ORIGINS`; recreate only `api` so CORS and Better
 Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webhooks/` routes; both API
 locations `include` the shared proxy snippet. Only the signed-BAA upload
 (`/api/v1/platform/tenants/<slug>/baa-document`) gets a 16m body cap (plus a 30s body and 90s upstream read
-timeout); every other route keeps nginx's 1 MiB default.
+timeout) and, because nginx buffers that body before the API's guards run, a per-address request limit (6 a minute,
+burst 3) and connection limit (2), refused with 429; every other route keeps nginx's 1 MiB default. The snippet
+also REPLACES `X-Forwarded-Host` with `$host`, as `chartwarden-tenant.conf` does: the API trusts it from this peer.
+Not done here: restricting who can reach the platform hostname at all (an IP allowlist or mTLS) is an operator
+decision, and a slow sender is bounded in how many connections it holds open, not in total time. If a TLS terminator
+fronts the host, restore the real client address (`set_real_ip_from` / `real_ip_header`) or one limit bucket serves everyone.
 
 Updating a live host: **do not re-run `bootstrap-vps.sh` on a live host.** certbot edits the installed vhost
 in place (it adds the `listen 443 ssl` block and the certificate paths), so **never copy
 `chartwarden-platform.conf` over the live file** either. Instead:
 
-1. Install the snippet first; the vhost's `include` needs it to exist before the hand-edit:
+1. Install the snippet and the limit zones first; the vhost's `include` and its `limit_req` / `limit_conn` need
+   them to exist before the hand-edit (`nginx -t` fails on an unknown zone):
    `sudo install -m 0644 deploy/production/nginx/chartwarden-platform-proxy.conf /etc/nginx/snippets/`
+   `sudo install -m 0644 deploy/production/nginx/chartwarden-platform-limits.conf /etc/nginx/conf.d/`
 2. Edit the live vhost by hand: add or update the `location ~ ^/api/v1/platform/tenants/[^/]+/baa-document$`
-   block (above the `/api/` block, in every `server` that proxies the API) to match the repo copy, and make the
-   `/api/` location `include /etc/nginx/snippets/chartwarden-platform-proxy.conf;`.
+   block (above the `/api/` block, in every `server` that proxies the API) to match the repo copy, limit
+   directives included, make the `/api/` location `include /etc/nginx/snippets/chartwarden-platform-proxy.conf;`, and add
+   `proxy_set_header X-Forwarded-Host $host;` to the `/` location.
 3. `sudo nginx -t && sudo systemctl reload nginx`
-
-Alternative to step 2: copy the repo vhost over the live one and immediately re-apply TLS with
-`sudo certbot --nginx --reinstall -d platform112026.chartwarden.cloud`, then step 3.
 
 ## DocLens worker and the scoped object-store account (GAP-138 / GAP-139)
 

@@ -30,10 +30,12 @@ describe("reconcileThenStatement", () => {
     await reconcileThenStatement(reconcile, log, statement, "org-1");
     expect(calls).toEqual(["statement:org-1"]);
     expect(logs).toHaveLength(1);
+    // the error itself goes under `err` (the logger redacts that key); a hand-built `error: message` would carry a driver error's bound values
     expect(logs[0]?.[1]).toMatchObject({
       organizationId: "org-1",
-      error: "pricing is unavailable",
+      err: expect.objectContaining({ message: "pricing is unavailable" }),
     });
+    expect(logs[0]?.[1]).not.toHaveProperty("error");
 
     // the first call failed and a later one succeeds: the second sweep goes through, and logs nothing more
     await reconcileThenStatement(reconcile, log, statement, "org-1");

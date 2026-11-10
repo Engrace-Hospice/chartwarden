@@ -2,8 +2,16 @@
 // tenant app, so the operator picks one of the tenant's own active staff by name and says why; the server binds the role where the
 // member lacks it, and refuses ChartWarden staff (and the operator) as officers. Assigning a different officer voids a go-live
 // attestation by the earlier one. The picker reads the tenant's active staff (name, email, roles: nothing else).
-import { Button, type Fact, FactList, REASON_RULES, useApiClient } from "@chartwarden/ui";
-import { useState } from "react";
+import {
+  Button,
+  type Fact,
+  FactList,
+  REASON_RULES,
+  stashStepUpMemoryDraft,
+  useApiClient,
+  useStepUpMemoryDraft,
+} from "@chartwarden/ui";
+import { useRef, useState } from "react";
 import type { JSX } from "react";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
@@ -19,6 +27,13 @@ interface Member {
   email: string | null;
   roleKeys: string[];
 }
+
+/** What a Re-verify keeps of the assignment: who was picked and the reason typed in the prompt (free text: this tab's memory only). */
+interface Draft {
+  readonly picked: string;
+  readonly reason: string;
+}
+const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:compliance_officer:assign`;
 
 const OFFICER_ROLE = "compliance_officer";
 const labelOf = (m: Member): string => m.displayName ?? m.email ?? m.membershipId;
@@ -37,8 +52,13 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           })
         : { data: { items: [], truncated: false } },
   );
-  const [picked, setPicked] = useState<string | null>(null);
-  const [asking, setAsking] = useState(false);
+  // Back from Re-verify the pick and the prompt (with its reason) come back as they were left.
+  const restored = useStepUpMemoryDraft<Draft>(draftKey(orgSlug));
+  const [picked, setPicked] = useState<string | null>(restored?.picked ?? null);
+  const [asking, setAsking] = useState(restored !== undefined);
+  const [seedReason, setSeedReason] = useState(restored?.reason ?? "");
+  // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
+  const typedReason = useRef(restored?.reason ?? "");
   const write = useOpsWrite();
 
   // Those who already hold the role first, then by name.
@@ -49,6 +69,12 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   });
   const currentId = view.goLive.complianceOfficerMembershipId;
   const current = people.find((m) => m.membershipId === currentId);
+
+  function closePrompt(): void {
+    typedReason.current = "";
+    setSeedReason("");
+    setAsking(false);
+  }
 
   async function assign(reason: string): Promise<void> {
     if (!picked) return;
@@ -61,7 +87,7 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       }),
     );
     if (outcome.ok) {
-      setAsking(false);
+      closePrompt();
       setPicked(null);
       // The role the member now holds shows in the picker, and the wizard shows the officer.
       await Promise.all([members.reload(true), ctx.refresh()]);
@@ -90,7 +116,16 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           </p>
         ) : null}
         <PendingAttestationWarning view={view} />
-        {members.failure ? <p role="alert">Could not load the tenant's staff.</p> : null}
+        {members.failure ? (
+          <div className="wx-form-stack">
+            <p role="alert">Could not load the tenant's staff.</p>
+            <div>
+              <Button tone="secondary" size="sm" onClick={() => void members.reload()}>
+                Try again
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <StaleNotice stale={members.stale} onReload={() => void members.reload()} />
         {canWrite && members.data && people.length === 0 ? (
           <p>
@@ -105,7 +140,7 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           </p>
         ) : null}
         {people.length > 0 ? (
-          <fieldset className="wx-form-section" aria-label="Tenant staff">
+          <fieldset className="wx-form-section">
             <legend className="wx-sr-only">Tenant staff</legend>
             {people.map((m) => {
               const isOfficer = m.roleKeys.includes(OFFICER_ROLE);
@@ -114,7 +149,6 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
                   <input
                     type="radio"
                     name="officer"
-                    aria-label={`${labelOf(m)}${m.email && m.displayName ? ` (${m.email})` : ""}`}
                     checked={picked === m.membershipId}
                     disabled={!canWrite}
                     onChange={() => setPicked(m.membershipId)}
@@ -156,8 +190,21 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Assign"
         write={write}
         orgSlug={orgSlug}
+        {...(seedReason !== "" ? { initialReason: seedReason } : {})}
+        onReasonChange={(reason) => {
+          typedReason.current = reason;
+        }}
+        onReverify={() =>
+          stashStepUpMemoryDraft<Draft>(draftKey(orgSlug), {
+            picked: picked ?? "",
+            reason: typedReason.current,
+          })
+        }
         onConfirm={(reason) => void assign(reason)}
-        onCancel={() => setAsking(false)}
+        onCancel={() => {
+          write.clear();
+          closePrompt();
+        }}
       />
     </StepFrame>
   );

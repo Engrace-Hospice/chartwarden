@@ -46,7 +46,10 @@ import { buildDrizzleOrgProfilePort } from "../src/bootstrap/org-profile";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
 import { createTaxIdCipher } from "../src/modules/02-identity/tax-id-cipher";
-import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
+import {
+  isTenantBaaDocumentFiled,
+  tenantBaaDocumentUploader,
+} from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23ReadService,
@@ -1211,6 +1214,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       activateOrganization: async () => undefined,
       runner: createDrizzleWizardRunner({
         baaDocumentFiled: isTenantBaaDocumentFiled,
+        baaDocumentUploader: tenantBaaDocumentUploader,
         db: tenantPool.db,
         platformDb: platformPool.db,
         auditBypass: m34PlatformBypassAuditor,
