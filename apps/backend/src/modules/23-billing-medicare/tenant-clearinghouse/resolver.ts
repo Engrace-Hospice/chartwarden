@@ -59,6 +59,16 @@ export interface TenantBindingDeps {
   ) => void;
   /** Claim.MD's request budget (shared Valkey counter); each tenant's account spends its own budget. */
   readonly claimMdRequestCounter?: ClaimMdRequestCounter | null;
+  /**
+   * Called each time an organization's OWN live account is turned into a transport (once per config version, not per call): the
+   * organization and its vendor and mode, nothing else. The composition root uses it to say, once per org, what that vendor's
+   * deployment-level switches leave unavailable (a tenant's Claim.MD account sends NOE / NOTR only with M23_CLAIMMD_NOTICE_UPLOAD_ENABLED).
+   */
+  readonly onTenantAccountBound?: (account: {
+    readonly organizationId: string;
+    readonly vendor: "stedi" | "claimmd";
+    readonly mode: TenantClearinghouseMode;
+  }) => void;
   /** Test seam: replaces the RLS-scoped Drizzle read of the org's row. */
   readonly readRow?: (organizationId: string) => Promise<ConfigRow | null>;
 }
@@ -168,6 +178,16 @@ export function createTenantClearinghouseRuntime(
     if (cached && cached.version === row.version) return cached.binding;
     const binding = await build(row);
     built.set(organizationId, { version: row.version, binding });
+    if (
+      binding.account === "tenant" &&
+      (binding.vendor === "stedi" || binding.vendor === "claimmd")
+    ) {
+      deps.onTenantAccountBound?.({
+        organizationId,
+        vendor: binding.vendor,
+        mode: row.mode as TenantClearinghouseMode,
+      });
+    }
     return binding;
   }
 

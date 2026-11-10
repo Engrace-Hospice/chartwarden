@@ -357,7 +357,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
   The `CLEARINGHOUSE_VENDOR` env var (`stedi` | `claimmd` | `direct_mac`; `in_memory` is a test double refused in production) remains
   as the platform's OWN account and serves ONLY the organizations named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (the demo tenants) while
   they have no row of their own. An organization with no live clearinghouse resolves UNBOUND (`not_chosen`, `not_active` or `outside`):
-  nothing is sent for it and the legacy launch-gateway ports are never the fallback; its claim work is held until it finishes setup.
+  nothing is sent for it and the legacy launch-gateway ports are never the fallback; its claim, NOE, NOTR and transfer-notice work is held (a held notice alerts critical) and its acknowledgment and 835 pulls skip until it finishes setup, in every claims-billing enforcement mode (ops runbook §8.6 has the cutover).
   `check:boot:platform` asserts the `Clearinghouse binding:` log line. Platform-level: the X12 generation gateway, `CLEARINGHOUSE_PAYER_ID`
   and the Claim.MD webhook intake (the PLATFORM account's HMAC key only: a tenant's own Claim.MD account does not deliver through it).
 - **Request (CG §7.3, Appendix A):** MBI + last name + first name + DOB in 2100C (no middle name/gender —

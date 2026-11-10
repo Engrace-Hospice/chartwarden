@@ -28,7 +28,7 @@ import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES } from "@chartwarden/types";
-import { CH } from "@chartwarden/x12-837-client";
+import { CH, cursorVendorKey } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import {
@@ -156,7 +156,14 @@ async function pullEntity(
   }
   const ctx = await deps.contexts.contextFor(organizationId, providerEntityId, payerId);
   if (ctx === null) throw new Error("the provider entity has no billing NPI on file");
-  const key: AckCursorKey = { organizationId, providerEntityId, usage: ctx.usage, vendor };
+  // A tenant's own account has its own position space (`claimmd@tenant`), as in M23's and M25's pulls: an org that moves from the
+  // platform account to its own never reuses the platform's cursor.
+  const key: AckCursorKey = {
+    organizationId,
+    providerEntityId,
+    usage: ctx.usage,
+    vendor: cursorVendorKey({ ...deps.binding, vendor }),
+  };
   // events held from an earlier pass may be ready now (a person reconciled the submission)
   tally.applied += (await replayHeldEvents(deps, scope)).applied;
   let state = await deps.cursors.read(key);

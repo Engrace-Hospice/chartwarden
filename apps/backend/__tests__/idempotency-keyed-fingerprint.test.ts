@@ -84,6 +84,7 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
         return inner.putPending(o, k, requestHash);
       },
       complete: (o, k, r) => inner.complete(o, k, r),
+      release: (o, k, requestHash) => inner.release(o, k, requestHash),
     };
     return { store, inner, claimed };
   }

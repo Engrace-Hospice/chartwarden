@@ -44,11 +44,10 @@ export interface ConfigStore {
     expectedVersion: number,
     patch: ConfigPatch,
   ): Promise<ConfigRow | null>;
-  /** True while the org has a production submission reserved or sent (its acknowledgments are still owed by the vendor). */
-  hasProductionAttempts(organizationId: string): Promise<boolean>;
   /**
    * True when the org's vendor responses may still be arriving: a production submission still `reserved`, or one reserved at or
-   * after `since` (a `sent` attempt is final, so its reservation time is the only clock the attempt row carries).
+   * after `since` (a `sent` attempt is final, so its reservation time is the only clock the attempt row carries). Behind both the
+   * vendor / mode lock and the credential release (credential-reservation.ts `hasRecentProductionTraffic`).
    */
   hasRecentProductionAttempts(organizationId: string, since: Date): Promise<boolean>;
   /** True when THIS org already holds an unreleased reservation of the fingerprint (migration 1435). */
@@ -158,20 +157,6 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
         .where(and(eq(C.organizationId, organizationId), eq(C.version, expectedVersion)))
         .returning();
       return row ?? null;
-    },
-    async hasProductionAttempts(organizationId) {
-      const [hit] = await tx
-        .select({ id: A.id })
-        .from(A)
-        .where(
-          and(
-            eq(A.organizationId, organizationId),
-            eq(A.usage, "production"),
-            inArray(A.status, ["reserved", "sent"]),
-          ),
-        )
-        .limit(1);
-      return hit !== undefined;
     },
     async hasRecentProductionAttempts(organizationId, since) {
       const [hit] = await tx

@@ -380,8 +380,8 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
-  // Owner decision D2: verifying the vendor BAA a tenant recorded for its own account is a separable duty (and, unlike the
-  // writes above, not limited to a tenant that is still onboarding: a live tenant that changes vendor needs it too).
+  // Owner decision D2: verifying the vendor BAA a tenant recorded for its own account is its own permission key (held by the same
+  // platform_ops role as the writes: separate keys, not separate roles; and, unlike the writes above, not limited to a tenant that is still onboarding: a live tenant that changes vendor needs it too).
   "tenant_clearinghouse.verify_baa_platform": {
     resource: "tenant_clearinghouse",
     action: "verify_baa_platform",
@@ -398,9 +398,11 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     abac: "tenant_lifecycle_platform_ops",
   },
   // A platform operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (a mistaken or false one: the tenant
-  // itself cannot, and a cancel refuses). Its own key (a separable duty, like the BAA verification); the route also needs the
-  // platform_ops role, a fresh step-up, a recorded reason and the record's recordedAt as If-Match. Not limited to an onboarding
-  // tenant. This is a DECLARATION: no role holds the key until an operator grants it (`db:platform-role grant`).
+  // itself cannot, and a cancel refuses). Its own permission key (separate from the BAA verification's, but held by the same
+  // platform_ops role: the separation is of keys, not of roles); the route also needs the platform_ops role, a fresh step-up, a
+  // recorded reason and the record's recordedAt as If-Match. Not limited to an onboarding tenant. The platform_ops role row holds
+  // the key: migration 1422 binds it and the template grant (packages/auth `PLATFORM_ONBOARDING_DATA_KEYS`) keeps it; a
+  // platform_ops role row created later gets it from `db:platform-role grant`.
   "tenant_notice_filing.withdraw_platform": {
     resource: "tenant_notice_filing",
     action: "withdraw_platform",

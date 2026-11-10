@@ -18,6 +18,7 @@ import { registerSeam } from "../src/bootstrap/seams/registry";
 import { buildPatientCensusReader } from "../src/modules/05-patient/census-reader";
 import { buildDrizzleAddonService } from "../src/modules/35-subscription/addon/addon-service";
 import {
+  CENSUS_AUDIT_EVENT,
   activePeriodKeyFor,
   aggregateAddonForOrg,
   createDrizzlePatientCounterProvider,
@@ -155,11 +156,68 @@ describe.skipIf(!DB_URL)("ADR-0110 claims-billing census — LIVE Postgres", () 
     expect(raw).toHaveLength(0);
   });
 
+  const censusAudit = (org: string) =>
+    q<{
+      outcome: string;
+      actor_kind: string;
+      resource_id: string;
+      context: Record<string, unknown>;
+    }>(
+      `SELECT outcome::text AS outcome, actor_kind::text AS actor_kind, resource_id::text AS resource_id, context
+         FROM audit_event WHERE organization_id = $1 AND event_type = $2 ORDER BY created_at`,
+      [org, CENSUS_AUDIT_EVENT],
+    );
+
+  it("the bulk read leaves ONE audit event per org per pass: org, period and counts, never an id or a pseudonym", async () => {
+    // The two passes of the first test: one event each, the rerun's inserted count being 0.
+    const events = await censusAudit(ORG_A);
+    expect(events).toHaveLength(2);
+    expect(events.map((e) => [e.outcome, e.actor_kind])).toEqual([
+      ["success", "system"],
+      ["success", "system"],
+    ]);
+    expect(events.map((e) => [e.context.seen, e.context.inserted])).toEqual([
+      [3, 3],
+      [3, 0],
+    ]);
+    expect(events[0]?.context.periodYearMonth).toBe(activePeriodKeyFor(null, new Date()));
+    // Nothing that identifies a patient is in the audit row: no patient id and no stored pseudonym.
+    const pseudonyms = (
+      await q<{ patient_pseudonym: string }>(
+        "SELECT patient_pseudonym FROM patient_active_period WHERE organization_id=$1",
+        [ORG_A],
+      )
+    ).map((r) => r.patient_pseudonym);
+    const written = JSON.stringify(events);
+    for (const needle of [...(patients[ORG_A] ?? []), ...pseudonyms]) {
+      expect(written).not.toContain(needle);
+    }
+    // Another org's pass is its own event, under its own org; an org with no add-on is never read, so it records nothing.
+    expect(await censusAudit(ORG_B)).toHaveLength(0);
+  });
+
+  it("a pass that fails after the read began records a failure event and still throws the original error", async () => {
+    const failing = {
+      ...deps(),
+      census: {
+        activePatientIdsPage: async () => {
+          throw new Error("census read failed");
+        },
+        activePatientCount: async () => 0,
+      },
+    };
+    await expect(runPatientCensusForOrg(failing, ORG_A)).rejects.toThrow("census read failed");
+    const events = await censusAudit(ORG_A);
+    expect(events.at(-1)).toMatchObject({ outcome: "failure", actor_kind: "system" });
+    expect(events.at(-1)?.context.seen).toBeUndefined();
+  });
+
   it("skips an org that never held the add-on", async () => {
     expect(await runPatientCensusForOrg(deps(), ORG_C)).toEqual({ counted: false });
     expect(
       await q("SELECT 1 FROM patient_active_period WHERE organization_id=$1", [ORG_C]),
     ).toHaveLength(0);
+    expect(await censusAudit(ORG_C)).toHaveLength(0);
   });
 
   it("after a cancel, counts one final pass just after the end, then stops (no patients first seen later)", async () => {

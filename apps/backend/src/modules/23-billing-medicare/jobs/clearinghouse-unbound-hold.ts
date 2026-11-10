@@ -9,7 +9,13 @@
 //   outside                   the tenant bills elsewhere: a claim job holds too (nothing may be sent), while a NOE / NOTR
 //                             is parked for the tenant to file itself (the notice workers decide that).
 // The check is a PRE-FLIGHT, before the job opens its transaction, so a hold leaves no half-written state.
+// A held NOE / NOTR / transfer notice may cost a CMS deadline, and shadow mode does not shield it (the hold is a transport fact, not a
+// claims-billing enforcement one): its alert is CRITICAL (`severity`), a held claim's only `warn`. Each severity has its own quiet
+// window, so a claim's warning never silences a notice's critical alert.
+// The quiet window starts only AFTER a dispatch that went out: this alert is the one signal that the org's work is held, so a router
+// that threw must be tried again on the next held job, not silenced for six hours.
 // ponytail: the once-per-window alert memory is per process; a durable one only if several workers must share it.
+import { ChartWardenError } from "@chartwarden/types";
 import type { UnboundReason } from "@chartwarden/x12-837-client";
 import { DelayedError } from "bullmq";
 import { CLAIMS_BILLING_HOLD_MS, type HoldableJob } from "../../../bootstrap/claims-billing-gate";
@@ -22,6 +28,17 @@ const ALERT_QUIET_MS = 6 * 60 * 60_000;
 export type ClearinghouseState =
   | { readonly state: "bound" }
   | { readonly state: "unbound"; readonly reason: UnboundReason };
+
+/** The typed refusal the per-org resolver throws for a stored credential it cannot open (tenant-clearinghouse/resolver.ts). */
+const CREDENTIAL_UNREADABLE_CODE = "CLEARINGHOUSE_CREDENTIAL_UNREADABLE";
+
+/**
+ * True when `err` is the org's stored credential failing to open (CH-7): that tenant has to enter it again, which is setup to wait
+ * for like a draft config, not a fault of the job. A pre-flight HOLDS the job for it (and says so once); it must not fail it into
+ * the retry/DLQ path.
+ */
+export const isCredentialUnreadable = (err: unknown): err is ChartWardenError =>
+  err instanceof ChartWardenError && err.code === CREDENTIAL_UNREADABLE_CODE;
 
 /** Whether the org's own clearinghouse is live. A legacy single binding (no per-org resolution) counts as bound. */
 export async function clearinghouseStateFor(
@@ -43,57 +60,81 @@ interface AlertPort {
 }
 
 const lastAlertAt = new Map<string, number>();
+/** Keys whose dispatch is awaiting an answer: concurrent held jobs of one org raise one alert, not one each. */
+const dispatching = new Set<string>();
 
 /** Test seam: forget which orgs were already alerted, so a suite's cases do not depend on each other's order. */
-export const __resetClearinghouseAlertMemoryForTest = (): void => lastAlertAt.clear();
+export const __resetClearinghouseAlertMemoryForTest = (): void => {
+  lastAlertAt.clear();
+  dispatching.clear();
+};
 
 interface AlertDeps {
   readonly alerts?: AlertPort | undefined;
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void } | undefined;
 }
 
-/** Raise the once-per-(org, reason)-per-window alert. Never throws: a broken alert router must not keep a job from being held. */
+/** `critical` for a held CMS-deadline notice (NOE, NOTR, transfer notice); `warn` for a held claim. */
+export type HoldAlertSeverity = "warn" | "critical";
+
+/** Raise the once-per-(org, reason, severity)-per-window alert. Never throws: a broken alert router must not keep a job from being held. */
 async function alertOncePerWindow(
   deps: AlertDeps,
   input: {
     readonly queue: string;
     readonly organizationId: string;
     readonly reason: string;
+    readonly severity: HoldAlertSeverity;
     readonly at: number;
   },
 ): Promise<void> {
-  const { queue, organizationId, reason, at } = input;
-  const key = `${organizationId}:${reason}`;
+  const { queue, organizationId, reason, severity, at } = input;
+  const key = `${organizationId}:${reason}:${severity}`;
+  if (dispatching.has(key)) return;
   if (at - (lastAlertAt.get(key) ?? Number.NEGATIVE_INFINITY) < ALERT_QUIET_MS) return;
-  lastAlertAt.set(key, at);
-  await Promise.resolve(
-    deps.alerts?.dispatch({
+  dispatching.add(key);
+  try {
+    await deps.alerts?.dispatch({
       alertCode: CLEARINGHOUSE_UNBOUND_ALERT,
-      severity: "warn",
+      severity,
       organizationId,
       payload: { queue, reason },
-    }),
-  ).catch(() => {
+    });
+    lastAlertAt.set(key, at); // only a dispatch that went out starts the quiet window
+  } catch {
     deps.logger?.error(
       { organizationId, queue, reason },
       "clearinghouse hold alert not dispatched",
     );
-  });
+  } finally {
+    dispatching.delete(key);
+  }
 }
 
-/** Hold the job (moved back to delayed, no attempt spent) and raise the once-per-window alert. Always throws {@link DelayedError}. */
+/**
+ * Hold the job (moved back to delayed, no attempt spent) and raise the once-per-window alert. Always throws {@link DelayedError}.
+ * `reason` is the unbound reason, or the code of the typed refusal when the org's binding could not be resolved at all.
+ */
 export async function holdJobWhileUnbound(input: {
   readonly deps: AlertDeps;
   readonly job: HoldableJob;
   readonly token: string | undefined;
   readonly queue: string;
   readonly organizationId: string;
-  readonly reason: UnboundReason;
+  readonly reason: string;
+  /** Default `warn`; a CMS-deadline notice is `critical`. */
+  readonly severity?: HoldAlertSeverity;
   readonly now?: () => number;
 }): Promise<never> {
   const { deps, job, token, queue, organizationId, reason } = input;
   const at = (input.now ?? Date.now)();
-  await alertOncePerWindow(deps, { queue, organizationId, reason, at });
+  await alertOncePerWindow(deps, {
+    queue,
+    organizationId,
+    reason,
+    severity: input.severity ?? "warn",
+    at,
+  });
   await job.moveToDelayed(at + CLAIMS_BILLING_HOLD_MS, token);
   throw new DelayedError();
 }
@@ -121,6 +162,7 @@ export async function reportClearinghouseUnresolved(
     queue,
     organizationId,
     reason: code,
+    severity: "warn",
     at: (input.now ?? Date.now)(),
   });
 }
