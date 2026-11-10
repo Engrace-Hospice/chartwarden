@@ -11,7 +11,11 @@
  * Postgres and the real createDbClient is in `gap-007-idempotency-claim.live.test.ts`.
  */
 import { EventEmitter } from "node:events";
-import { instrumentPoolForCommits } from "@chartwarden/db";
+import {
+  createCommitTracker,
+  instrumentPoolForCommits,
+  runWithCommitTracker,
+} from "@chartwarden/db";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
@@ -253,6 +257,42 @@ describe("idempotency release needs proof that nothing committed", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     pool.pulse(); // runs the held callback from the test's context, where no tracker is ambient
     expect((await pending).statusCode).toBe(500);
+    await post();
+    expect(runs).toBe(1);
+  });
+
+  it("(j) the async context is LOST after the tracker opened: the writes go unseen, so the outcome is cached, never released", async () => {
+    await build(
+      async () => {
+        await transaction(pool, ["insert into t (n) values (1)"]); // not attributed: no ambient tracker
+        throw new Error("post-commit step failed");
+      },
+      (instance) => {
+        // A later hook that continues the request OUTSIDE the tracker's store (a callback API that drops the context).
+        instance.addHook("onRequest", (_request, _reply, done) => {
+          runWithCommitTracker(undefined as never, () => done());
+        });
+      },
+    );
+    expect((await post()).statusCode).toBe(500);
+    expect((await post()).statusCode).toBe(500);
+    expect(runs).toBe(1);
+    expect(pool.inserts()).toBe(1);
+  });
+
+  it("(k) the ambient tracker belongs to ANOTHER request: cached too", async () => {
+    await build(
+      async () => {
+        await transaction(pool, ["insert into t (n) values (1)"]); // marks the other request's tracker, not this one's
+        throw new Error("post-commit step failed");
+      },
+      (instance) => {
+        instance.addHook("onRequest", (_request, _reply, done) => {
+          runWithCommitTracker(createCommitTracker(), () => done());
+        });
+      },
+    );
+    await post();
     await post();
     expect(runs).toBe(1);
   });
