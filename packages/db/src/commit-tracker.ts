@@ -25,10 +25,14 @@
 //   * a SELECT / WITH / VALUES / TABLE / EXPLAIN is a write when it carries DML or CALLS anything but a short allowlist of
 //     read-only builtins (READ_ONLY_CALLS). The repo writes platform tables through SECURITY DEFINER functions called as
 //     `SELECT writer_fn(...)`, which no part of the SELECT's text distinguishes from a reader, so every unlisted call, user-defined
-//     readers included, counts as a write. Detection reads the whole text, string literals and `--` comments too, so a word hidden
-//     there can only add a false write, never hide one. A text with a block comment (`/*`, which nests in Postgres), or with both a
-//     `;` and a `--` (a `;` inside a comment would move the statement boundaries), is judged a write without further reading. A
-//     compound text (`a; b`) is a read only when every statement in it is a SET/SHOW-style statement or a SELECT-style read.
+//     readers included, counts as a write. The call scan LEXES the text: a string literal ('...' with '' escapes, E'...' with
+//     backslash escapes, U&'...', $tag$...$tag$), a quoted identifier and a `--` comment are each one opaque token, so a `--` or a
+//     quote inside a literal neither hides a later call nor invents one; a text it cannot lex cleanly (an unterminated literal,
+//     quoted identifier or dollar quote) is a write. DML words are still looked for in the raw text, literals included, which
+//     can only add a false write. A text with a block comment (`/*`, which nests in Postgres), or with both a `;` and a `--` (a
+//     `;` inside a comment would move the statement boundaries), is judged a write without further reading. A compound text
+//     (`a; b`) is a read only when every statement in it is a SET/SHOW-style statement or a SELECT-style read. EXPLAIN ANALYZE
+//     runs what it explains, so it is a read only over a plain SELECT-style statement.
 //     The authoritative alternative, asking Postgres (`pg_current_xact_id_if_assigned()`) before COMMIT, is NOT used: it costs one
 //     extra round trip on every transaction, read-only ones included, which is the hot path.
 //   * a COMMIT that fails with anything but a server error is noted too (such an error does not prove the transaction rolled back).
@@ -217,9 +221,23 @@ export const NOT_A_CALL: ReadonlySet<string> = new Set([
   ...["ilike", "is", "distinct", "for", "lateral", "returning", "set", "at", "rows", "range"],
   ...["partition", "order", "group", "unique", "primary", "references", "check", "default"],
 ]);
-// One left-to-right pass over the text, no backtracking: a quoted identifier, a bare word, a `--` comment, whitespace, or any
-// other single character. A bare word may contain non-ASCII characters (Postgres treats every high-bit byte as a letter).
-const TOKEN = /"(?:[^"]|"")*"|[a-z_\u0080-\uffff][a-z0-9_$\u0080-\uffff]*|--[^\r\n]*|\s+|[\s\S]/gi;
+// One left-to-right lexer pass over the text, each token matched by a sticky regex at the current position (no backtracking
+// across tokens). Anything that is not a literal, quoted identifier, comment, word or parameter is a single character.
+// A bare word may contain non-ASCII characters (Postgres treats every high-bit byte as a letter).
+const WHITESPACE = /\s+/y;
+const LINE_COMMENT = /--[^\r\n]*/y;
+const QUOTED_IDENT = /"(?:[^"]|"")*"/y;
+const STRING_LITERAL = /'(?:[^']|'')*'/y;
+const ESCAPE_STRING_LITERAL = /'(?:[^'\\]|\\[\s\S]|'')*'/y;
+const BARE_WORD = /[a-z_\u0080-\uffff][a-z0-9_$\u0080-\uffff]*/iy;
+const PARAMETER = /\$[0-9]+/y;
+const DOLLAR_TAG = /\$(?:[a-z_\u0080-\uffff][a-z0-9_\u0080-\uffff]*)?\$/iy;
+
+/** The match of `re` AT `at` (a sticky regex), or undefined. */
+function matchAt(re: RegExp, text: string, at: number): string | undefined {
+  re.lastIndex = at;
+  return re.exec(text)?.[0];
+}
 
 interface NamePart {
   /** As Postgres compares it: a bare word folded to lower case, a quoted one exactly as written. */
@@ -239,7 +257,10 @@ function isUnknownCall(parts: readonly NamePart[]): boolean {
   return !(parts.length === 2 && parts[0]?.name === "pg_catalog" && READ_ONLY_CALLS.has(last.name));
 }
 
-/** True when `text` (original case) calls anything that is not a known read-only builtin. Comments may sit inside a name. */
+/**
+ * True when `text` (original case) calls anything that is not a known read-only builtin, or cannot be lexed cleanly. Literals,
+ * quoted identifiers and `--` comments are opaque tokens; a comment may sit between the parts of a name and its parenthesis.
+ */
 function hasUnknownCall(text: string): boolean {
   const parts: NamePart[] = []; // the name read so far (`a.b` is two parts); local to this pass, so it is filled in place
   let dot = false; // a `.` follows the last part: the next word continues the same name
@@ -248,19 +269,67 @@ function hasUnknownCall(text: string): boolean {
     parts.push(part);
     dot = false;
   };
-  for (const [token] of text.matchAll(TOKEN)) {
-    const first = token.charAt(0);
-    if (/\s/.test(first) || token.startsWith("--")) continue;
-    if (first === '"' && token.length > 1 && token.endsWith('"')) {
-      addPart({ name: token.slice(1, -1), bare: false });
-    } else if (/[a-z_\u0080-\uffff]/i.test(first)) {
-      addPart({ name: token.toLowerCase(), bare: true });
-    } else if (first === ".") {
+  const reset = (): void => {
+    parts.length = 0;
+    dot = false;
+  };
+  let at = 0;
+  while (at < text.length) {
+    const char = text.charAt(at);
+    const space = matchAt(WHITESPACE, text, at);
+    if (space !== undefined) {
+      at += space.length;
+    } else if (char === "-" && text.charAt(at + 1) === "-") {
+      at += (matchAt(LINE_COMMENT, text, at) as string).length;
+    } else if (char === '"') {
+      const quoted = matchAt(QUOTED_IDENT, text, at);
+      if (quoted === undefined) return true; // an unterminated quoted identifier
+      addPart({ name: quoted.slice(1, -1), bare: false });
+      at += quoted.length;
+    } else if (char === "'") {
+      const literal = matchAt(STRING_LITERAL, text, at);
+      if (literal === undefined) return true; // an unterminated literal
+      reset();
+      at += literal.length;
+    } else if (char === "$") {
+      const parameter = matchAt(PARAMETER, text, at);
+      const tag = parameter === undefined ? matchAt(DOLLAR_TAG, text, at) : undefined;
+      reset();
+      if (parameter !== undefined) {
+        at += parameter.length;
+      } else if (tag !== undefined) {
+        const close = text.indexOf(tag, at + tag.length);
+        if (close < 0) return true; // an unterminated dollar quote
+        at = close + tag.length;
+      } else {
+        at += 1;
+      }
+    } else if (/[a-z_\u0080-\uffff]/i.test(char)) {
+      const word = matchAt(BARE_WORD, text, at) as string;
+      const lower = word.toLowerCase();
+      const after = at + word.length;
+      if (lower === "e" && text.charAt(after) === "'") {
+        // E'...': backslash escapes, so `\'` does not end it. (A longer word ending in e is a plain word before a plain literal.)
+        const literal = matchAt(ESCAPE_STRING_LITERAL, text, after);
+        if (literal === undefined) return true;
+        reset();
+        at = after + literal.length;
+      } else if (lower === "u" && text.charAt(after) === "&" && text.charAt(after + 1) === "'") {
+        const literal = matchAt(STRING_LITERAL, text, after + 1);
+        if (literal === undefined) return true;
+        reset();
+        at = after + 1 + literal.length;
+      } else {
+        addPart({ name: lower, bare: true });
+        at = after;
+      }
+    } else if (char === ".") {
       dot = parts.length > 0;
+      at += 1;
     } else {
-      if (first === "(" && parts.length > 0 && !dot && isUnknownCall(parts)) return true;
-      parts.length = 0;
-      dot = false;
+      if (char === "(" && parts.length > 0 && !dot && isUnknownCall(parts)) return true;
+      reset();
+      at += 1;
     }
   }
   return false;
@@ -275,12 +344,43 @@ type Kind = "begin" | "commit" | "rollback" | "rollback-to" | "write" | "other";
 
 const firstWordOf = (statement: string): string | undefined => FIRST_WORD.exec(statement)?.[1];
 
+const PLAIN_READ_FIRST: ReadonlySet<string> = new Set(["select", "with", "values", "table"]);
+
+/**
+ * EXPLAIN ANALYZE RUNS the statement it explains (options may be parenthesised, `explain (analyze, buffers) ...`, or legacy words,
+ * `explain analyze verbose ...`). `statement` is lowercased and starts at `explain`. True when ANALYZE is on and the explained
+ * statement is not a plain SELECT-style one (CREATE TABLE AS, REFRESH MATERIALIZED VIEW, EXECUTE, SELECT INTO's `into` is DML...),
+ * or when the option list cannot be read. A plain EXPLAIN only plans: nothing runs.
+ */
+function explainRunsNonSelect(statement: string): boolean {
+  let rest = statement.slice("explain".length);
+  let analyze = false;
+  for (;;) {
+    rest = rest.replace(/^\s+/, "");
+    if (rest.startsWith("(")) {
+      const close = rest.indexOf(")");
+      if (close < 0) return true;
+      if (/\banaly[sz]e\b/.test(rest.slice(0, close))) analyze = true;
+      rest = rest.slice(close + 1);
+      continue;
+    }
+    const option = /^(analy[sz]e|verbose)\b/.exec(rest);
+    if (!option) break;
+    if (option[1] !== "verbose") analyze = true;
+    rest = rest.slice(option[0].length);
+  }
+  if (!analyze) return false;
+  const inner = firstWordOf(rest.replace(LEADING_NOISE, ""));
+  return inner === undefined || !PLAIN_READ_FIRST.has(inner);
+}
+
 /** A compound text is a read only if every statement is a SET/SHOW-style one or a SELECT-style read that writes nothing. */
 function compoundIsRead(text: string, statements: readonly string[]): boolean {
   let hasRowStatement = false;
   for (const statement of statements) {
     const first = firstWordOf(statement);
     if (first === undefined) return false;
+    if (first === "explain" && explainRunsNonSelect(statement)) return false;
     if (ROW_FIRST.has(first)) hasRowStatement = true;
     else if (!NON_WRITE_FIRST.has(first)) return false;
   }
@@ -313,6 +413,7 @@ export function classifyStatement(text: string | undefined): Kind {
       : "rollback";
   }
   if (NON_WRITE_FIRST.has(first)) return "other";
+  if (first === "explain" && explainRunsNonSelect(statement)) return "write";
   if (ROW_FIRST.has(first)) return mayWrite(text) ? "write" : "other";
   return "write";
 }

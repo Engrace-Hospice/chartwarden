@@ -342,6 +342,99 @@ describe("the call rule reads names the way Postgres does", () => {
   });
 });
 
+describe("string literals and quoted identifiers are lexed, not scanned (a `--` or a quote inside one hides nothing)", () => {
+  // The call scan used to read a `--` inside a literal as a comment that swallowed the rest of the line, and a lone `"` inside a
+  // literal as the start of a quoted identifier that swallowed a later call: both made a writer look like a read.
+  it.each([
+    "select '--' as x, nextval('s')",
+    "select coalesce(note, '-- none'), audit_writer_log(1) from t",
+    "select 'a\"b', nextval('s'), 'c\"d'",
+    "select '--' as sep, audit_writer_log($1)",
+    "select 1 where x = '--' and writer_fn($1)",
+    "select 'it''s -- ok', writer_fn($1)",
+    "select $$--$$, writer_fn($1)",
+    "select 'a\"' as a, writer_fn('b\"')",
+    // every literal form
+    "select E'a\\' --', writer_fn($1)",
+    "select E'it\\'s \"', writer_fn($1)",
+    "select U&'d\\0061t\\+000061 --', writer_fn($1)",
+    "select $tag$ -- \" ' $tag$, writer_fn($1)",
+    "select $a$ $$ $a$, writer_fn($1)",
+    "select N'--', writer_fn($1)",
+    "select B'101', X'1f', writer_fn($1)",
+    "select 'a' 'b -- c', writer_fn($1)",
+    "select '--' || '\"' || '--', writer_fn($1)",
+    // a comment is not a literal, and hides nothing from the word AFTER it
+    "select 1 -- it's\n, writer_fn($1)",
+    'select 1 -- a "quote\n, writer_fn($1)',
+  ])("%s -> write", (text) => {
+    expect(classifyStatement(text)).toBe("write");
+  });
+
+  it.each([
+    "select '--' as x, count(*) from t",
+    "select coalesce(note, '-- none') from t",
+    "select 'a\"b', count(*), 'c\"d' from t",
+    "select 'it''s -- ok', max(n) from t",
+    "select $$--$$, count(*) from t",
+    "select 'writer_fn($1)' as s, count(*) from t",
+    "select E'it\\'s', lower(x) from t",
+    "select $tag$ writer_fn(1) $tag$, count(*) from t",
+    'select "weird""name", count(*) from "t"',
+    "select 'x' || '--' from t -- trailing comment",
+    "select count -- c.\n (*) from t",
+  ])("%s -> other (a call-looking word inside a literal is not a call)", (text) => {
+    expect(classifyStatement(text)).toBe("other");
+  });
+
+  it.each([
+    "select 'unterminated, writer_fn($1)",
+    'select "unterminated, writer_fn($1)',
+    "select $$ unterminated, writer_fn($1)",
+    "select $tag$ x $other$, writer_fn($1)",
+    "select E'a\\', writer_fn($1)",
+    "select count(*) from t where x = 'a",
+  ])("%s cannot be lexed cleanly -> write", (text) => {
+    expect(classifyStatement(text)).toBe("write");
+  });
+
+  it("a parameter or a dollar sign inside a word is not a dollar quote", () => {
+    expect(classifyStatement("select a$1$, max(n) from t where x = $1 and y = $2")).toBe("other");
+    expect(classifyStatement("select count(*) from t where a = $1 and b = $2")).toBe("other");
+  });
+});
+
+describe("EXPLAIN ANALYZE runs the statement it explains", () => {
+  it.each([
+    "explain analyze create table x as select 1",
+    "explain analyze refresh materialized view mv",
+    "explain analyze execute stmt",
+    "explain analyse execute stmt",
+    "explain (analyze) create table x as select 1",
+    "explain (analyze, buffers) refresh materialized view mv",
+    "explain (analyze true) execute stmt",
+    "explain (format json, analyze) create table x as select 1",
+    "explain verbose analyze create table x as select 1",
+    "explain analyze verbose execute stmt",
+    "explain analyze select * into scratch from t",
+    "explain (analyze",
+    "explain analyze writer_fn($1)",
+    "explain analyze select writer_fn($1)",
+  ])("%s -> write", (text) => {
+    expect(classifyStatement(text)).toBe("write");
+  });
+
+  it.each([
+    "explain select count(*) from t",
+    "explain create table x as select 1",
+    "explain verbose select count(*) from t",
+    "explain analyze select count(*) from t",
+    "explain analyze verbose select max(n) from t",
+  ])("%s -> other (plain EXPLAIN only plans; ANALYZE of a plain SELECT is a read)", (text) => {
+    expect(classifyStatement(text)).toBe("other");
+  });
+});
+
 describe("classification time is linear in the length of the text", () => {
   // L4: the call finder used to restart at every character of an identifier run (17 s for 100k characters).
   const LENGTH = 200_000;
@@ -359,6 +452,15 @@ describe("classification time is linear in the length of the text", () => {
     ["for run", `select ${"for ".repeat(LENGTH / 4)}`],
     ["unterminated quote", `select "${"a ".repeat(LENGTH / 2)}`],
     ["non-ASCII run", `select ${"\u00e9".repeat(LENGTH)}`],
+    ["single-quote run", `select ${"'".repeat(LENGTH)}`],
+    ["escaped-quote literal", `select '${"a''".repeat(LENGTH / 3)}'`],
+    ["unterminated literal", `select '${"a ".repeat(LENGTH / 2)}`],
+    ["dollar-quote pairs", `select ${"$$".repeat(LENGTH / 2)}`],
+    ["tagged dollar quotes", `select ${"$a$x$a$".repeat(LENGTH / 7)}`],
+    ["unterminated dollar quote", `select $a$${"x".repeat(LENGTH)}`],
+    ["dashes inside literals", `select ${"'--',".repeat(LENGTH / 5)} 1`],
+    ["E-string escapes", `select E'${"\\'".repeat(LENGTH / 2)}'`],
+    ["lone quote chars inside literals", `select ${"'\"',".repeat(LENGTH / 4)} 1`],
   ];
   it.each(cases)("%s classifies in well under a second", (_name, text) => {
     const started = performance.now();
