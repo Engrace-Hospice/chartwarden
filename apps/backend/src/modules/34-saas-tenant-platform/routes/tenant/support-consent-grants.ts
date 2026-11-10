@@ -11,6 +11,7 @@
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
+import { screenFreeText } from "../free-text";
 import type { TenantRouteService } from "./service";
 import {
   GrantListQuerySchema,
@@ -57,6 +58,7 @@ export function registerSupportConsentGrantRoutes(
     async (request, reply) => {
       const { organizationId, membershipId, userId, roles } = writeActorOf(request);
       const body = parse(SupportConsentGrantRequest, request.body);
+      screenFreeText({ grantReason: body.grantReason }); // returned in the tenant-visible grant view and shown to the support operator
       const res = await service.issueConsentGrant(
         organizationId,
         { membershipId, userId, roles },
@@ -80,6 +82,7 @@ export function registerSupportConsentGrantRoutes(
       const { organizationId, membershipId, userId, roles } = writeActorOf(request);
       const { id } = parse(GrantParamsSchema, request.params);
       const body = parse(RevokeConsentGrantRequest, request.body);
+      screenFreeText({ revocationReason: body.revocationReason });
       return service.revokeConsentGrant(
         organizationId,
         id,

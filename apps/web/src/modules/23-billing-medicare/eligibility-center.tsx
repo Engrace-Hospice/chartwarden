@@ -11,6 +11,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
+  useAttemptKey,
   useClaimsBilling,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the ELIGIBILITY CENTER (R2, §5.1
@@ -32,7 +33,6 @@ import {
   eligibilityStalenessTone,
   statusLabel,
 } from "./billing-status";
-import { useAttemptKey } from "./use-attempt-key";
 
 interface EligibilityCheckView {
   checkId: string;

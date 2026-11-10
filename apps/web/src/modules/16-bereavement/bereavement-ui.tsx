@@ -10,7 +10,6 @@ import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { idemKey } from "./bereavement-api";
 import { RISK_TIER_GLYPH, RISK_TIER_TONE, humanize, toneOf } from "./bereavement-status";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
@@ -463,27 +462,6 @@ export function StatusLine({
       {message ? <Notice tone={tone}>{message}</Notice> : null}
     </div>
   );
-}
-
-/**
- * One `Idempotency-Key` per write attempt. `keyFor(fingerprint)` hands back the SAME key while the request (version +
- * body, as a string) is unchanged, so a retry after a lost response dedupes server-side; an edited request gets
- * a new key. `settle(status)` forgets the key whenever the server answered at all — the idempotency plugin replays any
- * stored answer, a 5xx included, so keeping the key would replay the failure; only a lost response (status 0) keeps it.
- */
-export function useIdempotencyKey(): {
-  keyFor: (fingerprint: string) => string;
-  settle: (status: number) => void;
-} {
-  const slot = useRef<{ fingerprint: string; key: string } | null>(null);
-  const keyFor = useCallback((fingerprint: string): string => {
-    if (slot.current?.fingerprint !== fingerprint) slot.current = { fingerprint, key: idemKey() };
-    return slot.current.key;
-  }, []);
-  const settle = useCallback((status: number): void => {
-    if (status !== 0) slot.current = null;
-  }, []);
-  return { keyFor, settle };
 }
 
 /**

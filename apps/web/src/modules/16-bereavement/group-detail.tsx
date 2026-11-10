@@ -12,6 +12,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useId, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -32,7 +33,6 @@ import {
   pageTitleStyle,
   primaryButtonStyle,
   useActionStatus,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { GroupFormModal } from "./group-form-modal";
 import { GroupRosterCard, useGroupRoster } from "./group-roster";
@@ -72,7 +72,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
   const [busy, setBusy] = useState<Action | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const { announce, region } = useActionStatus();
   const closeDescId = useId();
   /** Bumped after a group write: the sessions re-read (an open or a close schedules or cancels them). */
@@ -115,7 +115,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
     setBusy(name);
     setActionError(null);
     const res = await call(keys.keyFor(`${name}:${group.version}`));
-    keys.settle(res.status);
+    keys.settle(res.status, res.error);
     inFlight.current = false;
     setBusy(null);
     if (res.error || !res.data) {

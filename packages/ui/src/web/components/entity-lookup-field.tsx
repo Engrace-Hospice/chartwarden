@@ -305,81 +305,82 @@ export function EntityLookupField({
           ) : null}
 
           {open ? (
-            // biome-ignore lint/a11y/useFocusableInteractive: focus stays in the combobox input; option buttons are intentionally removed from the tab order
-            <span
-              ref={popupRef}
-              // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
-              id={listId}
-              role="listbox"
-              onBlur={blur}
-              onKeyDown={onPopupKeyDown}
-              aria-labelledby={labelId}
-              style={popoverStyle(appearance)}
-            >
-              {loading ? (
-                <span style={stateStyle(appearance)}>
-                  <LoadingSpinner />
-                  {appearance === "modal" ? <span>Searching…</span> : null}
-                </span>
-              ) : loadError ? (
-                <span role="alert" style={{ ...stateStyle(appearance), color: t.error }}>
-                  {loadError}
-                </span>
-              ) : options.length === 0 ? (
-                noMatchesContent ? (
-                  <span style={stateStyle(appearance)}>{noMatchesContent}</span>
+            <span ref={popupRef} onBlur={blur} style={popoverStyle(appearance)}>
+              {/* biome-ignore lint/a11y/useFocusableInteractive: focus stays in the combobox input; aria-activedescendant identifies the active option */}
+              <span
+                id={listId}
+                // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
+                role="listbox"
+                aria-labelledby={labelId}
+                style={{ display: "block" }}
+              >
+                {loading ? (
+                  <span style={stateStyle(appearance)}>
+                    <LoadingSpinner />
+                    {appearance === "modal" ? <span>Searching…</span> : null}
+                  </span>
+                ) : loadError ? (
+                  <span role="alert" style={{ ...stateStyle(appearance), color: t.error }}>
+                    {loadError}
+                  </span>
+                ) : options.length === 0 ? (
+                  noMatchesContent ? (
+                    <span style={stateStyle(appearance)}>{noMatchesContent}</span>
+                  ) : (
+                    <span style={stateStyle(appearance)}>No matches</span>
+                  )
                 ) : (
-                  <span style={stateStyle(appearance)}>No matches</span>
-                )
-              ) : (
-                options.map((option, index) => {
-                  const selected = option.id === value;
-                  const active = index === activeIndex || option.id === hoveredId;
-                  return (
-                    <button
-                      id={`${listId}-option-${index}`}
-                      key={option.id}
-                      // biome-ignore lint/a11y/useSemanticElements: an <option> element cannot carry the description markup or the click behaviour these rows have
-                      type="button"
-                      role="option"
-                      tabIndex={-1}
-                      aria-selected={selected}
-                      onMouseEnter={() => {
-                        if (appearance === "modal") {
-                          setHoveredId(option.id);
-                          setActiveIndex(index);
-                        }
-                      }}
-                      onMouseLeave={() => {
-                        if (appearance === "modal") setHoveredId(null);
-                      }}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => select(option)}
-                      style={optionStyle(appearance, selected, active)}
-                    >
-                      <span style={optionTopLine}>
-                        <span style={{ fontWeight: 650, color: t.onSurface }}>{option.label}</span>
-                        {selected ? (
-                          <span aria-hidden="true" style={selectedMarkStyle}>
-                            ✓
+                  options.map((option, index) => {
+                    const selected = option.id === value;
+                    const active = index === activeIndex || option.id === hoveredId;
+                    return (
+                      <button
+                        id={`${listId}-option-${index}`}
+                        key={option.id}
+                        // biome-ignore lint/a11y/useSemanticElements: an <option> element cannot carry the description markup or the click behaviour these rows have
+                        type="button"
+                        role="option"
+                        tabIndex={-1}
+                        aria-selected={selected}
+                        onMouseEnter={() => {
+                          if (appearance === "modal") {
+                            setHoveredId(option.id);
+                            setActiveIndex(index);
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          if (appearance === "modal") setHoveredId(null);
+                        }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => select(option)}
+                        style={optionStyle(appearance, selected, active)}
+                      >
+                        <span style={optionTopLine}>
+                          <span style={{ fontWeight: 650, color: t.onSurface }}>
+                            {option.label}
+                          </span>
+                          {selected ? (
+                            <span aria-hidden="true" style={selectedMarkStyle}>
+                              ✓
+                            </span>
+                          ) : null}
+                        </span>
+                        {option.description ? (
+                          <span
+                            style={{
+                              color: t.onSurfaceVariant,
+                              fontSize: "0.75rem",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {option.description}
                           </span>
                         ) : null}
-                      </span>
-                      {option.description ? (
-                        <span
-                          style={{
-                            color: t.onSurfaceVariant,
-                            fontSize: "0.75rem",
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {option.description}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })
-              )}
+                      </button>
+                    );
+                  })
+                )}
+              </span>
 
               {nextCursor ? (
                 <span style={{ padding: t.space2 }}>
@@ -390,6 +391,7 @@ export function EntityLookupField({
                     aria-disabled={loadingMore || undefined}
                     style={loadingMore ? { opacity: 0.72, cursor: "progress" } : undefined}
                     onMouseDown={(event) => event.preventDefault()}
+                    onKeyDown={onPopupKeyDown}
                     onClick={() => {
                       if (loadingMore) return; // busy: the click is ignored, the button keeps focus
                       captureFocus();

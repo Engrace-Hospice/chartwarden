@@ -8,90 +8,16 @@ import {
   type Call,
   PATIENT_ID,
   PAYER_ID,
-  PLAN_ID,
   type Responder,
   mountScreen,
   patientRoute,
   payerNameRoute,
+  validationResultRow as result,
+  claimDetailView as view,
 } from "./commercial-test-harness";
 
 const CLAIM = `GET /api/v1/billing/commercial/claims/${CLAIM_ID}`;
 const BASE = `/api/v1/billing/commercial/claims/${CLAIM_ID}`;
-
-const result = (over: Record<string, unknown>): Record<string, unknown> => ({
-  id: "r-1",
-  ruleKey: "authorization_on_file",
-  severity: "warn",
-  outcome: "fail",
-  overridable: true,
-  overridden: false,
-  blocking: true,
-  message:
-    "No approved authorization covers 2026-03-01 to 2026-03-10. Record one or confirm with the payer.",
-  ...over,
-});
-
-const view = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
-  plan: {
-    id: PLAN_ID,
-    payerId: PAYER_ID,
-    planName: "Synthetic PPO",
-    authorizationRequirement: "required_at_admission",
-    payerStatus: "active",
-  },
-  authorizations: [],
-  claim: {
-    id: CLAIM_ID,
-    claimControlNumber: "CCN-0001",
-    state: "draft",
-    patientId: PATIENT_ID,
-    providerEntityId: "22222222-2222-4222-8222-222222222222",
-    planId: PLAN_ID,
-    tob: "812",
-    serviceFrom: "2026-03-01",
-    serviceTo: "2026-03-31",
-    claimFilingIndicator: "CI",
-    secondaryPayerKind: null,
-    totalChargeCents: 620_000,
-    expectedPaymentCents: 620_000,
-    readyAt: null,
-  },
-  lines: [
-    {
-      lineNumber: 1,
-      levelOfCare: "routine_home_care",
-      revenueCode: "0651",
-      hcpcsCode: null,
-      serviceFrom: "2026-03-01",
-      serviceTo: "2026-03-31",
-      units: 31,
-      unitRateCents: 20_000,
-      lineChargeCents: 620_000,
-    },
-  ],
-  validation: {
-    runId: "run-1",
-    outcome: "soft_block",
-    results: [
-      result({}),
-      result({
-        id: "r-2",
-        ruleKey: "plan_in_effect",
-        outcome: "pass",
-        blocking: false,
-        message: "ok",
-      }),
-    ],
-  },
-  correction: {
-    correctionOfClaimId: null,
-    correctionKind: null,
-    correctionReasonCode: null,
-    relatedClaims: [],
-    rejectedCorrection: { eligible: false, reasonCode: "CLAIM_NOT_REJECTED" },
-  },
-  ...over,
-});
 
 function mount(
   claim: Responder,

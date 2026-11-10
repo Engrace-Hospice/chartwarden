@@ -35,7 +35,9 @@ import {
   StatusPill,
   type StatusTone,
   formatDateOnly,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
@@ -247,6 +249,9 @@ export function AdmissionDetail({
   initialUpload,
 }: { initialUpload?: InitialEvidenceUpload } = {}): JSX.Element {
   const client = useApiClient();
+  // The notice-of-rights acknowledgement carries a click-time clock value (acknowledgedAt): the keeper holds one key and one first-attempt
+  // time per intent, so a retry after a lost reply replays the same bytes instead of recording the acknowledgement twice.
+  const norKeeper = useIdempotencyKeeper();
   const navigate = useNavigate();
   const location = useLocation();
   const session = useSession();
@@ -611,17 +616,33 @@ export function AdmissionDetail({
     }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/admissions/{id}/nor", {
-      params: { path: { id } },
-      body: {
-        deliveryMethod,
-        acknowledgedAt: new Date().toISOString(),
-        acknowledgedByName: acknowledgedByName.trim(),
-        acknowledgedByRole,
-      } as never,
-    });
-    if (err) {
-      branchError(response?.status, err?.error?.code, "Could not record the acknowledgment.");
+    const sent = await sendWrite(
+      norKeeper,
+      `${id}|nor|${deliveryMethod}|${acknowledgedByName.trim()}|${acknowledgedByRole}`,
+      (key, stampedAt) =>
+        client.POST("/api/v1/admissions/{id}/nor", {
+          params: { path: { id } },
+          body: {
+            deliveryMethod,
+            acknowledgedAt: stampedAt,
+            acknowledgedByName: acknowledgedByName.trim(),
+            acknowledgedByRole,
+          } as never,
+          headers: { "Idempotency-Key": key },
+        }),
+    );
+    if (sent.status === "unreachable") {
+      setBusy(false);
+      setActionError("Could not reach the server. Check your connection and try again.");
+      return;
+    }
+    if (sent.status === "refused") {
+      const refusal = sent.res.error as { error?: { code?: string } } | undefined;
+      branchError(
+        sent.res.response.status,
+        refusal?.error?.code,
+        "Could not record the acknowledgment.",
+      );
       return;
     }
     setBusy(false);
@@ -633,6 +654,7 @@ export function AdmissionDetail({
     acknowledgedByName,
     acknowledgedByRole,
     client,
+    norKeeper,
     branchError,
     closeCeremony,
     load,

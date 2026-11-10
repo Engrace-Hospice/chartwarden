@@ -9,6 +9,7 @@ import {
   InlineAlert,
   StatusPill,
   useApiClient,
+  useAttemptKey,
   useDrawerA11y,
 } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
@@ -45,7 +46,6 @@ import {
   fmtDay,
   isNoticeType,
 } from "./dde-queue-model";
-import { useAttemptKey } from "./use-attempt-key";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 type Panel = "none" | "submit" | "outcome";

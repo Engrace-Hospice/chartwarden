@@ -80,6 +80,13 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // and is told ONCE per window; the tenant admins are who can finish the setup. `m41...` is the same signal from M41's shared crons.
   rule("m23.clearinghouse.unbound_hold", "warn", TENANT_ADMINS),
   rule("m41.clearinghouse.unbound_with_work", "warn", TENANT_ADMINS),
+  // A platform operator revoked the tenant's vendor BAA (ADR-0053 amendment, "build it"): the tenant is told, from the revoke's own
+  // transaction (`m23.tenant_clearinghouse.baa_revoked` -> M23's consumer), that its clearinghouse is out of service, what is held and how
+  // many responses may still be owed. The audience is whoever can act on it: billing, compliance and the org admins.
+  rule("m23.tenant_clearinghouse.baa_revoked", "critical", BILLING_AND_COMPLIANCE),
+  // The same tenant's acknowledgment (999 / 277CA) and 835 pulls skip a revoked config, so responses for claims already sent may sit at
+  // the vendor with no other signal: told once per organization per day while any may still be owed.
+  rule("m23.clearinghouse.revoked_responses_pending", "warn", BILLING_AND_COMPLIANCE),
   // A tenant billing outside ChartWarden recorded that it filed a NOE / NOTR AFTER the CMS window: the watchdog cannot see it (a
   // recorded notice leaves its scan), so this is the only signal. Raised by M23's own consumer of `m23.{noe,notr}.filed_externally_late`.
   rule("m23.noe.filed_externally_late", "critical", BILLING_AND_COMPLIANCE),

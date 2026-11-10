@@ -103,6 +103,8 @@ export function choiceOf(
       status: row.status as TenantClearinghouseStatus,
       mode: row.mode as TenantClearinghouseMode | null,
       source: "tenant",
+      // a revoked config is never active; the gate tells the tenant why instead of "not active yet"
+      ...(row.baaRevokedAt ? { baaRevoked: true } : {}),
     };
   }
   if (fallback) {
@@ -121,6 +123,7 @@ export function decideClaimsBilling(choice: TenantClearinghouseChoice): ClaimsBi
   if (transmitsThroughChartWarden(choice)) return { entitled: true };
   if (choice.vendor === null) return { entitled: false, reason: "clearinghouse_not_chosen" };
   if (choice.vendor === "outside") return { entitled: false, reason: "clearinghouse_outside" };
+  if (choice.baaRevoked === true) return { entitled: false, reason: "clearinghouse_baa_revoked" };
   return { entitled: false, reason: "clearinghouse_not_active" };
 }
 

@@ -2,8 +2,11 @@
 // `webhook-payload-crypto.ts` so M23's Claim.MD receipts use the same format).
 //
 // AES-256-GCM with a random 96-bit IV per payload; the stored string is `v1.<iv>.<tag>.<ciphertext>` (base64url).
-// `dekRef` names the key id so a rotated key can still decrypt old rows. Each caller owns a SEPARATE 32-byte key
-// (base64 in its own env var). A direct key, not a KMS-wrapped envelope: the key id leaves room for that hardening.
+// `dekRef` names the key id the payload was sealed under, so a caller can tell a row sealed under ANOTHER key from one that
+// will not open. One cipher holds ONE key and decrypts only its own id: it never carries a previous key, so a rotated key does
+// NOT decrypt old rows. (M23's Claim.MD sweep refuses a row under another id before decrypting; rotate only when no
+// unsettled receipt remains.) Each caller owns a SEPARATE 32-byte key (base64 in its own env var). A direct key, not a
+// KMS-wrapped envelope: the key id leaves room for that hardening.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const KEY_BYTES = 32;

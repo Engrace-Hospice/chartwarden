@@ -28,6 +28,7 @@ export const ONBOARDING_KEYS = {
   onboardingData: "tenant_onboarding_data.write_platform",
   clearinghouseWrite: "tenant_clearinghouse.write_platform",
   clearinghouseVerifyBaa: "tenant_clearinghouse.verify_baa_platform",
+  clearinghouseRevokeBaa: "tenant_clearinghouse.revoke_baa_platform",
   clearinghouseRelease: "tenant_clearinghouse.release_credential_platform",
   noticeWithdraw: "tenant_notice_filing.withdraw_platform",
   baaDocumentUpload: "tenant_baa_document.upload_platform",

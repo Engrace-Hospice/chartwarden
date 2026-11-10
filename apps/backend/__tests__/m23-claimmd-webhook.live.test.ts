@@ -18,9 +18,11 @@ import { createHmac } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { auditPlatformEvent } from "@chartwarden/audit";
-import { createDbClient } from "@chartwarden/db";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import { createWebhookPayloadCipher } from "@chartwarden/shared";
 import { registerPlatformJob, withPlatformContext } from "@chartwarden/tenancy";
+import { type SQL, sql } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -38,7 +40,9 @@ import {
   CLAIMMD_PAYLOAD_RETENTION_DAYS,
   CLAIMMD_SWEEP_BATCH,
   CLAIMMD_SWEEP_MAX_ATTEMPTS,
+  type ClaimMdRecentFailedDetail,
   type ClaimMdSweepDeps,
+  createRecentFailedAlerter,
   runClaimMdWebhookSweep,
 } from "../src/modules/23-billing-medicare/claimmd-webhook/sweep";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/events-by-m23";
@@ -718,6 +722,247 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       expect(alerts).toEqual([
         { usage: "test", eventId: "u4", attempts: 0, errorClass: "payload_undecryptable" },
       ]);
+    });
+
+    // ── alerts are raised AFTER the sweep's transaction commits, and a sink can never fail a row ───────────────────────
+    /** A runner that records when the transaction has committed, so a sink can prove it was called only after. */
+    const committedProbe = () => {
+      const state = { committed: false };
+      const probed: ClaimMdSweepDeps["runner"] = async (fn) => {
+        const result = await runner(fn);
+        state.committed = true;
+        return result;
+      };
+      return { state, probed };
+    };
+
+    it("raises onFailed only after the transaction commits; a throwing sink leaves the row terminal and the others published", async () => {
+      // s1 is good, s2's ciphertext is another row's (digest mismatch: a key-fault row), aged past the grace window.
+      await store([enrollFor("t1", NPI_A), enrollFor("t2", NPI_B)]);
+      await admin.query(
+        `UPDATE claimmd_webhook_event SET payload_cipher = (SELECT payload_cipher FROM claimmd_webhook_event WHERE event_id = 't1')
+          WHERE event_id = 't2'`,
+      );
+      const grace = new Date(T0.getTime() + CLAIMMD_KEY_FAULT_GRACE_DAYS * DAY);
+      const { state, probed } = committedProbe();
+      const sinkCalls: boolean[] = [];
+      const logs: Array<{ event: string; detail: Record<string, unknown> }> = [];
+      const onFailed: ClaimMdSweepDeps["onFailed"] = () => {
+        sinkCalls.push(state.committed); // true only if the transaction had already committed
+        throw new Error("the ops sink is down");
+      };
+      const r = await sweep(undefined, grace, {
+        runner: probed,
+        onFailed,
+        log: (event, detail) => logs.push({ event, detail }),
+      });
+      expect(r.outcomes).toEqual({ published: 1, failed: 1 });
+      expect(sinkCalls).toEqual([true]); // called once, after the commit
+      // The sink threw, yet the failed row stayed terminal (processed_at set), and the good row was published.
+      expect(await outcome("t2")).toMatchObject({ processing_outcome: "failed", attempt_count: 0 });
+      expect((await outcome("t2")).processed_at).not.toBeNull();
+      expect(await outcome("t1")).toMatchObject({ processing_outcome: "published" });
+      expect(await outbox("m23.clearinghouse.enrollment_reported")).toHaveLength(1);
+      // The failed sink is reported by name and error class only, never its message.
+      expect(logs.filter((l) => l.event === "claimmd.webhook.alert_sink_failed")).toEqual([
+        {
+          event: "claimmd.webhook.alert_sink_failed",
+          detail: { sink: "onFailed", errorClass: "Error" },
+        },
+      ]);
+      // A later sweep does not repeat the alert: the row is terminal and gone from the pending set.
+      expect((await sweep(undefined, grace, { onFailed })).seen).toBe(0);
+    });
+
+    it("a throwing sink on the retention path does not fail the sweep either", async () => {
+      const old = new Date(T0.getTime() - (CLAIMMD_PAYLOAD_RETENTION_DAYS + 1) * DAY);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      await store([enrollFor("w1", NPI_A)], old);
+      await sweep(undefined, old, { cipher: wrongKey }); // never settles
+      await store([enrollFor("w2", NPI_B)]);
+      const { state, probed } = committedProbe();
+      const sinkCalls: boolean[] = [];
+      const r = await sweep(undefined, T0, {
+        runner: probed,
+        onFailed: () => {
+          sinkCalls.push(state.committed);
+          throw new Error("the ops sink is down");
+        },
+      });
+      expect(sinkCalls).toEqual([true]);
+      expect(r.outcomes).toEqual({ published: 1 });
+      expect(await outcome("w1")).toMatchObject({
+        processing_outcome: "failed",
+        payload_cipher: null,
+      });
+      expect(await outcome("w2")).toMatchObject({ processing_outcome: "published" });
+    });
+
+    it("a rolled-back sweep raises no alert: it fires only for rows that are durable", async () => {
+      const old = new Date(T0.getTime() - (CLAIMMD_PAYLOAD_RETENTION_DAYS + 1) * DAY);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      await store([enrollFor("x1", NPI_A)], old);
+      await sweep(undefined, old, { cipher: wrongKey });
+      const calls: string[] = [];
+      const failingRunner: ClaimMdSweepDeps["runner"] = async (fn) =>
+        runner(async (tx) => {
+          await fn(tx);
+          throw new Error("the transaction rolls back after the sweep body");
+        });
+      await expect(
+        sweep(undefined, T0, { runner: failingRunner, onFailed: (d) => calls.push(d.eventId) }),
+      ).rejects.toThrow("rolls back");
+      expect(calls).toEqual([]); // nothing was committed, nothing was announced
+      expect(await outcome("x1")).toMatchObject({ processing_outcome: null }); // still unsettled: the retention rolled back too
+    });
+
+    // ── rotation with unsettled receipts is visible before the grace window runs out ───────────────────────────────────
+    it("warns every sweep, with counts and the oldest receipt time only, while receipts wait under another key id", async () => {
+      await store([enrollFor("o1", NPI_A), enrollFor("o2", NPI_B)]);
+      await sweep({ isEntitled: async () => false }); // both wait as awaiting_entitlement under the current key id
+      const rotated = createWebhookPayloadCipher(Buffer.alloc(32, 5), "claimmd-webhook-v2");
+      const warns: Array<{ event: string; detail: Record<string, unknown> }> = [];
+      await sweep(undefined, T0, {
+        cipher: rotated,
+        warn: (event, detail) => warns.push({ event, detail }),
+      });
+      expect(warns).toEqual([
+        {
+          event: "claimmd.webhook.unsettled_under_other_key",
+          detail: {
+            count: 2,
+            oldestReceivedAt: T0.toISOString(),
+            graceDays: CLAIMMD_KEY_FAULT_GRACE_DAYS,
+          },
+        },
+      ]);
+      // No ids and no payload in the warning.
+      expect(JSON.stringify(warns)).not.toMatch(/o1|o2/);
+      // Under the right key id there is nothing to warn about.
+      const quiet: string[] = [];
+      await sweep(undefined, T0, { warn: (event) => quiet.push(event) });
+      expect(quiet).toEqual([]);
+    });
+
+    it("warns every sweep for 24 hours about receipts that went terminal `failed`, so an alert lost to a crash is still visible", async () => {
+      await store([enrollFor("l1", NPI_A)]);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      const grace = new Date(T0.getTime() + CLAIMMD_KEY_FAULT_GRACE_DAYS * DAY);
+      const warns: Array<{ event: string; detail: Record<string, unknown> }> = [];
+      const warn = (event: string, detail: Record<string, unknown>) =>
+        warns.push({ event, detail });
+      // The receipt goes `failed` here; its onFailed alert never arrives (the sink is down).
+      await sweep(undefined, grace, {
+        cipher: wrongKey,
+        warn,
+        onFailed: () => {
+          throw new Error("the ops sink is down");
+        },
+      });
+      const expected = {
+        event: "claimmd.webhook.recent_failed_receipts",
+        detail: { count: 1, oldestProcessedAt: grace.toISOString(), windowHours: 24 },
+      };
+      expect(warns).toEqual([expected]);
+      // Hours later the row is terminal and not selected, but the durable count still shows it (counts and times only).
+      const later = new Date(grace.getTime() + 20 * 3_600_000);
+      await sweep(undefined, later, { warn });
+      expect(warns).toEqual([expected, expected]);
+      expect(JSON.stringify(warns)).not.toMatch(/l1/);
+      // After the window it stops.
+      const beyond = new Date(grace.getTime() + 25 * 3_600_000);
+      await sweep(undefined, beyond, { warn });
+      expect(warns).toHaveLength(2);
+    });
+
+    // A warning count that FAILS in Postgres aborts the transaction it ran in. The counts run in savepoints, so the sweep's own
+    // settlements (the receipt published below) are kept and the sweep still answers.
+    const failingCount = (pattern: RegExp): ClaimMdSweepDeps["runner"] => {
+      const dialect = new PgDialect();
+      const wrap = (target: DbClient): DbClient =>
+        new Proxy(target, {
+          get(real, prop) {
+            if (prop === "execute") {
+              return (query: SQL) =>
+                pattern.test(dialect.sqlToQuery(query).sql)
+                  ? real.execute(sql`SELECT 1 / 0`) // a real Postgres error: the transaction (or savepoint) is aborted
+                  : real.execute(query);
+            }
+            if (prop === "transaction") {
+              return (run: (sp: DbClient) => Promise<unknown>) =>
+                real.transaction((sp) => run(wrap(sp as unknown as DbClient)));
+            }
+            const value = Reflect.get(real, prop, real);
+            return typeof value === "function" ? value.bind(real) : value;
+          },
+        });
+      return (fn) => runner((tx) => fn(wrap(tx as unknown as DbClient)));
+    };
+
+    it.each([
+      [
+        "recent-failed",
+        /processing_outcome = 'failed' AND processed_at >=/,
+        "claimmd.webhook.recent_failed_count_failed",
+      ],
+      ["other-key", /payload_key_ref IS DISTINCT FROM/, "claimmd.webhook.unsettled_count_failed"],
+    ])(
+      "a %s count that fails in Postgres keeps the sweep's settlements and says so by error class",
+      async (_label, pattern, event) => {
+        await store([enrollFor("c1", NPI_A)]);
+        const logs: Array<{ event: string; detail: Record<string, unknown> }> = [];
+        const result = await sweep(undefined, T0, {
+          runner: failingCount(pattern),
+          warn: (e, detail) => logs.push({ event: e, detail }),
+        });
+        expect(result.outcomes).toEqual({ published: 1 });
+        expect(await outcome("c1")).toMatchObject({ processing_outcome: "published" }); // not rolled back
+        expect(
+          (await outbox("m23.clearinghouse.enrollment_reported")).length,
+        ).toBeGreaterThanOrEqual(1);
+        expect(logs).toHaveLength(1);
+        expect(logs[0]?.event).toBe(event);
+        // the SQLSTATE of `SELECT 1 / 0` (division_by_zero), read off Drizzle's wrapped cause, and nothing else
+        expect(logs[0]?.detail).toEqual({ errorClass: "22012" });
+        expect(JSON.stringify(logs)).not.toMatch(/c1|division/);
+      },
+    );
+
+    it("sends ONE summary through the alert sink when failed receipts first appear, not one per sweep, and keeps the warn line", async () => {
+      await store([enrollFor("s1", NPI_A)]);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      const grace = new Date(T0.getTime() + CLAIMMD_KEY_FAULT_GRACE_DAYS * DAY);
+      const sent: ClaimMdRecentFailedDetail[] = [];
+      const warns: string[] = [];
+      const onRecentFailedCount = createRecentFailedAlerter((d) => sent.push(d));
+      const run = (at: Date, extra: Partial<ClaimMdSweepDeps> = {}) =>
+        sweep(undefined, at, { onRecentFailedCount, warn: (e) => warns.push(e), ...extra });
+      await run(T0, { cipher: wrongKey }); // unreadable but inside the grace window: still pending, nothing failed, no summary
+      expect(sent).toEqual([]);
+      await run(grace, { cipher: wrongKey }); // the receipt goes terminal `failed` here
+      await run(new Date(grace.getTime() + 60_000));
+      await run(new Date(grace.getTime() + 120_000));
+      expect(sent).toEqual([{ count: 1, oldestProcessedAt: grace.toISOString(), windowHours: 24 }]);
+      expect(warns.filter((e) => e === "claimmd.webhook.recent_failed_receipts")).toHaveLength(3); // the log line stays
+      expect(JSON.stringify(sent)).not.toMatch(/s1/);
+    });
+
+    it("the retention clear is served by the partial received_at index of migration 1462, the failed count by 1463's", async () => {
+      const { rows: failedIx } = await admin.query(
+        "SELECT indexdef FROM pg_indexes WHERE indexname = 'claimmd_webhook_event_failed_ix'",
+      );
+      expect(failedIx).toHaveLength(1);
+      expect(failedIx[0].indexdef).toMatch(
+        /\(processed_at\) WHERE \(processing_outcome = 'failed'/,
+      );
+    });
+
+    it("the retention clear is served by the partial received_at index of migration 1462", async () => {
+      const { rows } = await admin.query(
+        "SELECT indexdef FROM pg_indexes WHERE indexname = 'claimmd_webhook_event_cipher_age_ix'",
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].indexdef).toMatch(/\(received_at\) WHERE \(payload_cipher IS NOT NULL\)/);
     });
   });
 

@@ -1,4 +1,4 @@
-import { useApiClient } from "@chartwarden/ui";
+import { freshIdempotencyKeyHeaders, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — the claim editor's rail panels for how the stay ended: the guided
 // "missing discharge details" panel and the Type of Bill panel with its remedy action (re-run validation for an
 // unsubmitted claim; open the TOB-817 replacement ceremony for an accepted / paid one). Split from claim-editor.tsx
@@ -35,6 +35,7 @@ export function ClaimStayEndPanels({
     try {
       const { error: err } = (await client.POST("/api/v1/claims/{id}/validate", {
         params: { path: { id: claim.claimId } },
+        headers: freshIdempotencyKeyHeaders(), // validates the claim as it is now: never replay an earlier run
       } as never)) as { error?: unknown };
       if (err) {
         setError("Re-validation could not be started — try again shortly.");

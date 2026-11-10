@@ -50,6 +50,21 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   // A 413 with no envelope comes from a proxy in front of the API, whose cap may be wrong: do not quote the API's limit.
   PAYLOAD_TOO_LARGE:
     "The server refused this upload as too large. If the file is under 10 MiB, tell engineering: the upload should have been accepted.",
+  // The API's own per-operator limit and the platform vhost's per-address nginx limit (a bare 429 page) both land here: neither processed the request.
+  RATE_LIMITED:
+    "Too many attempts. Nothing was saved. Wait before trying again; some limits take ten minutes to reset.",
+  CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED:
+    "This record points to a document that was revoked before. Review that history and explicitly acknowledge it before verifying.",
+  CLEARINGHOUSE_BAA_REVOKED:
+    "This vendor BAA is revoked. The tenant must record a new agreement before it can be verified or activated.",
+  CLEARINGHOUSE_BAA_CHANGED:
+    "The tenant changed its BAA record while you were looking at it. It has been reloaded; review the current record and try again.",
+  CLEARINGHOUSE_BAA_NOT_RECORDED:
+    "The tenant has not recorded a vendor BAA, so there is nothing to revoke or verify.",
+  CLEARINGHOUSE_BAA_NOT_APPLICABLE:
+    "This tenant bills outside ChartWarden, so it has no clearinghouse-vendor BAA.",
+  CLEARINGHOUSE_BAA_REVOKE_REASON_INVALID: "Choose one of the listed revocation reasons.",
+  CLEARINGHOUSE_BAA_REVOKE_TICKET_INVALID: "Use the operator ticket format shown, such as SEC-42.",
   BAA_DOCUMENT_REQUIRED: "An executed BAA needs the document id of the signed agreement.",
   INVALID_ORG_TIMEZONE: "That is not a valid time zone. Use an IANA name such as America/Denver.",
   INVALID_DISPLAY_NAME: "That display name is not valid.",

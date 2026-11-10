@@ -38,7 +38,12 @@
 //   • THE care_plan_update DECISION beyond `problem_add`. Five of its six mutation ops address M7 plan
 //     elements by uuid (`problemId` / `goalId` / `interventionId`), which needs the plan-element picker
 //     that belongs with the M07 care-plan surface. `problem_add` carries no id and is offered.
-import type { ApiClient, operations } from "@chartwarden/ui";
+import {
+  type ApiClient,
+  type AttemptKey,
+  type operations,
+  sharedAttemptKeys,
+} from "@chartwarden/ui";
 
 // ── schema-derived type extraction (the four helpers every module's api layer uses) ─────────────────────
 
@@ -234,6 +239,14 @@ export async function loadAttendanceEligibility(
   return ok(data as AttendanceEligibility);
 }
 
+/**
+ * The fingerprint of a write intent for the shared attempt keys: what the write is (its name) and what it is about (ids, the row version
+ * read, the body). The routes below DECLARE the Idempotency-Key header, so the typed client makes each call name it; it comes from
+ * `sharedAttemptKeys.run` — the same key across a request that got no answer, a gateway page and the in-flight 409 (a retry replays,
+ * never writes twice), a new one after any other answer.
+ */
+const intent = (...parts: readonly unknown[]): string => JSON.stringify(["idg", ...parts]);
+
 /** Amend a participation status (present ↔ tardy ↔ partial ↔ absent ↔ excused). */
 export async function updateAttendance(
   client: ApiClient,
@@ -241,13 +254,17 @@ export async function updateAttendance(
   status: AttendanceStatus,
   version: number,
 ): Promise<WriteResult<AttendanceView>> {
-  const { data, error, response } = await client.PATCH("/api/v1/idg/attendance/{id}", {
-    params: {
-      path: { id },
-      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
-    },
-    body: { status },
-  });
+  const { data, error, response } = await sharedAttemptKeys.run(
+    intent("updateAttendance", id, version, status),
+    (idempotencyKey) =>
+      client.PATCH("/api/v1/idg/attendance/{id}", {
+        params: {
+          path: { id },
+          header: { "Idempotency-Key": idempotencyKey, "If-Match": String(version) },
+        },
+        body: { status },
+      }),
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as AttendanceView);
 }
@@ -262,12 +279,16 @@ export async function excuseAttendance(
   id: string,
   version: number,
 ): Promise<WriteResult<{ id: string }>> {
-  const { data, error, response } = await client.DELETE("/api/v1/idg/attendance/{id}", {
-    params: {
-      path: { id },
-      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
-    },
-  });
+  const { data, error, response } = await sharedAttemptKeys.run(
+    intent("excuseAttendance", id, version),
+    (idempotencyKey) =>
+      client.DELETE("/api/v1/idg/attendance/{id}", {
+        params: {
+          path: { id },
+          header: { "Idempotency-Key": idempotencyKey, "If-Match": String(version) },
+        },
+      }),
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as { id: string });
 }
@@ -347,13 +368,17 @@ export async function updateActionItem(
   status: ActionItemPatchStatus,
   version: number,
 ): Promise<WriteResult<ActionItemView>> {
-  const { data, error, response } = await client.PATCH("/api/v1/idg/action-items/{id}", {
-    params: {
-      path: { id },
-      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
-    },
-    body: { status },
-  });
+  const { data, error, response } = await sharedAttemptKeys.run(
+    intent("updateActionItem", id, version, status),
+    (idempotencyKey) =>
+      client.PATCH("/api/v1/idg/action-items/{id}", {
+        params: {
+          path: { id },
+          header: { "Idempotency-Key": idempotencyKey, "If-Match": String(version) },
+        },
+        body: { status },
+      }),
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as ActionItemView);
 }
@@ -469,17 +494,21 @@ const errorCodeOf = (body: unknown): string | null => {
  * `POST /api/v1/idg/meetings` — schedule ONE meeting for a location. The server owns every rule
  * (permission `idg.schedule`, overlap with the location's other meetings, end after start, the 12-hour
  * ceiling, start not in the past, location scope); this only maps each refusal to copy the coordinator
- * can act on. 403 is surfaced, never pre-empted (ADR-0030 — no frontend authz). The typed client adds
- * the required `Idempotency-Key` header (`client.ts`); it is named here so the contract stays typed.
+ * can act on. 403 is surfaced, never pre-empted (ADR-0030 — no frontend authz). The required
+ * `Idempotency-Key` header is named here (so the contract stays typed) from the shared attempt keys, see `intent`.
  */
 export async function scheduleMeeting(
   client: ApiClient,
   body: ScheduleMeetingBody,
 ): Promise<WriteResult<MeetingView>> {
-  const { data, error, response } = await client.POST("/api/v1/idg/meetings", {
-    params: { header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
-    body,
-  });
+  const { data, error, response } = await sharedAttemptKeys.run(
+    intent("scheduleMeeting", body),
+    (idempotencyKey) =>
+      client.POST("/api/v1/idg/meetings", {
+        params: { header: { "Idempotency-Key": idempotencyKey } },
+        body,
+      }),
+  );
   if (!error && data) return ok(data as MeetingView);
   const status = response?.status;
   const detail = failure(status, error);
@@ -564,12 +593,13 @@ export async function createDisciplineNote(
   id: string,
   body: { patientId: string | null; discipline: string; bodyText: string; reason?: string },
 ): Promise<WriteResult<DisciplineNoteView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/idg/meetings/{id}/discipline-notes",
-    {
-      params: { path: { id }, header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
-      body,
-    },
+  const { data, error, response } = await sharedAttemptKeys.run(
+    intent("createDisciplineNote", id, body),
+    (idempotencyKey) =>
+      client.POST("/api/v1/idg/meetings/{id}/discipline-notes", {
+        params: { path: { id }, header: { "Idempotency-Key": idempotencyKey } },
+        body,
+      }),
   );
   if (error || !data) return noteFailure(response?.status, error);
   return ok(data as DisciplineNoteView);
@@ -585,13 +615,17 @@ export async function updateDisciplineNote(
   version: number,
   patch: { bodyText?: string; reason?: string | null },
 ): Promise<WriteResult<DisciplineNoteView>> {
-  const { data, error, response } = await client.PATCH("/api/v1/idg/discipline-notes/{id}", {
-    params: {
-      path: { id: noteId },
-      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
-    },
-    body: patch,
-  });
+  const { data, error, response } = await sharedAttemptKeys.run(
+    intent("updateDisciplineNote", noteId, version, patch),
+    (idempotencyKey) =>
+      client.PATCH("/api/v1/idg/discipline-notes/{id}", {
+        params: {
+          path: { id: noteId },
+          header: { "Idempotency-Key": idempotencyKey, "If-Match": String(version) },
+        },
+        body: patch,
+      }),
+  );
   if (error || !data) return noteFailure(response?.status, error);
   return ok(data as DisciplineNoteView);
 }
@@ -622,19 +656,23 @@ export async function loadMeetingPromotions(
   return ok(data);
 }
 
-/** Add an `other` agenda item from a proposal. Idempotency-Key is required by the route; a retry passes the same key. */
+/**
+ * Add an `other` agenda item from a proposal. Idempotency-Key is required by the route; the shared attempt keys hold one per proposal, so a
+ * retry after a dropped answer cannot add twice. A request that gets no answer rejects (the key is kept for the retry).
+ */
 export async function addAgendaItemFromPromotion(
   client: ApiClient,
   id: string,
   promotionRequestId: string,
-  idempotencyKey: string = globalThis.crypto.randomUUID(),
+  attempt: AttemptKey,
 ): Promise<WriteResult<AgendaItemView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/idg/meetings/{id}/agenda/from-promotion",
-    {
-      params: { path: { id }, header: { "Idempotency-Key": idempotencyKey } },
-      body: { promotionRequestId },
-    },
+  const { data, error, response } = await attempt.run(
+    `promotion|${id}|${promotionRequestId}`,
+    (idempotencyKey) =>
+      client.POST("/api/v1/idg/meetings/{id}/agenda/from-promotion", {
+        params: { path: { id }, header: { "Idempotency-Key": idempotencyKey } },
+        body: { promotionRequestId },
+      }),
   );
   if (error || !data) return failure(response?.status, error);
   return ok(data as AgendaItemView);

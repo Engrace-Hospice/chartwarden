@@ -16,6 +16,23 @@ const R = schema.tenantClearinghouseCredentialReservation;
  */
 const RELEASE_GUC = "app.clearinghouse_release";
 
+/**
+ * The transaction-local setting migration 1468's guard trigger requires before any revocation column may change: only this store sets
+ * it, and only for a patch that touches one of {@link REVOCATION_COLUMNS}, so no other code path on the app role can revoke, clear or
+ * rewrite a revocation. Defence in depth, not a privilege boundary (a session running arbitrary SQL as the app role could set it).
+ */
+const REVOCATION_GUC = "app.clearinghouse_baa_revocation";
+/** The columns the guard trigger protects (a patch carrying any of them, even as null, is a revocation write). */
+export const REVOCATION_COLUMNS = [
+  "baaRevokedAt",
+  "baaRevokedByMembershipId",
+  "baaRevokedReasonCode",
+  "baaRevokedTicketRef",
+  "baaLastRevokedAt",
+  "baaLastRevokedDocumentRef",
+  "revokedVendorLeftAt",
+] as const;
+
 export type ConfigRow = schema.TenantClearinghouseConfigRow;
 
 /** A fingerprint to reserve, with the public id of its key (null: recorded before migration 1436). */
@@ -47,9 +64,19 @@ export interface ConfigStore {
   /**
    * True when the org's vendor responses may still be arriving: a production submission still `reserved`, or one reserved at or
    * after `since` (a `sent` attempt is final, so its reservation time is the only clock the attempt row carries). Behind both the
-   * vendor / mode lock and the credential release (credential-reservation.ts `hasRecentProductionTraffic`).
+   * vendor / mode lock and the credential release (credential-reservation.ts `hasRecentProductionTraffic`). `notBefore` (the vendor
+   * lock only) ignores every attempt reserved earlier, `reserved` ones included: the traffic of a revoked vendor the tenant has left.
    */
-  hasRecentProductionAttempts(organizationId: string, since: Date): Promise<boolean>;
+  hasRecentProductionAttempts(
+    organizationId: string,
+    since: Date,
+    notBefore?: Date,
+  ): Promise<boolean>;
+  /** The same set, counted: how many are still in flight (`reserved`) and how many were `sent` since `since`. */
+  countRecentProductionAttempts(
+    organizationId: string,
+    since: Date,
+  ): Promise<{ readonly inFlight: number; readonly sent: number }>;
   /** True when THIS org already holds an unreleased reservation of the fingerprint (migration 1435). */
   holdsCredential(organizationId: string, fingerprint: string): Promise<boolean>;
   /** How many unreleased reservations the org holds (each credential has one per fingerprint key it was saved under). */
@@ -151,14 +178,19 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
       return created;
     },
     async update(organizationId, expectedVersion, patch) {
+      // only a patch that touches a revocation column carries the guard trigger's setting, and only for that one statement
+      const revocationWrite = REVOCATION_COLUMNS.some((column) => column in patch);
+      if (revocationWrite)
+        await tx.execute(sql`SELECT set_config(${REVOCATION_GUC}, 'service', true)`);
       const [row] = await tx
         .update(C)
         .set({ ...patch, version: expectedVersion + 1 })
         .where(and(eq(C.organizationId, organizationId), eq(C.version, expectedVersion)))
         .returning();
+      if (revocationWrite) await tx.execute(sql`SELECT set_config(${REVOCATION_GUC}, '', true)`);
       return row ?? null;
     },
-    async hasRecentProductionAttempts(organizationId, since) {
+    async hasRecentProductionAttempts(organizationId, since, notBefore) {
       const [hit] = await tx
         .select({ id: A.id })
         .from(A)
@@ -166,11 +198,24 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
           and(
             eq(A.organizationId, organizationId),
             eq(A.usage, "production"),
-            or(eq(A.status, "reserved"), and(eq(A.status, "sent"), gte(A.reservedAt, since))),
+            or(
+              and(eq(A.status, "reserved"), notBefore ? gte(A.reservedAt, notBefore) : undefined),
+              and(eq(A.status, "sent"), gte(A.reservedAt, since)),
+            ),
           ),
         )
         .limit(1);
       return hit !== undefined;
+    },
+    async countRecentProductionAttempts(organizationId, since) {
+      const [row] = await tx
+        .select({
+          inFlight: sql<number>`count(*) filter (where ${A.status} = 'reserved')::int`,
+          sent: sql<number>`count(*) filter (where ${A.status} = 'sent' and ${A.reservedAt} >= ${since})::int`,
+        })
+        .from(A)
+        .where(and(eq(A.organizationId, organizationId), eq(A.usage, "production")));
+      return { inFlight: Number(row?.inFlight ?? 0), sent: Number(row?.sent ?? 0) };
     },
     async holdsCredential(organizationId, fingerprint) {
       const [hit] = await tx

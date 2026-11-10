@@ -10,6 +10,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
@@ -23,7 +24,6 @@ import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 // the anchor read degrades the surface; a 422 / 503 on a forward-date surfaces inline, never a toast. Lantern:
 // DetailPageLayout (timeline | forward-date aside), No-Line table (§6.7), §6.6 StatusPills via
 // billing-status.ts, CSS-var tokens only. openapi emits no billing schemas → reads cast, inits `as never`.
-import { useAttemptKey } from "./use-attempt-key";
 
 interface SequestrationPolicyView {
   policyId: string;

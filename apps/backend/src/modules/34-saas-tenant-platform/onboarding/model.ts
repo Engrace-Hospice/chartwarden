@@ -190,6 +190,12 @@ export interface GoverningBaa {
    * otherwise. Go-live approval is refused to that operator too: uploading the file is as much a part of recording the BAA as writing the row.
    */
   readonly documentUploadedByMembershipId: string | null;
+  /**
+   * The USER behind that membership. A revoked membership is terminal (a returning operator is re-invited as a NEW membership row, MEMBERSHIP_REVOKED
+   * in M2), so the uploader's old membership id no longer names the person who now approves: the refusal compares users as well as memberships,
+   * as it does for the register row's writers. Null when there is no uploader to name, or the membership cannot be read by the store.
+   */
+  readonly documentUploadedByUserId: string | null;
   readonly recordedByUserId: string | null;
   readonly updatedByUserId: string | null;
 }

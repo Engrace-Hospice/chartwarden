@@ -140,7 +140,7 @@ describe("SnoozeControl", () => {
     await waitFor(() => expect(result.current.view.status).toBe("ready"));
     let done: Promise<unknown> = Promise.resolve();
     act(() => {
-      done = result.current.snooze(60, "k");
+      done = result.current.snooze(60);
     });
     act(() => result.current.reload()); // a re-read starts (and bumps the generation) while the write is in flight
     await waitFor(() => expect(GET.mock.calls.length).toBeGreaterThanOrEqual(2));

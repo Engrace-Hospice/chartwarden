@@ -92,6 +92,14 @@ export interface OnboardingDataService {
     orgSlug: string,
     reason: string,
     expected: { readonly recordedAt: string },
+    options?: { readonly acknowledgePreviousRevocation?: boolean },
+  ): Promise<unknown>;
+  /** Revoke the tenant's current vendor BAA using only a closed reason and an operator ticket reference. */
+  revokeClearinghouseBaa(
+    op: OnboardingOperator,
+    orgSlug: string,
+    input: { readonly reasonCode: string; readonly ticketRef: string },
+    expected: { readonly recordedAt: string },
   ): Promise<unknown>;
   /**
    * The operator releases every clearinghouse credential the tenant still holds except its current one, so another organization may

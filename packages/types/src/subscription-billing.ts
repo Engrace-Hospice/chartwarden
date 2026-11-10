@@ -687,7 +687,7 @@ export interface PatientCounterProvider {
 export const CLAIMS_BILLING_ADDON_SLUG = "claims_billing";
 
 /**
- * Why an org is NOT entitled to start new claims-billing work. The three `clearinghouse_*` reasons are the live ones
+ * Why an org is NOT entitled to start new claims-billing work. The four `clearinghouse_*` reasons are the live ones
  * (ADR-0110 repurposed, ADR-0053 amendment 2026-11-06: the entitlement follows the org's clearinghouse choice, with no
  * add-on and no fee). The add-on reasons (ADR-0110 D3) are no longer produced by the gate; they stay in the union so the
  * add-on admin surface and its stored history keep type-checking (expand-only).
@@ -696,6 +696,7 @@ export type ClaimsBillingDenyReason =
   | "clearinghouse_not_chosen"
   | "clearinghouse_outside"
   | "clearinghouse_not_active"
+  | "clearinghouse_baa_revoked"
   | "never_purchased"
   | "lapsed"
   | "subscription_suspended"

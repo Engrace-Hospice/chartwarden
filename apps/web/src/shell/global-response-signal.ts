@@ -166,10 +166,25 @@ export function handleObservedResponse(
   }
 }
 
+const sessionExpiredHooks = new Set<() => void>();
+
+/**
+ * Run `hook` when the shell decides the session is dead (the `session-expired` signal: a 401 that is NOT a step-up or unlock refusal
+ * and NOT a live session with no organization yet). main.tsx uses it to drop the API client's held Idempotency-Keys, which the client
+ * cannot do itself because it cannot tell those 401s apart. Returns the unsubscribe.
+ */
+export function onSessionExpired(hook: () => void): () => void {
+  sessionExpiredHooks.add(hook);
+  return () => sessionExpiredHooks.delete(hook);
+}
+
 export function setGlobalResponseSignal(signal: GlobalResponseSignal): void {
   // A dead session must not leave PHI-bearing ceremony drafts in memory for whoever signs in next on this tab (the
   // /expired route is an SPA navigation, not a reload). An idle LOCK is different and keeps them.
-  if (signal?.kind === "session-expired") clearAllDrafts();
+  if (signal?.kind === "session-expired") {
+    clearAllDrafts();
+    for (const hook of sessionExpiredHooks) hook();
+  }
   if (signal?.kind === "tenant-unavailable") lastTenantReason = signal.reason;
   current = signal;
   for (const listener of listeners) listener();

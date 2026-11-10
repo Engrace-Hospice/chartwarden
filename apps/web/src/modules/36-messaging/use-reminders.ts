@@ -2,6 +2,7 @@
 // its success is the signal that the feature is on (a 404 reads as OFF; any other failure keeps the last good index and shows OFF only when there was none) and its rows feed the per-message "Reminder set" state. A failure is cached only briefly; a 404 ("off") is cached. A set or cancel calls `refreshReminders` so the rows
 // re-read. No polling. The server stays the authority: with the flag off its routes answer 404.
 import type { ReminderDto } from "@chartwarden/types";
+import { useAttemptKey } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-promotions-enabled";
@@ -95,6 +96,8 @@ interface RawAnswer {
 
 export function useReminderActions() {
   const client = useOptionalApiClient();
+  // One Idempotency-Key per (message, chosen time): a retry of the same choice replays, another choice is a new request.
+  const attempt = useAttemptKey();
   const finish = useCallback(
     (
       answer: RawAnswer,
@@ -109,16 +112,20 @@ export function useReminderActions() {
     [client],
   );
   const set = useCallback(
-    async (messageId: string, remindAt: Date, idempotencyKey?: string): Promise<ReminderResult> => {
+    async (messageId: string, remindAt: Date): Promise<ReminderResult> => {
       if (!client) return NETWORK_FAILURE;
       try {
-        const answer = await client.PUT("/api/v1/messaging/messages/{id}/reminder", {
-          params: {
-            path: { id: messageId },
-            header: { "Idempotency-Key": idempotencyKey ?? crypto.randomUUID() },
-          },
-          body: { remind_at: remindAt.toISOString() },
-        });
+        const answer = await attempt.run(
+          `${messageId}|${remindAt.toISOString()}`,
+          (idempotencyKey) =>
+            client.PUT("/api/v1/messaging/messages/{id}/reminder", {
+              params: {
+                path: { id: messageId },
+                header: { "Idempotency-Key": idempotencyKey },
+              },
+              body: { remind_at: remindAt.toISOString() },
+            }),
+        );
         const saved = answer.data;
         return finish(
           answer,
@@ -128,7 +135,7 @@ export function useReminderActions() {
         return NETWORK_FAILURE;
       }
     },
-    [client, finish],
+    [attempt, client, finish],
   );
   const cancel = useCallback(
     async (messageId: string): Promise<ReminderResult> => {

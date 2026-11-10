@@ -209,6 +209,32 @@ describe("PlanContractPanel", () => {
     }
   });
 
+  it("every Preview click carries its own Idempotency-Key: a preview prices the plan as it is now, never a replay", async () => {
+    const { client } = mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
+    });
+    await screen.findByLabelText("Plan");
+    chooseService("none");
+    fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Average daily census"), { target: { value: "14" } });
+    fireEvent.change(screen.getByLabelText(/^Expected net collections/), {
+      target: { value: "50000" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    expect(await screen.findByText("$1,088.00")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+
+    const keyOf = (call: unknown[]): string | undefined =>
+      (call[1] as { headers?: Record<string, string> }).headers?.["Idempotency-Key"];
+    const [first, second] = client.POST.mock.calls as unknown as unknown[][];
+    expect(keyOf(first ?? [])).toBeTruthy();
+    expect(keyOf(second ?? [])).toBeTruthy();
+    expect(keyOf(second ?? [])).not.toBe(keyOf(first ?? []));
+  });
+
   it("a blank staff count or census is not zero: it asks for them, and prices nothing", async () => {
     const { client } = mount({
       GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },

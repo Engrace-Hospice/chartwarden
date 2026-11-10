@@ -2,7 +2,12 @@
 // for a BullMQ `Worker` (WorkerLike is deliberately minimal for exactly this) — no Redis needed.
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { type FailedJobLike, attachDlqPromotionAlert, buildDlqPromotionSink } from "../dlq-alerts";
+import {
+  type FailedJobLike,
+  attachDlqPromotionAlert,
+  buildDlqPromotionSink,
+  formatDlqPromotion,
+} from "../dlq-alerts";
 
 function fakeWorker() {
   const emitter = new EventEmitter();
@@ -78,6 +83,43 @@ describe("attachDlqPromotionAlert", () => {
     fail(undefined, new Error("connection reset"));
 
     expect(onDlqPromotion).not.toHaveBeenCalled();
+  });
+});
+
+describe("the promotion log line", () => {
+  const base = {
+    source: "m23:claimmd-webhook-receipt",
+    error: "boom",
+    occurredAt: "2026-08-04T00:00:00Z",
+  };
+
+  it("is exactly what it always was for a promotion that has an attempt count", () => {
+    expect(formatDlqPromotion({ ...base, jobId: "usage:e1", attempts: 5 })).toBe(
+      "🚨 DLQ promotion [m23:claimmd-webhook-receipt] job=usage:e1 after 5 attempt(s): boom",
+    );
+    expect(formatDlqPromotion({ ...base, organizationId: "org-1", jobId: "j", attempts: 0 })).toBe(
+      "🚨 DLQ promotion [m23:claimmd-webhook-receipt] org=org-1 job=j after 0 attempt(s): boom",
+    );
+    expect(formatDlqPromotion({ ...base, attempts: 3 })).toBe(
+      "🚨 DLQ promotion [m23:claimmd-webhook-receipt] after 3 attempt(s): boom",
+    );
+  });
+
+  it("omits the attempts clause when there is no count, instead of saying `after ? attempt(s)`", () => {
+    const line = formatDlqPromotion({ ...base, error: "2 receipt(s) went terminal failed" });
+    expect(line).toBe(
+      "🚨 DLQ promotion [m23:claimmd-webhook-receipt]: 2 receipt(s) went terminal failed",
+    );
+    expect(line).not.toMatch(/\?|attempt/);
+    expect(formatDlqPromotion({ ...base, jobId: "j" })).toBe(
+      "🚨 DLQ promotion [m23:claimmd-webhook-receipt] job=j: boom",
+    );
+  });
+
+  it("the sink logs that line", () => {
+    const log = vi.fn();
+    buildDlqPromotionSink({ log })({ ...base });
+    expect(log).toHaveBeenCalledWith("🚨 DLQ promotion [m23:claimmd-webhook-receipt]: boom");
   });
 });
 

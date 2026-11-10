@@ -3,7 +3,14 @@
 // Records tab (filed against that referral) and the Intake review queue (an unfiled fax: the cover sheet's
 // records-request code files it, or a reviewer does with Move document). Lives in the shell because M6
 // (Records tab) may not import M22's web module.
-import { Button, Modal, SelectField, StatusPill, t } from "@chartwarden/ui";
+import {
+  Button,
+  Modal,
+  SelectField,
+  StatusPill,
+  freshIdempotencyKeyHeaders,
+  t,
+} from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
@@ -113,6 +120,8 @@ export function IntakeUploadDialog({
         .POST("/api/v1/intake/uploads/{id}/extraction/run", {
           params: { path: { id: batch.data.id } },
           body: {},
+          // A run reads the batch as it is now: never replay an earlier (lost-reply) answer.
+          headers: freshIdempotencyKeyHeaders(),
         })
         .catch((err: unknown) => ({ error: err }));
       setStage(null);

@@ -412,8 +412,14 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
   function perOrg(
     bindings: Record<
       string,
-      { transport: InMemoryClearinghouse; vendor: string | null; account?: "tenant" }
+      {
+        transport: InMemoryClearinghouse;
+        vendor: string | null;
+        account?: "tenant";
+        unboundReason?: string;
+      }
     >,
+    onRevokedSkipped?: (organizationId: string) => Promise<void>,
   ) {
     const cursors = cursorStore();
     const ingest = ingestDouble();
@@ -432,9 +438,46 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
       payers: { medicarePayerId: async () => PAYER },
       cursors: cursors.store,
       ingest: ingest.ingest,
+      ...(onRevokedSkipped ? { onRevokedSkipped } : {}),
     };
     return { deps, ingest, cursors, resolved };
   }
+
+  it("says so when it skips an organization whose BAA was revoked (responses may still be owed): once per call, and only for that reason", async () => {
+    const reported: string[] = [];
+    const idle = new InMemoryClearinghouse();
+    const { deps } = perOrg(
+      {
+        [ORG]: { transport: idle, vendor: null, unboundReason: "baa_revoked" },
+        [ORG_B]: { transport: idle, vendor: null, unboundReason: "not_active" },
+      },
+      async (organizationId) => void reported.push(organizationId),
+    );
+
+    const revoked = await pullRemittances(deps, ORG);
+    const draft = await pullRemittances(deps, ORG_B);
+
+    expect(revoked).toMatchObject({ queued: 0, failures: [] }); // still a skip, not a failure
+    expect(draft).toMatchObject({ queued: 0, failures: [] });
+    expect(reported).toEqual([ORG]); // a draft config is not reported: nothing was ever owed
+  });
+
+  it("a failing report never stops the pull or fails the tick", async () => {
+    const { deps } = perOrg(
+      {
+        [ORG]: {
+          transport: new InMemoryClearinghouse(),
+          vendor: null,
+          unboundReason: "baa_revoked",
+        },
+      },
+      async () => {
+        throw new Error("alert router down");
+      },
+    );
+
+    await expect(pullRemittances(deps, ORG)).resolves.toMatchObject({ failures: [] });
+  });
 
   it("reads each organization's remittances from its OWN clearinghouse, under its own vendor", async () => {
     const farA = new InMemoryClearinghouse();

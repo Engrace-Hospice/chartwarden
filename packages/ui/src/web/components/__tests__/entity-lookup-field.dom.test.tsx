@@ -221,6 +221,7 @@ describe("EntityLookupField paging by keyboard", () => {
     const user = userEvent.setup();
     renderPaged();
     const more = await openPopup(user);
+    expect(screen.getByRole("listbox").contains(more)).toBe(false);
     await user.tab();
     expect(document.activeElement).toBe(more);
     // Longer than the close delay that used to unmount the button from under the focus.

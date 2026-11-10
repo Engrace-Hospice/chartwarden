@@ -8,6 +8,7 @@
 //   an organization that is NOT LIVE   UNBOUND (`not_active`), whatever its row says: a tenant may activate its clearinghouse during
 //                                      onboarding (before go-live approval), and activation alone must never be what lets a claim go
 //                                      out, so the send path asks `isOrganizationLive` itself rather than relying on no claim existing;
+//   a row whose BAA was revoked        UNBOUND (`baa_revoked`: held the same way; its ack / 835 pulls skip WITH an alert);
 //   no row, named in the env fallback  the platform's own env binding (the demo tenant), exactly as before;
 //   no row otherwise                   UNBOUND (`not_chosen`: workers HOLD until the tenant chooses).
 // The top-level `vendor` / `transport` are UNBOUND on purpose: they say nothing about any organization, so a consumer that
@@ -27,6 +28,7 @@ import {
   NOT_WIRED_TRANSPORT,
   type StediAnomaly,
   type SubmissionAttemptStore,
+  UNBOUND_BAA_REVOKED,
   UNBOUND_NOT_ACTIVE,
   UNBOUND_NOT_CHOSEN,
   UNBOUND_OUTSIDE,
@@ -190,7 +192,8 @@ export function createTenantClearinghouseRuntime(
     }
     if (row.status !== "active") {
       built.delete(organizationId);
-      return UNBOUND_NOT_ACTIVE;
+      // a revoked BAA is held like any not-live config, but its pulls say responses may still be owed (revoked-pull-alert.ts)
+      return row.baaRevokedAt ? UNBOUND_BAA_REVOKED : UNBOUND_NOT_ACTIVE;
     }
     const cached = built.get(organizationId);
     if (cached && cached.version === row.version) return cached.binding;

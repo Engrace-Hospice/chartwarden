@@ -7,6 +7,7 @@
 // is established until the first query, so constructing a client is side-effect-free.
 import { type NodePgDatabase, drizzle } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
+import { instrumentPoolForCommits } from "./commit-tracker";
 import * as schema from "./schema/index";
 
 export type Schema = typeof schema;
@@ -57,6 +58,9 @@ export function createDbClient(opts: CreateDbClientOptions): DbClientHandle {
     connectionTimeoutMillis: DEFAULT_CONNECTION_TIMEOUT_MS,
     ...opts.pool,
   });
+  // Every query of every pooled client feeds the ambient per-request commit tracker (commit-tracker.ts): the idempotency
+  // middleware releases a retryable failure only when this request committed nothing. A no-op outside a tracked request.
+  instrumentPoolForCommits(pool as unknown as Parameters<typeof instrumentPoolForCommits>[0]);
   const db = drizzle(pool, { schema });
   return { db, pool, close: () => pool.end() };
 }

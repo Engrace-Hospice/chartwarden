@@ -1,4 +1,4 @@
-import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
+import { CenteredCardLayout, clearIdempotencyKeys, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -84,6 +84,8 @@ export function RequiredPasswordChange(): JSX.Element {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
+    // The sign-out here is followed by an SPA navigation, not a reload: the next sign-in on this page must not inherit held keys.
+    clearIdempotencyKeys(client);
     await authClient.signOut().catch(() => undefined);
     navigate("/login?passwordChanged=1", { replace: true });
   }
@@ -92,6 +94,7 @@ export function RequiredPasswordChange(): JSX.Element {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
+    clearIdempotencyKeys(client); // an SPA navigation follows, not a reload (see above)
     await authClient.signOut().catch(() => undefined);
     clearPendingNotificationLink();
     navigate("/login", { replace: true });
