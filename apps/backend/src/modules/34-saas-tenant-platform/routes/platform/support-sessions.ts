@@ -22,7 +22,6 @@ import {
 // `withPlatformContext` → typed response, and `auditRead()` records every PHI-adjacent surveyor read
 // (HIPAA §164.312(b) + the F09 bypass-audit guarantee). The start/elevate/close COMMANDS are synchronous
 // service calls that publish their own §4.9 `m34.support_session.*` outbox in-tx (no worker enqueue).
-import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -166,8 +165,9 @@ export function registerSupportSessionRoutes(
     async (request) => {
       const { organizationId, membershipId } = writeActorOf(request);
       const actorIp = request.ip ?? null;
-      const { note } = parse(CloseSessionRequest, request.body);
-      if (note !== undefined) assertNoPatientIdentifier("note", note);
+      // `note` is accepted and DISCARDED: closeSession takes no note, and closing is always permitted, so a refusal here would only
+      // block it. A change that stores the note must screen it (screenFreeText) first.
+      parse(CloseSessionRequest, request.body);
       return service.closeSession({
         organizationId,
         supportSessionId: sessionIdOf(request),

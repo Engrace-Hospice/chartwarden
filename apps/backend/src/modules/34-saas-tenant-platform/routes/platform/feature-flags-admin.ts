@@ -18,10 +18,10 @@ import {
 // (global flag → platform-ops only; per-tenant flag → org_admin) + passkey-recent-5min step-up (§6 / D10).
 // The M36 `feature_flag.platform_emergency_changed` alert (plus the outbox row and the critical audit) on
 // kill-switch is the M1 seam's emission, in-tx with the write. Mirrors the sibling tenants.ts plugin shape.
-import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { screenFreeText, screenValue } from "../free-text";
 import {
   FeatureFlagListQuerySchema,
   FeatureFlagParamsSchema,
@@ -99,7 +99,8 @@ export function registerFeatureFlagAdminRoutes(
     async (request, reply) => {
       const { userId } = actorOf(request);
       const body = parse(UpsertFeatureFlagRequest, request.body);
-      if (body.rationale !== undefined) assertNoPatientIdentifier("rationale", body.rationale);
+      screenFreeText({ rationale: body.rationale });
+      screenValue("value", body.value); // a JSON value is stored too (and tenant-readable for a tenant flag): every string leaf
       const res = await service.upsertFeatureFlag(userId, {
         flagKey: body.flagKey,
         organizationId: body.organizationId ?? null,
