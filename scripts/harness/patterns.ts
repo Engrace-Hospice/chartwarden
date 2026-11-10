@@ -44,6 +44,7 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { isToolchainPath } from "./toolchain-paths";
+import { extraOutputFiles, localPath } from "./writers";
 
 export interface SyntheticRegistry {
   readonly ssn: ReadonlySet<string>;
@@ -654,6 +655,8 @@ function splitRedirects(seg: string): Redirects {
     i = end - 1;
     const target = words(word)[0] ?? "";
     if (op === "<<<") strings.push(target);
+    // `<>` opens its file for reading AND writing.
+    if (op === "<>") outs.push(target);
     (op.startsWith("<<") ? docs : op.startsWith(">") ? outs : ins).push(target);
   }
   return { rest, outs, ins, docs, strings };
@@ -1637,15 +1640,16 @@ const isInPlace = (arg: string): boolean =>
   (/^-([A-Za-z]*)/.exec(arg)?.[1] ?? "").includes("i") || isLongInPlace(arg);
 const FIND_WRITER = /^(rm|truncate|mv|cp|tee|chmod|chown|shred|unlink|ln|install|touch|dd|rsync)$/;
 
-/** Destination and sources of cp/mv/ln/install/rsync, honouring `-t DIR` / `--target-directory=DIR`. */
+/**
+ * Destination and sources of cp/mv/ln/install/rsync, honouring `-t DIR`, `-tDIR`, `-at DIR` and `--target-directory=DIR`
+ * (GNU takes any prefix of the long name: `--target=DIR`). rsync's `-t` is `--times`, not a destination.
+ */
 function splitDest(
   args: readonly string[],
   files: readonly string[],
+  targetOption = true,
 ): { dest: string | undefined; srcs: string[] } {
-  const k = args.findIndex((a) => a === "-t" || a === "--target-directory");
-  const dest =
-    args.find((a) => a.startsWith("--target-directory="))?.slice("--target-directory=".length) ??
-    (k >= 0 ? args[k + 1] : undefined);
+  const dest = targetOption ? optionValues(args, "t", [["target-directory", 1]])[0] : undefined;
   if (dest !== undefined) return { dest, srcs: files.filter((f) => f !== dest) };
   return { dest: files.at(-1), srcs: files.slice(0, -1) };
 }
@@ -1655,8 +1659,9 @@ function copyTargets(
   args: readonly string[],
   files: readonly string[],
   recursive: boolean,
+  targetOption = true,
 ): WriteTarget[] {
-  const { dest, srcs } = splitDest(args, files);
+  const { dest, srcs } = splitDest(args, files, targetOption);
   if (dest === undefined) return [];
   const contents = recursive || srcs.some(isContentsSource);
   return [wt(dest, contents, contents), ...srcs.map((s) => wt(`${dest}/${baseName(s)}`))];
@@ -1817,6 +1822,10 @@ function compressorWrites(args: readonly string[], files: readonly string[]): Wr
 
 /** Every path one simple command writes, deletes, moves or re-modes (redirections are added by the caller). */
 function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
+  return [...mainWrites(prog, args), ...targetsOf(extraOutputFiles(prog, args))];
+}
+
+function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   const files = fileArgs(args);
   const recursive = args.some(isRecursive);
   if (prog === "rm") {
@@ -1831,7 +1840,9 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
     ];
   }
   if (/^(cp|install|ln)$/.test(prog)) return copyTargets(args, files, recursive);
-  if (prog === "rsync") return copyTargets(args, files, true);
+  if (prog === "ditto") return copyTargets(args, files, true);
+  // rsync and scp name a remote side `host:path`; one that names this machine is a local path.
+  if (/^(rsync|scp)$/.test(prog)) return copyTargets(args, files.map(localPath), true, false);
   if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
   if (/^(chmod|chown)$/.test(prog)) return files.map((f) => wt(f, recursive, recursive));
   if (/^(sed|perl)$/.test(prog)) {
