@@ -6,6 +6,7 @@ import {
   TextField,
   stashStepUpMemoryDraft,
   useApiClient,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -59,6 +60,8 @@ export function AddonsPanel({
   // Which row's cancel is in flight: every action locks while busy, but only that row's button shows the spinner.
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // A refused grant or cancel re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
+  const captureFocus = useRestoreFocus(busy);
 
   const load = useCallback(async () => {
     const res = await client.GET("/api/admin/subscriptions/{id}/addons", {
@@ -81,6 +84,7 @@ export function AddonsPanel({
     if (busy) return;
     setAttempted(true);
     if (reason.trim().length < 3 || (mode === "trial" && !trialEndsAt)) return;
+    captureFocus();
     setBusy(true);
     setOutcome(null);
     const res = await settleWrite(
@@ -110,11 +114,12 @@ export function AddonsPanel({
     setReason("");
     setAttempted(false);
     await load();
-  }, [busy, client, subscriptionId, mode, trialEndsAt, reason, load]);
+  }, [busy, client, subscriptionId, mode, trialEndsAt, reason, load, captureFocus]);
 
   const cancel = useCallback(
     async (addonId: string) => {
       if (busy) return;
+      captureFocus();
       setBusy(true);
       setCancellingId(addonId);
       setOutcome(null);
@@ -138,7 +143,7 @@ export function AddonsPanel({
       });
       await load();
     },
-    [busy, client, subscriptionId, load],
+    [busy, client, subscriptionId, load, captureFocus],
   );
 
   return (

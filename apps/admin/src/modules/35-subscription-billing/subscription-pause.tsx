@@ -4,6 +4,7 @@ import {
   TextField,
   stashStepUpMemoryDraft,
   useApiClient,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Pause subscription (`/admin/subscriptions/:id/pause`,
@@ -36,11 +37,14 @@ export function SubscriptionPause(): JSX.Element {
   const [until, setUntil] = useState(restored?.until ?? "");
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [busy, setBusy] = useState(false);
+  // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
+  const captureFocus = useRestoreFocus(busy);
   const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const submit = useCallback(async () => {
     if (!id || busy || done) return;
+    captureFocus();
     setBusy(true);
     setOutcome(null);
     const body = until ? { pausedUntil: new Date(until).toISOString() } : {};
@@ -60,7 +64,7 @@ export function SubscriptionPause(): JSX.Element {
     }
     setBusy(false);
     finish(`/admin/subscriptions/${id}`, "Subscription paused.");
-  }, [busy, done, client, id, until, finish]);
+  }, [busy, done, client, id, until, finish, captureFocus]);
 
   return (
     <div className="wx-list-drawer">

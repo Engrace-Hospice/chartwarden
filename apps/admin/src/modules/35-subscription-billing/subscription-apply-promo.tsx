@@ -4,6 +4,7 @@ import {
   focusFirstInvalid,
   stashStepUpMemoryDraft,
   useApiClient,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Apply promo to a subscription
@@ -36,6 +37,8 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const restored = useStepUpMemoryDraft<string>(draftKey);
   const [code, setCode] = useState(restored ?? "");
   const [busy, setBusy] = useState(false);
+  // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
+  const captureFocus = useRestoreFocus(busy);
   const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [attempted, setAttempted] = useState(false);
@@ -50,6 +53,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
       return;
     }
     if (!id) return;
+    captureFocus();
     setBusy(true);
     setOutcome(null);
     const res = await settleWrite(
@@ -73,7 +77,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
     setAttempted(false);
     setBusy(false);
     finish(`/admin/subscriptions/${id}`, `Promo "${promoCode}" applied.`);
-  }, [busy, done, client, id, code, finish]);
+  }, [busy, done, client, id, code, finish, captureFocus]);
 
   return (
     <div className="wx-list-drawer">

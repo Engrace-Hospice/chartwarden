@@ -7,6 +7,7 @@ import {
   isValid,
   stashStepUpMemoryDraft,
   useApiClient,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 New refund request (`/admin/refunds/new`,
@@ -57,6 +58,8 @@ export function RefundNew(): JSX.Element {
   const [attempted, setAttempted] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
+  // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
+  const captureFocus = useRestoreFocus(busy);
   const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -71,6 +74,7 @@ export function RefundNew(): JSX.Element {
       focusFirstInvalid(formRef.current);
       return;
     }
+    captureFocus();
     setBusy(true);
     setOutcome(null);
     const res = await settleWrite(
@@ -103,7 +107,7 @@ export function RefundNew(): JSX.Element {
     }
     setBusy(false);
     finish("/admin/refunds", "Refund request created — awaiting a distinct approver (four-eyes).");
-  }, [busy, done, client, form, finish]);
+  }, [busy, done, client, form, finish, captureFocus]);
 
   return (
     <div className="wx-list-drawer">

@@ -392,6 +392,60 @@ describe("refund decision", () => {
   });
 });
 
+describe("a refused submit", () => {
+  const refuse = (): void => {
+    reply = () => json({ error: { code: "FORBIDDEN", message: "no", correlationId: "c" } }, 403);
+  };
+  const type = (label: RegExp, value: string): void => {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  };
+  /**
+   * A browser's focus fix-up drops focus to the page when a focused button disables itself (jsdom keeps it on the disabled button
+   * and cannot blur it): park focus on a throwaway field and remove that, which leaves the page focused the same way.
+   */
+  const dropFocusToPage = (): void => {
+    const parking = document.createElement("input");
+    document.body.append(parking);
+    parking.focus();
+    parking.remove();
+    expect(document.activeElement).toBe(document.body);
+  };
+  /** Presses `name` while the write is held, drops focus as a browser does, then refuses. */
+  const pressRefusedAndExpectFocusBack = async (name: string): Promise<void> => {
+    const held = holdWrites();
+    refuse();
+    const button = screen.getByRole("button", { name }) as HTMLButtonElement;
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(button.disabled).toBe(true));
+    dropFocusToPage();
+    await held.release();
+    await waitFor(() => expect(button.disabled).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(button));
+  };
+
+  it("refund request: focus returns to Submit request", async () => {
+    mount("/admin/refunds/new");
+    type(/Invoice/, INVOICE);
+    type(/Amount/, "25.00");
+    type(/Reason detail/, "Customer asked for a partial refund, TICKET-9, see the thread.");
+    await pressRefusedAndExpectFocusBack("Submit request");
+  });
+
+  it("pause: focus returns to Pause subscription", async () => {
+    mount(`/admin/subscriptions/${SUB}/pause`);
+    await screen.findByRole("button", { name: "Pause subscription" });
+    await pressRefusedAndExpectFocusBack("Pause subscription");
+  });
+
+  it("apply promo: focus returns to Apply promo", async () => {
+    mount(`/admin/subscriptions/${SUB}/apply_promo`);
+    await screen.findByLabelText(/Promo code/);
+    type(/Promo code/, "LAUNCH25");
+    await pressRefusedAndExpectFocusBack("Apply promo");
+  });
+});
+
 describe("after a successful write", () => {
   // Only setTimeout is faked: a delayed redirect would not have fired after a 1 ms advance, so reaching the destination
   // proves the navigation is immediate. (findBy*/waitFor wait on a setTimeout, so they cannot be used while it is faked.)

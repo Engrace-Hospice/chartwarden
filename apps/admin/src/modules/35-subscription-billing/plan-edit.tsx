@@ -8,6 +8,7 @@ import {
   stashStepUpMemoryDraft,
   useApiClient,
   useRequestGuard,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -77,6 +78,10 @@ function PlanEditBody(): JSX.Element {
   const [notFound, setNotFound] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
+  const meterRowRef = useRef<HTMLFormElement>(null);
+  // Activate, Deprecate and Add meter disable while in flight (dropping focus), and a save reloads the page: focus goes back to
+  // the control that was pressed, else to the new meter's first field.
+  const captureFocus = useRestoreFocus(busy, () => meterRowRef.current?.querySelector("input"));
   // A step-up refusal sends the operator to /step-up and back; the typed meter comes back once.
   const restoredMeter = useStepUpMemoryDraft<MeterDraft>(meterDraftKey(id ?? ""));
   const [meter, setMeter] = useState<MeterDraft>(restoredMeter ?? BLANK_METER);
@@ -115,6 +120,7 @@ function PlanEditBody(): JSX.Element {
       okMsg: string,
       failMsg: string,
     ): Promise<boolean> => {
+      captureFocus();
       setBusy(true);
       setOutcome(null);
       const res = await settleWrite(fn());
@@ -128,12 +134,11 @@ function PlanEditBody(): JSX.Element {
       setBusy(false);
       return true;
     },
-    [load],
+    [load, captureFocus],
   );
 
   const [meterAttempted, setMeterAttempted] = useState(false);
   const meterIssues = meterAttempted ? meterErrors(meter) : {};
-  const meterRowRef = useRef<HTMLFormElement>(null);
 
   const addMeter = useCallback(async () => {
     if (!id || busy) return;
