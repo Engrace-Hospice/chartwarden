@@ -451,15 +451,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 97,
-        "enriched": 97
+        "routes": 102,
+        "enriched": 102
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 46,
-        "covered": 38
+        "tables": 48,
+        "covered": 40
       }
     },
     {
@@ -498,8 +498,8 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 57,
-        "covered": 55
+        "tables": 58,
+        "covered": 56
       }
     },
     {
@@ -671,15 +671,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 58,
-        "enriched": 58
+        "routes": 80,
+        "enriched": 80
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 17,
-        "covered": 17
+        "tables": 18,
+        "covered": 18
       }
     },
     {
@@ -691,15 +691,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 54,
-        "enriched": 54
+        "routes": 58,
+        "enriched": 58
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 21,
-        "covered": 21
+        "tables": 23,
+        "covered": 23
       }
     },
     {
@@ -811,15 +811,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 27,
-        "enriched": 27
+        "routes": 29,
+        "enriched": 29
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 16,
-        "covered": 16
+        "tables": 17,
+        "covered": 17
       }
     }
   ],
