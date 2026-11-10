@@ -272,12 +272,12 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
 /**
  * Mount EVERY M34 REST route surface (§4.1) on a server — invoked by the composition root when a DB client
  * is present. Three surfaces:
- *   - PLATFORM-OPS (nine plugins: tenants / invitations / key-ring / onboarding-templates / support-sessions
- *     / signup-intents / baa-register / feature-flags-admin / tenant-export-approval) behind
+ *   - PLATFORM-OPS (ten plugins: tenants / invitations / key-ring / onboarding-templates / support-sessions
+ *     / help-requests / signup-intents / baa-register / feature-flags-admin / tenant-export-approval) behind
  *     `withPlatformContext` (M1 @chartwarden/tenancy — the separately-pooled, RLS-bypass, AUDITED cross-tenant
  *     platform read path, F03/F09);
- *   - TENANT-scoped (five plugins, support-consent-grants / dsar-export-jobs / tenant-export-jobs /
- *     onboarding-tasks / baa) behind `withOrgContext` (the tenant's own org);
+ *   - TENANT-scoped (seven plugins, support-consent-grants / support-sessions / dsar-export-jobs /
+ *     tenant-export-jobs / onboarding-tasks / baa / help-requests) behind `withOrgContext` (the tenant's own org);
  *   - PUBLIC (the session-less self-serve signup surface, gated 503 behind `m34.self_serve_signup`).
  *
  * READ/LIST routes are fully live over the injected route services (the Phase-3 screens consume them); the
@@ -288,12 +288,15 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * prod shape). The §4.6 ABAC predicates are registered separately at boot via
  * `registerTenantPlatformAbacPredicates`.
  */
+import type { HelpRequestService } from "./help/help-request-contract";
+import { createUnbuiltHelpRequestService } from "./help/help-request-unbuilt";
 import { type OnboardingWizard, createOnboardingWizard } from "./onboarding/wizard-service";
 import {
   createMemoryOrgProfile,
   createMemoryWizardRunner,
   createMemoryWizardState,
 } from "./onboarding/wizard-store-memory";
+import { registerPlatformHelpRequestRoutes } from "./routes/platform/help-requests";
 import { registerOnboardingDataRoutes } from "./routes/platform/onboarding-data-routes";
 import type { OnboardingDataService } from "./routes/platform/onboarding-data-service";
 import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
@@ -307,6 +310,7 @@ import {
   type TenantAccountFlagsService,
   createInMemoryTenantAccountFlagsService,
 } from "./routes/tenant/account-flags-service";
+import type { HelpRequestRateLimit } from "./routes/tenant/help-requests";
 
 export function mountTenantPlatformRoutes(
   app: FastifyInstance,
@@ -324,6 +328,11 @@ export function mountTenantPlatformRoutes(
     slugAvailabilityRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
+    /**
+     * Slice 7 - help requests, both surfaces. `service` absent => the stand-in that answers 501 NOT_IMPLEMENTED until piece 7B binds
+     * the real one; `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped: tests, no-db boot).
+     */
+    help?: { service?: HelpRequestService; fileRateLimit?: HelpRequestRateLimit };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
     onboardingData?: {
       service: OnboardingDataService;
@@ -358,6 +367,8 @@ export function mountTenantPlatformRoutes(
   _registerTenantKeyRingRoutes(app, { service: platformService });
   _registerOnboardingTemplateRoutes(app, { service: platformService });
   _registerSupportSessionRoutes(app, { service: platformService });
+  const helpService = services?.help?.service ?? createUnbuiltHelpRequestService();
+  registerPlatformHelpRequestRoutes(app, { service: helpService });
   _registerSignupIntentRoutes(app, { service: platformService });
   _registerBaaRegisterRoutes(app, { service: platformService });
   _registerFeatureFlagAdminRoutes(app, { service: platformService });
@@ -403,7 +414,14 @@ export function mountTenantPlatformRoutes(
 
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
   const { service: tenantService } = services?.tenant ?? _createInMemoryTenantBackend();
-  _registerTenantTenantRoutes(app, { service: tenantService, wizard });
+  _registerTenantTenantRoutes(app, {
+    service: tenantService,
+    wizard,
+    help: {
+      service: helpService,
+      ...(services?.help?.fileRateLimit ? { fileRateLimit: services.help.fileRateLimit } : {}),
+    },
+  });
   // GAP-164 - tenant account + feature flags.
   registerTenantAccountFlagsRoutes(app, {
     service: (
@@ -456,6 +474,20 @@ export {
   createOnboardingTenantReader,
 } from "./onboarding/onboarding-tenant-reader";
 export { voidPendingGoLiveForDataChange } from "./onboarding/go-live-void";
+
+// Slice 7 - help requests: the service contract piece 7B implements, its failure codes and the filing cap's type.
+export type {
+  HelpRequestService,
+  HelpRequestView,
+  PlatformHelpRequestView,
+  TenantHelpRequestListView,
+} from "./help/help-request-contract";
+export {
+  HELP_REQUEST_ID_DETAIL_FIELD,
+  HelpRequestError,
+  M34_HELP_REQUEST_ERROR_STATUS,
+} from "./help/help-request-errors";
+export type { HelpRequestRateLimit } from "./routes/tenant/help-requests";
 export {
   createMemoryOrgProfile,
   createMemoryWizardRunner,

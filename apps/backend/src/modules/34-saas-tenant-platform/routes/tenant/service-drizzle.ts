@@ -30,6 +30,7 @@ import {
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
+import { notBuilt } from "../../not-built";
 import { assertPageCursor, paginate } from "../keyset-page";
 import type {
   BaaRecordView,
@@ -97,6 +98,9 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     },
 
     async issueConsentGrant(organizationId, actorMembershipId, args: IssueGrantArgs) {
+      // The assist scope (and who may issue it) is piece 7S's; the DB enum has no such value until migration 1481.
+      const { scope } = args;
+      if (scope === "assist") throw notBuilt("the assist consent scope");
       return inOrgCtx(organizationId, async (tx) => {
         const repo = new SupportRepository(tx);
         const now = deps.now();
@@ -114,7 +118,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         const row = await repo.createConsentGrant({
           organizationId,
           tenantAccountId,
-          scope: args.scope,
+          scope,
           patientIdsInScope: args.patientIdsInScope ? [...args.patientIdsInScope] : null,
           grantReason: args.grantReason,
           grantorMembershipId: actorMembershipId,
@@ -138,6 +142,14 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         });
         return grantView(row);
       });
+    },
+
+    // ── support sessions on this organization: piece 7S builds the reads ──
+    async listSupportSessions() {
+      throw notBuilt("the tenant support-session list");
+    },
+    async listSupportSessionEvents() {
+      throw notBuilt("the tenant support-session ledger");
     },
 
     // ── DSAR export jobs (§164.524) — runs under the requesting tenant's own org-context (F09) ──

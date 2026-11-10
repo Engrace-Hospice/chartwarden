@@ -12,6 +12,7 @@
 // is a non-leaking 404 — the way RLS behaves in prod), cursor pagination on every list.
 import type { OrgId } from "@chartwarden/types";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { notBuilt } from "../../not-built";
 import { type CursorPage, paginate } from "../keyset-page";
 
 // ── enqueue port (Phase 2D worker-trigger seam) ───────────────────────────────────────────────────
@@ -35,10 +36,13 @@ export interface EnqueuePort {
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ──────────────────────
 
+/** `assist` is the non-PHI scope a help request creates (slice 7; the DB enum gains it in migration 1481, piece 7S). */
+export type SupportConsentGrantScope = "organization_scoped" | "patient_scoped" | "assist";
+
 export interface SupportConsentGrantView {
   readonly id: string;
   readonly tenantAccountId: string;
-  readonly scope: "organization_scoped" | "patient_scoped";
+  readonly scope: SupportConsentGrantScope;
   readonly grantReason: string;
   readonly issuedAt: string;
   readonly expiresAt: string;
@@ -48,10 +52,37 @@ export interface SupportConsentGrantView {
 }
 
 export interface IssueGrantArgs {
-  readonly scope: "organization_scoped" | "patient_scoped";
+  readonly scope: SupportConsentGrantScope;
   readonly patientIdsInScope: readonly string[] | null;
   readonly grantReason: string;
   readonly expiresAtIsoOffsetHours: number;
+}
+
+/** A support session on this organization as the TENANT sees it: never an operator id (slice 7; 7S implements the reads). */
+export interface TenantSupportSessionView {
+  readonly id: string;
+  readonly supportConsentGrantId: string;
+  readonly state: "open" | "expired" | "closed";
+  readonly startedAt: string;
+  readonly expiresAt: string;
+  readonly closedAt: string | null;
+  readonly closeReason: "manual" | "expired" | "grant_revoked" | "forced_terminated" | null;
+  /** The session's `ops.write` ledger rows. */
+  readonly actionCount: number;
+  readonly lastActionAt: string | null;
+}
+
+/** One ledger row as the tenant sees it: `detail` is an `ops.write` action's route template, method and status; null on a lifecycle row. */
+export interface TenantSupportSessionEventView {
+  readonly id: string;
+  readonly supportSessionId: string;
+  readonly eventKind: string;
+  readonly occurredAt: string;
+  readonly detail: {
+    readonly route: string;
+    readonly method: string;
+    readonly status: number;
+  } | null;
 }
 
 export interface DsarExportJobView {
@@ -134,6 +165,18 @@ export interface TenantRouteService {
     actorMembershipId: string,
     reason: string,
   ): Promise<SupportConsentGrantView>;
+  // --- support sessions on this organization (slice 7; read-only, never an operator id) ---
+  listSupportSessions(
+    organizationId: OrgId,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<TenantSupportSessionView>>;
+  listSupportSessionEvents(
+    organizationId: OrgId,
+    sessionId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<TenantSupportSessionEventView>>;
   // --- DSAR export jobs (§164.524) ---
   requestDsarExport(
     organizationId: OrgId,
@@ -347,6 +390,8 @@ export function createInMemoryTenantBackend(
       return paginate(organizationId, rows, cursor, limit);
     },
     async issueConsentGrant(organizationId, _actorMembershipId, args) {
+      // The assist scope and who may issue it are piece 7S's; until it lands the slice refuses it.
+      if (args.scope === "assist") throw notBuilt("the assist consent scope");
       const id = uuidFromCounter("c", ++created);
       // §4.2 — expires_at = NOW() + min(request, 72h platform-floor).
       const hours = Math.min(args.expiresAtIsoOffsetHours, 72);
@@ -370,6 +415,13 @@ export function createInMemoryTenantBackend(
       r.revokedAt = now();
       r.active = false;
       return strip(r);
+    },
+    // --- support sessions on this organization: piece 7S builds the reads ---
+    async listSupportSessions() {
+      throw notBuilt("the tenant support-session list");
+    },
+    async listSupportSessionEvents() {
+      throw notBuilt("the tenant support-session ledger");
     },
     // --- DSAR export jobs ---
     async requestDsarExport(organizationId, _actorMembershipId, args) {

@@ -76,6 +76,19 @@ export const CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "closed",
 };
 
+/**
+ * M34 `POST /tenant/help-requests` (a member asks ChartWarden for help during onboarding): 3 an hour per member and 10 an hour per
+ * organization. A request pages operators and one live request per tenant account is already the rule, so the cap only bounds a
+ * member (or an account) that keeps retrying. Fail-CLOSED: with the limiter's store down a flood of operator alerts would be
+ * unbounded, so the route answers a typed 503 (DEGRADED) instead.
+ */
+export const HELP_REQUEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 3,
+  perOrg: 10,
+  windowMs: 3_600_000,
+  failMode: "closed",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,

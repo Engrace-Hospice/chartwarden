@@ -66,6 +66,10 @@ export const M34_SUPPORT_SESSION_ERROR_STATUS = {
   SUPPORT_SESSION_NOT_OPEN: 409,
   /** §7.4 step 4a / M34-F13 — elevation is refused for a Part 2-heightened session (read-only regardless). */
   SUPPORT_SESSION_PART_TWO_READ_ONLY: 403,
+  /** Slice 7 — a session on a non-PHI `assist` grant can never be elevated: it has no PHI to read or write. */
+  SUPPORT_SESSION_NON_PHI: 403,
+  /** Slice 7 — the grantor may not issue this scope: `assist` needs org_admin or compliance_officer; PHI-bearing scopes need the compliance officer and an active organization. */
+  SUPPORT_GRANT_SCOPE_NOT_ALLOWED: 403,
 } as const;
 
 /** A machine-readable support-session failure code (§7.4). */

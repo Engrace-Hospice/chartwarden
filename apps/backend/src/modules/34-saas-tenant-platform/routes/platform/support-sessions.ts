@@ -28,6 +28,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   CloseSessionRequest,
   ElevateSessionRequest,
+  PlatformSupportConsentGrantListQuerySchema,
   SessionEventListQuerySchema,
   SessionParamsSchema,
   StartSessionRequest,
@@ -155,6 +156,25 @@ export function registerSupportSessionRoutes(
         actorIp,
       });
       return reply.code(201).send(res);
+    },
+  );
+
+  // The consent grants an operator may start a session against (slice 7; the Start picker and a help request's grant).
+  // Cross-tenant, so an audited platform read like the session list; nothing in it names the grantor or the patients in scope.
+  app.get(
+    "/api/v1/platform/support-consent-grants",
+    {
+      preHandler: [LIST, ABAC_PLATFORM_OPS],
+      config: { auditRead: { resourceKind: "support_consent_grant", list: true } },
+    },
+    async (request) => {
+      writeActorOf(request);
+      const q = parse(PlatformSupportConsentGrantListQuerySchema, request.query);
+      return service.listConsentGrants(
+        { tenantAccountId: q.tenantAccountId, active: q.active },
+        q.cursor,
+        q.limit,
+      );
     },
   );
 

@@ -13,6 +13,7 @@
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
+import { notBuilt } from "../../not-built";
 import type { OnboardingProgress } from "../../onboarding/progress";
 import { type CursorPage, PLATFORM_CURSOR_SCOPE, paginate } from "../keyset-page";
 import {
@@ -128,6 +129,18 @@ export interface SupportSessionView {
   readonly closedAt: string | null;
   readonly closeReason: string | null;
   readonly status: "open" | "expired" | "closed";
+}
+/** A tenant's consent grant as an operator sees it (slice 7; 7S implements the read). No grantor, no patients in scope. */
+export interface PlatformSupportConsentGrantView {
+  readonly id: string;
+  readonly tenantAccountId: string;
+  readonly scope: "organization_scoped" | "patient_scoped" | "assist";
+  readonly grantReason: string;
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+  readonly revokedAt: string | null;
+  /** Unrevoked and unexpired: the grants a session may be started against. */
+  readonly active: boolean;
 }
 export interface SupportSessionEventView {
   readonly id: string;
@@ -401,6 +414,12 @@ export interface TenantPlatformRouteService {
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<SupportSessionEventView>>;
+  /** Slice 7: the grants an operator may start a session against (cross-tenant, audited platform read). */
+  listConsentGrants(
+    filter: { tenantAccountId?: string; active?: boolean },
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<PlatformSupportConsentGrantView>>;
   startSession(args: StartSupportSessionArgs): Promise<{ sessionId: string; expiresAt: string }>;
   elevateSession(args: ElevateSupportSessionArgs): Promise<{ elevationExpiresAt: string }>;
   closeSession(args: CloseSupportSessionArgs): Promise<{ sessionId: string; closeReason: string }>;
@@ -971,6 +990,9 @@ export function createInMemoryTenantPlatformBackend(
       const rows = desc([...s.events].map((e) => ({ ...e, createdAt: e.occurredAt })));
       const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...e }) => e) };
+    },
+    async listConsentGrants() {
+      throw notBuilt("the platform support-consent-grant list");
     },
     async startSession(args) {
       const grant = grants.get(args.supportConsentGrantId);

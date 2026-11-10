@@ -10852,7 +10852,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportConsentGrantListResponseSchema,
   },
   "POST /api/v1/tenant/support-consent-grants": {
-    summary: "Issue a support-access consent grant (≤72h; compliance-officer; step-up)",
+    summary:
+      "Issue a support-access consent grant (≤72h; step-up). Scopes: organization_scoped and patient_scoped (PHI-bearing) and assist (non-PHI, for help during onboarding: a session on it can never be elevated). 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED when the grantor may not issue the scope: assist needs the org_admin or compliance_officer role",
     body: M34TenantSupportConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
   },
@@ -10930,7 +10931,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportSessionEventListResponseSchema,
   },
   "POST /api/v1/platform/support-sessions": {
-    summary: "Start a session against a consent grant (distinct-actor + passkey-5min step-up)",
+    summary:
+      "Start a session against a consent grant (distinct-actor + passkey-5min step-up). 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
     body: M34StartSessionRequest,
     response: M34StartSessionAckSchema,
   },
@@ -13216,7 +13218,8 @@ import {
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/platform/support-sessions/:id/elevate": {
-    summary: "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403)",
+    summary:
+      "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write",
     body: M34ElevateSessionRequest,
     response: M34ElevateSessionAckSchema,
   },
@@ -16167,5 +16170,95 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",
     body: M25ClaimMdEraRecoveryBodySchema,
+  },
+});
+
+// ── Slice 7: the tenant's own onboarding (help requests, support-session reads, tenant skip) ────────────────────────
+import {
+  ApproveHelpRequestRequest as M34ApproveHelpRequestRequest,
+  FileHelpRequestRequest as M34FileHelpRequestRequest,
+  HelpRequestViewSchema as M34HelpRequestViewSchema,
+  PlatformHelpRequestListQuerySchema as M34PlatformHelpRequestListQuerySchema,
+  PlatformHelpRequestListResponseSchema as M34PlatformHelpRequestListResponseSchema,
+  PlatformHelpRequestViewSchema as M34PlatformHelpRequestViewSchema,
+  ResolveHelpRequestRequest as M34ResolveHelpRequestRequest,
+  TenantHelpRequestListQuerySchema as M34TenantHelpRequestListQuerySchema,
+  TenantHelpRequestListResponseSchema as M34TenantHelpRequestListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/help-request-typebox";
+import {
+  PlatformSupportConsentGrantListQuerySchema as M34PlatformSupportConsentGrantListQuerySchema,
+  PlatformSupportConsentGrantListResponseSchema as M34PlatformSupportConsentGrantListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
+import {
+  TenantSupportSessionEventListResponseSchema as M34TenantSupportSessionEventListResponseSchema,
+  TenantSupportSessionListQuerySchema as M34TenantSupportSessionListQuerySchema,
+  TenantSupportSessionListResponseSchema as M34TenantSupportSessionListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/help-requests": {
+    summary:
+      "The organization's help requests during onboarding: `current` is the one live request (open or approved) with its phase, the consent window and a summary of the ChartWarden support session (when it ran and what it did, never an operator's name; `closedBy` is a label such as ChartWarden operations), and `items` pages the ended ones. Any active member of the organization on a staff session; not audited, and meant to be polled every 60 seconds and on focus",
+    query: M34TenantHelpRequestListQuerySchema,
+    response: M34TenantHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/tenant/help-requests": {
+    summary:
+      "Ask ChartWarden for help during onboarding (any active member on a staff session; an AI actor, ChartWarden staff, an auditor and a family session are refused). The message is judged after trimming and screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). One live request per organization: 409 HELP_REQUEST_ALREADY_OPEN, whose details carry the live request's id as {field: \"helpRequestId\", message: <id>}. 3 requests an hour per member and 10 per organization (429; 503 when the limiter's store is unavailable). The request is a signal and authorizes nothing",
+    body: M34FileHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/approve": {
+    summary:
+      "Consent to the help: the org_admin or the compliance officer, under a fresh step-up (the grant-issue operation), creates the non-PHI `assist` consent grant for 1 to 24 hours (8 when omitted) so a ChartWarden operator may open a support session; open -> approved. 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED for any other role; refused (409) for a request that is not open. An AI actor is refused",
+    body: M34ApproveHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/close": {
+    summary:
+      "End help from the organization's side (no step-up, so ending is frictionless): the member who filed the request, an org_admin or the compliance officer. An open request is cancelled; an approved one is resolved, its consent grant revoked and every open support session on it closed (close reason grant_revoked). An AI actor is refused",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34HelpRequestViewSchema,
+  },
+  "GET /api/v1/tenant/support-sessions": {
+    summary:
+      "ChartWarden support sessions on the organization, newest first: when each started, when it expires or ended and why, and how many actions it took (never an operator's id, name or address). Requires the support-consent-grant list key; a list read, audited",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionListResponseSchema,
+  },
+  "GET /api/v1/tenant/support-sessions/:id/events": {
+    summary:
+      "A support session's ledger on the organization, newest first: its start, close and every write the operator made under it, as the route template, method and status (never a body, an id from it, or the operator's address). Requires the support-consent-grant list key; a list read, audited",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionEventListResponseSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/skip": {
+    summary:
+      "The organization's own \"this does not apply to us\" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Reversible by re-opening; the step's `skippedBy` says tenant",
+    body: M34SkipOnboardingTaskRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34WizardStepViewSchema,
+  },
+  "GET /api/v1/platform/help-requests": {
+    summary:
+      "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list (the nav badge asks open,approved with limit 1)",
+    query: M34PlatformHelpRequestListQuerySchema,
+    response: M34PlatformHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/platform/help-requests/:id/resolve": {
+    summary:
+      "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): closes the request's open support sessions (reason manual), revokes its consent grant and resolves the request. It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
+    body: M34ResolveHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34PlatformHelpRequestViewSchema,
+  },
+  "GET /api/v1/platform/support-consent-grants": {
+    summary:
+      "The tenants' support consent grants (platform ops; audited list read): scope, window and state, filterable by tenant account and by `active` (unrevoked and unexpired), so an operator can pick the grant to start a session against. Never the grantor or the patients in scope",
+    query: M34PlatformSupportConsentGrantListQuerySchema,
+    response: M34PlatformSupportConsentGrantListResponseSchema,
   },
 });

@@ -19,6 +19,7 @@
 // wizard-steps.ts, the officer and the go-live are wizard-go-live.ts, what they share is wizard-core.ts, the contract is
 // wizard-types.ts (re-exported here, so importers keep one entry point).
 import { ChartWardenError } from "@chartwarden/types";
+import { notBuilt } from "../not-built";
 import { normalizeReason } from "./evidence";
 import {
   ONBOARDING_STATUS,
@@ -431,6 +432,10 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
           ),
         )
       ).view,
+    // Slice 7: the wire contract is frozen, the rule is piece 7K's (it replaces this with the real skip).
+    tenantSkip: async () => {
+      throw notBuilt("the tenant's own onboarding skip");
+    },
     setOrgProfile: (actor, organizationId, patch) => profileResult(organizationId, patch, actor),
     setComplianceOfficer: async (actor, organizationId, membershipId) => {
       const done = await tenantTx(actor, organizationId, async (ctx) => ({

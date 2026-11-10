@@ -62,6 +62,7 @@ import {
   mintInvitationToken,
 } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
+import { notBuilt } from "../../not-built";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
@@ -1158,6 +1159,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
+    },
+
+    // Slice 7: the grants an operator may start a session against; piece 7S builds the read.
+    async listConsentGrants() {
+      throw notBuilt("the platform support-consent-grant list");
     },
 
     async startSession(args: StartSupportSessionArgs) {

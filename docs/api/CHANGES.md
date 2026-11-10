@@ -6,6 +6,39 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — Slice 7 contract: help requests, support-session reads, the tenant's own skip (routes registered, services still being built)
+
+The wire contract of the tenant onboarding slice is frozen so clients can be built against real types. **Every route below
+answers `501 NOT_IMPLEMENTED` in the standard envelope until its service lands**; guards, schemas and the generated client are final.
+
+**Help during onboarding (tenant).** `GET /api/v1/tenant/help-requests` (any active member; `current` is the one live request,
+`items` the ended ones; nothing audited, poll every 60 s), `POST /api/v1/tenant/help-requests` (any active member; `stepKey`
+optional, `message` 8-1000 characters screened for patient identifiers; `Idempotency-Key`; no AI actor; 3 an hour per member and
+10 per organization, 429; `409 HELP_REQUEST_ALREADY_OPEN` carries the live request's id in `details`), `POST .../{id}/approve`
+(org_admin or compliance officer under a fresh step-up; `hours` 1-24, 8 by default; creates the non-PHI `assist` consent grant)
+and `POST .../{id}/close` (no step-up; the requester, an org_admin or the compliance officer). A view never names an operator:
+`closedBy` is `you`, `your organization`, `ChartWarden operations` or `system`.
+
+**Help inbox (platform ops).** `GET /api/v1/platform/help-requests?status=open,approved` (a row's `phase` is
+`waiting_for_consent`, `ready_to_start`, `in_session` or `ended`; it carries the `supportConsentGrantId` to start a session
+against) and `POST /api/v1/platform/help-requests/{id}/resolve` (`note` 8-500 characters; `Idempotency-Key`; no AI actor). Also
+`GET /api/v1/platform/support-consent-grants?tenantAccountId=&active=` so Start can pick a grant.
+
+**Support sessions on the tenant.** `GET /api/v1/tenant/support-sessions` and `.../{id}/events` (key
+`support_consent_grant.list_own`): when each session ran and what it did (route template, method and status, never a body),
+never an operator's id or address.
+
+**Consent scope.** `POST /api/v1/tenant/support-consent-grants` accepts `scope: "assist"` (non-PHI). New refusals:
+`403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED` (the grantor may not issue the scope), `403 SUPPORT_SESSION_NON_PHI` (elevating a session
+on an `assist` grant), and `409 SUPPORT_GRANT_INACTIVE` on a start against a revoked or expired grant.
+
+**Tenant skip.** `POST /api/v1/tenant/onboarding/{taskId}/skip` (body `{ skipRationale }` as the operator's skip; org_admin, fresh
+step-up, `Idempotency-Key`, no AI actor) for MAC credentials, payer enrollment and DoseSpot kickoff; any other step is
+`409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE`. The wizard step view gains `skippedBy` (`system`, `tenant`, `platform_ops` or null;
+`systemSkipped` stays) and `tenantSkippable`.
+
+---
+
 ## 2026-11-09 — Onboarding-step catalog writes name their operator; the notice list moves behind the notice key
 
 - `POST /api/v1/platform/onboarding-templates` now requires an `Idempotency-Key` header and a `reason` (8-500 characters after

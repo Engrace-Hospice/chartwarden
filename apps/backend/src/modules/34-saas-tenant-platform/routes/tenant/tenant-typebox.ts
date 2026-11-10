@@ -18,12 +18,22 @@ import type {
   DsarExportJobView as ServiceDsarExportJobView,
   SupportConsentGrantView as ServiceSupportConsentGrantView,
   TenantExportJobView as ServiceTenantExportJobView,
+  TenantSupportSessionEventView as ServiceTenantSupportSessionEventView,
+  TenantSupportSessionView as ServiceTenantSupportSessionView,
 } from "./service";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
 // §3 vocab mirrors (string-literal unions; the canonical pgEnum types live in @chartwarden/db).
-const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped"] as const;
+// `assist` is the non-PHI scope a help request's approval creates (slice 7); the DB enum gains it in migration 1481 (piece 7S).
+const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped", "assist"] as const;
+const SUPPORT_SESSION_STATE = ["open", "expired", "closed"] as const;
+const SUPPORT_SESSION_CLOSE_REASON = [
+  "manual",
+  "expired",
+  "grant_revoked",
+  "forced_terminated",
+] as const;
 const DSAR_REQUEST_SOURCE = [
   "patient",
   "caregiver",
@@ -76,6 +86,9 @@ export const OnboardingTaskParamsSchema = Type.Object({
 });
 export const BaaParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
+});
+export const TenantSupportSessionParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
 });
 
 // ── Bodies ────────────────────────────────────────────────────────────────────────────────────────
@@ -137,6 +150,8 @@ const PageQuery = {
 };
 
 export const GrantListQuerySchema = Type.Object(PageQuery);
+/** `GET /api/v1/tenant/support-sessions` and its `/:id/events`: the page query. */
+export const TenantSupportSessionListQuerySchema = Type.Object(PageQuery);
 export const DsarListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ maxLength: 64 })),
   status: Type.Optional(lit(DSAR_STATUS)),
@@ -173,6 +188,45 @@ export const SupportConsentGrantViewSchema = Type.Object({
   createdAt: Type.String({ format: "date-time" }),
 });
 export const SupportConsentGrantListResponseSchema = CursorPageOf(SupportConsentGrantViewSchema);
+
+/**
+ * A ChartWarden support session on this organization, as the TENANT sees it: when, how long and how it ended, never who. There is
+ * no operator id, name or address in it (the tenant is shown "ChartWarden operations").
+ */
+export const TenantSupportSessionViewSchema = Type.Object({
+  id: Type.String(),
+  supportConsentGrantId: Type.String(),
+  state: lit(SUPPORT_SESSION_STATE),
+  startedAt: Type.String({ format: "date-time" }),
+  expiresAt: Type.String({ format: "date-time" }),
+  closedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  closeReason: Type.Union([lit(SUPPORT_SESSION_CLOSE_REASON), Type.Null()]),
+  actionCount: Type.Integer({ minimum: 0 }),
+  lastActionAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+});
+export const TenantSupportSessionListResponseSchema = CursorPageOf(TenantSupportSessionViewSchema);
+
+/**
+ * One row of a session's ledger, as the tenant sees it. `detail` is the route template, method and status of an `ops.write`
+ * action (never a body or an id from it) and is null on a lifecycle row (start, elevate, close).
+ */
+export const TenantSupportSessionEventViewSchema = Type.Object({
+  id: Type.String(),
+  supportSessionId: Type.String(),
+  eventKind: Type.String(),
+  occurredAt: Type.String({ format: "date-time" }),
+  detail: Type.Union([
+    Type.Object({
+      route: Type.String(),
+      method: Type.String(),
+      status: Type.Integer(),
+    }),
+    Type.Null(),
+  ]),
+});
+export const TenantSupportSessionEventListResponseSchema = CursorPageOf(
+  TenantSupportSessionEventViewSchema,
+);
 
 export const DsarExportJobViewSchema = Type.Object({
   id: Type.String(),
@@ -223,6 +277,14 @@ type Conforms<T extends V, V> = T;
 type _Grant = Conforms<
   Static<typeof SupportConsentGrantViewSchema>,
   ServiceSupportConsentGrantView
+>;
+type _TenantSession = Conforms<
+  Static<typeof TenantSupportSessionViewSchema>,
+  ServiceTenantSupportSessionView
+>;
+type _TenantSessionEvent = Conforms<
+  Static<typeof TenantSupportSessionEventViewSchema>,
+  ServiceTenantSupportSessionEventView
 >;
 type _Dsar = Conforms<Static<typeof DsarExportJobViewSchema>, ServiceDsarExportJobView>;
 type _TenantExport = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;

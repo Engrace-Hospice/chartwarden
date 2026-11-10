@@ -378,6 +378,7 @@ import {
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
+  HELP_REQUEST_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
@@ -7101,6 +7102,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               service: createDrizzleTenantAccountFlagsService({
                 db: dbHandle.db,
                 flags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
+              }),
+            },
+            // Slice 7: help requests. The route cap is wired here; the real service is piece 7B's (until it binds one, the routes
+            // answer 501 NOT_IMPLEMENTED). Per member and per organization, fail-closed.
+            help: {
+              fileRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-help-request",
               }),
             },
             // A platform operator enters a tenant's provider entities, locations and MAC credential while it is

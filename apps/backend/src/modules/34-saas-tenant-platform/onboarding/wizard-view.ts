@@ -57,6 +57,13 @@ export interface WizardStepView {
   readonly skippable: boolean;
   /** The skip was made by the system (the tenant bills outside ChartWarden), not typed by a person: read this, never the rationale text. */
   readonly systemSkipped: boolean;
+  /**
+   * Who settled the step by skipping it: the `system` (billing outside ChartWarden), the `tenant`'s own org_admin or a `platform_ops`
+   * operator; null when the step is not skipped. Read this, never the rationale text. (`systemSkipped` stays for older clients.)
+   */
+  readonly skippedBy: "system" | "tenant" | "platform_ops" | null;
+  /** The tenant's own org_admin may skip this step (a canonical step whose owner is `either` and that is skippable); else 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+  readonly tenantSkippable: boolean;
   readonly createdAt: string | null;
   // The names the first onboarding screens already read (kept so they do not break).
   readonly templateKey: string;
@@ -138,7 +145,15 @@ export function toWizardStepView(
     blockerReason: task?.blockerReason ?? null,
     skipRationale: task?.status === "skipped" ? (task.skipRationale ?? null) : null,
     systemSkipped: task?.status === "skipped" && task.skippedBySystem === true,
+    // Until piece 7K records the actor kind on the skip, every skip that is not the system's was an operator's (a tenant could not skip).
+    skippedBy:
+      task?.status === "skipped"
+        ? task.skippedBySystem === true
+          ? "system"
+          : "platform_ops"
+        : null,
     skippable: isSkippableStep(template),
+    tenantSkippable: isSkippableStep(template) && template.canonical && template.owner === "either",
     createdAt: iso(task?.createdAt ?? null),
     templateKey: template.key,
     isCanonical: template.canonical,

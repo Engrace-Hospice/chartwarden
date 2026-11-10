@@ -134,6 +134,23 @@ export {
   elevateSupportSession,
   startSupportSession,
 } from "./support-session-service";
+// Slice 7 — the support-session contract 7S implements and 7B calls (types only; see the file header).
+export type {
+  AssistGrantScope,
+  GrantRevocationSource,
+  GrantSessionSummary,
+  IssueAssistGrantFn,
+  IssueAssistGrantInput,
+  IssueAssistGrantResult,
+  LinkedHelpRequestPort,
+  RevokeGrantAndCloseSessionsFn,
+  RevokeGrantAndCloseSessionsInput,
+  RevokeGrantAndCloseSessionsResult,
+  RevokeGrantDeps,
+  SessionSummaryForGrantFn,
+  SupportGrantOperations,
+  SupportSessionState,
+} from "./support-session-contract";
 export {
   type DsarDocumentUploadRequest,
   type DsarExportJobInput,
