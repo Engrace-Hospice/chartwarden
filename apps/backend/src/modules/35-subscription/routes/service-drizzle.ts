@@ -31,6 +31,21 @@ import {
   type OrganizationReader,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import {
+  type PlatformAuditPort,
+  type PlatformRunner,
+  type WriteTx,
+  requireAuditPort,
+} from "../pricing/ports";
+
+// The two handles live in pricing/ports (the leaf both files read); re-exported so existing importers keep this path.
+export type { PlatformRunner, WriteTx };
+import {
+  PAUSED_UNTIL_PREFIX,
+  lockSubscription,
+  pauseEndOf,
+  refuseAdminTransition,
+} from "./admin-transition";
 import { redeemPromoInTx } from "./promo-redemption";
 import type {
   AckView,
@@ -73,9 +88,6 @@ import type {
   WebhookReceiptView,
 } from "./service";
 
-/** The structural org-context transaction handle the queries run through (mirrors M27's WriteTx). */
-export type WriteTx = DbClient;
-
 /**
  * The §4.11 `m35.*` transactional-outbox emitter — the composition-root-bound publisher (callerModule
  * `m35` preset). `publish` writes the `outbox_event` row on the caller's tx so it commits atomically with
@@ -95,13 +107,6 @@ export interface WriteOutboxPort {
     },
   ): Promise<void>;
 }
-
-/**
- * The gated cross-tenant runner the platform-ops methods execute under. The composition root binds it to
- * M1's `withPlatformContext(platformDb, caller, auditor, fn)` (the M34 precedent). The default fails
- * closed: a platform-ops route refuses (503) rather than reading nothing under tenant RLS.
- */
-export type PlatformRunner = <T>(fn: (tx: WriteTx) => Promise<T>) => Promise<T>;
 
 const failClosedPlatformRunner: PlatformRunner = async () => {
   throw new ChartWardenError(
@@ -123,7 +128,39 @@ export interface M35RouteServiceDeps {
    * org's customer). Unset => attaching a payment method fails closed (503): nothing is trusted from the body.
    */
   readonly paymentMethodVerifier?: PaymentMethodVerifier;
+  /**
+   * The PLATFORM-scoped audit writer. A platform operator's pause / resume / cancel of a tenant's subscription writes a structured row
+   * naming the operator and the tenant here; the tenant-readable `subscription_state_history` row (and its `audit_event` copy) carries NO
+   * operator. Unbound, those admin actions FAIL CLOSED (503 AUDIT_UNBOUND), like every pricing write: an operator action that cannot name
+   * the operator is not performed.
+   */
+  readonly audit?: PlatformAuditPort;
   readonly now?: () => Date;
+}
+
+/**
+ * A census_banded plan is a CONTRACT a ChartWarden operator signs at onboarding (slice 2): its price is negotiated and frozen per
+ * version, so a tenant can neither pick one nor move onto or off one by itself, and the legacy flat-tier editor cannot touch one.
+ */
+function refuseContractedPlan(
+  plan: { readonly tier: string } | null | undefined,
+  what: string,
+): void {
+  if (plan?.tier === "census_banded") {
+    throw new ChartWardenError(
+      "PLAN_ASSIGNED_BY_OPERATIONS",
+      `${what}: a contracted plan is assigned by ChartWarden operations`,
+      403,
+    );
+  }
+}
+
+/**
+ * What a tenant can SELECT is never a contracted plan: asking for one answers exactly what asking for a plan that does not exist
+ * answers (404), so a probe cannot tell the census_banded slugs from nothing.
+ */
+function hideContractedPlan(plan: { readonly tier: string }): void {
+  if (plan.tier === "census_banded") throw new NotFoundError("plan not found or inactive");
 }
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
@@ -416,6 +453,29 @@ export function buildDrizzleM35RouteService(
 ): M35RouteService {
   const now = deps.now ?? (() => new Date());
   const platform = deps.platformRunner ?? failClosedPlatformRunner;
+
+  /**
+   * A platform operator's action on a tenant's subscription: the operator is named in the PLATFORM-scoped audit row (the callers
+   * have already refused when the audit writer is unbound). The tenant-readable `subscription_state_history` row and its `audit_event` copy carry NO operator membership.
+   */
+  async function auditOperatorAction(
+    audit: PlatformAuditPort,
+    tx: WriteTx,
+    actor: { readonly userId: string; readonly membershipId: string },
+    sub: { readonly id: string; readonly organizationId: string; readonly status: string },
+    eventType: string,
+    reasonCode: string,
+  ): Promise<void> {
+    await audit.record(tx, {
+      eventType,
+      resourceKind: "subscription",
+      resourceId: sub.id,
+      organizationId: sub.organizationId,
+      operator: { userId: actor.userId, membershipId: actor.membershipId },
+      reason: reasonCode,
+      detail: { fromStatus: sub.status },
+    });
+  }
   const S = schema.subscriptionRow;
   const PL = schema.plan;
   const PM = schema.paymentMethod;
@@ -507,7 +567,7 @@ export function buildDrizzleM35RouteService(
       const plans = await db
         .select()
         .from(PL)
-        .where(eq(PL.isActive, true))
+        .where(and(eq(PL.isActive, true), ne(PL.tier, "census_banded")))
         .orderBy(PL.basePriceCents);
       const out: PlanCatalogView[] = [];
       for (const plan of plans) {
@@ -741,12 +801,34 @@ export function buildDrizzleM35RouteService(
           )
           .limit(1);
         if (existing) throw new ConflictError("an active subscription already exists for this org");
+        // A contracted subscription that is paused (an org suspension) is not "active" above but still belongs to operations: the tenant
+        // cannot start a different one beside it.
+        const [contracted] = await tx
+          .select({ id: S.id })
+          .from(S)
+          .innerJoin(PL, eq(PL.id, S.planId))
+          .where(
+            and(
+              eq(S.organizationId, actor.organizationId),
+              eq(PL.tier, "census_banded"),
+              ne(S.status, "canceled"),
+            ),
+          )
+          .limit(1);
+        if (contracted) {
+          throw new ChartWardenError(
+            "PLAN_ASSIGNED_BY_OPERATIONS",
+            "a tenant cannot start a subscription while it holds a contracted one: it is managed by ChartWarden operations",
+            403,
+          );
+        }
         const [plan] = await tx
           .select()
           .from(PL)
           .where(and(eq(PL.slug, args.planSlug), eq(PL.isActive, true)))
           .limit(1);
         if (!plan) throw new NotFoundError("plan not found or inactive");
+        hideContractedPlan(plan);
         // GAP-060 - a supplied payment method must be an ACTIVE one of THIS org (the column is a bare uuid
         // with no FK, so nothing else stops another tenant's, or a random, id landing here).
         if (args.paymentMethodId) {
@@ -829,6 +911,8 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(PL.slug, args.newPlanSlug), eq(PL.isActive, true)))
           .limit(1);
         if (!toPlan) throw new NotFoundError("target plan not found or inactive");
+        refuseContractedPlan(fromPlan, "a tenant cannot change away from its contracted plan");
+        hideContractedPlan(toPlan);
         // §4.8 plan_change_within_period_grace re-asserted server-side: outside the 7-day grace, only a
         // platform_admin may pass `always_invoice`. A tenant self-service change is never platform_admin.
         if (args.prorationBehavior === "always_invoice") {
@@ -877,6 +961,9 @@ export function buildDrizzleM35RouteService(
           .orderBy(desc(S.startedAt))
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
+        // A contracted subscription is ended by ChartWarden operations (its contract has a term and bills by the days live), never by the tenant.
+        const plan = await loadPlan(tx, sub.planId);
+        refuseContractedPlan(plan, "a tenant cannot cancel a contracted subscription");
         const at = now();
         await tx
           .update(S)
@@ -896,7 +983,6 @@ export function buildDrizzleM35RouteService(
           "subscription",
           sub.id,
         );
-        const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
         return subscriptionView(
           { ...sub, cancelAtPeriodEnd: true, canceledAt: at },
@@ -916,6 +1002,12 @@ export function buildDrizzleM35RouteService(
           .orderBy(desc(S.startedAt))
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
+        // A contracted subscription is paused by ChartWarden operations (an org suspension) and resumed by them: a tenant that could resume
+        // it would close the pause without a history row, and the pause (days not billed) would never end.
+        refuseContractedPlan(
+          await loadPlan(tx, sub.planId),
+          "a tenant cannot resume a contracted subscription",
+        );
         const at = now();
         const toStatus = sub.status === "paused" ? "active" : sub.status;
         await tx
@@ -1222,6 +1314,8 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!plan) throw new NotFoundError("plan not found");
+        refuseContractedPlan(plan, "use the pricing plan editor");
+        if (plan.deprecatedAt) throw new ConflictError("a retired plan cannot be edited");
         if (plan.isActive) throw new ConflictError("only a draft plan may be edited");
         const [updated] = await tx
           .update(PL)
@@ -1241,6 +1335,11 @@ export function buildDrizzleM35RouteService(
 
     async adminActivatePlan(_actor, planId) {
       return platform(async (tx) => {
+        const plan = await loadPlan(tx, planId);
+        if (!plan) throw new NotFoundError("plan not found");
+        refuseContractedPlan(plan, "use the pricing plan editor to publish");
+        // A retired flat plan stays retired: it is not offered again, and it is not repriced (adminUpdatePlan refuses it too).
+        if (plan.deprecatedAt) throw new ConflictError("a retired plan cannot be offered again");
         const [updated] = await tx
           .update(PL)
           .set({ isActive: true, updatedAt: now() })
@@ -1254,6 +1353,8 @@ export function buildDrizzleM35RouteService(
 
     async adminDeprecatePlan(_actor, planId) {
       return platform(async (tx) => {
+        // Archiving a census_banded plan has its own audited, reasoned route (the pricing plan editor).
+        refuseContractedPlan(await loadPlan(tx, planId), "use the pricing plan editor to archive");
         const [updated] = await tx
           .update(PL)
           .set({ isActive: false, deprecatedAt: now(), updatedAt: now() })
@@ -1267,8 +1368,12 @@ export function buildDrizzleM35RouteService(
 
     async adminAddMeter(_actor, planId, args: AddMeterArgs) {
       return platform(async (tx) => {
-        const [plan] = await tx.select({ id: PL.id }).from(PL).where(eq(PL.id, planId)).limit(1);
+        const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!plan) throw new NotFoundError("plan not found");
+        // A contracted plan carries no usage meters: its price is the plan editor's, frozen per version.
+        refuseContractedPlan(plan, "use the pricing plan editor");
+        // A retired plan keeps the meters it had (existing subscriptions are aggregated by them) and gains none.
+        if (plan.deprecatedAt) throw new ConflictError("a retired plan's meters cannot change");
         const [meter] = await tx
           .insert(PMTR)
           .values({
@@ -1292,6 +1397,9 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(PMTR.planId, planId), eq(PMTR.id, meterId)))
           .limit(1);
         if (!meter) throw new NotFoundError("meter not found");
+        const owner = await loadPlan(tx, planId);
+        refuseContractedPlan(owner, "use the pricing plan editor");
+        if (owner?.deprecatedAt) throw new ConflictError("a retired plan's meters cannot change");
         const [updated] = await tx
           .update(PMTR)
           .set({
@@ -1340,7 +1448,7 @@ export function buildDrizzleM35RouteService(
     async adminGetSubscription(subscriptionId) {
       return platform(async (tx) => {
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        if (!sub) throw new NotFoundError("subscription", subscriptionId);
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
         return subscriptionAdminView(
@@ -1354,11 +1462,14 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminPauseSubscription(actor, subscriptionId, pausedUntil) {
+      // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
+      const audit = requireAuditPort(deps.audit);
+      // a date that is not a future instant is refused before the runner is opened
+      const at = now();
+      const until = pauseEndOf(pausedUntil, at);
       return platform(async (tx) => {
-        const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
-        const at = now();
-        const until = pausedUntil ? new Date(pausedUntil) : null;
+        const sub = await lockSubscription(tx, subscriptionId);
+        refuseAdminTransition(sub, "pause");
         await tx
           .update(S)
           .set({ status: "paused", pausedAt: at, pausedUntil: until, updatedAt: at })
@@ -1369,9 +1480,20 @@ export function buildDrizzleM35RouteService(
           fromStatus: sub.status,
           toStatus: "paused",
           transitionedAt: at,
-          actorMembershipId: actor.membershipId,
+          // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
+          actorMembershipId: null,
           reasonCode: "platform_ops_pause",
+          // the end date, so the statement still knows it after a resume clears the row's own (an instant, not PHI)
+          reasonDetail: until ? `${PAUSED_UNTIL_PREFIX}${until.toISOString()}` : null,
         });
+        await auditOperatorAction(
+          audit,
+          tx,
+          actor,
+          sub,
+          "m35.subscription.platform_paused",
+          "platform_ops_pause",
+        );
         await emit(
           tx,
           "m35.subscription.paused",
@@ -1398,9 +1520,11 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminResumeSubscription(actor, subscriptionId) {
+      // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
+      const audit = requireAuditPort(deps.audit);
       return platform(async (tx) => {
-        const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        const sub = await lockSubscription(tx, subscriptionId);
+        refuseAdminTransition(sub, "resume");
         const at = now();
         await tx
           .update(S)
@@ -1412,9 +1536,18 @@ export function buildDrizzleM35RouteService(
           fromStatus: sub.status,
           toStatus: "active",
           transitionedAt: at,
-          actorMembershipId: actor.membershipId,
+          // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
+          actorMembershipId: null,
           reasonCode: "platform_ops_resume",
         });
+        await auditOperatorAction(
+          audit,
+          tx,
+          actor,
+          sub,
+          "m35.subscription.platform_resumed",
+          "platform_ops_resume",
+        );
         await emit(
           tx,
           "m35.subscription.resumed",
@@ -1436,9 +1569,11 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminCancelSubscription(actor, subscriptionId) {
+      // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
+      const audit = requireAuditPort(deps.audit);
       return platform(async (tx) => {
-        const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        const sub = await lockSubscription(tx, subscriptionId);
+        refuseAdminTransition(sub, "cancel");
         const at = now();
         await tx
           .update(S)
@@ -1450,9 +1585,18 @@ export function buildDrizzleM35RouteService(
           fromStatus: sub.status,
           toStatus: "canceled",
           transitionedAt: at,
-          actorMembershipId: actor.membershipId,
+          // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
+          actorMembershipId: null,
           reasonCode: "platform_ops_cancel_immediate",
         });
+        await auditOperatorAction(
+          audit,
+          tx,
+          actor,
+          sub,
+          "m35.subscription.platform_canceled",
+          "platform_ops_cancel_immediate",
+        );
         await emit(
           tx,
           "m35.subscription.canceled",
@@ -1482,7 +1626,7 @@ export function buildDrizzleM35RouteService(
     async adminApplyPromo(actor, subscriptionId, promoCode) {
       return platform(async (tx) => {
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        if (!sub) throw new NotFoundError("subscription", subscriptionId);
         const { application: app, promoCode: code } = await redeemPromoInTx(tx, {
           code: promoCode,
           organizationId: sub.organizationId,

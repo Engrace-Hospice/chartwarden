@@ -13,6 +13,29 @@ const conflict = (code: string, message: string): ChartWardenError =>
   new ChartWardenError(code, message, 409);
 
 /**
+ * How an admin pause with an end date writes that date into its ledger row's `reason_detail`. The subscription row's own `paused_until`
+ * is cleared on resume, so the ledger keeps the date for the statement's pause windows (pricing/statement-inputs.ts reads it back).
+ */
+export const PAUSED_UNTIL_PREFIX = "paused_until=";
+
+/**
+ * The end date of an admin pause: null for an open-ended pause, else the instant. Nothing resumes a subscription when its date arrives
+ * (billing just stops counting the pause), so a date that is not strictly in the future would make the pause meaningless: a typed 422.
+ */
+export function pauseEndOf(pausedUntil: string | null, at: Date): Date | null {
+  if (!pausedUntil) return null;
+  const until = new Date(pausedUntil);
+  if (Number.isNaN(until.getTime()) || until.getTime() <= at.getTime()) {
+    throw new ChartWardenError(
+      "PAUSE_UNTIL_NOT_FUTURE",
+      "pausedUntil must be a valid instant in the future",
+      422,
+    );
+  }
+  return until;
+}
+
+/**
  * The subscription an admin transition acts on, read `FOR UPDATE` inside the write transaction. Two operators acting at once are
  * serialized: the second waits for the first to commit and then judges the status the first one left, instead of both reading the same
  * status and both writing (two history rows, two events, a canceled subscription resumed). Needs UPDATE on at least one `subscription`
