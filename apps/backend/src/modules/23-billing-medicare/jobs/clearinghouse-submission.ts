@@ -376,13 +376,19 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
             accountReference: evidenceStore.accountReference,
             usage: ctx.usage,
             x12Claim: outbound,
-            ...(input.submittedLines === undefined ? {} : {
-              submittedLines: input.submittedLines.map((line) => {
-                if (line.internalClaimLineId === null)
-                  throw failure(kind, CH.INVALID_REQUEST, "original claim-line identity is unavailable");
-                return { ...line, internalClaimLineId: line.internalClaimLineId };
-              }),
-            }),
+            ...(input.submittedLines === undefined
+              ? {}
+              : {
+                  submittedLines: input.submittedLines.map((line) => {
+                    if (line.internalClaimLineId === null)
+                      throw failure(
+                        kind,
+                        CH.INVALID_REQUEST,
+                        "original claim-line identity is unavailable",
+                      );
+                    return { ...line, internalClaimLineId: line.internalClaimLineId };
+                  }),
+                }),
             payloadSha256: parsed.payloadSha256,
             outboundReference: claimMdFilename(
               scopeKey(ctx),
