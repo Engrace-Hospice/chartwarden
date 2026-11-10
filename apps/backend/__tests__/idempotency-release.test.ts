@@ -33,7 +33,7 @@ describe("in-memory IdempotencyStore.release", () => {
     const store = createInMemoryIdempotencyStore();
     await store.putPending(ORG, "k", "owner");
     await store.release(ORG, "k", "someone-else");
-    expect(await store.load(ORG, "k")).toEqual({ state: "pending", requestHash: "owner" });
+    expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "owner" });
   });
 
   it("never deletes a completed response", async () => {

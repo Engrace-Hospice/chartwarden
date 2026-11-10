@@ -237,7 +237,7 @@ export function createInMemoryIdempotencyStore(
 ): IdempotencyStore {
   const ttlMs = options.ttlMs ?? IN_MEMORY_TTL_MS;
   const now = options.now ?? Date.now;
-  type Entry = { record: IdempotencyRecord; expiresAt: number };
+  type Entry = { record: IdempotencyRecord; expiresAt: number; claimedAt: number };
   const entries = new Map<string, Entry>();
   const k = (orgId: string, key: string) => `${orgId} ${key}`;
   const live = (orgId: string, key: string): Entry | undefined => {
@@ -246,13 +246,18 @@ export function createInMemoryIdempotencyStore(
   };
   return {
     async load(orgId, key) {
-      return live(orgId, key)?.record ?? null;
+      const entry = live(orgId, key);
+      if (!entry) return null;
+      return entry.record.state === "pending"
+        ? { ...entry.record, pendingForMs: now() - entry.claimedAt }
+        : entry.record;
     },
     async putPending(orgId, key, requestHash) {
       if (live(orgId, key)) return false;
       entries.set(k(orgId, key), {
         record: { state: "pending", requestHash },
         expiresAt: now() + ttlMs,
+        claimedAt: now(),
       });
       return true;
     },
@@ -263,6 +268,7 @@ export function createInMemoryIdempotencyStore(
       entries.set(k(orgId, key), {
         record: { state: "complete", requestHash: existing.record.requestHash, response },
         expiresAt: existing.expiresAt,
+        claimedAt: existing.claimedAt,
       });
     },
     async release(orgId, key, requestHash) {
