@@ -1379,10 +1379,11 @@ const REPO_ROOT = /^\$\(git rev-parse --show-toplevel\)(?=\/|$)/;
  * `$HOME`, `${HOME}`, `$CODEX_HOME`, `$PWD` and `$(pwd)`. Returns null when the word is relative to a
  * directory we do not know (a `cd` we could not follow); with `strict`, also when it holds any other
  * expansion or wildcard (used for `cd`, where a wrong guess would hide everything after it). Past the
- * command's resolution budget it returns null too, and marks the budget spent.
+ * command's resolution budget it returns null too, and marks the budget spent. A `cd` (strict) is not charged:
+ * it resolves against at most {@link MAX_CWD_CANDIDATES} directories, and a chain of them stays linear.
  */
 function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): string | null {
-  if (--work.resolutions < 0) {
+  if (!strict && --work.resolutions < 0) {
     work.spent = true;
     return null;
   }
