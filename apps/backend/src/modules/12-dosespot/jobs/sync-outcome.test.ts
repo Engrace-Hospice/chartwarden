@@ -1,6 +1,7 @@
 // What a `dosespot_sync_queue` row becomes when its call throws (sync-outcome.ts): a paused tenant's rows wait, a transient failure backs off
 // and ends, a deterministic one ends at once.
 import { ConfigUnavailableError, DegradedError, NotEnabledError } from "@chartwarden/dosespot";
+import { DrizzleQueryError } from "drizzle-orm/errors";
 import { describe, expect, it } from "vitest";
 import { SYNC_MAX_ATTEMPTS, classifySyncFault } from "./sync-outcome";
 
@@ -81,5 +82,44 @@ describe("a failure the same call would repeat", () => {
       error: "no such patient",
     });
     expect(classifySyncFault("weird", REGISTERED)).toEqual({ kind: "failed", error: "weird" });
+  });
+});
+
+describe("the text a failed row persists never carries a bound parameter", () => {
+  // what a failing medication_history_record insert (the MedHx ingest runs inside the worker's try) throws: Drizzle embeds the parameters
+  const MARKER_DRUG = "Morphine-MARKER-7c1";
+  const MARKER_SIG = "take-MARKER-9e2-by-mouth";
+  const dbFailure = () => {
+    const pg = Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+      severity: "ERROR",
+      detail: `Key (drug_name)=(${MARKER_DRUG}) already exists.`,
+      table: "medication_history_record",
+      constraint: "medication_history_record_uq",
+    });
+    return new DrizzleQueryError(
+      'insert into "medication_history_record" ("drug_name","sig_text") values ($1, $2)',
+      [MARKER_DRUG, MARKER_SIG],
+      pg,
+    );
+  };
+
+  it("a database error is persisted redacted: no drug name, no sig text, no conflicting key value", () => {
+    const out = classifySyncFault(dbFailure(), REGISTERED);
+    expect(out.kind).toBe("failed");
+    expect(out.error).not.toContain("MARKER");
+    expect(out.error).toContain("medication_history_record"); // enough to diagnose
+  });
+
+  it("a database error wrapped by an ordinary error is redacted too", () => {
+    const outer = Object.assign(new Error("could not ingest the pull"), { cause: dbFailure() });
+    const out = classifySyncFault(outer, REGISTERED);
+    expect(out.error).not.toContain("MARKER");
+    expect(out.error).toContain("could not ingest the pull");
+    expect(out.error).toContain("23505"); // the SQLSTATE survives: enough to diagnose
+  });
+
+  it("an error with no database in it keeps its message and is capped", () => {
+    expect(classifySyncFault(new Error("x".repeat(5000)), REGISTERED).error).toHaveLength(2000);
   });
 });

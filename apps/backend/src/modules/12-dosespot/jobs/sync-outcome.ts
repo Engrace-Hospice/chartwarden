@@ -13,6 +13,10 @@ import {
   isDegradedError,
   isNotEnabledError,
 } from "@chartwarden/dosespot";
+import { safeErrorMessage } from "../../../bootstrap/redact-database-error";
+
+/** The longest `last_error` a row keeps. */
+const MAX_ERROR_CHARS = 2000;
 
 /** The attempt budget of a row (attempts that reached the vendor and failed transiently). 8 attempts back off 1+2+4+8+16+32+60 minutes. */
 export const SYNC_MAX_ATTEMPTS = 8;
@@ -48,6 +52,11 @@ export function classifySyncFault(error: unknown, ctx: SyncFaultContext): SyncFa
         }
       : { kind: "requeue", error: error.customerMessage };
   }
-  // A plain Error is deterministic and non-retryable — reported as-is.
-  return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
+  // A plain Error is deterministic and non-retryable. Its text lands in `dosespot_sync_queue.last_error`, which the write-audit trigger copies
+  // into audit_event: `safeErrorMessage`, never `.message`, because a Drizzle error's message embeds the statement's bound parameters (the
+  // MedHx ingest runs inside this try, so a failing medication_history_record insert would otherwise persist drug names and sig text).
+  return {
+    kind: "failed",
+    error: safeErrorMessage(error, { bare: true }).slice(0, MAX_ERROR_CHARS),
+  };
 }
