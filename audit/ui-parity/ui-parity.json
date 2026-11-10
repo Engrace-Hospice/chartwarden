@@ -2312,6 +2312,14 @@
       "app": "web",
       "module": "34-saas",
       "moduleId": 34,
+      "id": "saas.onboarding-step",
+      "path": "/admin/onboarding/:stepKey",
+      "permission": "onboarding.read_own"
+    },
+    {
+      "app": "web",
+      "module": "34-saas",
+      "moduleId": 34,
       "id": "saas.support-grants",
       "path": "/admin/support-grants",
       "permission": "support_consent_grant.list_own"
