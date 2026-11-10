@@ -6,11 +6,13 @@ its full description there. Newest first.
 
 ---
 
-## 2026-11-09 — The clearinghouse vendor lock ends; the platform PUT is rate limited
+## 2026-11-09 — The clearinghouse vendor lock has a 90-day window; the platform PUT is rate limited
 
 **Vendor and mode lock.** `PUT /api/v1/tenant/clearinghouse` (and the operator's onboarding PUT) answer 409
-`CLEARINGHOUSE_VENDOR_LOCKED` only while the organization has a production submission in flight or sent one in the last
-90 days (the same window as the credential release). Before, one production claim locked vendor and mode for good.
+`CLEARINGHOUSE_VENDOR_LOCKED` while the organization has any production attempt in flight (reserved) or sent in the last 90 days
+(the same window as the credential release). Before, one production claim locked vendor and mode for good; now they can be changed
+again only after 90 days with no production attempt. An organization that sends continuously stays locked for as long as it does,
+and there is no operator override. Test-mode, released and voided attempts do not lock.
 
 **Rate limit.** `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` now allows 10 saves a minute per operator and 30 per
 tenant, counted per target tenant, and answers 429 beyond that (503 when the limiter's store is unavailable), as the tenant's own

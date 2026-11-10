@@ -1423,8 +1423,11 @@ credential and its own vendor BAA. The platform's env vendor (`CLEARINGHOUSE_VEN
 
 1. List every organization that sends through the platform's env vendor today and has no `tenant_clearinghouse_config` row (the
    organizations with rows in `clearinghouse_submission_attempt` or M41 commercial submissions are the ones to check), and put each in
-   `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated organization uuids, no blank entries; the API refuses a malformed list). An
-   organization with no row that is **not** listed resolves `not_chosen` the moment this ships: its claims (voids included), NOE, NOTR
+   `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated organization uuids, no blank entries; the API refuses a malformed list).
+   **Prerequisite:** the list needs the platform vendor bound. With `CLEARINGHOUSE_VENDOR` unset, naming any organization refuses boot
+   in production (`names organizations but CLEARINGHOUSE_VENDOR is not set`); set `CLEARINGHOUSE_VENDOR` (`stedi`, `claimmd` or
+   `direct_mac`) and that vendor's own credential as well. The production example environment file ships `CLEARINGHOUSE_VENDOR`
+   commented out: uncomment it together with the list. An organization with no row that is **not** listed resolves `not_chosen` the moment this ships: its claims (voids included), NOE, NOTR
    and transfer notices are **held** (not failed, no DLQ), and its acknowledgment and 835 pulls skip, **in shadow mode too**
    (`CLAIMS_BILLING_ENFORCEMENT` only governs the HTTP gate; the worker hold is a transport fact). An incomplete list therefore stops
    every unlisted tenant's claims, and a NOE inside its 5-day window runs out while it is held.
@@ -1440,19 +1443,26 @@ credential and its own vendor BAA. The platform's env vendor (`CLEARINGHOUSE_VEN
 
 **What a hold looks like, and what to do.**
 
-- A held job raises one alert per organization, reason and severity every six hours (`m23.clearinghouse.unbound_hold`; M41's shared
-  crons use `m41.clearinghouse.unbound_with_work`). A held **NOE, NOTR or transfer notice** alerts at **CRITICAL** (a CMS deadline is
-  at stake); a held claim at `warn`. The alert is the only signal that the work is held: if its router is down it is retried on the
-  next held job, not silenced. A stored credential that cannot be opened (`CLEARINGHOUSE_CREDENTIAL_UNREADABLE`) holds the same way:
+- A held job raises one alert per organization, reason and severity per six-hour window (`m23.clearinghouse.unbound_hold`; M41's
+  shared crons use `m41.clearinghouse.unbound_with_work`, per queue). A held **NOE, NOTR or transfer notice** alerts at **CRITICAL** (a
+  CMS deadline is at stake); a held claim at `warn`; neither absorbs the other, and each re-alerts when a window turns over. The alert
+  is the only signal that the work is held. "Alerted" means M36's emitter persisted an alert that resolved at least one recipient
+  (persisted, not delivered: out-of-band delivery follows each recipient's own preferences). If the router throws, or the alert
+  resolved nobody (an organization with no administrators: `ALERT_NO_RECIPIENT` is logged), it is retried on the next held job; the
+  emitter absorbs a retry inside the same window, so such an alert reaches nobody until the window turns over. A stored credential that cannot be opened (`CLEARINGHOUSE_CREDENTIAL_UNREADABLE`) holds the same way:
   the tenant must enter the credential again.
 - A **credential rotation** returns a live config to `draft` at once: its notices wait for a connection test (or attestation) and the
   tenant's own re-activation. Do not rotate while a NOE / NOTR is due.
 - **Re-recording a changed BAA** (even a `documentRef` typo fix) takes a live config to `verified`: it is held until a platform
   operator re-verifies the new record (`POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify`) **and** the tenant
   re-activates it. Re-verify promptly; the notice dates do not move.
-- **Vendor and mode lock.** While a production submission is in flight or was sent in the last 90 days the tenant cannot change
-  vendor or mode (409 `CLEARINGHOUSE_VENDOR_LOCKED`); after that it can. A platform operator releases an old credential
-  (`POST …/clearinghouse/credentials/release`) under the same 90-day condition.
+- **Vendor and mode lock.** While any production attempt is in flight (reserved) or was sent in the last 90 days, the tenant cannot
+  change vendor or mode (409 `CLEARINGHOUSE_VENDOR_LOCKED`); it can again only after 90 days with no production attempt. A tenant that
+  sends continuously is locked for as long as it does, and no operator override exists (the platform lane runs the same rule and is
+  onboarding-only besides). So a BAA that has ended cannot be cleared by switching vendor or to `outside` while the tenant keeps
+  sending. Sandbox (test-mode), released and voided attempts do not lock. A platform operator releases an old credential
+  (`POST …/clearinghouse/credentials/release`) under the same 90-day condition. An explicit operator or `outside` exception to the
+  lock is an open owner decision.
 - **Closure.** There is no purge path for a closed tenant's sealed credential or its held fingerprints. The M34 certified tenant shred
   runs the M23 `billing_record` eraser, which deletes the submission-attempt and interchange-number rows but has no step for
   `tenant_clearinghouse_config` or `tenant_clearinghouse_credential_reservation` (neither grants DELETE to the application or the
