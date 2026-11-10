@@ -85,8 +85,10 @@ import {
   transportUploadPerOrg,
 } from "./clearinghouse-submission";
 import {
+  type ClearinghouseState,
   clearinghouseStateFor,
   holdJobWhileUnbound,
+  isCredentialUnreadable,
   reportClearinghouseUnresolved,
 } from "./clearinghouse-unbound-hold";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
@@ -3280,6 +3282,12 @@ export const M23_CLAIM_TRANSPORT_QUEUES: ReadonlySet<string> = new Set([
   M23_QUEUES.transferNoticeSubmit,
 ]);
 
+/** The queues whose held job may cost a CMS deadline: the NOE and NOTR queues and the transfer notice. Their hold alert is critical. */
+const M23_DEADLINE_NOTICE_QUEUES: ReadonlySet<string> = new Set([
+  ...M23_NOTICE_PARK_QUEUES.keys(),
+  M23_QUEUES.transferNoticeSubmit,
+]);
+
 /**
  * Everything a worker asks BEFORE it opens the job's transaction: the claims-billing gate (ADR-0110 D7), then, for the claim,
  * transfer-notice and NOE / NOTR queues, whether the org's clearinghouse is live. Either answer holds the job (moved back to
@@ -3303,7 +3311,26 @@ export async function holdBeforeRun(
   await holdNewClaimsWork(deps, job, token, queue, data);
   const noticeKind = M23_NOTICE_PARK_QUEUES.get(queue);
   if (!noticeKind && !M23_CLAIM_TRANSPORT_QUEUES.has(queue)) return undefined;
-  const state = await clearinghouseStateFor(deps, data.organizationId);
+  // A held NOE / NOTR / transfer notice may cost a CMS deadline (and shadow mode does not shield it): its alert is critical.
+  const severity = M23_DEADLINE_NOTICE_QUEUES.has(queue) ? "critical" : "warn";
+  let state: ClearinghouseState;
+  try {
+    state = await clearinghouseStateFor(deps, data.organizationId);
+  } catch (err) {
+    // CH-7: a stored credential that cannot be opened is that tenant's to re-enter, like a draft config: HOLD the job and say so
+    // once (as a shared cron does for the org, reportClearinghouseUnresolved) instead of failing it into the retry / DLQ path.
+    // Anything else (a database fault reading the config) still fails the job, loudly, for a retry.
+    if (!isCredentialUnreadable(err)) throw err;
+    return holdJobWhileUnbound({
+      deps,
+      job,
+      token,
+      queue,
+      organizationId: data.organizationId,
+      reason: err.code,
+      severity,
+    });
+  }
   if (state.state === "bound") return undefined;
   if (noticeKind && state.reason === "outside") {
     await parkNoticeForExternalFiling(deps, {
@@ -3322,6 +3349,7 @@ export async function holdBeforeRun(
     queue,
     organizationId: data.organizationId,
     reason: state.reason,
+    severity,
   });
 }
 

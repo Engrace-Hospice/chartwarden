@@ -84,6 +84,67 @@ describe("holdJobWhileUnbound", () => {
     expect(sent[0]).toMatchObject({ alertCode: CLEARINGHOUSE_UNBOUND_ALERT, organizationId: ORG });
   });
 
+  // CH-4: the alert is the one signal that the org's work is held, so the quiet window starts only after a dispatch that went out.
+  it("does not start the quiet window when the dispatch throws: the next held job alerts again, and the hold itself still happens", async () => {
+    let calls = 0;
+    const errors: string[] = [];
+    const flaky = {
+      dispatch: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("alert router down");
+      },
+    };
+    const moved: number[] = [];
+    const job = { moveToDelayed: async (at: number) => void moved.push(at) };
+    const clock = Date.parse("2026-11-09T10:00:00Z");
+    const hold = (organizationId: string) =>
+      holdJobWhileUnbound({
+        deps: { alerts: flaky, logger: { error: (_f, message) => void errors.push(message) } },
+        job,
+        token: undefined,
+        queue: "claim.submit",
+        organizationId,
+        reason: "not_chosen",
+        now: () => clock,
+      });
+    const org = "55555555-5555-4555-8555-555555555555";
+
+    await expect(hold(org)).rejects.toBeInstanceOf(DelayedError);
+    expect(moved).toHaveLength(1); // held although the alert failed
+    expect(errors).toEqual(["clearinghouse hold alert not dispatched"]);
+
+    await expect(hold(org)).rejects.toBeInstanceOf(DelayedError);
+    expect(calls).toBe(2); // tried again at once: the throw did not silence it
+
+    await expect(hold(org)).rejects.toBeInstanceOf(DelayedError);
+    expect(calls).toBe(2); // the delivered alert did start the window
+  });
+
+  it("raises one alert for concurrent held jobs of one org (a dispatch still in flight counts)", async () => {
+    let calls = 0;
+    const slow = {
+      dispatch: async () => {
+        calls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      },
+    };
+    const job = { moveToDelayed: async () => undefined };
+    const hold = () =>
+      holdJobWhileUnbound({
+        deps: { alerts: slow },
+        job,
+        token: undefined,
+        queue: "claim.submit",
+        organizationId: "66666666-6666-4666-8666-666666666666",
+        reason: "not_active",
+        now: () => Date.parse("2026-11-09T10:00:00Z"),
+      }).catch(() => undefined);
+
+    await Promise.all([hold(), hold(), hold()]);
+
+    expect(calls).toBe(1);
+  });
+
   it("alerts again for a different org, and again after the quiet window", async () => {
     const { sent, port } = alertsOf();
     const job = { moveToDelayed: async () => undefined };
