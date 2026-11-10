@@ -8,7 +8,7 @@ import {
   LoadingSpinner,
   useRequestGuard,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 
 /** The outcome of one read: data, a 403 (no access), or any other failure (optionally with a server message). */
