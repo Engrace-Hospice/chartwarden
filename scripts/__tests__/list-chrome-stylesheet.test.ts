@@ -48,7 +48,7 @@ describe("shared list-chrome stylesheet (GAP-207)", () => {
     expect(ruleBody(".wx-row-title")).not.toContain("cursor");
     expect(ruleBody("button.wx-row-title,\n  a.wx-row-title")).toContain("cursor: pointer");
     expect(shared).toContain('tr[role="button"] .wx-row-title:hover');
-    expect(shared).not.toMatch(/\n  \.wx-row-title:hover/);
+    expect(shared).not.toContain("\n  .wx-row-title:hover");
   });
 
   it("defines no design tokens (arch:design-tokens reads them from each app)", () => {
