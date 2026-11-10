@@ -1931,17 +1931,24 @@ jobs:
       # creates the bucket for every tenant missing one.
       - name: Create the demo tenant's storage bucket
         run: bun run storage:reconcile-tenants
-      - name: Start the web app and wait for it to serve
+      - name: Start the web, admin and portal apps and wait for them to serve
         run: |
           (cd apps/web && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/web.log" 2>&1 &)
+          (cd apps/admin && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/admin.log" 2>&1 &)
+          (cd apps/portal && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/portal.log" 2>&1 &)
           for i in $(seq 1 90); do
-            if curl -sf http://localhost:5173 > /dev/null; then
-              echo "web up after ${i}s"; exit 0
+            if curl -sf http://localhost:5173 > /dev/null \
+              && curl -sf http://localhost:5175 > /dev/null \
+              && curl -sf http://localhost:5174/portal/ > /dev/null; then
+              echo "all three apps up after ${i}s"; exit 0
             fi
             sleep 1
           done
-          echo "the web dev server did not serve within 90s" >&2
-          cat "$RUNNER_TEMP/e2e-logs/web.log" >&2; exit 1
+          echo "the web/admin/portal dev servers did not all serve within 90s" >&2
+          cat "$RUNNER_TEMP/e2e-logs/web.log" >&2
+          cat "$RUNNER_TEMP/e2e-logs/admin.log" >&2
+          cat "$RUNNER_TEMP/e2e-logs/portal.log" >&2
+          exit 1
       # `forbidOnly` is already on under CI (playwright.config.ts), so a stray `.only` fails the job
       # rather than silently shrinking the suite to one test — the browser-side version of the
       # self-skip this workflow's live jobs guard against.
@@ -1958,8 +1965,15 @@ jobs:
         id: e2e_viewports
         continue-on-error: true
         run: bun run test:e2e:viewports
+      - name: Authenticated admin-console and portal smoke (advisory, #852)
+        id: e2e_apps
+        continue-on-error: true
+        env:
+          E2E_ADMIN_URL: http://localhost:5175
+          E2E_PORTAL_URL: http://localhost:5174
+        run: bun run test:e2e:apps
       - name: Upload the Playwright report, traces and stack logs
-        if: failure() || steps.e2e_new.outcome == 'failure' || steps.e2e_viewports.outcome == 'failure'
+        if: failure() || steps.e2e_new.outcome == 'failure' || steps.e2e_viewports.outcome == 'failure' || steps.e2e_apps.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-artifacts

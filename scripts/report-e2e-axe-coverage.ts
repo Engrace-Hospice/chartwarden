@@ -97,21 +97,29 @@ const routeWalkSpecPresent =
   routeWalkSrc.includes('s.permission !== "(none)"');
 
 // ---- #852: dynamic screens. Patient-scoped ones (the only param is the patient id) are axe-walked by the
-//      route-walk spec's second test with an id resolved at run time; the rest are listed WITH a reason. ----
+//      route-walk spec with an id resolved from the patient census; the rest are listed WITH a reason. ----
 const PATIENT_SCOPED = /^\/patients\/:(id|patientId)(\/[a-z-]+)*$/;
 const patientWalkPresent = routeWalkSrc.includes(
   String.raw`const PATIENT_SCOPED_PATH = ${PATIENT_SCOPED};`,
 );
+const SEEDED_RESOURCE =
+  /^\/(?:admissions\/:(?:id|admissionId)(?:\/[a-z-]+)*|medicaid\/billing\/claims\/:claimId(?:\/[a-z-]+)*|medication-orders\/:id(?:\/edit)?)$/;
+const seededResourceWalkPresent =
+  routeWalkSrc.includes("const SEEDED_RESOURCE_PATH") &&
+  routeWalkSrc.includes("discoverSeededResourceIds");
 const webDynamic = uiParity.screens
   .filter((s) => s.app === "web" && s.path.includes(":"))
   .sort((a, b) => a.path.localeCompare(b.path));
 const dynamicAxeReached = webDynamic.filter(
-  (s) => patientWalkPresent && s.permission !== "(none)" && PATIENT_SCOPED.test(s.path),
+  (s) =>
+    s.permission !== "(none)" &&
+    ((patientWalkPresent && PATIENT_SCOPED.test(s.path)) ||
+      (seededResourceWalkPresent && SEEDED_RESOURCE.test(s.path))),
 );
 const dynamicReasonFor = (s: RegisteredScreen): string =>
   s.permission === "(none)"
     ? "pre-auth token route: needs a live single-use invite/link token and a signed-out context"
-    : "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet";
+    : "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet";
 const dynamicExcluded = webDynamic.filter((s) => !dynamicAxeReached.includes(s));
 
 interface Row {
@@ -188,7 +196,7 @@ lines.push("");
 lines.push("## Dynamic web screens (#852)");
 lines.push("");
 lines.push(
-  `${dynamicAxeReached.length}/${webDynamic.length} registered \`web\` screens carrying a \`:param\` segment are axe-walked by the second test in \`axe-route-walk.spec.ts\`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (\`openFirstPatientChart\`). The rest are excluded, each with its reason:`,
+  `${dynamicAxeReached.length}/${webDynamic.length} registered \`web\` screens carrying a \`:param\` segment are axe-walked in \`axe-route-walk.spec.ts\`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:`,
 );
 lines.push("");
 lines.push("| Screen id | Path | Permission | Why not walked |");
@@ -205,10 +213,10 @@ lines.push(
 );
 lines.push(
   "- **`admin`/`portal` apps** (39 + 18 registered screens) — `admin-console-smoke.spec.ts` and " +
-    "`portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth screens only, skipped unless " +
-    "`E2E_ADMIN_URL` / `E2E_PORTAL_URL` point at a running dev server (the CI e2e job starts `web` only). " +
-    "Their session-gated screens are not walked: the console needs a `platform_ops` login and the portal a " +
-    "magic-link mailbox.",
+    "`portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth plus authenticated platform-ops and " +
+    "patient-self surfaces. CI starts all three SPAs and supplies `E2E_ADMIN_URL` / `E2E_PORTAL_URL`; " +
+    "local runs skip unless those URLs point at running servers. Credentials come from the synthetic " +
+    "seed, and portal password sign-in avoids a mail sink.",
 );
 lines.push(
   "- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: Clinician and Compliance Auditor " +

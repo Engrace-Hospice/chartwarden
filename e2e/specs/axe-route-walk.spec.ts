@@ -26,8 +26,9 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
-import { signInAs } from "../fixtures/helpers";
-import { openFirstPatientChart } from "../fixtures/patients";
+import { expectRouteReached, signInAs } from "../fixtures/helpers";
+import { openPatientChartByLastName } from "../fixtures/patients";
+import { discoverSeededResourceIds } from "../fixtures/resources";
 
 // #852: this spec also walks the dynamic screens whose only param is the patient id (second test
 // below). Every other dynamic web screen, and admin/portal, are covered or listed elsewhere — see
@@ -55,12 +56,14 @@ function staticWebScreens(): RegisteredScreen[] {
 /**
  * #852: dynamic `web` screens whose ONLY param is the patient id (`/patients/:id`,
  * `/patients/:patientId/...`). The id is resolved at run time through the app itself
- * (`openFirstPatientChart`, the same discovery rule as every other spec — no hardcoded UUID).
+ * (`openPatientChartByLastName`, the same discovery rule as every other spec — no hardcoded UUID).
  * Every other dynamic screen needs a different resource id (admission, claim, order, ...) with no
  * runtime discovery path yet; `scripts/report-e2e-axe-coverage.ts` lists those WITH a reason and
  * carries this same pattern (it checks this literal appears here — keep the two in sync).
  */
 const PATIENT_SCOPED_PATH = /^\/patients\/:(id|patientId)(\/[a-z-]+)*$/;
+const SEEDED_RESOURCE_PATH =
+  /^\/(?:admissions\/:(?:id|admissionId)(?:\/[a-z-]+)*|medicaid\/billing\/claims\/:claimId(?:\/[a-z-]+)*|medication-orders\/:id(?:\/edit)?)$/;
 
 function patientScopedWebScreens(): RegisteredScreen[] {
   const jsonPath = join(import.meta.dirname, "..", "..", "audit", "ui-parity", "ui-parity.json");
@@ -68,6 +71,16 @@ function patientScopedWebScreens(): RegisteredScreen[] {
   return data.screens
     .filter((s) => s.app === "web" && s.permission !== "(none)")
     .filter((s) => PATIENT_SCOPED_PATH.test(s.path))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Dynamic screens backed by resources that db:seed:all always creates. */
+function seededResourceWebScreens(): RegisteredScreen[] {
+  const jsonPath = join(import.meta.dirname, "..", "..", "audit", "ui-parity", "ui-parity.json");
+  const data = JSON.parse(readFileSync(jsonPath, "utf8")) as { screens: RegisteredScreen[] };
+  return data.screens
+    .filter((s) => s.app === "web" && s.permission !== "(none)")
+    .filter((s) => SEEDED_RESOURCE_PATH.test(s.path))
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
@@ -84,6 +97,7 @@ async function walk(
       await page.goto(path, { waitUntil: "domcontentloaded" });
       // Capped: pages that poll never go idle, and the default 30s wait per such screen blew the walk's budget.
       await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
+      await expectRouteReached(page, path);
     } catch (err) {
       failures.push(`${screen.id} (${path}): navigation failed — ${String(err)}`);
       continue;
@@ -131,7 +145,7 @@ test.describe("Accessibility — route walk (#106, F-046)", () => {
     test.setTimeout(Math.max(120_000, screens.length * 8_000));
 
     await signInAs(page, ADMIN_ACCOUNT());
-    const patientId = await openFirstPatientChart(page);
+    const patientId = await openPatientChartByLastName(page, "Whitfield");
 
     const failures = await walk(page, screens, (screen) =>
       screen.path.replace(/:(id|patientId)\b/, patientId),
@@ -140,6 +154,31 @@ test.describe("Accessibility — route walk (#106, F-046)", () => {
     expect(
       failures,
       `${failures.length} issue(s) across ${screens.length} patient-scoped screen(s):\n${failures.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  test("seeded admission, Medicaid-claim and medication-order screens scan clean (#852)", async ({
+    page,
+  }) => {
+    const screens = seededResourceWebScreens();
+    expect(screens.length).toBeGreaterThan(8);
+    test.setTimeout(Math.max(120_000, screens.length * 8_000));
+
+    await signInAs(page, ADMIN_ACCOUNT());
+    const patientId = await openPatientChartByLastName(page, "Whitfield");
+    const ids = await discoverSeededResourceIds(page, patientId);
+    const failures = await walk(page, screens, (screen) => {
+      const id = screen.path.startsWith("/medication-orders/")
+        ? ids.medicationOrderId
+        : ids.admissionId;
+      return screen.path
+        .replace(/:admissionId\b|:id\b/, id)
+        .replace(/:claimId\b/, ids.medicaidClaimId);
+    });
+
+    expect(
+      failures,
+      `${failures.length} issue(s) across ${screens.length} seeded-resource screen(s):\n${failures.join("\n")}`,
     ).toEqual([]);
   });
 });

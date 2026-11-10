@@ -111,11 +111,9 @@ describe("the repo baseline", () => {
     expect(report.deferred).not.toContain("test:e2e");
   });
 
-  it("defers only the admin/portal browser smoke (#852), and says so out loud", () => {
-    // Not a formality. A deferral that outlives its blocker is a live suite nothing runs wearing a
-    // reason that has stopped being true — the same silence the gate exists to break, one level up.
-    // The list is pinned so a NEW deferral needs a deliberate edit here; retire this entry by
-    // starting apps/admin + apps/portal in the e2e job, then make this list empty again.
-    expect(report.deferred).toEqual(["test:e2e:apps"]);
+  it("has no deferred browser suites after #852 wires admin and portal", () => {
+    // The list is pinned so a new deferral needs a deliberate edit here. CI now starts all three
+    // SPAs and runs test:e2e:apps, so retaining the former exception would hide a stale deferral.
+    expect(report.deferred).toEqual([]);
   });
 });

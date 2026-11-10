@@ -48,6 +48,10 @@ export const DEMO_ORG_NAME = "Engrace Hospice";
 
 /** Full permissions — used for admin-console / permission-boundary specs. */
 export const ADMIN_ACCOUNT = (): DemoAccount => byEmailPrefix("admin@");
+/** Platform console persona: full catalog plus the platform_ops role. */
+export const PLATFORM_OPS_ACCOUNT = (): DemoAccount => byEmailPrefix("orgadmin@");
+/** Synthetic patient-self account created by db:seed:portal. */
+export const PORTAL_ACCOUNT = (): DemoAccount => byEmailPrefix("patient@");
 /** Clinical-only permissions (no `member.manage`) — used for permission-denied paths. */
 export const CLINICIAN_ACCOUNT = (): DemoAccount => byEmailPrefix("casey@");
 /** Compliance-only permissions — used for permission-denied paths. */
