@@ -337,8 +337,14 @@ owned by M23 (it owns the D3 binding; M25 and M41 depend on M23, never the rever
   are collected during the sweep and raised once its transaction has committed, so a rollback never repeats one and a throwing
   sink is logged and cannot fail a row. The price: if the process dies after the commit and before the alerts are raised, the
   terminal rows are never selected again and those alerts are lost. The sweep therefore also counts every receipt that went
-  `failed` in the last 24 hours and logs `claimmd.webhook.recent_failed_receipts` at warn level on every sweep (a count and the
-  oldest time only), which is the durable signal (migration 1463 indexes it).
+  `failed` in the last 24 hours (a count and the oldest time only; migration 1463 indexes it) and backs the lost alert up two
+  ways. A warn log line, `claimmd.webhook.recent_failed_receipts`, on every sweep while the count is above zero: a LOG LINE, it
+  pages nobody. And ONE summary through the ops alert sink (`dlqPromotionSink`: an error-level log line, plus the
+  `OPS_ALERT_WEBHOOK_URL` webhook when that is configured) the first sweep of a process that sees any, and again only after the count
+  has returned to zero: the sink has no throttle, so the once-per-rise latch lives in memory in `createRecentFailedAlerter`. A
+  restarted process whose predecessor died before alerting therefore alerts once on its first sweep; a sink that fails is not
+  retried. The count runs in a savepoint: if it fails the sweep keeps its settlements, logs
+  `claimmd.webhook.recent_failed_count_failed` (the error class only) and skips that sweep's warning and summary.
 
 **D8 as applied to Claim.MD: tenant resolution never trusts the payload's claims about a tenant.** An enrollment resolves
 by `prov_npi` to the one `provider_entity` with that NPI (unique platform-wide), and only when that NPI is platform-verified
