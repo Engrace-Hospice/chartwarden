@@ -13,6 +13,7 @@ import {
   TextField,
   describeOpsError,
   interactiveRowProps,
+  settleWrite,
   useApiClient,
   useDebouncedValue,
   useDrawerA11y,
@@ -149,20 +150,25 @@ export function FeatureFlags(): JSX.Element {
       if (!flag || committing || typed !== flag.flagKey) return;
       setCommitting(true);
       setCommitFailure(null);
-      // A rejected request (offline) is a failure like an error response: it must not leave the ceremony stuck or silent.
-      const result = await client
-        .POST("/api/v1/platform/feature-flags/{flagKey}/kill-switch", {
+      // Success is "no error AND response.ok" (an empty-body gateway 502 is not one), and a rejected request (offline) is a failure
+      // like an error response: neither may close the ceremony as a success or leave it stuck or silent.
+      const sent = await settleWrite(
+        client.POST("/api/v1/platform/feature-flags/{flagKey}/kill-switch", {
           params: { path: { flagKey: flag.flagKey } },
           body: {
             killSwitchActive: !flag.killSwitchActive,
             reason: `Kill switch toggled via platform feature-flags console for ${flag.flagKey}`,
           },
-        })
-        .catch(() => null);
+        }),
+      );
       setCommitting(false);
-      if (!result || result.error) {
-        // Refused (a stale step-up, a 403, a 5xx) or unreachable: say so and keep the ceremony open; nothing changed.
-        setCommitFailure(describeOpsError(result?.error, result?.response ?? null));
+      if (sent.status !== "ok") {
+        // Refused (a stale step-up, a 403, a 5xx) or unreachable: say so and keep the ceremony open.
+        setCommitFailure(
+          sent.status === "unreachable"
+            ? describeOpsError(undefined, null)
+            : describeOpsError(sent.res.error, sent.res.response ?? null),
+        );
         return;
       }
       setCeremony(null);

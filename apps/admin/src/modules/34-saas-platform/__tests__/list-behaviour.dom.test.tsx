@@ -773,6 +773,19 @@ describe("FeatureFlags kill-switch commit", () => {
     await waitFor(() => expect(listCalls("/api/v1/platform/feature-flags")).toHaveLength(2));
   });
 
+  it("an empty-body gateway 502 is a failure: the ceremony stays open instead of closing as a success", async () => {
+    const { listCalls } = mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      // openapi-fetch returns `error: undefined` for a non-ok response with an empty body.
+      [KILL_SWITCH]: () => new Response(null, { status: 502, headers: { "content-length": "0" } }),
+    });
+    await armAndConfirm();
+    expect(await screen.findByText(/service is unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/Check the flag's current state/)).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(listCalls("/api/v1/platform/feature-flags")).toHaveLength(1); // no reload as if it had worked
+  });
+
   it("an unreachable server is reported in the ceremony, which stays open and is not stuck", async () => {
     mount(<FeatureFlags />, "/flags", {
       "/api/v1/platform/feature-flags": page([flag]),
