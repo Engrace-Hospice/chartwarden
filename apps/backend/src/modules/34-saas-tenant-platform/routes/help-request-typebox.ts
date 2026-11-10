@@ -93,7 +93,7 @@ export const PlatformHelpRequestListQuerySchema = Type.Object({
     Type.String({
       pattern: HELP_STATUS_FILTER_PATTERN,
       description:
-        "Comma-separated statuses to include (open, approved, resolved, cancelled); every status when omitted.",
+        "Comma-separated statuses to include (open, approved, resolved, cancelled); open and approved when omitted.",
     }),
   ),
   tenantAccountId: Type.Optional(Type.String({ format: "uuid" })),

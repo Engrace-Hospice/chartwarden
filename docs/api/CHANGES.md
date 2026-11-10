@@ -6,6 +6,31 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-10 — Help requests are live (slice 7, piece 7B)
+
+The six help-request routes announced below now answer for real; their shapes did not change. What an integrator can rely on:
+
+- **Who may use them.** Only a human on a `staff` session who is an active member of the organization: an AI principal, an auditor or
+  family session and ChartWarden's own operators (who are members of every tenant) get `403` on all four tenant routes. Approve and
+  close are checked against the member's roles in the service: `org_admin` or `compliance_officer` (close also by the member who
+  filed it). There is deliberately no permission key on file, read and close.
+- **One live request per tenant account.** A second `POST /tenant/help-requests` while one is `open` or `approved` is
+  `409 HELP_REQUEST_ALREADY_OPEN` with the live request's id in `details[0].message` (also for two members filing at once). New
+  codes: `409 HELP_REQUEST_NOT_OPEN` (approve of a request that is not open), `409 HELP_REQUEST_ENDED` (an operator's Resolve of one
+  that has ended), `422 HELP_REQUEST_STEP_UNKNOWN` (`stepKey` names no onboarding step). A message or note that looks like a
+  patient identifier is `422 EVIDENCE_LOOKS_LIKE_PHI`; it is never echoed, logged, audited or put in an event.
+- **End help is idempotent.** Ending an ended request answers it. An `open` request ends `cancelled`, an `approved` one `resolved`
+  (its consent grant is revoked and its open sessions closed). An operator's Resolve of an `open` request (answered without
+  consent) also ends it `resolved`, with no grant.
+- **It ends by itself.** A request nobody answered for 14 days is cancelled and one whose consent grant expired or was revoked is
+  resolved, both with `closedBy: "system"` (every five minutes).
+- **Operators.** `GET /platform/help-requests` is an audited cross-tenant read; a row's `supportConsentGrantId` is what Start posts.
+  A tenant is told `ChartWarden operations`, never an operator id, name or organization.
+- **Ledger.** Filing emits `m34.help_request.requested` (ids and the step key only) and raises the `tenant.help_requested` alert to
+  the operators. While the organization is still onboarding the four tenant routes are on the pre-activation allowlist.
+
+---
+
 ## 2026-11-09 — The tenant's own skip is live (MAC credentials, payer enrollment, DoseSpot kickoff)
 
 `POST /api/v1/tenant/onboarding/{taskId}/skip` no longer answers `501`. The org_admin (the literal `org_admin` role, a fresh step-up,
@@ -92,7 +117,6 @@ appends one `ops.write` ledger row (route template, method, status) the tenant c
 `forced_terminated`.
 
 ---
-
 ## 2026-11-09 — Slice 7 contract: help requests, support-session reads, the tenant's own skip (routes registered, services still being built)
 
 The wire contract of the tenant onboarding slice is frozen so clients can be built against real types. **Every route below

@@ -51,6 +51,13 @@ export interface IssueAssistGrantInput {
 export interface IssueAssistGrantResult {
   readonly grantId: string;
   readonly expiresAt: Date;
+  /**
+   * Additive (7B): what must happen only once the caller's transaction has COMMITTED, typically the operators' "consent issued"
+   * alert. The alert engine opens its own transaction, so an alert emitted inside the caller's would outlive a rollback and name a
+   * grant that no longer exists (the help request's approval can still fail after the grant is issued). An implementation that
+   * emits an alert returns it here instead of emitting inline; the caller runs it after commit, best-effort. Absent: nothing to run.
+   */
+  readonly afterCommit?: () => Promise<void>;
 }
 
 /**

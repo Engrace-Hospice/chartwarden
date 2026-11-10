@@ -68,6 +68,17 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
   });
 
+  it("seeds the help-request rule on the event a filed request emits, locked and routed at platform-ops", () => {
+    const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "tenant.help_requested");
+    expect(rule?.eventType).toBe("m34.help_request.requested");
+    expect(rule?.enabled).toBe(true);
+    // Emitted under the tenant's own org: locked so a tenant override cannot redirect or disable it (0334).
+    expect(rule?.systemLocked).toBe(true);
+    expect(rule?.recipientResolver).toBe("role_set");
+    expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
+    expect(M34_ALERT_RULE_KEYS).toContain("tenant.help_requested");
+  });
+
   it("seeds a critical rule for the kill-switch emergency event, routed at real people today", () => {
     const rule = M34_ALERT_RULES.find(
       (r) => r.ruleKey === "feature_flag.platform_emergency_changed",
