@@ -28,6 +28,8 @@ import { createDbDoseSpotBackend } from "../src/modules/12-dosespot/dosespot-rou
 import {
   type ClinicSecretCipher,
   M12_OUTBOX_EVENTS,
+  createDoseSpotClinicService,
+  createDrizzleConfigStore,
   createDrizzleTenantConfigSource,
   enqueueTransmissionIfBound,
 } from "../src/modules/12-dosespot/index";
@@ -783,6 +785,162 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     expect(r.released).toBe(1);
     expect((await orderRow(orderId)).status).toBe("transmitted");
     expect((await orderRow(fresh.orderId)).s).toBe("in_flight");
+  });
+
+  // ── ADR-0111 D6: a move to another clinic forgets the old clinic's ids; the queued order WAITS for the re-enrolment, it does not fail ────
+  describe("a move to another clinic forgets the old clinic's ids (ADR-0111 D6)", () => {
+    const actor = () => ({
+      organizationId: ORG_A,
+      userId: USER,
+      membershipId: h.memberOf[ORG_A] as string,
+    });
+    const clinicService = createDoseSpotClinicService({
+      probe: { probe: async () => "ok" },
+      env: { DOSESPOT_SANDBOX_ENABLED: "true" },
+    });
+    const registerOldClinic = async () => {
+      const m = h.memberOf[ORG_A];
+      await h.admin.query("DELETE FROM dosespot_clinic_registration WHERE organization_id=$1", [
+        ORG_A,
+      ]);
+      await h.admin.query(
+        `INSERT INTO dosespot_clinic_registration (organization_id, environment, status, clinic_id, service_clinician_id,
+           secret_cipher, secret_dek_ref, registered_at, registered_by_membership_id, verified_at, verified_by_membership_id,
+           activated_at, activated_by_membership_id, set_by_membership_id)
+         VALUES ($1,'sandbox','active','clinic-old','900','sealed','dek-1', now(), $2, now(), $2, now(), $2, $2)`,
+        [ORG_A, m],
+      );
+    };
+    const moveToProduction = async () =>
+      inOrg(h.handle.db, ORG_A, (tx) =>
+        clinicService.put(
+          createDrizzleConfigStore(tx),
+          actor(),
+          { environment: "production", clinicId: "clinic-new" },
+          1,
+        ),
+      );
+    const prescriberRow = async () =>
+      (
+        await h.q(
+          "SELECT dosespot_prescriber_id id, vendor_enrollment_requested_at marker, npi, revoked_at FROM dosespot_prescriber WHERE organization_id=$1",
+          [ORG_A],
+        )
+      )[0];
+    beforeEach(async () => {
+      await registerOldClinic();
+      await h.admin.query(
+        "UPDATE dosespot_prescriber SET dosespot_prescriber_id='700', vendor_enrollment_requested_at=now(), npi='1234567893', revoked_at=NULL WHERE organization_id=$1",
+        [ORG_A],
+      );
+    });
+    afterAll(async () => {
+      await h.admin.query("DELETE FROM dosespot_clinic_registration WHERE organization_id=$1", [
+        ORG_A,
+      ]);
+      await h.admin.query(
+        "UPDATE dosespot_prescriber SET dosespot_prescriber_id='700', vendor_enrollment_requested_at=NULL, npi=NULL, revoked_at=NULL WHERE organization_id=$1",
+        [ORG_A],
+      );
+    });
+
+    it("clears the roster's vendor ids, the patients' vendor ids and a waiting transmission's created-prescription id in the SAME put; a finished and a held transmission keep theirs", async () => {
+      const waiting = await queued();
+      const held = await queued();
+      const done = await queued(ORG_A, {
+        status: "transmitted",
+        sendState: "transmitted",
+        dosespotPrescriptionId: "rx-done",
+        transmittedAt: new Date(),
+      });
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-old-created' WHERE id=$1",
+        [waiting.transmissionId],
+      );
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-held', last_error_class='unconfirmed_outcome' WHERE id=$1",
+        [held.transmissionId],
+      );
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-done', transmission_succeeded_at=now() WHERE id=$1",
+        [done.transmissionId],
+      );
+
+      const out = await moveToProduction();
+
+      expect(out.changedFields).toEqual(
+        expect.arrayContaining(["environment", "clinicId", "vendorBindings"]),
+      );
+      expect(await prescriberRow()).toMatchObject({ id: null, marker: null, npi: null });
+      expect(
+        await h.q(
+          "SELECT last_dosespot_patient_id id, last_sync_outcome outcome, last_error_class cls FROM dosespot_patient_sync WHERE organization_id=$1 AND patient_id=$2",
+          [ORG_A, waiting.patientId],
+        ),
+      ).toEqual([{ id: null, outcome: "failed", cls: "registration_retargeted" }]);
+      expect((await txRow(waiting.transmissionId as string)).dosespot_prescription_id).toBeNull();
+      expect((await txRow(held.transmissionId as string)).dosespot_prescription_id).toBe("rx-held");
+      expect((await txRow(done.transmissionId as string)).dosespot_prescription_id).toBe("rx-done");
+      expect(out.view.prescribersEnrolled).toBe(0);
+    });
+
+    it("a put that keeps the clinic (a rotated key) clears nothing", async () => {
+      const waiting = await queued();
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-old-created' WHERE id=$1",
+        [waiting.transmissionId],
+      );
+      await inOrg(h.handle.db, ORG_A, (tx) =>
+        clinicService.put(
+          createDrizzleConfigStore(tx),
+          actor(),
+          { environment: "sandbox", clinicId: "clinic-old", serviceClinicianId: "901" },
+          1,
+        ),
+      );
+      expect((await prescriberRow()).id).toBe("700");
+      expect((await txRow(waiting.transmissionId as string)).dosespot_prescription_id).toBe(
+        "rx-old-created",
+      );
+    });
+
+    it("a queued order whose prescriber is on the roster with no vendor id WAITS (no call, no retry spent); a revoked prescriber's order still fails", async () => {
+      const { orderId, transmissionId } = await queued();
+      await moveToProduction();
+      // the patient is synced again under the new clinic: the only thing left to wait for is the prescriber's re-enrolment
+      await h.admin.query(
+        "UPDATE dosespot_patient_sync SET last_dosespot_patient_id='601', last_sync_outcome='success', last_error_class=NULL WHERE organization_id=$1",
+        [ORG_A],
+      );
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => ({
+          dosespotPrescriptionId: "rx-never",
+          transmittedAt: T0.toISOString(),
+        }),
+      });
+      const r = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, failed: 0, requeued: 0 });
+      expect(vendor.calls.filter((c) => c.method === "transmitNewRx")).toEqual([]);
+      expect(await orderRow(orderId)).toMatchObject({
+        status: "queued_for_transmission",
+        s: "queued",
+      });
+      const t = await txRow(transmissionId as string);
+      expect(t.retry_count).toBe(0);
+      expect(t.transmission_failed_at).toBeNull();
+
+      // the prescriber is revoked from the roster instead: that is not a wait
+      await h.admin.query(
+        "UPDATE dosespot_prescriber SET revoked_at=now() WHERE organization_id=$1",
+        [ORG_A],
+      );
+      const revoked = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(revoked).toMatchObject({ claimed: 1, failed: 1 });
+      expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed" });
+      expect((await txRow(transmissionId as string)).last_error_class).toBe(
+        "prescriber_not_enrolled",
+      );
+    });
   });
 
   describe("transmission_timeout_sweep (status poll + 24h timeout)", () => {

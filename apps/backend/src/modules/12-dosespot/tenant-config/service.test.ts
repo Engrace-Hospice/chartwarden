@@ -287,6 +287,62 @@ describe("put: changing an existing registration", () => {
     expect(moved.changedFields).toEqual(["clinicId", "clinicKey"]);
   });
 
+  describe("the ids DoseSpot issued belong to the clinic they were issued under (ADR-0111 D6)", () => {
+    it("moving to another ENVIRONMENT clears the vendor ids in the same put, and says so (a name, never an id)", async () => {
+      const h = build();
+      await putFull(h);
+      h.store.setPrescribers(ORG, 3);
+      const out = await h.service.put(h.store, TENANT, { ...BASE, environment: "production" }, 1);
+      expect(h.store.vendorBindingResets()).toEqual([ORG]);
+      expect(out.changedFields).toEqual(["environment", "clinicKey", "vendorBindings"]);
+      expect(out.view.prescribersEnrolled).toBe(0); // the view reads the roster AFTER the clear
+    });
+
+    it("moving to another CLINIC clears them too", async () => {
+      const h = build();
+      await putFull(h);
+      h.store.setPrescribers(ORG, 1);
+      const out = await h.service.put(
+        h.store,
+        TENANT,
+        { ...BASE, clinicId: "clinic-2", clinicKey: CLINIC_KEY },
+        1,
+      );
+      expect(h.store.vendorBindingResets()).toEqual([ORG]);
+      expect(out.changedFields).toContain("vendorBindings");
+    });
+
+    it("a change that keeps the clinic (a rotated key, another service clinician) keeps the ids: nothing is cleared", async () => {
+      const h = build();
+      await putFull(h);
+      h.store.setPrescribers(ORG, 2);
+      await h.service.put(h.store, TENANT, { ...BASE, clinicKey: "a-new-clinic-key-cccc3333" }, 1);
+      await h.service.put(h.store, TENANT, { ...BASE, serviceClinicianId: "901" }, 2);
+      expect(h.store.vendorBindingResets()).toEqual([]);
+      expect((await h.service.view(h.store, ORG)).prescribersEnrolled).toBe(2);
+    });
+
+    it("a first save that takes over from the env binding clears them (that clinic is not compared); a first save of an org that was never live has none to clear", async () => {
+      const env = build({ envFallbackOrgs: [ORG] });
+      env.store.setPrescribers(ORG, 2);
+      const out = await putFull(env);
+      expect(env.store.vendorBindingResets()).toEqual([ORG]);
+      expect(out.changedFields).toContain("vendorBindings");
+      const fresh = build();
+      await putFull(fresh);
+      expect(fresh.store.vendorBindingResets()).toEqual([]);
+    });
+
+    it("a put the version check refuses clears nothing", async () => {
+      const h = build();
+      await putFull(h);
+      await expect(
+        h.service.put(h.store, TENANT, { ...BASE, environment: "production" }, 9),
+      ).rejects.toMatchObject({ statusCode: 412 });
+      expect(h.store.vendorBindingResets()).toEqual([]);
+    });
+  });
+
   it("a new key for the same target keeps a stored Subscription-Key (the bundle is merged, not replaced)", async () => {
     const h = build();
     await putFull(h, { subscriptionKey: SUB_KEY }, OPS);

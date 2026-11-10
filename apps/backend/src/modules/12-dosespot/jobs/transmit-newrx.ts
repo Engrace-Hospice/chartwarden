@@ -149,6 +149,11 @@ async function claim(
 type Built =
   | { readonly kind: "payload"; readonly payload: DoseSpotNewRxPayload }
   | { readonly kind: "patient_not_synced" }
+  /**
+   * The prescriber is on the roster and not revoked but holds no DoseSpot id: the registration moved to another clinic since the order was
+   * signed and the roster's ids were cleared (ADR-0111 D6). The order WAITS for the re-enrolment: nothing is sent, no retry is spent.
+   */
+  | { readonly kind: "prescriber_enrolment_pending" }
   | { readonly kind: "permanent"; readonly errorClass: string };
 
 /** Assemble the NewRx from the stored order + the recorded vendor ids. Never defaults a clinical field. */
@@ -168,11 +173,20 @@ async function buildPayload(
       .from(DP)
       .where(and(eq(DP.membershipId, order.prescriberMembershipId), isNull(DP.revokedAt)))
       .limit(1);
-    return { patientId: sync?.id ?? null, prescriberId: prescriber?.id ?? null };
+    return {
+      patientId: sync?.id ?? null,
+      onRoster: prescriber !== undefined,
+      prescriberId: prescriber?.id ?? null,
+    };
   });
   if (facts.patientId === null) return { kind: "patient_not_synced" };
-  if (facts.prescriberId === null)
-    return { kind: "permanent", errorClass: "prescriber_not_enrolled" };
+  if (facts.prescriberId === null) {
+    // a prescriber who is no longer on the roster (revoked, or never was) cannot send: permanent. One who is on it with no vendor id is
+    // waiting to be re-enrolled under the new clinic: the order waits too (the queued-order age alert tells the tenant's administrators).
+    return facts.onRoster
+      ? { kind: "prescriber_enrolment_pending" }
+      : { kind: "permanent", errorClass: "prescriber_not_enrolled" };
+  }
   const data = (order.data ?? {}) as Record<string, unknown>;
   const sig = data.sigStructured;
   const qty = (data.dispenseQuantity as { value?: unknown } | undefined)?.value;
@@ -262,6 +276,7 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       syncPatient: true,
     });
   }
+  if (built.kind === "prescriber_enrolment_pending") return beforeFence({ kind: "outage" });
   if (built.kind === "permanent") {
     return beforeFence({
       kind: "failure",

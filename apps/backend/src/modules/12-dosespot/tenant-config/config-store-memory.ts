@@ -9,12 +9,15 @@ export interface InMemoryConfigStore extends ConfigStore {
   setPrescribers(organizationId: string, n: number): void;
   setQueued(organizationId: string, n: number): void;
   rows(): readonly ConfigRow[];
+  /** Test control: the orgs whose vendor ids were cleared, in call order (one entry per `clearVendorBindings`). */
+  vendorBindingResets(): readonly string[];
 }
 
 export function createInMemoryConfigStore(now: () => Date = () => new Date()): InMemoryConfigStore {
   const byOrg = new Map<string, ConfigRow>();
   const prescribers = new Map<string, number>();
   const queued = new Map<string, number>();
+  const resets: string[] = [];
   return {
     async findForUpdate(organizationId) {
       return byOrg.get(organizationId) ?? null;
@@ -65,6 +68,13 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
     async queuedTransmissions(organizationId) {
       return queued.get(organizationId) ?? 0;
     },
+    async clearVendorBindings(organizationId) {
+      resets.push(organizationId);
+      const enrolled = prescribers.get(organizationId) ?? 0;
+      prescribers.set(organizationId, 0); // the roster no longer carries a vendor id: the view's enrolled count follows
+      return { prescribers: enrolled, patients: 0, transmissions: 0 };
+    },
+    vendorBindingResets: () => [...resets],
     setPrescribers: (organizationId, n) => void prescribers.set(organizationId, n),
     setQueued: (organizationId, n) => void queued.set(organizationId, n),
     rows: () => [...byOrg.values()],

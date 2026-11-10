@@ -7,8 +7,12 @@
 //               `draft` (the wizard can resume). ANY change to the target (environment, clinic), the clinician or a secret puts
 //               the row back to `registered` / `draft` for the new credential: what the old one earned (the test, the activation)
 //               is cleared and e-prescribing pauses until it is re-tested and re-activated. A change of environment or clinic
-//               also drops the sealed key (it is bound to the old target). The tenant lane may rotate a Subscription-Key but
-//               never introduce one (it may be the platform's own key); ops may set it.
+//               also drops the sealed key (it is bound to the old target) AND, in the same transaction, every id DoseSpot issued
+//               under the old clinic (roster prescriber ids, patient ids, a created-prescription id on a waiting transmission:
+//               `ConfigStore.clearVendorBindings`), so no order is queued under a clinician or patient the new clinic never
+//               heard of; the prescribers are re-enrolled and the patients re-synced under the new target. The same happens when
+//               a row takes over from the env binding. The tenant lane may rotate a Subscription-Key but never introduce one
+//               (it may be the platform's own key); ops may set it.
 //   verify      registered -> verified, in three steps that never hold a transaction across the vendor call: `prepareVerify`
 //               reads and unseals (read-only, no lock), `runProbe` mints one token with no transaction open, `completeVerify`
 //               locks the row and compare-and-sets on the version it read (409 when the config moved meanwhile).
@@ -511,6 +515,16 @@ export function createDoseSpotClinicService(
         leftActive: false,
       };
     }
+    // The ids DoseSpot issued belong to the clinic the org used until now: a moved target (another environment or clinic), or a row that
+    // takes over from the env binding (whose clinic is not compared here), forgets them in this same transaction (ADR-0111 D6).
+    const forgetsVendorIds =
+      retargeted || (!existing && deps.envFallbackFor?.(organizationId) === true);
+    const withBindings = async (names: readonly string[]): Promise<readonly string[]> => {
+      if (!forgetsVendorIds) return names;
+      const cleared = await store.clearVendorBindings(organizationId, now());
+      const any = cleared.prescribers + cleared.patients + cleared.transmissions > 0;
+      return any ? [...names, "vendorBindings"] : names;
+    };
 
     const sealed =
       secrets.bundle && clinicId !== null
@@ -535,32 +549,35 @@ export function createDoseSpotClinicService(
       ...EARNED_CLEARED,
     };
     if (!existing) {
+      let row: ConfigRow;
       try {
-        const row = await store.insert({
+        row = await store.insert({
           organizationId,
           ...patch,
           setByMembershipId: actor.membershipId,
           version: 1,
         } as never);
-        return {
-          created: true,
-          view: await viewOf(store, row, organizationId),
-          changedFields,
-          // an org the env fallback was serving stops being served the moment it has a row of its own (a row is authoritative)
-          leftActive: deps.envFallbackFor?.(organizationId) === true,
-        };
       } catch (err) {
         if (!isUniqueViolation(err)) throw err;
         throw versionConflict(
           "a DoseSpot registration was created concurrently; read it and send its version in If-Match",
         );
       }
+      const names = await withBindings(changedFields); // before the view: its enrolled count must read the cleared roster
+      return {
+        created: true,
+        view: await viewOf(store, row, organizationId),
+        changedFields: names,
+        // an org the env fallback was serving stops being served the moment it has a row of its own (a row is authoritative)
+        leftActive: deps.envFallbackFor?.(organizationId) === true,
+      };
     }
     const row = await save(store, existing, patch);
+    const names = await withBindings(changedFields); // before the view: its enrolled count must read the cleared roster
     return {
       created: false,
       view: await viewOf(store, row, organizationId),
-      changedFields,
+      changedFields: names,
       leftActive: existing.status === "active",
     };
   }

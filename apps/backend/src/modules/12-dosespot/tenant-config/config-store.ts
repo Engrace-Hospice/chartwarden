@@ -2,11 +2,24 @@
 // transaction (the caller's `withOrgContext`; RLS scopes every statement to that tenant). The service takes a `ConfigStore` so
 // its rules are tested without a database; this is the Drizzle implementation.
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, count, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, count, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { UNCONFIRMED_OUTCOME_CLASS } from "../jobs/hold";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
 const MO = schema.medicationOrders;
+const MOT = schema.medicationOrderTransmissions;
+const SYNC = schema.dosespotPatientSync;
+
+/** The `last_error_class` a patient-sync row carries after its vendor id was cleared because the registration moved to another clinic. */
+export const REGISTRATION_RETARGETED_CLASS = "registration_retargeted";
+
+/** How many rows of each table {@link ConfigStore.clearVendorBindings} reset (counts only; never an id). */
+export interface VendorBindingsCleared {
+  readonly prescribers: number;
+  readonly patients: number;
+  readonly transmissions: number;
+}
 
 export type ConfigRow = schema.DosespotClinicRegistrationRow;
 export type NewConfigRow = Omit<schema.NewDosespotClinicRegistrationRow, "id" | "createdAt">;
@@ -30,6 +43,14 @@ export interface ConfigStore {
   vendorEnrolledPrescribers(organizationId: string): Promise<number>;
   /** Signed orders still waiting to transmit (`queued` / `in_flight`): they pause while the registration is not active. */
   queuedTransmissions(organizationId: string): Promise<number>;
+  /**
+   * Forget every id DoseSpot issued under the clinic the registration used to name (ADR-0111 D6): the roster's vendor prescriber ids,
+   * enrolment markers and NPIs, the patient-sync vendor patient ids, and the created-prescription id of every transmission still
+   * waiting. Those ids are scoped to ONE clinic of ONE environment; sent under another, DoseSpot refuses them for good. Called in the
+   * SAME transaction as the registration change that moved the target. A transmission that finished, and one HELD for a person (whose
+   * prescription may exist at the old clinic, where the administrator has to look), keeps its id.
+   */
+  clearVendorBindings(organizationId: string, at: Date): Promise<VendorBindingsCleared>;
 }
 
 export const isUniqueViolation = (err: unknown): boolean => {
@@ -90,6 +111,63 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
           ),
         );
       return row?.n ?? 0;
+    },
+    async clearVendorBindings(organizationId, at) {
+      const prescribers = await tx
+        .update(P)
+        .set({
+          dosespotPrescriberId: null,
+          vendorEnrollmentRequestedAt: null,
+          npi: null,
+          updatedAt: at,
+        })
+        .where(
+          and(
+            eq(P.organizationId, organizationId),
+            or(isNotNull(P.dosespotPrescriberId), isNotNull(P.vendorEnrollmentRequestedAt)),
+          ),
+        )
+        .returning({ id: P.id });
+      // `last_sync_outcome = 'success'` requires an id (a CHECK), so a cleared row reads `failed` with a class that says why: the worker
+      // asks for a fresh sync (and DoseSpot creates the patient at the new clinic) the next time an order needs one.
+      const patients = await tx
+        .update(SYNC)
+        .set({
+          lastDosespotPatientId: null,
+          lastSyncOutcome: "failed",
+          lastErrorClass: REGISTRATION_RETARGETED_CLASS,
+          retryCount: 0,
+          updatedAt: at,
+        })
+        .where(and(eq(SYNC.organizationId, organizationId), isNotNull(SYNC.lastDosespotPatientId)))
+        .returning({ id: SYNC.id });
+      const transmissions = await tx
+        .update(MOT)
+        .set({ dosespotPrescriptionId: null })
+        .where(
+          and(
+            eq(MOT.organizationId, organizationId),
+            isNotNull(MOT.dosespotPrescriptionId),
+            isNull(MOT.transmissionSucceededAt),
+            // a held order's prescription may exist at the old clinic: its id is what the administrator looks for
+            sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
+            // only a transmission still waiting to go out: a finished or failed order is history
+            exists(
+              tx
+                .select({ one: sql`1` })
+                .from(MO)
+                .where(
+                  and(eq(MO.id, MOT.medicationOrderId), eq(MO.status, "queued_for_transmission")),
+                ),
+            ),
+          ),
+        )
+        .returning({ id: MOT.id });
+      return {
+        prescribers: prescribers.length,
+        patients: patients.length,
+        transmissions: transmissions.length,
+      };
     },
   };
 }
