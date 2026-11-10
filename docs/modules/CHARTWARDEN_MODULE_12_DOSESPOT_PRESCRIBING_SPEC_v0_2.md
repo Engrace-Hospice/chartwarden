@@ -369,7 +369,7 @@ M5 patient event (created/demographics_changed/address_changed/payer_changed)
   → M5 emits outbox event (m5.patient.created | m5.patient.updated | ...)
   → M12 outbox consumer m5-patient-sync.ts
   → enqueues dosespot.patient_sync job with patientId + orgId + correlationId
-  → worker calls DoseSpotClient.upsertPatient(orgId, payload, idempotencyKey=`patient:${patientId}:${updatedAt}`)
+  → worker calls DoseSpotClient.upsertPatient(orgId, payload, idempotencyKey=`patient:${patientId}:${updatedAt}:${digest}`, where `digest` is the first 16 hex characters of the SHA-256 of the registration target `<environment>:<clinic id>` — never the clinic id itself; ADR-0111 D6)
   → on success: writes/updates dosespot_patient_sync row with last_sync_at, last_dosespot_patient_id, last_sync_outcome='success'
   → on failure: writes/updates same row with last_sync_outcome='failed', retry_count++, last_error_class
   → if retry_count >= 5: emit m12.patient_sync_failed event; M36 alert to org_admin
@@ -1591,7 +1591,7 @@ The workflow catalog. Each is a step-by-step end-to-end trace through the state 
 |---|---|
 | Given | Patient P is admitted; first sync has occurred; `dosespot_patient_sync` row exists with `dosespot_patient_id` populated |
 | When | The intake clinician corrects a typo in the patient's address; M5 emits `m5.patient.address_changed` | M12's consumer `m5-patient-address-changed` enqueues a `dosespot.patient_sync` job |
-| When | Worker runs | `DoseSpotClient.upsertPatient(orgId, payload, idempotencyKey=patient:${patientId}:${updatedAt})` is called; DoseSpot's Patient API upserts; `dosespot_patient_sync.last_sync_at` updated; `m12.dosespot_patient_synced` emitted |
+| When | Worker runs | `DoseSpotClient.upsertPatient(orgId, payload, idempotencyKey=patient:${patientId}:${updatedAt}:${digest})` (the digest is the first 16 hex characters of the SHA-256 of the registration target `<environment>:<clinic id>`, so an unchanged patient does not present one clinic's key to another; ADR-0111 D6) is called; DoseSpot's Patient API upserts; `dosespot_patient_sync.last_sync_at` updated; `m12.dosespot_patient_synced` emitted |
 | Edge | Worker fails 3 times | `retry_count++`; on 5th failure `m12.dosespot_patient_sync_failed` emitted; M36 alert to org_admin (the failure is operational, not clinical — the patient is still admitted; future prescriptions for this patient will fail until sync recovers) |
 
 ### 5.10 W-MR-10 — DoseSpot degraded mode: drafts queue, drain on recovery

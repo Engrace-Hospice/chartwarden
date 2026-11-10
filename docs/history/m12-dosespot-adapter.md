@@ -277,3 +277,21 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   alert still fires for a waiting order the claim skips (tested). The move-time behaviour of a begun call is proved against real Postgres in
   `m12-crons-transmit.live.test.ts` (a begun call that ends as a retryable failure, a permanent rejection, an open circuit or a registration no longer live, a settle that
   starts while the reset holds its lock, a stamp that races a move, an unconfirmed send that is held with its id).
+- Second re-review of the registration-target fences (MEDIUM x1, LOW x8, INFO x4, on 8504577fa..65ebec064): (1) the control said a round trip never writes its id
+  after a move, but a send that SUCCEEDED after the move is recorded as sent with the id it returned (it really went out; requeueing it would send it twice): the
+  exception is stated, commented at the check and pinned by a live case. (2) The settle's first statement waits for the reset's lock (it cannot deadlock with it).
+  (3) The DB guards cover the writes, not the requests: the adapter resolves the config again for every request, so a move landing between the stamp and a request
+  (the create, the send, the patient upsert) sent that request under the new clinic's credentials with the old clinic's ids. The caller now names its target
+  (`expectedTarget`), the DB-backed config source stamps each config with its registration target, and the adapter compares every resolution before anything is
+  sent (a `NotEnabledError`); what remains is a move after a request's config was read while it is on the wire. (4) A processing sync row that went back to
+  pending (a defer, now also reached from a failed verdict after a move) while a demographic change had enqueued a pending sibling hit the partial unique index,
+  threw out of the settle and left the rest of the batch in `processing` with nothing to release it: it now ends instead, and a row whose settle throws is ended
+  as failed with the class only. (5)(6) The head-and-tail cap could split a surrogate pair, and kept the last 500 characters of ANY error, so a wrapper that
+  flattened a Drizzle error into a plain message would have persisted its trailing `params:` values: a `\nparams:` section is dropped for every error and only a
+  database error keeps a tail. (7) The shared lock was taken with no bound and the per-org passes run in series: it is polled for at most five seconds, and a reset
+  still holding it counts as a move. (8) The settle's atomicity is proved with a transaction-counting proxy (a move started while the settle's transaction is open
+  waits for its commit; one transaction follows the call). (9) The Module 12 spec's patient-sync key is updated. (10) INFO: the deployment-configured entry is always
+  the target `env` (an operator's edit of its clinic is invisible to the fences, and the key digest is the same for any such clinic); the patient-sync key shape change
+  means one duplicate DoseSpot chart is possible once for an upsert whose answer was lost across the deploy; the adapter's created-id memory is bounded; and the
+  sign-time enqueue could, with a stale second sign racing a rekey, insert a second transmission row for one order (proved, then fixed by finding the row by the
+  order first; no second prescription was possible, the send state being per order).
