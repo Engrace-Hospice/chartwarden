@@ -117,3 +117,34 @@ describe("path resolution and brace expansion draw on a per-command budget", () 
     expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });
+
+// A command over the cap is parsed by nothing, so it cannot be judged: it is refused rather than asked about,
+// or padding a refused command with spaces would turn a deny into a prompt a human might approve.
+describe("a command over 64 KB is refused, not asked about", () => {
+  const LIMIT = 64 * 1024;
+  const padded = (text: string, chars: number): string =>
+    `${text}${" ".repeat(chars - text.length)}`;
+
+  it("allows a harmless command of exactly 64 KB", () => {
+    const cmd = `echo ${"a".repeat(LIMIT - 5)}`;
+    expect(cmd.length).toBe(LIMIT);
+    expect(v(cmd).decision).toBe("allow");
+  });
+
+  it("refuses the same command one character longer, with a reason that names the Write tool", () => {
+    const verdict = v(`echo ${"a".repeat(LIMIT - 4)}`);
+    expect(verdict.decision).toBe("deny");
+    expect(verdict.reason).toMatch(/64 KB/);
+    expect(verdict.reason).toMatch(/Write tool/);
+  });
+
+  it("still denies a secret read at exactly 64 KB, and refuses one padded past it", () => {
+    expect(v(padded("cat .env", LIMIT)).decision).toBe("deny");
+    expect(v(padded("cat .env", LIMIT + 1)).decision).toBe("deny");
+  });
+
+  it("refuses a protected write padded past 64 KB instead of asking about it", () => {
+    expect(v(padded("echo x > compliance/controls.yaml", LIMIT)).decision).toBe("ask");
+    expect(v(padded("echo x > compliance/controls.yaml", LIMIT + 1)).decision).toBe("deny");
+  });
+});

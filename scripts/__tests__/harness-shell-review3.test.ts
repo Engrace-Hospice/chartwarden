@@ -154,12 +154,12 @@ describe("2 and 7 — bounded work on hostile input", () => {
     expect(d(cmd)).toBe(decision);
   });
 
-  it("answers ask at once for a command longer than 64 KB, before parsing it", () => {
+  it("refuses at once a command longer than 64 KB, before parsing it", () => {
     const { verdict, ms } = timed(repeat("cd a;", LIMIT + 4_000));
-    expect(verdict.decision).toBe("ask");
+    expect(verdict.decision).toBe("deny");
     expect(verdict.reason).toMatch(/too (long|large)/i);
     expect(ms).toBeLessThan(100);
-    expect(d(`cat .env${" ".repeat(LIMIT)}`)).toBe("ask");
+    expect(d(`cat .env${" ".repeat(LIMIT)}`)).toBe("deny");
   });
 
   it("still judges a command that fits in 64 KB", () => {

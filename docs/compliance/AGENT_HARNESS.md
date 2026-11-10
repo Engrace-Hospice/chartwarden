@@ -227,9 +227,12 @@ by command substitution and agents started with approval prompts, the sandbox or
 switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, …) asks only when it is
 ASSIGNED (`VAR=… cmd`, `export`, `env`, `declare`), not when its name appears in a search pattern. Reasons
 never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
-call through in Claude Code: a command over 64 KB asks before it is parsed, glob matching is linear (no
-backtracking), and substitutions (32 per level) and judged command lines (300 per call) are capped; over
-any cap the answer is ask. Reading a protected file does not ask; only a command that writes one does.
+call through in Claude Code: a command over 64 KB is REFUSED before it is parsed (an ask would let padding
+turn a denied command into a prompt; put large file content in a file with the Write tool, and a heredoc patch
+that size through the `apply_patch` tool), glob matching is linear (no backtracking), brace alternatives
+(4,096) and path resolutions (16,384) are budgeted per command, and substitutions (32 per level) and judged
+command lines (300 per call) are capped; over any of those caps the answer is ask, and a deny found before
+the cap was hit still stands. Reading a protected file does not ask; only a command that writes one does.
 
 **Fails closed.** Empty or unparseable hook input, an internal error, and a write too large to scan
 (over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it.

@@ -1097,14 +1097,16 @@ const MAX_SUBSTITUTIONS = 32;
 /**
  * Longest command the guard will parse. Every rule below is linear in the command, but the hook is killed at
  * its timeout and Claude Code then lets the call run, so size is bounded before any work is done. A real
- * command, even one with a here-doc, is far shorter.
+ * command, even one with a here-doc, is far shorter. Nothing in an oversize command is read, so it is REFUSED:
+ * asking would let padding turn a command that is denied on its own (`cat .env` and 64 KB of spaces) into a
+ * prompt a human might approve.
  */
 export const MAX_COMMAND_CHARS = 64 * 1024;
 
 export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): BashVerdict {
   if (cmd.length > MAX_COMMAND_CHARS) {
-    return ask(
-      `This command is longer than ${MAX_COMMAND_CHARS / 1024} KB, too large for the guard to check in time. Run it in smaller pieces, or let a human run it.`,
+    return deny(
+      `This command is longer than ${MAX_COMMAND_CHARS / 1024} KB, too large for the guard to check in time, so it is refused. Run it in smaller pieces; put large file content in a file with the Write tool.`,
     );
   }
   if (depth === 0) {
