@@ -1,7 +1,7 @@
 // Slice 4 — the database-backed config source behind the layered resolver: a row decides, only `active` operates, the sealed
 // credential is opened once per row version, and anything unusable fails closed. Pure: a fake row reader and a fake key ring.
 import { randomBytes } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConfigRow } from "./config-store";
 import { buildClinicSecretCipher } from "./secret-cipher";
 import { CREDENTIAL_CACHE_TTL_MS, createDrizzleTenantConfigSource } from "./source";
@@ -178,6 +178,31 @@ describe("DoseSpot tenant config source", () => {
     row = await rowWith(); // version 3 again, active: it must be opened afresh, not served from the evicted cache
     await load();
     expect(opens).toBe(3);
+  });
+
+  describe("an unsealed credential does not outlive its five minutes in a process that stops asking (ADR-0111 D2)", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("an org that left the active set has its entry swept by the source itself, then the sweep stops", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      let clock = 1_000_000;
+      const row = await rowWith();
+      const source = createDrizzleTenantConfigSource({
+        readRow: async () => row,
+        cipher,
+        platformEnv: PLATFORM_KEY,
+        now: () => clock,
+      });
+      const found = await source.lookup(ORG, "operate");
+      if (found.kind !== "present") throw new Error("unreachable");
+      await found.load(); // the clinic key is now unsealed in memory
+      expect(vi.getTimerCount()).toBe(1); // armed while the cache holds it
+      vi.advanceTimersByTime(60_000);
+      expect(vi.getTimerCount()).toBe(1); // still within its life: kept
+      clock += CREDENTIAL_CACHE_TTL_MS + 1;
+      vi.advanceTimersByTime(60_000); // the org is never looked up again
+      expect(vi.getTimerCount()).toBe(0); // dropped, and nothing keeps running
+    });
   });
 
   it("an unopenable credential is a typed 503 with no secret in it, never 'not configured'", async () => {

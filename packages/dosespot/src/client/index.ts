@@ -54,6 +54,7 @@ export type {
   DoseSpotRxBenefitResponse,
 } from "./contract";
 export { createUnboundDoseSpotClient } from "./unbound";
+export { createExpirySweeper, pruneExpired } from "./token-cache";
 export {
   DOSESPOT_ENDPOINTS,
   TOKEN_ENDPOINT,

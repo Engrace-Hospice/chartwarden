@@ -16,6 +16,8 @@ import {
   type DoseSpotEnvironment,
   type DoseSpotTenantConfig,
   type DoseSpotTenantConfigSource,
+  createExpirySweeper,
+  pruneExpired,
   resolveDoseSpotEnvironment,
   subscriptionKeyFallback,
 } from "@chartwarden/dosespot";
@@ -71,6 +73,12 @@ export function createDrizzleTenantConfigSource(
     string,
     { readonly version: number; readonly config: DoseSpotTenantConfig; readonly at: number }
   >();
+  const expired = (entry: { readonly at: number }): boolean =>
+    now() - entry.at >= CREDENTIAL_CACHE_TTL_MS;
+  // An org that left the active set (suspended, closed, its key ring shredded) is never looked up again, so its entry would otherwise keep an
+  // unsealed clinic key in memory until the process exits (ADR-0111 D2: five minutes at most). Every lookup prunes the whole cache, and an
+  // unref'd timer does it for a process that no longer asks at all.
+  const armSweep = createExpirySweeper(built, expired);
 
   const readRow = (organizationId: string): Promise<ConfigRow | null> => {
     if (deps.readRow) return deps.readRow(organizationId);
@@ -87,10 +95,9 @@ export function createDrizzleTenantConfigSource(
   };
 
   async function build(row: ConfigRow, baseUrl: string): Promise<DoseSpotTenantConfig> {
+    pruneExpired(built, expired);
     const cached = built.get(row.organizationId);
-    if (cached?.version === row.version && now() - cached.at < CREDENTIAL_CACHE_TTL_MS) {
-      return cached.config;
-    }
+    if (cached?.version === row.version) return cached.config; // not expired: the prune above dropped any that was
     built.delete(row.organizationId);
     if (
       !deps.cipher ||
@@ -127,11 +134,13 @@ export function createDrizzleTenantConfigSource(
       version: row.version,
     };
     built.set(row.organizationId, { version: row.version, config, at: now() });
+    armSweep();
     return config;
   }
 
   return {
     async lookup(organizationId, purpose) {
+      pruneExpired(built, expired);
       const row = await readRow(organizationId);
       if (!row) {
         built.delete(organizationId);

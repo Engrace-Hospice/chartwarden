@@ -3,7 +3,7 @@
 // the `Prescription.Status` enum). It proves OUR behaviour — fail-closed config, token handling, error
 // classification, backoff, breaker, idempotent NewRx — not that DoseSpot accepts our field names (that is the
 // sandbox verification recorded in docs/history).
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ConfigUnavailableError,
   DegradedError,
@@ -199,6 +199,30 @@ describe("token handling", () => {
     const api = calls.filter((x) => x.url.includes("/api/"));
     expect(api[0]?.headers.Authorization).toBe("Bearer tok-1");
     expect(api[0]?.headers["Subscription-Key"]).toBe("sub-key");
+  });
+
+  describe("a bearer token does not outlive its expiry in an idle process", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("an expired token of a tenant nobody mints for again is swept by the client itself", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      let clock = Date.parse("2026-10-06T12:00:00.000Z");
+      const { c } = client(
+        {
+          "POST /connect/token": TOKEN_OK, // expires_in 3600
+          "GET /api/patients/501/prescriptions": () => ({
+            status: 200,
+            body: { Items: [{ PrescriptionId: 77, Status: "eRxSent" }] },
+          }),
+        },
+        { now: () => new Date(clock) },
+      );
+      await c.getPrescriptionStatus(ORG, "501", "77");
+      expect(vi.getTimerCount()).toBe(1); // one token cached: the sweep is armed
+      clock += 3_600_000 + 1; // past the token's life; no further call is ever made for this org
+      vi.advanceTimersByTime(60_000);
+      expect(vi.getTimerCount()).toBe(0); // dropped, and the sweep stopped
+    });
   });
 
   it("never follows a redirect on any request (the token body holds the clinic key, the headers the Subscription-Key)", async () => {

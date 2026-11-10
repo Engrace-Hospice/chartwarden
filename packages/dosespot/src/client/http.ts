@@ -65,7 +65,12 @@ import type {
   DoseSpotTenantConfig,
   DoseSpotTenantConfigResolver,
 } from "./tenant-config";
-import { evictOtherGenerations, tokenCacheKey } from "./token-cache";
+import {
+  createExpirySweeper,
+  evictOtherGenerations,
+  pruneExpired,
+  tokenCacheKey,
+} from "./token-cache";
 import { buildTokenRequest } from "./token-request";
 
 /** Minimal fetch surface (the global `fetch` satisfies it; tests inject a recorded fake). */
@@ -159,6 +164,10 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
   const timeoutMs = deps.requestTimeoutMs ?? DOSESPOT_REQUEST_TIMEOUT_MS;
 
   const tokens = new Map<string, CachedToken>();
+  const tokenExpired = (t: CachedToken): boolean => t.expiresAtMs <= now().getTime();
+  // a tenant that left the active set is never minted for again: an unref'd timer drops its expired bearer token (and every other
+  // expired one) instead of waiting for a process exit
+  const armTokenSweep = createExpirySweeper(tokens, tokenExpired);
   const breakers = new Map<string, BreakerSnapshot>();
   const newRxProgress = new Map<string, NewRxProgress>();
 
@@ -283,10 +292,12 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     const ttlMs = (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 600) * 1000;
     const key = tokenCacheKey(orgId, clinicianId, cfg.version);
     evictOtherGenerations(tokens, orgId, clinicianId, key);
+    pruneExpired(tokens, tokenExpired); // any org's mint drops every org's expired token
     tokens.set(key, {
       token: accessToken,
       expiresAtMs: now().getTime() + ttlMs,
     });
+    armTokenSweep();
     return accessToken;
   }
 

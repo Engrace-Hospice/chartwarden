@@ -24,3 +24,44 @@ export function evictOtherGenerations(
   }
   return dropped;
 }
+
+/** Drop every entry `isExpired` says is past its life. Returns how many were dropped. */
+export function pruneExpired<V>(map: Map<string, V>, isExpired: (value: V) => boolean): number {
+  let dropped = 0;
+  for (const [key, value] of [...map.entries()]) {
+    if (isExpired(value)) {
+      map.delete(key);
+      dropped += 1;
+    }
+  }
+  return dropped;
+}
+
+const SWEEP_INTERVAL_MS = 60_000;
+
+/**
+ * Keeps an in-memory credential cache from outliving its life in a process that no longer asks for it. A lookup prunes the map too, but a
+ * tenant that left the active set (suspended, closed, its key ring shredded) is never looked up again, so its entry (an unsealed clinic
+ * key, a live bearer token) would sit until the process exits. Call the returned `arm()` after adding an entry: while the map holds
+ * anything an unref'd timer prunes it every minute, and it stops itself when the map is empty (nothing runs for a process that caches
+ * nothing, and a test never leaks a timer).
+ */
+export function createExpirySweeper<V>(
+  map: Map<string, V>,
+  isExpired: (value: V) => boolean,
+  intervalMs: number = SWEEP_INTERVAL_MS,
+): () => void {
+  let timer: ReturnType<typeof setInterval> | null = null;
+  return function arm(): void {
+    if (timer !== null) return;
+    const handle = setInterval(() => {
+      pruneExpired(map, isExpired);
+      if (map.size === 0 && timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }, intervalMs);
+    (handle as unknown as { unref?: () => void }).unref?.();
+    timer = handle;
+  };
+}
