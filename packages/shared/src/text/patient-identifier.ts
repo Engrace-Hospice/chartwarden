@@ -16,27 +16,36 @@
 // WHAT AN SSN LOOKS LIKE HERE: nine decimal digits (any script's: \p{Nd}) as 3-2-4 groups, as 3-3-3 groups standing alone, or
 // as nine single digits, with anything that is not a letter or a number between the groups (whitespace, control characters,
 // punctuation, symbols such as | + = ~ $ ^, dashes of every kind, slashes, underscores), up to ten characters in a row.
-// Letters are never separators, so "ticket 123 of 45 and 6789" is not a number.
+// Letters are never separators, so "ticket 123 of 45 and 6789" is not a number. A run of horizontal whitespace counts as ONE
+// separator however long it is. 3-3-3 "standing alone" means no digit group continues it through a single separator that is not a
+// line break: "1,234,567,890" and "192.168.001.020" are chains, but "SSN 900 123 456, 5 days" (a comma and a space), a number on the
+// next line, or a list marker ("1. 900 123 456") do not make it part of one. A character that NFKD turns into a digit without being
+// a decimal digit (superscripts, subscripts, circled digits) is judged twice: as the digit it folds to, and as a separator.
 //
 // The MBI rule follows `packages/billing/src/dde/notes.ts` (ADR-0052 D7): the text is NFKD-normalised, combining marks are
 // dropped, what is left is squashed to letters and digits (spaces, dashes and zero-width characters vanish) and ANY
 // 11-character MBI-shaped window is a hit.
 //
 // KNOWN GAPS (accepted): a Cyrillic/Greek lookalike for a letter or digit is not folded; digits written as words ("nine zero
-// zero ..."); digits interleaved with letters; an identifier in another grouping (2-3-4, 4-5) or encoded (hex, base64); a value
-// split across sentences; non-ASCII digits inside an MBI (its squash keeps ASCII letters and digits only).
+// zero ..."), as CJK numerals, or as dingbat / enclosed forms that NFKD leaves alone; digits interleaved with letters; an
+// identifier in another grouping (2-3-4, 4-5) or encoded (hex, base64); a value split across sentences; non-ASCII digits inside
+// an MBI (its squash keeps ASCII letters and digits only); more than ten NON-whitespace separators between two groups; an
+// UNBROKEN run of ten to twelve digits that contains an SSN ("9001234567": NPIs, phone numbers and ticket numbers pass on
+// purpose); a 3-3-3 value with one separator and another number on either side ("900 123 456 5 days" reads as a longer chain).
 import { ChartWardenError } from "@chartwarden/types";
 
 const ND = "\\p{Nd}"; // any decimal digit, of any script
 const SEP = "[^\\p{L}\\p{N}]"; // anything that is neither a letter nor a number
+const SEP_NOT_LINE = "[^\\p{L}\\p{N}\\r\\n]"; // ... and is not a line break
 const GAP = `${SEP}{0,10}`;
 const GAP1 = `${SEP}{1,10}`;
 // 3-2-4 groups. SSA never issues some of these, but the screen has no registry to consult and no reason to wave anything
 // through. Adjacent digits may not continue the value on either side; more digit groups beyond a separator may (it is refused).
 const SSN_GROUPED = new RegExp(`(?<!${ND})${ND}{3}${GAP}${ND}{2}${GAP}${ND}{4}(?!${ND})`, "u");
-// 3-3-3 groups, only when the nine digits stand alone: not part of a longer chain of digit groups.
+// 3-3-3 groups, only when the nine digits stand alone: not part of a longer chain of digit groups. A chain continues through at
+// most ONE separator that is not a line break, so a comma-and-space, a line break or a list marker ends it.
 const SSN_THREES = new RegExp(
-  `(?<!${ND}${GAP})${ND}{3}${GAP1}${ND}{3}${GAP1}${ND}{3}(?!${GAP}${ND})`,
+  `(?<!${ND}${SEP_NOT_LINE}?)${ND}{3}${GAP1}${ND}{3}${GAP1}${ND}{3}(?!${SEP_NOT_LINE}?${ND})`,
   "u",
 );
 // Nine SINGLE digits, each set apart by separators ("9 0 0 1 2 3 4 5 6"). Every digit must stand alone, so a number whose
@@ -53,13 +62,23 @@ const MBI_WINDOW = new RegExp(
 );
 
 // NFKD folds full-width digits and compatibility forms; combining marks and format characters (zero-width, bidi overrides) are dropped
-// so padding cannot split a value.
-const normalise = (text: string): string => text.normalize("NFKD").replace(/[\p{M}\p{Cf}]/gu, "");
+// so padding cannot split a value; a run of horizontal whitespace is one separator (line breaks stay: they end a 3-3-3 chain).
+const normalise = (text: string): string =>
+  text
+    .normalize("NFKD")
+    .replace(/[\p{M}\p{Cf}]/gu, "")
+    .replace(/[^\S\r\n]+/gu, " ");
+
+// Characters of the "other number" class (superscripts, subscripts, circled digits) fold to digits under NFKD, which merges them
+// with their neighbours when they were typed as separators ("900²12²3456"). So the text is judged twice: with them as the digits
+// they fold to, and with each one a separator.
+const OTHER_NUMBER = /\p{No}/gu;
 
 /** True when the text holds something shaped like a US Social Security number. */
 export function looksLikeSsn(text: string): boolean {
-  const folded = normalise(text);
-  return SSN_GROUPED.test(folded) || SSN_THREES.test(folded) || SSN_SPACED.test(folded);
+  return [normalise(text), normalise(text.replace(OTHER_NUMBER, " "))].some(
+    (folded) => SSN_GROUPED.test(folded) || SSN_THREES.test(folded) || SSN_SPACED.test(folded),
+  );
 }
 
 /** True when the text holds something shaped like a Medicare Beneficiary Identifier. */
@@ -80,7 +99,7 @@ export function looksLikePatientIdentifier(text: string): boolean {
 export function assertNoPatientIdentifier(field: string, text: string): void {
   if (looksLikePatientIdentifier(text)) {
     const code = "EVIDENCE_LOOKS_LIKE_PHI";
-    const message = `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title.`;
+    const message = `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title or a ticket number. Long ids and UUIDs can also trip this check: cite them by title instead.`;
     throw new ChartWardenError(code, message, 422, [{ field, code, message }]);
   }
 }

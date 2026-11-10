@@ -46,6 +46,26 @@ describe("looksLikeSsn: separators the first rule missed", () => {
     ["3-3-3 spaces", "900 123 456"],
     ["3-3-3 dashes", "900-123-456"],
     ["3-3-3 in a sentence", "the number was 900 123 456, confirmed"],
+    // a bare number near a 3-3-3 value across a sentence break, a line break or more than one separator does not make it part
+    // of a longer chain: only ONE separator that is not a line break continues a chain
+    ["3-3-3 then a comma and a number", "SSN 900 123 456, 5 days"],
+    ["3-3-3 then a full stop and a number", "SSN 900 123 456. 2 follow-ups"],
+    ["a date on the line above", "2026-11-09\n900 123 456"],
+    ["a date on the line below", "ssn 900 123 456\n2026-11-09"],
+    ["a page number and a dash pair", "page 5 -- 900 123 456"],
+    ["an amount and a full stop", "Paid 25. 900 123 456"],
+    ["a list marker with a bracket", "12) 900 123 456"],
+    ["a list marker with a full stop", "1. 900 123 456"],
+    ["a carriage return before it", "total 12\r900 123 456"],
+    // a separator run longer than ten is collapsed when it is whitespace
+    ["eleven spaces", "900           12 3456"],
+    ["a long run of mixed whitespace", "900 \t \t \t \t \t \t 12 3456"],
+    ["a long whitespace run in 3-3-3", "900             123             456"],
+    // digits that NFKD turns into digits without being decimal digits: read as digits, and as separators
+    ["subscript separators", "900\u208212\u20823456"],
+    ["superscript separators", "900\u00b212\u00b23456"],
+    ["superscript digits as the digits", "\u2079\u2070\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076"],
+    ["circled digits as separators", "900\u246012\u24603456"],
     // digits of another script (Arabic-Indic): they are not folded by NFKD
     ["Arabic-Indic digits", "\u0669\u0660\u0660-\u0661\u0662-\u0663\u0664\u0665\u0666"],
     [
@@ -74,6 +94,9 @@ describe("looksLikeSsn: separators the first rule missed", () => {
     ["a version", "build 2.10.15"],
     ["a document reference", "signed order form on file, DOC-1042"],
     ["a list of small numbers", "counts 1 2 3 4 5 6 7 8"],
+    ["a chain of four 3-digit groups with spaces", "serials 123 456 789 012"],
+    ["a number after one separator keeps a chain", "ref 1,234,567,890"],
+    ["a phone number with an extension", "reach 555 123 4567 ext 12"],
     ["digits split by letters", "ticket 123 of 45 and 6789"],
     ["an IP address", "from 192.168.1.20"],
     ["empty", ""],
@@ -106,6 +129,22 @@ describe("looksLikeMbi", () => {
   );
   it("does not flag ordinary words", () => {
     expect(looksLikeMbi("NPPES record matches the legal name")).toBe(false);
+  });
+});
+
+describe("the refusal text", () => {
+  it("is static: it tells the operator to cite documents by title or ticket number, says ids and UUIDs can trip it, and never echoes the value", () => {
+    const value = "900-12-3456";
+    try {
+      assertNoPatientIdentifier("evidence", `see ${value}`);
+      expect.unreachable("should have refused");
+    } catch (err) {
+      const { message } = err as { message: string };
+      expect(message).toMatch(/cite documents by their title or a ticket number/);
+      expect(message).toMatch(/ids and UUIDs can also trip this check/);
+      expect(message).not.toContain("900");
+      expect(message).not.toContain("3456");
+    }
   });
 });
 

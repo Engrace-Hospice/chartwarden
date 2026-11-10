@@ -115,6 +115,21 @@ describe("patient-identifier screen", () => {
   const SSN = "900-12-3456"; // area 9xx is never issued
   const MBI = "1EG4TE5MK73"; // synthetic registry value
 
+  it("screens the text as typed, before control characters are stripped, and again as stored", () => {
+    // A control character between the digits is a separator to the screen: stripped first it would join the digits into an
+    // unbroken ten-digit run, which passes on purpose (NPIs, phone numbers); typed, it is nine digits and a stray one.
+    const typed = "see 900123456\u00017";
+    const err = refusal(() => normalizeEvidence({ evidenceNote: typed }));
+    expect(err.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    // A run of control characters longer than the screen's separator window hides nothing once it is stripped.
+    const padded = `see 900${"\u0001".repeat(12)}12${"\u0001".repeat(12)}3456`;
+    expect(refusal(() => normalizeReason(padded)).code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    // an unbroken ten-digit number with no control character is still a plain number
+    expect(normalizeEvidence({ evidenceNote: "ticket 9001234567 opened" }).note).toContain(
+      "9001234567",
+    );
+  });
+
   it("refuses an SSN-shaped value in an evidence note, ref, reason, note or blocker reason", () => {
     const cases: Array<[string, () => unknown]> = [
       ["evidenceNote", () => normalizeEvidence({ evidenceNote: `verified, patient ${SSN}` })],
