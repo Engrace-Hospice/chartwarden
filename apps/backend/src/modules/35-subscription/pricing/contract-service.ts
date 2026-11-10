@@ -18,6 +18,7 @@
 //
 // Which contract an org "has" is decided in ONE place (./contract-select.ts), not here.
 import { type DbClient, schema } from "@chartwarden/db";
+import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BillingServiceMode } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
@@ -330,13 +331,7 @@ async function resumeIfSigned(
     found.record.contract.subscriptionId === open.id &&
     found.record.plan.id === plan.id &&
     modeInForceOn(found.history, today) === mode;
-  if (!found || !same) {
-    throw new ChartWardenError(
-      "SUBSCRIPTION_EXISTS",
-      "this organization already has a subscription; cancel it before signing a different plan or mode",
-      409,
-    );
-  }
+  if (!found || !same) throw subscriptionExists();
   const signature = await loadSignature(tx, found.record.contract.id);
   return {
     view: platformViewOf(found.record, found.bands, found.history, today, signature),
@@ -490,6 +485,13 @@ async function insertModeChange(
   return { row, effectiveOn };
 }
 
+const subscriptionExists = (): ChartWardenError =>
+  new ChartWardenError(
+    "SUBSCRIPTION_EXISTS",
+    "this organization already has a subscription; cancel it before signing a different plan or mode",
+    409,
+  );
+
 /** A subscription can be created only while the tenant is provisioning or onboarding. */
 function refuseUnsignableTenant(tenant: OnboardingTenantFacts): void {
   if (SIGNABLE_TENANT_STATUSES.has(tenant.status)) return;
@@ -566,6 +568,12 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
             audit,
           }));
         return { tenant, ...signed };
+      }).catch((error: unknown) => {
+        // a subscription written by another path (the tenant's own, which holds no onboarding lock) between the read above and the insert
+        throw mapUniqueViolation(error, {
+          subscription_org_active_uq: subscriptionExists,
+          subscription_contract_subscription_uq: subscriptionExists,
+        });
       });
 
       return {

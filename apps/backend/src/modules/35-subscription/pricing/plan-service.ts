@@ -12,6 +12,7 @@
 // writes one structured audit row beside the row-level audit trigger. The legacy flat-tier routes (`/api/admin/plans`) cannot create
 // or publish a census_banded plan, so none of these rules can be bypassed through them.
 import { schema } from "@chartwarden/db";
+import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import {
   type CensusBand,
   type PlanPricing,
@@ -115,6 +116,15 @@ type PlanRow = typeof PL.$inferSelect;
 
 const statusOf = (p: PlanRow): PricingPlanStatus =>
   p.deprecatedAt ? "archived" : p.publishedAt ? "published" : "draft";
+
+/**
+ * `plan.slug` is `<family>-v<version>`, so two operators creating the same family, or versioning the same family at the same moment,
+ * collide on `plan_slug_uq` AFTER the reads that were meant to refuse them (a draft and a version number are read, then written, and a
+ * row inserted by the other transaction is not in this one's snapshot). That is a conflict the operator can retry, not a 500.
+ */
+const onPlanSlugRace = (message: string): Record<string, () => Error> => ({
+  plan_slug_uq: () => new ConflictError(message),
+});
 
 /** Bands in ascending order, each with the last whole patient it covers (null for the open-ended top band). */
 export function bandViews(bands: readonly CensusBand[]): PricingBandView[] {
@@ -319,6 +329,13 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
         const view = toPricingPlanView(plan, input.bands);
         await record(tx, actor, "m35.plan.draft_created", view, reason);
         return view;
+      }).catch((error: unknown) => {
+        throw mapUniqueViolation(
+          error,
+          onPlanSlugRace(
+            "that plan family was created at the same time; create a new version of it",
+          ),
+        );
       });
     },
 
@@ -434,6 +451,13 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
         const view = toPricingPlanView(plan, bands);
         await record(tx, actor, "m35.plan.version_created", view, reason);
         return view;
+      }).catch((error: unknown) => {
+        throw mapUniqueViolation(
+          error,
+          onPlanSlugRace(
+            "another version of this plan family was created at the same time; reload it",
+          ),
+        );
       });
     },
 
