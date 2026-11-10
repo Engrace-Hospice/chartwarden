@@ -21,7 +21,14 @@
 import { userInfo } from "node:os";
 
 import { switchesHarness } from "./harness-switch";
-import { readsScriptFromStdin, runsInlineCode } from "./inline-code";
+import {
+  SHELL_PROGRAM,
+  type ScriptStage,
+  printedText,
+  readsScriptFromStdin,
+  runsInlineCode,
+  scriptsHandedToShell,
+} from "./inline-code";
 import { relativeTo } from "./path-alias";
 import {
   BARE,
@@ -363,7 +370,7 @@ function substitutions(cmd: string): string[] {
 }
 
 /** `bash -c "…"`, `sh -c '…'`, `eval …`: the quoted string is itself a command line. */
-const NESTED_SHELL = /^(bash|sh|zsh|dash|ksh|fish)$/;
+const NESTED_SHELL = SHELL_PROGRAM;
 
 /**
  * Shell words, keeping a quoted string as one word (quotes stripped), also INSIDE a word: in
@@ -582,6 +589,8 @@ interface Redirects {
   readonly ins: string[];
   /** Here-doc delimiters and here-string words: input the command is handed inline. */
   readonly docs: string[];
+  /** The here-string words alone (`<<< 'text'`). */
+  readonly strings: string[];
 }
 
 const REDIRECT_OPERATOR = /(?:>>|>\||>&|<<<|<<-?|<&|<>|>|<)/y;
@@ -608,13 +617,14 @@ function fdPrefixLength(seg: string, at: number): number {
 }
 
 function splitRedirects(seg: string): Redirects {
-  if (!/[<>]/.test(seg)) return { rest: seg, outs: [], ins: [], docs: [] };
+  if (!/[<>]/.test(seg)) return { rest: seg, outs: [], ins: [], docs: [], strings: [] };
   // The segment has its heredoc body taken out already, so `<<` reads as an ordinary operator here.
   const { kind } = scanShell(seg, false);
   let rest = "";
   const outs: string[] = [];
   const ins: string[] = [];
   const docs: string[] = [];
+  const strings: string[] = [];
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i] as string;
     const k = kind[i];
@@ -640,9 +650,10 @@ function splitRedirects(seg: string): Redirects {
     const { word, end } = readWord(seg, i + 1, kind);
     i = end - 1;
     const target = words(word)[0] ?? "";
+    if (op === "<<<") strings.push(target);
     (op.startsWith("<<") ? docs : op.startsWith(">") ? outs : ins).push(target);
   }
-  return { rest, outs, ins, docs };
+  return { rest, outs, ins, docs, strings };
 }
 
 interface Parsed {
@@ -654,12 +665,13 @@ interface Parsed {
   readonly outs: string[];
   readonly ins: string[];
   readonly docs: string[];
+  readonly strings: string[];
 }
 
 /** Program, arguments and redirections of one simple command. */
 function parseSegment(seg: string): Parsed {
-  const { rest, outs, ins, docs } = splitRedirects(seg);
-  return { ...program(rest), outs, ins, docs };
+  const { rest, outs, ins, docs, strings } = splitRedirects(seg);
+  return { ...program(rest), outs, ins, docs, strings };
 }
 
 /**
@@ -1079,6 +1091,41 @@ function findExecCommands(args: readonly string[]): Array<{ command: string; inF
   return runs;
 }
 
+const UNREADABLE_SCRIPT_REASON =
+  "A shell is handed a script that the guard cannot read (`curl … | sh`, `cat f | bash`). Read the script first, then run it as a file or as `bash -c '…'`. A human decides.";
+
+/** Verdicts for the script text handed to the shell at `index`, read as command lines. */
+function handedScriptVerdicts(
+  parts: readonly Segment[],
+  parsed: readonly Parsed[],
+  index: number,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const p = parsed[index] as Parsed;
+  const texts: string[] = [];
+  let unreadable = false;
+  if (SOURCES.test(p.prog)) {
+    // `source <(echo '…')`: the substitution's output is the script.
+    for (const inner of substitutions(parts[index]?.text ?? "")) {
+      for (const seg of segments(inner)) {
+        const sub = parseSegment(seg);
+        const printed = printedText(sub.prog, sub.args);
+        if (printed !== null) texts.push(printed);
+      }
+    }
+  } else if (SHELL_PROGRAM.test(p.prog)) {
+    const stages: ScriptStage[] = parsed.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" }));
+    const handed = scriptsHandedToShell(stages, index);
+    texts.push(...handed.texts);
+    unreadable = handed.unreadable;
+  }
+  const out = texts.map((text) => judge(text, ctx, depth + 1, here));
+  if (unreadable) out.push(ask(UNREADABLE_SCRIPT_REASON));
+  return out;
+}
+
 function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
   const c = cmd.trim();
   if (depth > MAX_NESTING || --judgeBudget < 0) {
@@ -1143,6 +1190,9 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
         verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
     }
     scriptOnStdin ||= readsScriptFromStdin(parsed, index);
+    // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a
+    // command line; a script piped in from anything else cannot be read.
+    verdicts.push(...handedScriptVerdicts(parts, parsedParts, index, ctx, depth, here));
     const moved = nextDirs(shellIn, parsed, part.text, ctx, cdpath);
     // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
     // that follows `||` the next `&&` command may be in the old directory as well as in X.
@@ -1885,7 +1935,9 @@ function scriptTextVerdict(text: string): BashVerdict | null {
       "Inline code that opens a live secret file is the same read as `cat`. Agents do not read secrets or dumps.",
     );
   }
-  if (PROTECTED_FRAGMENT.test(flat)) {
+  // Tested as written too: squashing puts the word before a path against it (`rm scripts/harness` reads
+  // `rmscripts/harness`), and the fragment's lookbehind then takes that word for a parent directory.
+  if (PROTECTED_FRAGMENT.test(text) || PROTECTED_FRAGMENT.test(flat)) {
     return ask(
       "Script text the guard can only read as a string names the agent harness or the compliance record. Changing those through a script skips the edit prompt, so a human approves it here.",
     );
