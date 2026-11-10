@@ -38,7 +38,7 @@
 //   • THE care_plan_update DECISION beyond `problem_add`. Five of its six mutation ops address M7 plan
 //     elements by uuid (`problemId` / `goalId` / `interventionId`), which needs the plan-element picker
 //     that belongs with the M07 care-plan surface. `problem_add` carries no id and is offered.
-import type { ApiClient, operations } from "@chartwarden/ui";
+import type { ApiClient, AttemptKey, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (the four helpers every module's api layer uses) ─────────────────────
 
@@ -622,19 +622,23 @@ export async function loadMeetingPromotions(
   return ok(data);
 }
 
-/** Add an `other` agenda item from a proposal. Idempotency-Key is required by the route; a retry passes the same key. */
+/**
+ * Add an `other` agenda item from a proposal. Idempotency-Key is required by the route; the shared attempt keys hold one per proposal, so a
+ * retry after a dropped answer cannot add twice. A request that gets no answer rejects (the key is kept for the retry).
+ */
 export async function addAgendaItemFromPromotion(
   client: ApiClient,
   id: string,
   promotionRequestId: string,
-  idempotencyKey: string = globalThis.crypto.randomUUID(),
+  attempt: AttemptKey,
 ): Promise<WriteResult<AgendaItemView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/idg/meetings/{id}/agenda/from-promotion",
-    {
-      params: { path: { id }, header: { "Idempotency-Key": idempotencyKey } },
-      body: { promotionRequestId },
-    },
+  const { data, error, response } = await attempt.run(
+    `promotion|${id}|${promotionRequestId}`,
+    (idempotencyKey) =>
+      client.POST("/api/v1/idg/meetings/{id}/agenda/from-promotion", {
+        params: { path: { id }, header: { "Idempotency-Key": idempotencyKey } },
+        body: { promotionRequestId },
+      }),
   );
   if (error || !data) return failure(response?.status, error);
   return ok(data as AgendaItemView);

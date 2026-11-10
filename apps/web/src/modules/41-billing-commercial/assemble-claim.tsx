@@ -3,15 +3,18 @@
 // The server builds the claim from the shared clinical facts and the plan's contract rates; this form only names what to bill: the
 // provider entity, the patient, the service dates and, optionally, the plan and clearinghouse. There is no dry run, so nothing is
 // previewed. Refusals are shown in fixed words by status and code (assemble-claim-model.ts), never the server's message.
-// Idempotency: one key per attempt. The server stores every answer under the key for 24h and replays it for the same body, so the
-// key is kept only when no HTTP response arrived (a thrown fetch) and dropped on any response and on any field change.
+// Idempotency: one key per attempt, held by the shared useAttemptKey. The server stores every answer under the key for 24h and replays it
+// for the same body, so the key is kept only while no answer settled the attempt (a thrown fetch, a gateway page, the in-flight 409) and
+// dropped on any other response and on any field change (a changed body is another intent).
 import {
   Button,
   ClaimsBillingNotice,
   InlineAlert,
+  NO_ANSWER,
   SelectField,
   TextField,
   useApiClient,
+  useAttemptKey,
   useClaimsBilling,
 } from "@chartwarden/ui";
 import { useRef, useState } from "react";
@@ -74,17 +77,15 @@ export function CommercialAssembleClaim(): JSX.Element {
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  const attemptKey = useRef<string | null>(null);
+  const attempt = useAttemptKey();
 
   const edit =
     (name: keyof Fields) =>
     (value: string): void => {
-      attemptKey.current = null;
       setFields((prev) => ({ ...prev, [name]: value }));
     };
 
   const pickEntity = (id: string): void => {
-    attemptKey.current = null;
     setFields((prev) => ({ ...prev, planId: AUTO_PLAN })); // a plan belongs to one entity
     setFieldErrors({});
     setServerError(null);
@@ -99,23 +100,21 @@ export function CommercialAssembleClaim(): JSX.Element {
     if (Object.keys(errors).length > 0) return;
     inFlight.current = true;
     setBusy(true);
-    attemptKey.current ??= crypto.randomUUID();
+    const body = {
+      providerEntityId: entityId,
+      patientId: fields.patientId,
+      serviceFrom: fields.serviceFrom,
+      serviceTo: fields.serviceTo,
+      ...(fields.planId ? { planId: fields.planId } : {}),
+      ...(fields.clearinghouseKey ? { clearinghouseKey: fields.clearinghouseKey } : {}),
+    };
+    const key = attempt.keyFor(JSON.stringify(body));
     try {
       const { data, error, response } = await client.POST(
         "/api/v1/billing/commercial/claims/assemble",
-        {
-          params: { header: { "Idempotency-Key": attemptKey.current } },
-          body: {
-            providerEntityId: entityId,
-            patientId: fields.patientId,
-            serviceFrom: fields.serviceFrom,
-            serviceTo: fields.serviceTo,
-            ...(fields.planId ? { planId: fields.planId } : {}),
-            ...(fields.clearinghouseKey ? { clearinghouseKey: fields.clearinghouseKey } : {}),
-          },
-        },
+        { params: { header: { "Idempotency-Key": key } }, body },
       );
-      attemptKey.current = null; // any HTTP response retires the key
+      attempt.settle(response.status, error);
       if (data) {
         navigate(`${COMMERCIAL_PATHS.claim(data.claimId)}?entity=${encodeURIComponent(entityId)}`);
         return;
@@ -127,7 +126,8 @@ export function CommercialAssembleClaim(): JSX.Element {
       const code = (error as { error?: { code?: string } } | undefined)?.error?.code;
       setServerError(describeAssembleFailure(response.status, code));
     } catch {
-      setServerError(describeAssembleFailure(0, undefined)); // no response: the key is kept for the retry
+      attempt.settle(NO_ANSWER); // no response: the key is kept for the retry
+      setServerError(describeAssembleFailure(0, undefined));
     } finally {
       inFlight.current = false;
       setBusy(false);
