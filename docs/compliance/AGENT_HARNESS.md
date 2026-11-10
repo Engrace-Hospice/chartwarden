@@ -265,6 +265,30 @@ sample names and with no regular expression (so no exponential backtracking), br
 command lines (300 per call) are capped; over any of those caps the answer is ask, and a deny found before
 the cap was hit still stands. Reading a protected file does not ask; only a command that writes one does.
 
+**Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
+runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
+escape, a comment or a heredoc body cannot hide a later command. It models single quotes (no escapes); double
+quotes (a backslash escapes the next character, and `$( )`, backticks and `${ }` inside still run); `$'…'` (a
+backslash escapes, `\'` included); backslash escapes and backslash-newline continuations (dropped, as the shell
+does); `#` comments, only where a `#` starts a word (`a#b`, `$#` and `${#x}` are not comments, and a comment is
+never judged); `$( )`, `<( )`, `>( )`, `$(( ))`, `${ }` and backticks nested with their own quoting; and
+heredocs (`<<W`, `<<-W`, a quoted or escaped `W`; `<<<` is a here-string, not a heredoc). A heredoc body is
+data, so a commit message that mentions `rm scripts/harness/x` is text. The exceptions are a body fed to a
+shell, `eval`, `source`/`.`, `at` or `batch`, to a command that names one of them as an argument or whose name
+is a `$VAR` or a substitution, or through a pipe into one of those: its lines are judged as commands; and an
+unquoted body, whose `$( )` and backticks run and are judged. An interpreter's body (`python3 -`, `node -`) is
+read as text, as before. A `)` that opens no group ends the command before it (`case x) cmd`, `(x) cmd`,
+`f() { cmd; }`). A text that ends inside a quote, `$( )`, `${ }`, backtick or heredoc (no delimiter line), or
+after a trailing backslash, ASKS, and the unfinished tail is dropped from the commands, so a garbage tail is
+not judged over and over; a deny found in the part before it still stands. It does not model: aliases and
+functions defined earlier in the session, or `function f { … }` bodies; a `case` pattern inside `$( )`; `[[ ]]`
+and `(( ))` operators that read as a heredoc (`(( x << 2 ))` asks); zsh-only syntax (`=( )`, glob qualifiers, a
+`setopt` that changes quoting or comments); the quote rules of a `${ }` beyond "a single quote is ordinary
+inside double quotes"; a heredoc whose body starts inside a `$( )` that opens after its operator on the same
+line; what a `$'…'` expands to (it only finds the closing quote; the word reader decodes the escapes); or a
+command word built around a substitution (`$(true)git …`). Heredoc scripts nested more than 16 deep answer ask
+(substitutions stay capped at 32 per level, as above).
+
 **Fails closed.** Empty or unparseable hook input, an internal error, and a write too large to scan
 (over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it.
 Codex PTY requests (`tty`, `pty`, or `use_pty`) also fail closed: later `write_stdin` input does not fire
