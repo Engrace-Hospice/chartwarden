@@ -1995,7 +1995,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         await tenant(tenantClient, ORG_A, async () => {
           await expect(
             tenantClient.query("UPDATE subscription SET plan_id=$1 WHERE organization_id=$2", [
-              planV2Id,
+              planV1,
               ORG_A,
             ]),
           ).rejects.toMatchObject({
@@ -2003,6 +2003,11 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
             constraint: "subscription_statement_ownership_fk",
           });
         });
+        const rows = await q<{ plan_id: string }>(
+          "SELECT plan_id FROM subscription WHERE organization_id=$1",
+          [ORG_A],
+        );
+        expect(rows[0]?.plan_id).toBe(planV2Id);
       } finally {
         await tenantClient.end();
       }
