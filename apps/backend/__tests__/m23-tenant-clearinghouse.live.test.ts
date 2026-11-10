@@ -18,6 +18,9 @@
  *   - vendor and mode lock once a production submission exists; a credential rotation drops a live config back to draft (D6);
  *   - the tenant-held vendor BAA: the tenant records it, a platform operator verifies it (a live tenant too), and the table's
  *     CHECK and the activation both refuse `active` without it (D2); the sealed credential's audit trigger says THAT it changed;
+ *   - a platform operator revokes a tenant's vendor BAA (migration 1468): the new CHECKs hold under the real app role, the revoke is
+ *     atomic with its audit row, the revoked config resolves unbound, the tenant's view never carries the reason, and the vendor
+ *     lock is set aside for the TENANT lane only while the BAA is revoked (against the real attempt table);
  *   - the org-level `billing.clearinghouse.*` keys: a holder of only the provider-entity-scoped MAC keys is refused (D3);
  *   - the tenant routes write a field-level audit row (names, never values); a switch is refused while claims are queued;
  *   - a suspended subscription still refuses new claims work through the real seams (D1); a claim job for a draft config is held.
@@ -120,6 +123,17 @@ const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
 const ORG_H = "a8000000-0000-4000-8000-0000000000a8"; // tries to seal org A's Claim.MD account (migration 1434)
 const ORG_I = "a9000000-0000-4000-8000-0000000000a9"; // races ORG_J to seal one new key (migration 1435's index serialises them)
 const ORG_J = "aa000000-0000-4000-8000-0000000000aa";
+/** BAA revoke (migration 1468): one live Claim.MD tenant per case, each a tenant_account `active` (a live tenant is the point). */
+const ORG_K = "ab000000-0000-4000-8000-0000000000ab"; // revoked while a production attempt is in flight; leaves for `outside`
+const ORG_L = "ac000000-0000-4000-8000-0000000000ac"; // never revoked: the control, and the cross-tenant bystander
+const ORG_M = "ad000000-0000-4000-8000-0000000000ad"; // revoked, a production attempt sent yesterday; leaves for Stedi
+const ORG_N = "ae000000-0000-4000-8000-0000000000ae"; // revoked, then records a new BAA: the lock is back
+const REVOKE_ORGS = [
+  [ORG_K, "ch-k"],
+  [ORG_L, "ch-l"],
+  [ORG_M, "ch-m"],
+  [ORG_N, "ch-n"],
+] as const;
 /**
  * The vendor / mode lock window against the real query (`hasRecentProductionAttempts`): one organization per case, each with ONE
  * attempt row and a draft Claim.MD config that tries to switch to Stedi. The lock holds while a production attempt is `reserved` (any
@@ -298,6 +312,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_H, "ch-h"],
       [ORG_I, "ch-i"],
       [ORG_J, "ch-j"],
+      ...REVOKE_ORGS,
       ...LOCK_WINDOW_CASES.map((c, i) => [c.org, `ch-lock-${i}`] as const),
     ] as const) {
       await admin.query(
@@ -321,6 +336,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_B, "onboarding"],
       [ORG_F, "onboarding"],
       [ORG_H, "active"], // the platform release of its earlier credentials (migration 1435) resolves its tenant account
+      ...REVOKE_ORGS.map(([org]) => [org, "active"] as const), // the BAA revoke is not onboarding-gated
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -461,26 +477,34 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
                 "tenant_clearinghouse.read_platform",
                 "tenant_clearinghouse.write_platform",
                 "tenant_clearinghouse.verify_baa_platform",
+                "tenant_clearinghouse.revoke_baa_platform",
                 "tenant_clearinghouse.release_credential_platform",
                 "tenant_notice_filing.withdraw_platform",
               ],
             },
           ],
         },
-        ...[ORG_A, ORG_B, ORG_G, ORG_H, ORG_I, ORG_J, ...LOCK_WINDOW_CASES.map((c) => c.org)].map(
-          (orgId) => ({
-            orgId,
-            userId: TENANT_ADMIN,
-            grants: [
-              {
-                roleKey: "org_admin",
-                enabled: true,
-                expiresAt: null,
-                permissionKeys: ["billing.clearinghouse.read", "billing.clearinghouse.admin"],
-              },
-            ],
-          }),
-        ),
+        ...[
+          ORG_A,
+          ORG_B,
+          ORG_G,
+          ORG_H,
+          ORG_I,
+          ORG_J,
+          ...REVOKE_ORGS.map(([org]) => org),
+          ...LOCK_WINDOW_CASES.map((c) => c.org),
+        ].map((orgId) => ({
+          orgId,
+          userId: TENANT_ADMIN,
+          grants: [
+            {
+              roleKey: "org_admin",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["billing.clearinghouse.read", "billing.clearinghouse.admin"],
+            },
+          ],
+        })),
         // D3: a billing manager scoped to one provider entity holds the entity-scoped MAC credential keys and NOT the org-level pair
         ...[ORG_A, ORG_B].map((orgId) => ({
           orgId,
@@ -1907,6 +1931,437 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           statusCode: 409,
         },
       );
+    });
+  });
+
+  // Migration 1468: a platform operator revokes the vendor BAA a tenant recorded (the vendor ended it). Proven on the real roles: the
+  // app role writes the new columns under RLS, the two new CHECKs hold, the revoke is atomic with its audit row, the revoked config is
+  // unbound for every consumer of the resolver, and the one exception to the vendor lock works end to end against the real attempt table.
+  describe("BAA revoke: a platform operator stops a tenant's vendor (migration 1468)", () => {
+    const REVOKE_REASON = "Vendor ended the BAA on 2026-11-08, ticket SEC-42";
+    type View = {
+      status: string;
+      vendor: string;
+      version: number;
+      baa: {
+        revoked: boolean;
+        revokedAt: string | null;
+        verified: unknown;
+        recordedAt: string;
+        revokedReason?: string;
+      } | null;
+    };
+    const keyOf = (slug: string) => `fake-claimmd-key-${slug}#revoke-1`;
+    const tenantView = async (org: string): Promise<View> =>
+      (await tenantCall("GET", org, "")).json() as View;
+    const platformView = async (slug: string): Promise<View> =>
+      (await platformCall("GET", slug, "")).json() as View;
+    /** An org taken to `active` through the real routes: choice, connection test, BAA recorded by the tenant, verified by the operator. */
+    async function goLive(org: string, slug: string): Promise<{ pin: string }> {
+      const created = await tenantCall("PUT", org, "", {
+        vendor: "claimmd",
+        mode: "production",
+        secret: keyOf(slug),
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      expect((await tenantCall("POST", org, "/verify", {})).statusCode).toBe(200);
+      const recorded = await tenantCall("POST", org, "/baa", BAA);
+      expect(recorded.statusCode, recorded.body).toBe(200);
+      const pin = (recorded.json() as View).baa?.recordedAt as string;
+      const verified = await platformCall(
+        "POST",
+        slug,
+        "/baa/verify",
+        { reason: REASON },
+        { "if-match": `"${pin}"` },
+      );
+      expect(verified.statusCode, verified.body).toBe(200);
+      const activated = await tenantCall("POST", org, "/activate", {});
+      expect(activated.statusCode, activated.body).toBe(200);
+      return { pin };
+    }
+    const revoke = (slug: string, pin: string, reason = REVOKE_REASON) =>
+      platformCall("POST", slug, "/baa/revoke", { reason }, { "if-match": `"${pin}"` });
+    /** One production attempt row, `reserved` (in flight) or `sent`, reserved `daysAgo` days ago. */
+    const attempt = (org: string, tag: number, status: "reserved" | "sent", daysAgo: number) =>
+      q(
+        `INSERT INTO clearinghouse_submission_attempt
+           (organization_id, provider_entity_id, scope, usage, idempotency_key, control_number, kind, identity, status,
+            clearinghouse_submission_id, received_at, reserved_at)
+         VALUES ($1, gen_random_uuid(), $2, 'production', $3, $4, 'claim', repeat('c', 64), $5::text,
+                 CASE WHEN $5::text = 'sent' THEN 'fake-vendor-submission' END,
+                 CASE WHEN $5::text = 'sent' THEN now() END,
+                 now() - make_interval(days => $6::int))`,
+        [org, `scope-revoke-${tag}`, `k-revoke-${tag}`, String(810000000 + tag), status, daysAgo],
+      );
+    const rowOf = async (org: string) =>
+      (
+        await q<{
+          status: string;
+          vendor: string;
+          version: number;
+          activated_at: Date | null;
+          baa_recorded_at: Date | null;
+          baa_verified_at: Date | null;
+          baa_revoked_at: Date | null;
+          baa_revoked_by_membership_id: string | null;
+          baa_revoked_reason: string | null;
+        }>(
+          `SELECT status, vendor, version, activated_at, baa_recorded_at, baa_verified_at, baa_revoked_at,
+                  baa_revoked_by_membership_id, baa_revoked_reason
+             FROM tenant_clearinghouse_config WHERE organization_id=$1`,
+          [org],
+        )
+      )[0];
+    const revokeAudits = (org: string) =>
+      q<{ actor_user_id: string; outcome: string; context: Record<string, unknown> }>(
+        `SELECT actor_user_id, outcome, context FROM audit_event
+          WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.clearinghouse_baa_revoked' ORDER BY created_at`,
+        [org],
+      );
+    const unbound = async (org: string) =>
+      createTenantClearinghouseRuntime({
+        db: tenantPool.db,
+        cipher,
+        attempts: new InMemoryAttemptStore(),
+        platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
+        fallbackOrgIds: new Set(),
+      }).binding.forOrg?.(org);
+
+    let pinK = "";
+    let pinL = "";
+
+    it("revokes under the real app role: the guards hold, the verification is voided, a live config leaves active, and the audit row commits with it", async () => {
+      ({ pin: pinK } = await goLive(ORG_K, "ch-k"));
+      ({ pin: pinL } = await goLive(ORG_L, "ch-l"));
+      await attempt(ORG_K, 1, "reserved", 0); // a production claim in flight
+      expect(await claimsBillingVerdict(ORG_K, {})).toEqual({ allow: true });
+
+      // the guards: a fresh step-up, an Idempotency-Key and the If-Match pin are each required
+      const bare = (headers: Record<string, string>) =>
+        server.inject({
+          method: "POST",
+          url: "/api/v1/platform/tenants/ch-k/clearinghouse/baa/revoke",
+          headers,
+          payload: { reason: REVOKE_REASON },
+        });
+      const noStepUp = await bare({
+        ...OPS,
+        "idempotency-key": `live-${++seq}`,
+        "if-match": `"${pinK}"`,
+      });
+      expect(noStepUp.statusCode).toBe(403);
+      expect(errorCode(noStepUp)).toBe("STEP_UP_REQUIRED");
+      const { "idempotency-key": _drop, ...noKey } = opsWrite();
+      const noIdem = await bare({ ...noKey, "if-match": `"${pinK}"` });
+      expect(noIdem.statusCode).toBe(400);
+      expect(errorCode(noIdem)).toBe("IDEMPOTENCY_KEY_REQUIRED");
+      const noPin = await platformCall("POST", "ch-k", "/baa/revoke", { reason: REVOKE_REASON });
+      expect(noPin.statusCode).toBe(428);
+      expect(errorCode(noPin)).toBe("IF_MATCH_REQUIRED");
+      // a reason that looks like a patient identifier is refused before anything is written
+      const phi = await revoke("ch-k", pinK, "vendor ended it for beneficiary 900-12-3456");
+      expect(phi.statusCode).toBe(422);
+      expect(await rowOf(ORG_K)).toMatchObject({ status: "active", baa_revoked_at: null });
+      expect(await revokeAudits(ORG_K)).toHaveLength(0);
+
+      const res = await revoke(
+        "ch-k",
+        pinK,
+        "  Vendor   ended the BAA on 2026-11-08,\nticket SEC-42  ",
+      );
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json()).toMatchObject({
+        status: "verified",
+        baaRequired: true,
+        baa: { revoked: true, verified: null, revokedReason: REVOKE_REASON },
+      });
+      expect(await rowOf(ORG_K)).toMatchObject({
+        status: "verified",
+        activated_at: null,
+        baa_verified_at: null,
+        baa_revoked_by_membership_id: MEMBERSHIP,
+        baa_revoked_reason: REVOKE_REASON, // whitespace collapsed
+      });
+      expect((await rowOf(ORG_K))?.baa_revoked_at).toBeInstanceOf(Date);
+      expect((await rowOf(ORG_K))?.baa_recorded_at).toBeInstanceOf(Date); // the record stays: which agreement ended
+
+      // the audit row is in the same transaction: operator, tenant, reason as given, vendor, the record and what it stopped
+      const audits = await revokeAudits(ORG_K);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]).toMatchObject({ actor_user_id: OPERATOR, outcome: "success" });
+      expect(audits[0]?.context).toMatchObject({
+        reason: REVOKE_REASON,
+        targetOrganizationId: ORG_K,
+        operatorMembershipId: MEMBERSHIP,
+        baaRevoked: true,
+        wasActive: true,
+        vendor: "claimmd",
+        baaRecordedAt: pinK,
+      });
+      // ... and the row trigger recorded the change itself, with no secret
+      const [trigger] = await q<{ n: number }>(
+        `SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND event_type='tenant_clearinghouse_config.update'
+            AND after->>'baa_revoked_at' IS NOT NULL AND after->>'secret_cipher' IS DISTINCT FROM $2`,
+        [ORG_K, "x"],
+      );
+      expect(trigger?.n).toBeGreaterThanOrEqual(1);
+    });
+
+    it("shows the tenant the timestamp and a flag but never the reason; the platform view has it; the gate and the resolver hold the work", async () => {
+      const tenant = await tenantCall("GET", ORG_K, "");
+      expect(tenant.json()).toMatchObject({
+        status: "verified",
+        baaRequired: true,
+        baa: { revoked: true, revokedAt: expect.any(String), verified: null },
+      });
+      expect(tenant.body).not.toContain(REVOKE_REASON);
+      expect(tenant.json().baa).not.toHaveProperty("revokedReason");
+      expect((await platformView("ch-k")).baa?.revokedReason).toBe(REVOKE_REASON);
+
+      // claims, NOE, NOTR and transfer notices are held: the claims gate refuses, and the per-org binding is unbound `not_active`
+      expect(await claimsBillingVerdict(ORG_K, {})).toEqual({
+        allow: false,
+        reason: "clearinghouse_not_active",
+      });
+      const binding = await unbound(ORG_K);
+      expect(binding?.vendor).toBeNull();
+      expect(binding?.unboundReason).toBe("not_active");
+      // the control: a tenant whose BAA stands still resolves its own transport
+      expect((await unbound(ORG_L))?.transport.vendor).toBe("claimmd");
+    });
+
+    it("refuses a second revoke, a re-verification and an activation while the revocation stands (409 CLEARINGHOUSE_BAA_REVOKED)", async () => {
+      const again = await revoke("ch-k", pinK, "A second operator, ticket SEC-43");
+      expect(again.statusCode).toBe(409);
+      expect(errorCode(again)).toBe("CLEARINGHOUSE_BAA_REVOKED");
+      const verify = await platformCall(
+        "POST",
+        "ch-k",
+        "/baa/verify",
+        { reason: REASON },
+        { "if-match": `"${pinK}"` },
+      );
+      expect(verify.statusCode).toBe(409);
+      expect(errorCode(verify)).toBe("CLEARINGHOUSE_BAA_REVOKED");
+      const activate = await tenantCall("POST", ORG_K, "/activate", {});
+      expect(activate.statusCode).toBe(409);
+      expect(errorCode(activate)).toBe("CLEARINGHOUSE_BAA_REVOKED");
+      expect(await rowOf(ORG_K)).toMatchObject({ status: "verified", baa_verified_at: null });
+      expect((await revokeAudits(ORG_K)).filter((a) => a.outcome === "success")).toHaveLength(1);
+    });
+
+    it("is refused to a tenant on every surface, and cannot be reached or read across tenants", async () => {
+      // the tenant's own admin holds neither the platform key nor the platform_ops role; there is no tenant-lane route at all
+      const asTenantAdmin = await server.inject({
+        method: "POST",
+        url: "/api/v1/platform/tenants/ch-l/clearinghouse/baa/revoke",
+        headers: {
+          ...tenantWrite(ORG_L),
+          "if-match": `"${pinL}"`,
+        },
+        payload: { reason: REVOKE_REASON },
+      });
+      expect(asTenantAdmin.statusCode).toBe(403);
+      const noRoute = await tenantCall("POST", ORG_L, "/baa/revoke", { reason: REVOKE_REASON });
+      expect(noRoute.statusCode).toBe(404);
+      expect(await rowOf(ORG_L)).toMatchObject({ status: "active", baa_revoked_at: null });
+
+      // an operator revoke addressed at org L with org K's pin revokes nothing (the pin names K's record)
+      const crossPin = await revoke("ch-l", pinK);
+      expect(crossPin.statusCode).toBe(409);
+      expect(errorCode(crossPin)).toBe("CLEARINGHOUSE_BAA_CHANGED");
+      expect(await rowOf(ORG_L)).toMatchObject({ status: "active", baa_revoked_at: null });
+
+      // RLS on the real app role: org L's scope neither reads K's revoked columns nor writes them
+      const seen = await asTenant<{ organization_id: string; baa_revoked_at: Date | null }>(
+        ORG_L,
+        "SELECT organization_id, baa_revoked_at FROM tenant_clearinghouse_config",
+      );
+      expect(seen).toEqual([{ organization_id: ORG_L, baa_revoked_at: null }]);
+      expect(
+        await asTenant(
+          ORG_L,
+          `UPDATE tenant_clearinghouse_config SET baa_revoked_reason='tampered' WHERE organization_id='${ORG_K}' RETURNING id`,
+        ),
+      ).toHaveLength(0);
+      expect((await rowOf(ORG_K))?.baa_revoked_reason).toBe(REVOKE_REASON);
+      // the tenant's own view of its row never carries the reason (it is operator text)
+      expect(JSON.stringify(await tenantView(ORG_L))).not.toContain(REVOKE_REASON);
+    });
+
+    it("the table's CHECKs hold: a revoked row holds no verification, cannot be active, and is all-or-nothing with a real reason and a record", async () => {
+      const set = (sql: string) =>
+        q(`UPDATE tenant_clearinghouse_config SET ${sql} WHERE organization_id=$1`, [ORG_L]);
+      const revokedCols = `baa_revoked_at=now(), baa_revoked_by_membership_id='${MEMBERSHIP}', baa_revoked_reason='ticket SEC-42'`;
+      // org L is active on a VERIFIED BAA: revoking it without voiding the verification is refused
+      await expect(set(revokedCols)).rejects.toThrow(
+        /tenant_clearinghouse_config_baa_revoked_unverified_ck/,
+      );
+      // all three or none
+      await expect(
+        set(
+          "baa_verified_at=NULL, baa_verified_by_membership_id=NULL, status='verified', activated_at=NULL, activated_by_membership_id=NULL, baa_revoked_at=now()",
+        ),
+      ).rejects.toThrow(/tenant_clearinghouse_config_baa_revoked_ck/);
+      // a reason that is too short
+      await expect(
+        set(
+          `baa_verified_at=NULL, baa_verified_by_membership_id=NULL, status='verified', activated_at=NULL, activated_by_membership_id=NULL,
+           baa_revoked_at=now(), baa_revoked_by_membership_id='${MEMBERSHIP}', baa_revoked_reason='ab'`,
+        ),
+      ).rejects.toThrow(/tenant_clearinghouse_config_baa_revoked_ck/);
+      // no record behind the revocation
+      await expect(
+        q(
+          `INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, baa_revoked_at,
+             baa_revoked_by_membership_id, baa_revoked_reason, set_by_membership_id)
+           VALUES ($1,'stedi','test','draft',now(),$2,'ticket SEC-42',$2)`,
+          [ORG_D, MEMBERSHIP],
+        ),
+      ).rejects.toThrow(/tenant_clearinghouse_config_baa_revoked_ck/);
+      // the revoked org K cannot be made active again behind the service's back: its BAA is not verified
+      await expect(
+        q(
+          `UPDATE tenant_clearinghouse_config SET status='active', activated_at=now(), activated_by_membership_id=$2 WHERE organization_id=$1`,
+          [ORG_K, MEMBERSHIP],
+        ),
+      ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
+      // nothing above changed a row
+      expect(await rowOf(ORG_L)).toMatchObject({ status: "active", baa_revoked_at: null });
+      expect(await rowOf(ORG_K)).toMatchObject({ status: "verified" });
+    });
+
+    it("the operator's own choice write stays onboarding-only: it cannot move a revoked live tenant off its vendor", async () => {
+      const before = await rowOf(ORG_K);
+      const res = await platformCall(
+        "PUT",
+        "ch-k",
+        "",
+        { vendor: "outside", reason: REASON },
+        { "if-match": `"${before?.version}"` },
+      );
+      expect(res.statusCode, res.body).toBe(409);
+      expect(errorCode(res)).toBe("TENANT_NOT_ONBOARDING");
+      expect(await rowOf(ORG_K)).toEqual(before);
+    });
+
+    it("lock exception, end to end: a revoked BAA lets the TENANT leave for outside while a production claim is in flight; the same attempt locks a tenant whose BAA stands", async () => {
+      // the control first: org L (BAA not revoked) with a production claim in flight is locked
+      await attempt(ORG_L, 2, "reserved", 0);
+      const locked = await tenantCall(
+        "PUT",
+        ORG_L,
+        "",
+        { vendor: "outside" },
+        { "if-match": `"${(await rowOf(ORG_L))?.version}"` },
+      );
+      expect(locked.statusCode, locked.body).toBe(409);
+      expect(errorCode(locked)).toBe("CLEARINGHOUSE_VENDOR_LOCKED");
+      expect((await rowOf(ORG_L))?.vendor).toBe("claimmd");
+
+      // org K (revoked, the same kind of attempt in flight) is not
+      const left = await tenantCall(
+        "PUT",
+        ORG_K,
+        "",
+        { vendor: "outside" },
+        { "if-match": `"${(await rowOf(ORG_K))?.version}"` },
+      );
+      expect(left.statusCode, left.body).toBe(200);
+      expect(left.json()).toMatchObject({ vendor: "outside", status: "active", baa: null });
+      expect(await rowOf(ORG_K)).toMatchObject({
+        vendor: "outside",
+        status: "active",
+        baa_recorded_at: null,
+        baa_revoked_at: null,
+        baa_revoked_reason: null,
+      });
+      // the tenant's own field-level audit row says the lock was set aside because the BAA is revoked, and names no reason
+      const [exceptionAudit] = await q<{ context: Record<string, unknown> }>(
+        `SELECT context FROM audit_event WHERE organization_id=$1 AND event_type='m23.tenant_clearinghouse.changed'
+          ORDER BY created_at DESC LIMIT 1`,
+        [ORG_K],
+      );
+      expect(exceptionAudit?.context).toMatchObject({ revokedBaaLockException: true });
+      expect(JSON.stringify(exceptionAudit)).not.toContain(REVOKE_REASON);
+      // an outside tenant sends nothing through a vendor: the gate says so, and the revoked reason is gone from the row
+      expect(await claimsBillingVerdict(ORG_K, {})).toEqual({
+        allow: false,
+        reason: "clearinghouse_outside",
+      });
+    });
+
+    it("lock exception: an attempt sent yesterday does not hold a revoked tenant on its vendor either; it leaves for Stedi and the revoked BAA is voided with the vendor change", async () => {
+      const { pin } = await goLive(ORG_M, "ch-m");
+      await attempt(ORG_M, 3, "sent", 1);
+      expect((await revoke("ch-m", pin)).statusCode).toBe(200);
+
+      const left = await tenantCall(
+        "PUT",
+        ORG_M,
+        "",
+        { vendor: "stedi", mode: "production", secret: "fake-stedi-key-M-revoke-live" },
+        { "if-match": `"${(await rowOf(ORG_M))?.version}"` },
+      );
+      expect(left.statusCode, left.body).toBe(200);
+      expect(left.json()).toMatchObject({ vendor: "stedi", status: "draft", baa: null });
+      expect(await rowOf(ORG_M)).toMatchObject({
+        vendor: "stedi",
+        baa_recorded_at: null,
+        baa_revoked_at: null,
+        baa_revoked_reason: null,
+      });
+    });
+
+    it("recording a new BAA clears the revocation, starts at unverified, and brings the lock back; the tenant's audit row names the cleared revocation", async () => {
+      const { pin } = await goLive(ORG_N, "ch-n");
+      await attempt(ORG_N, 4, "reserved", 0);
+      expect((await revoke("ch-n", pin)).statusCode).toBe(200);
+
+      const recorded = await tenantCall("POST", ORG_N, "/baa", BAA); // the identical document: still a new statement
+      expect(recorded.statusCode, recorded.body).toBe(200);
+      expect(recorded.json()).toMatchObject({
+        status: "verified",
+        baa: { revoked: false, revokedAt: null, verified: null },
+      });
+      expect(await rowOf(ORG_N)).toMatchObject({
+        baa_revoked_at: null,
+        baa_revoked_reason: null,
+        baa_revoked_by_membership_id: null,
+        baa_verified_at: null,
+      });
+      const [baaAudit] = await q<{ context: Record<string, unknown> }>(
+        `SELECT context FROM audit_event WHERE organization_id=$1 AND event_type='m23.tenant_clearinghouse.baa_recorded'
+          ORDER BY created_at DESC LIMIT 1`,
+        [ORG_N],
+      );
+      expect(baaAudit?.context).toMatchObject({ changedFields: ["baa", "baaRevocation"] });
+      expect(JSON.stringify(baaAudit)).not.toContain(REVOKE_REASON);
+
+      // not revoked any more, the traffic locks the vendor again
+      const locked = await tenantCall(
+        "PUT",
+        ORG_N,
+        "",
+        { vendor: "outside" },
+        { "if-match": `"${(await rowOf(ORG_N))?.version}"` },
+      );
+      expect(locked.statusCode, locked.body).toBe(409);
+      expect(errorCode(locked)).toBe("CLEARINGHOUSE_VENDOR_LOCKED");
+
+      // and the new agreement goes live only after the operator verifies it and the tenant activates it
+      const newPin = (recorded.json() as View).baa?.recordedAt as string;
+      const verified = await platformCall(
+        "POST",
+        "ch-n",
+        "/baa/verify",
+        { reason: REASON },
+        { "if-match": `"${newPin}"` },
+      );
+      expect(verified.statusCode, verified.body).toBe(200);
+      expect((await tenantCall("POST", ORG_N, "/activate", {})).statusCode).toBe(200);
+      expect(await rowOf(ORG_N)).toMatchObject({ status: "active", baa_revoked_at: null });
     });
   });
 });

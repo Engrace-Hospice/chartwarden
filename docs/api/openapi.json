@@ -269749,7 +269749,9 @@
                             "effectiveDate",
                             "documentRef",
                             "recordedAt",
-                            "verified"
+                            "verified",
+                            "revoked",
+                            "revokedAt"
                           ],
                           "properties": {
                             "heldBy": {
@@ -269785,6 +269787,25 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revokedReason": {
+                              "description": "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+                              "type": "string"
                             }
                           }
                         },
@@ -270099,7 +270120,9 @@
                             "effectiveDate",
                             "documentRef",
                             "recordedAt",
-                            "verified"
+                            "verified",
+                            "revoked",
+                            "revokedAt"
                           ],
                           "properties": {
                             "heldBy": {
@@ -270135,6 +270158,25 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revokedReason": {
+                              "description": "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+                              "type": "string"
                             }
                           }
                         },
@@ -270232,6 +270274,400 @@
                     "description": "The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes.",
                     "type": "string"
                   },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugClearinghouseBaaRevoke",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Revoke the vendor BAA the tenant recorded for its own clearinghouse account (the vendor ended it): the verification is voided and a live config leaves active (it becomes verified, as when a changed BAA is re-recorded), so its claims, NOE, NOTR and transfer notices are held, and its acknowledgment and 835 pulls skip, until the tenant records a new BAA, an operator verifies it and the tenant activates the config again. While revoked, baa/verify and activate are refused with 409 CLEARINGHOUSE_BAA_REVOKED, and the tenant (never the operator) may change vendor or mode or switch to outside although production traffic is recent (it is not locked by 409 CLEARINGHOUSE_VENDOR_LOCKED). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; 409 CLEARINGHOUSE_BAA_NOT_RECORDED when none was recorded, 409 CLEARINGHOUSE_BAA_REVOKED when it is already revoked, 422 CLEARINGHOUSE_BAA_NOT_APPLICABLE for outside. A revoke is not an expiry: nothing ends a BAA by itself and no vendor signal reaches ChartWarden. The reason is recorded as given on the tenant's own audit trail, which the tenant can read (the tenant's config view shows only baa.revoked and baa.revokedAt): give a ticket reference only, never a patient. tenant_clearinghouse.revoke_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, SSN- and MBI-shaped identifiers refused; recorded as given on the audit row beside the operator, the tenant, the vendor and whether a live config was stopped, and screened on the BAA record) are required. NOT limited to an onboarding tenant (a live tenant is the point); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "baaRequired",
+                    "baa",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "description": "The credential itself is never projected.",
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "connection_test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attestation",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified",
+                            "revoked",
+                            "revokedAt"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revokedReason": {
+                              "description": "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
                   "reason": {
                     "minLength": 8,
                     "maxLength": 500,
@@ -270507,7 +270943,9 @@
                             "effectiveDate",
                             "documentRef",
                             "recordedAt",
-                            "verified"
+                            "verified",
+                            "revoked",
+                            "revokedAt"
                           ],
                           "properties": {
                             "heldBy": {
@@ -270543,6 +270981,25 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revokedReason": {
+                              "description": "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+                              "type": "string"
                             }
                           }
                         },
@@ -270883,7 +271340,9 @@
                                 "effectiveDate",
                                 "documentRef",
                                 "recordedAt",
-                                "verified"
+                                "verified",
+                                "revoked",
+                                "revokedAt"
                               ],
                               "properties": {
                                 "heldBy": {
@@ -270919,6 +271378,25 @@
                                       "type": "null"
                                     }
                                   ]
+                                },
+                                "revoked": {
+                                  "description": "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+                                  "type": "boolean"
+                                },
+                                "revokedAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revokedReason": {
+                                  "description": "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+                                  "type": "string"
                                 }
                               }
                             },
@@ -271256,7 +271734,9 @@
                                 "effectiveDate",
                                 "documentRef",
                                 "recordedAt",
-                                "verified"
+                                "verified",
+                                "revoked",
+                                "revokedAt"
                               ],
                               "properties": {
                                 "heldBy": {
@@ -271292,6 +271772,25 @@
                                       "type": "null"
                                     }
                                   ]
+                                },
+                                "revoked": {
+                                  "description": "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+                                  "type": "boolean"
+                                },
+                                "revokedAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revokedReason": {
+                                  "description": "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+                                  "type": "string"
                                 }
                               }
                             },
@@ -345173,7 +345672,9 @@
                             "effectiveDate",
                             "documentRef",
                             "recordedAt",
-                            "verified"
+                            "verified",
+                            "revoked",
+                            "revokedAt"
                           ],
                           "properties": {
                             "heldBy": {
@@ -345204,6 +345705,21 @@
                                       "type": "string"
                                     }
                                   }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
                                 },
                                 {
                                   "type": "null"
@@ -345267,7 +345783,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "summary": "Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, except while a platform operator has revoked the vendor BAA (then the tenant may change vendor or mode or switch to outside), and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -345510,7 +346026,9 @@
                             "effectiveDate",
                             "documentRef",
                             "recordedAt",
-                            "verified"
+                            "verified",
+                            "revoked",
+                            "revokedAt"
                           ],
                           "properties": {
                             "heldBy": {
@@ -345541,6 +346059,21 @@
                                       "type": "string"
                                     }
                                   }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
                                 },
                                 {
                                   "type": "null"
@@ -345656,7 +346189,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+        "summary": "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA, 409 CLEARINGHOUSE_BAA_REVOKED while an operator's revocation of it stands; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -345890,7 +346423,9 @@
                             "effectiveDate",
                             "documentRef",
                             "recordedAt",
-                            "verified"
+                            "verified",
+                            "revoked",
+                            "revokedAt"
                           ],
                           "properties": {
                             "heldBy": {
@@ -345921,6 +346456,21 @@
                                       "type": "string"
                                     }
                                   }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
                                 },
                                 {
                                   "type": "null"
@@ -345986,7 +346536,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "summary": "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -346220,7 +346770,9 @@
                             "effectiveDate",
                             "documentRef",
                             "recordedAt",
-                            "verified"
+                            "verified",
+                            "revoked",
+                            "revokedAt"
                           ],
                           "properties": {
                             "heldBy": {
@@ -346251,6 +346803,21 @@
                                       "type": "string"
                                     }
                                   }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "revoked": {
+                              "description": "True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here.",
+                              "type": "boolean"
+                            },
+                            "revokedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
                                 },
                                 {
                                   "type": "null"
@@ -346591,7 +347158,9 @@
                                 "effectiveDate",
                                 "documentRef",
                                 "recordedAt",
-                                "verified"
+                                "verified",
+                                "revoked",
+                                "revokedAt"
                               ],
                               "properties": {
                                 "heldBy": {
@@ -346622,6 +347191,21 @@
                                           "type": "string"
                                         }
                                       }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revoked": {
+                                  "description": "True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here.",
+                                  "type": "boolean"
+                                },
+                                "revokedAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
                                     },
                                     {
                                       "type": "null"

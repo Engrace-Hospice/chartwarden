@@ -61,6 +61,19 @@ export interface OnboardingClearinghousePort {
     expected: { readonly recordedAt: string },
   ): Promise<OnboardingClearinghouseResult>;
   /**
+   * The operator revokes the BAA the tenant recorded (the vendor ended it): the verification is voided, a live config leaves `active`
+   * (its claims, NOE, NOTR and transfer notices are held, its acknowledgment and 835 pulls skip) and the tenant may leave the vendor
+   * though production traffic is recent. `expected.recordedAt` names the record the operator read (compared under the row lock: a 409
+   * for a record that changed since); `reason` is the operator's own text, which M23 screens and stores. The result's `detail` names
+   * the vendor and whether a live config was stopped, for the audit row.
+   */
+  revokeBaa(
+    tx: DbClient,
+    scope: OnboardingWriteScope,
+    expected: { readonly recordedAt: string },
+    reason: string,
+  ): Promise<OnboardingClearinghouseResult>;
+  /**
    * The operator releases every clearinghouse credential the tenant still holds except its current one (an account moved to another
    * organization, a key retired by a rotation). The view is `{ released, config }`; refused while the tenant's vendor responses may
    * still arrive.

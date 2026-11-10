@@ -160,6 +160,8 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           await record(tx, actor, CLEARINGHOUSE_AUDIT_EVENTS.put, done.changedFields, {
             created: done.created,
             status: done.view.status ?? "none",
+            // a switch that the production-traffic lock would have refused, allowed because the BAA is revoked
+            ...(done.lockExceptionUsed ? { revokedBaaLockException: true } : {}),
           });
         }
         return { created: done.created, view: done.view };

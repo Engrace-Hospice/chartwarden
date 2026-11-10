@@ -126,6 +126,18 @@ export interface OnboardingDataService {
     expected: { readonly recordedAt: string },
   ): Promise<unknown>;
   /**
+   * The operator revokes the vendor BAA the tenant recorded (the vendor ended it): the verification is voided and a live config leaves
+   * `active` in the same transaction as the audit row. NOT gated on the tenant's onboarding status (the whole point is a live tenant).
+   * `expected` is the `baa.recordedAt` the operator read: a record that changed since is a 409. `reason` is stored on the record
+   * (M23 screens it) as well as on the audit row.
+   */
+  revokeClearinghouseBaa(
+    op: OnboardingOperator,
+    orgSlug: string,
+    reason: string,
+    expected: { readonly recordedAt: string },
+  ): Promise<unknown>;
+  /**
    * The operator releases every clearinghouse credential the tenant still holds except its current one, so another organization may
    * seal it. NOT gated on the tenant's onboarding status; refused while the tenant's vendor responses may still arrive.
    */
@@ -680,6 +692,31 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             tx,
             scopeOf(op, t.organizationId),
             expected,
+          );
+          return {
+            value: done.view,
+            resourceId: done.resourceId,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      ),
+
+    revokeClearinghouseBaa: (op, orgSlug, reason, expected) =>
+      write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.clearinghouseBaaRevoked,
+          resourceKind: CLEARINGHOUSE_KIND,
+          reason,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await clearinghousePort().revokeBaa(
+            tx,
+            scopeOf(op, t.organizationId),
+            expected,
+            reason,
           );
           return {
             value: done.view,

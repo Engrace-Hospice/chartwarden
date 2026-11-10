@@ -126,6 +126,11 @@ export const ClearinghouseConfigViewSchema = Type.Object({
       documentRef: Type.String(),
       recordedAt: Iso,
       verified: Type.Union([Type.Object({ at: Iso }), Type.Null()]),
+      revoked: Type.Boolean({
+        description:
+          "True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here.",
+      }),
+      revokedAt: Type.Union([Iso, Type.Null()]),
     }),
     Type.Null(),
   ]),

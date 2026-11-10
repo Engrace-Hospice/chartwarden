@@ -6,6 +6,36 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — A platform operator can revoke a tenant's vendor BAA; the tenant can then leave the vendor
+
+**New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke` revokes the vendor BAA a tenant recorded for its
+own Stedi or Claim.MD account (the vendor ended the agreement). Platform ops only
+(`tenant_clearinghouse.revoke_baa_platform`, a fresh step-up, an `Idempotency-Key`, a `reason` of 8-500 characters with no SSN- or
+MBI-shaped identifier; an AI actor is refused). `If-Match` is required and is the `baa.recordedAt` of the record the operator read
+(428 without it, 422 if malformed, 409 `CLEARINGHOUSE_BAA_CHANGED` if the tenant has recorded another since). Not limited to a tenant
+that is still onboarding. The reason is recorded as given on the tenant's own audit trail, which the tenant can read: give a ticket
+reference only.
+
+**What it does.** In one transaction it records who and why, voids the BAA's verification, and takes a live config out of `active`
+(to `verified`, as re-recording a changed BAA does). The tenant's claims, NOE, NOTR and transfer notices are then held (not failed)
+and its acknowledgment and 835 pulls skip, until the tenant records a new BAA, an operator verifies it and the tenant activates the
+config again. It is not an expiry: a BAA still never ends by itself, and no vendor signal reaches ChartWarden.
+
+**New errors, all 409.** `CLEARINGHOUSE_BAA_REVOKED` — on the revoke of a BAA that is already revoked, on `baa/verify`, and on
+`POST /api/v1/tenant/clearinghouse/activate` while the revocation stands; `CLEARINGHOUSE_BAA_NOT_RECORDED` (existing) when there is
+no BAA to revoke. A tenant clears a revocation only by recording a new BAA (`POST /api/v1/tenant/clearinghouse/baa`, which now also
+accepts re-recording the identical document after a revocation); it starts again at unverified.
+
+**The vendor lock has one exception.** While the BAA is revoked, `PUT /api/v1/tenant/clearinghouse` no longer answers
+`CLEARINGHOUSE_VENDOR_LOCKED`: the tenant may change vendor or mode, or switch to `outside`, although production traffic is recent.
+The operator's PUT gets no such exception (and stays onboarding-only). Switching away means the old vendor's late acknowledgments and
+remittances are no longer pulled for the tenant (they stay with the vendor).
+
+**View.** The clearinghouse view's `baa` object gains `revoked` (boolean) and `revokedAt` (timestamp or null) on both the tenant
+and the platform routes, and `revokedReason` on the platform routes only.
+
+---
+
 ## 2026-11-09 — The clearinghouse vendor lock has a 90-day window; the platform PUT is rate limited
 
 **Vendor and mode lock.** `PUT /api/v1/tenant/clearinghouse` (and the operator's onboarding PUT) answer 409

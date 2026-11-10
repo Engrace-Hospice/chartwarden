@@ -1459,10 +1459,35 @@ credential and its own vendor BAA. The platform's env vendor (`CLEARINGHOUSE_VEN
 - **Vendor and mode lock.** While any production attempt is in flight (reserved) or was sent in the last 90 days, the tenant cannot
   change vendor or mode (409 `CLEARINGHOUSE_VENDOR_LOCKED`); it can again only after 90 days with no production attempt. A tenant that
   sends continuously is locked for as long as it does, and no operator override exists (the platform lane runs the same rule and is
-  onboarding-only besides). So a BAA that has ended cannot be cleared by switching vendor or to `outside` while the tenant keeps
-  sending. Sandbox (test-mode), released and voided attempts do not lock. A platform operator releases an old credential
-  (`POST …/clearinghouse/credentials/release`) under the same 90-day condition. An explicit operator or `outside` exception to the
-  lock is an open owner decision.
+  onboarding-only besides). The one exception is a **revoked BAA** (next item): while the vendor BAA is revoked, the tenant, and only
+  the tenant, may change vendor or mode or switch to `outside` although production traffic is recent. Sandbox (test-mode), released
+  and voided attempts do not lock. A platform operator releases an old credential (`POST …/clearinghouse/credentials/release`)
+  under the same 90-day condition, revoked BAA or not.
+- **Revoking a vendor BAA (the vendor ended it).** An operator holding `tenant_clearinghouse.revoke_baa_platform` (platform_ops; fresh
+  step-up, a human actor) revokes the tenant's recorded BAA with `POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke`
+  (`Idempotency-Key`, `If-Match` = the `baa.recordedAt` read from `GET …/clearinghouse`, body `{"reason": "..."}`: a ticket reference,
+  8-500 characters, never a patient; the tenant can read it on its audit trail). Procedure: (1) read the tenant's config and note
+  `baa.recordedAt`; (2) revoke; (3) tell the tenant's billing administrator, because the config is now `verified`, not live. What it
+  does, in one transaction under the tenant's own scope: voids the BAA verification, records who and why, takes a live config out of
+  `active`, and writes the audit row `m34.tenant_onboarding.clearinghouse_baa_revoked`.
+  **What stays held:** the tenant's claim jobs (voids included), NOE, NOTR and transfer notices (the held-work alerts above fire, the
+  NOE / NOTR / transfer-notice one at CRITICAL: a CMS deadline does not move, so revoke only when the BAA has really ended). Nothing
+  more is sent through that vendor.
+  **What it does not do:** it is not an expiry (a BAA never ends by itself, and no vendor-side signal reaches ChartWarden: an operator
+  revokes when told), it frees no credential (the release stays under its own 90-day condition), and it does not delete anything.
+  **In-flight responses are not received while revoked, by design:** acknowledgments (999 / 277CA) and 835 remittances are pulled only
+  through an active config, so the revoke stops their pull too (as a draft or a re-recorded BAA does); they stay with the vendor, and
+  once the tenant has left that vendor ChartWarden never pulls them. Fetch any remittance the vendor still owes by hand from the vendor.
+  What each consumer does meanwhile: M41 commercial submissions queued for the tenant stay queued and raise the
+  `m41.clearinghouse.unbound_with_work` alert; the M25 remittance (835) pull skips the tenant **silently** (nothing failed, no alert), so
+  nobody is told a remittance is waiting at the vendor.
+  **Getting out:** while revoked, `baa/verify` and the tenant's activation answer 409 `CLEARINGHOUSE_BAA_REVOKED`. The tenant either
+  (a) records a NEW BAA (`POST /api/v1/tenant/clearinghouse/baa`; a new agreement, which clears the revocation and starts at
+  unverified; the identical document counts), then an operator verifies it and the tenant activates the config again, or (b) leaves
+  the vendor: it may change vendor or mode or switch to `outside` although production traffic is recent (the lock exception above),
+  which voids the revoked record with the vendor change. The operator's own choice write stays onboarding-only: an operator can
+  never move a live tenant to another vendor. Revoking a BAA that is already revoked, or never recorded, is a 409 (`CLEARINGHOUSE_BAA_REVOKED`,
+  `CLEARINGHOUSE_BAA_NOT_RECORDED`).
 - **Closure.** There is no purge path for a closed tenant's sealed credential or its held fingerprints. The M34 certified tenant shred
   runs the M23 `billing_record` eraser, which deletes the submission-attempt and interchange-number rows but has no step for
   `tenant_clearinghouse_config` or `tenant_clearinghouse_credential_reservation` (neither grants DELETE to the application or the

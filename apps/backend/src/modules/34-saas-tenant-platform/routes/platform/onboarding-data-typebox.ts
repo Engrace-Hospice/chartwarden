@@ -264,6 +264,17 @@ export const OnboardingClearinghouseViewSchema = Type.Object({
       documentRef: Type.String(),
       recordedAt: Iso,
       verified: Nullable(Type.Object({ at: Iso })),
+      revoked: Type.Boolean({
+        description:
+          "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+      }),
+      revokedAt: Nullable(Iso),
+      revokedReason: Type.Optional(
+        Type.String({
+          description:
+            "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+        }),
+      ),
     }),
   ),
   activatedAt: Nullable(Iso),

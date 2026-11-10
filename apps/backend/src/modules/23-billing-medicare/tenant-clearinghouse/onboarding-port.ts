@@ -64,7 +64,8 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
       withOrgContext<DbClient, object>(
         db,
         { organizationId: scope.organizationId, userId: scope.operatorUserId },
-        (tx) => service.view(createDrizzleConfigStore(tx), scope.organizationId),
+        (tx) =>
+          service.view(createDrizzleConfigStore(tx), scope.organizationId, { operator: true }),
       ),
 
     async put(tx, scope, body, expectedVersion) {
@@ -123,6 +124,28 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
                 baaEffectiveDate: view.baa.effectiveDate,
                 baaRecordedAt: view.baa.recordedAt,
               }
+            : {}),
+        },
+      });
+    },
+
+    async revokeBaa(tx, scope, expected, reason) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const { view, wasActive } = await service.revokeBaa(
+        createDrizzleConfigStore(tx),
+        actorFor(scope),
+        expected,
+        reason,
+      );
+      // The audit row names the vendor, the record revoked and whether a live config was stopped: ids, codes and a screened document
+      // reference, never anything else. The operator's reason is already on the row's `context.reason` (M34 `write`).
+      return withId(tx, scope, view, {
+        detail: {
+          baaRevoked: true,
+          wasActive,
+          ...(view.vendor ? { vendor: view.vendor } : {}),
+          ...(view.baa
+            ? { baaDocumentRef: view.baa.documentRef, baaRecordedAt: view.baa.recordedAt }
             : {}),
         },
       });

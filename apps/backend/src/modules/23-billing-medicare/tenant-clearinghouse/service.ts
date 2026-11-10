@@ -9,9 +9,18 @@
 //              re-activated. A change of VENDOR also voids the vendor BAA (a new agreement); a same-vendor change keeps it.
 //              `outside` is stored `active`: nothing to verify. While a PRODUCTION submission is in flight or was sent within the
 //              last RELEASE_QUIET_DAYS (credential-reservation.ts), vendor and mode are locked (409; the window is the one the
-//              credential release uses), and a switch away from a vendor is refused while claims or submissions are queued.
-//   recordBaa  the TENANT records its own vendor BAA (effective date, a screened document reference; owner decision D2).
+//              credential release uses), and a switch away from a vendor is refused while claims or submissions are queued. The ONE
+//              exception: while the config's BAA is REVOKED (below) the TENANT lane may change vendor or mode or switch to `outside`
+//              though production traffic is recent: the vendor that owed the responses has no BAA left to send them under, so holding
+//              the tenant on it is the harm. The platform lane gets no exception (its choice write stays onboarding-only).
+//   recordBaa  the TENANT records its own vendor BAA (effective date, a screened document reference; owner decision D2). It is a new
+//              agreement: it clears a revocation and starts again at unverified.
 //   verifyBaa  a platform OPERATOR verifies that record; activation refuses (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then.
+//   revokeBaa  a platform OPERATOR revokes the record (the vendor ended the BAA): the verification is voided and a live config leaves
+//              `active` (to `verified`, as a re-recorded BAA does), so its claims, NOE, NOTR and transfer notices are held and its
+//              acknowledgment and 835 pulls skip (the resolver binds only an active config). While revoked, the BAA cannot be verified
+//              and the config cannot be activated (409 CLEARINGHOUSE_BAA_REVOKED). A revoke is not an expiry: nothing here ends a BAA by
+//              itself, and no vendor-side signal reaches ChartWarden.
 //   verify     draft -> verified, in three steps that never hold a transaction across the vendor call: `prepareVerify` reads and
 //              decrypts (read-only, no lock), `runProbe` calls the vendor with no transaction open, `completeVerify` locks the
 //              row and compare-and-sets on the version it read (409 when the config moved meanwhile). Where the vendor has a
@@ -32,6 +41,7 @@ import {
 import type { ConnectionProbeOutcome } from "@chartwarden/x12-837-client";
 import {
   BAA_CLEARED,
+  BAA_REVOCATION_CLEARED,
   BAA_VERIFICATION_CLEARED,
   type BaaPin,
   type BaaView,
@@ -39,6 +49,7 @@ import {
   baaMatchesPin,
   baaViewOf,
   normalizeBaaInput,
+  normalizeRevokeReason,
   sameBaa,
 } from "./baa";
 import type { ConfigPatch, ConfigRow, ConfigStore } from "./config-store";
@@ -175,10 +186,17 @@ export interface PutResult {
   readonly view: ClearinghouseConfigView;
   /** Names of the fields the put changed (never values), for the field-level audit row. */
   readonly changedFields: readonly string[];
+  /** True when the vendor / mode lock was set aside because the BAA is revoked (the tenant's audit row says so). */
+  readonly lockExceptionUsed?: boolean;
 }
 
 export interface TenantClearinghouseService {
-  view(store: ConfigStore, organizationId: string): Promise<ClearinghouseConfigView>;
+  /** `operator`: the platform lane's view, which also carries a revoked BAA's reason (the tenant's never does). */
+  view(
+    store: ConfigStore,
+    organizationId: string,
+    options?: { readonly operator?: boolean },
+  ): Promise<ClearinghouseConfigView>;
   put(
     store: ConfigStore,
     actor: ClearinghouseActor,
@@ -200,6 +218,18 @@ export interface TenantClearinghouseService {
     actor: ClearinghouseActor,
     expected: BaaPin,
   ): Promise<ClearinghouseConfigView>;
+  /**
+   * The platform operator revokes the tenant's recorded BAA (the vendor ended it), in the caller's one transaction: records who and
+   * why (`reason`, screened like the document reference), voids the verification and takes a live config out of `active`. Pinned to the
+   * record the operator read like `verifyBaa`. Refused for a record that is not there (409 CLEARINGHOUSE_BAA_NOT_RECORDED) or is
+   * already revoked (409 CLEARINGHOUSE_BAA_REVOKED). `wasActive` says whether it stopped a live config, for the audit row.
+   */
+  revokeBaa(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    expected: BaaPin,
+    reason: string,
+  ): Promise<{ readonly view: ClearinghouseConfigView; readonly wasActive: boolean }>;
   /** Step 1: read-only, no lock. */
   prepareVerify(
     store: ConfigStore,
@@ -256,9 +286,18 @@ const conflict = (code: string, message: string): ChartWardenError =>
   new ChartWardenError(code, message, 409);
 const versionConflict = (message: string): ChartWardenError =>
   new ChartWardenError("VERSION_CONFLICT", message, 412);
+/** The one refusal for anything asked of a BAA a platform operator revoked: only a new record (the tenant's) clears it. */
+const baaRevoked = (consequence: string): ChartWardenError =>
+  conflict(
+    "CLEARINGHOUSE_BAA_REVOKED",
+    `the vendor BAA was revoked by a platform operator, so ${consequence}; the tenant records a new BAA, which a platform operator then verifies`,
+  );
 
 const isTransmitting = (vendor: string): vendor is TransmittingClearinghouseVendor =>
   vendor === "stedi" || vendor === "claimmd";
+
+/** The platform operator's lane (the tenant's own lane is the default for an actor that did not say). */
+const isOperator = (actor: ClearinghouseActor): boolean => actor.lane === "platform";
 
 /** Evidence the operator typed: whitespace folded, control characters dropped, length-bounded, never a patient identifier. */
 export function normalizeEvidence(raw: unknown): string {
@@ -307,7 +346,12 @@ export function createTenantClearinghouseService(
     return deps.probes[vendor] ? "connection_test" : "attestation";
   };
 
-  function viewOf(row: ConfigRow | null, organizationId: string): ClearinghouseConfigView {
+  /** `operator`: the platform lane's view, which also shows a revoked BAA's reason. */
+  function viewOf(
+    row: ConfigRow | null,
+    organizationId: string,
+    operator = false,
+  ): ClearinghouseConfigView {
     if (!row) {
       const fb = deps.platformFallback?.(organizationId) ?? null;
       return {
@@ -349,7 +393,7 @@ export function createTenantClearinghouseService(
             }
           : null,
       baaRequired: isTransmitting(row.vendor),
-      baa: baaViewOf(row),
+      baa: baaViewOf(row, operator),
       activatedAt: iso(row.activatedAt),
       version: row.version,
       updatedAt: row.updatedAt.toISOString(),
@@ -569,7 +613,7 @@ export function createTenantClearinghouseService(
       });
       return {
         created: true,
-        view: viewOf(row, organizationId),
+        view: viewOf(row, organizationId, isOperator(actor)),
         changedFields: changedFieldsOf(null, input),
       };
     } catch (err) {
@@ -584,21 +628,31 @@ export function createTenantClearinghouseService(
   /** The locks on a switch: production submissions in flight, and claims or submissions still queued on the old vendor. */
   async function assertSwitchAllowed(
     store: ConfigStore,
+    actor: ClearinghouseActor,
     existing: ConfigRow,
     organizationId: string,
-  ): Promise<void> {
-    if (existing.vendor === "outside") return; // nothing was ever sent through a vendor
+  ): Promise<boolean> {
+    if (existing.vendor === "outside") return false; // nothing was ever sent through a vendor
+    // The one exception to the production-traffic lock: a REVOKED BAA. The vendor that owed this org its responses has no BAA left to
+    // send them under, so holding the tenant on it is the harm, not the protection. It is the TENANT lane's only: the operator's
+    // choice write stays onboarding-only and gets no way to move a live tenant (CW-AC-17). A revoked config is never `active` (the
+    // table's CHECKs), so the queue check below skips it as well.
+    const lockSuspended = existing.baaRevokedAt !== null && !isOperator(actor);
     // Owner decision needed (CH-1): the lock lasts as long as the old vendor can still owe this org responses, the credential
     // release's own window (RELEASE_QUIET_DAYS), not forever: a lock with no end and no operator path would strand the tenant.
+    let lockExceptionUsed = false;
     if (await hasRecentProductionTraffic(store, organizationId, now())) {
-      throw conflict(
-        "CLEARINGHOUSE_VENDOR_LOCKED",
-        `this organization has production submissions in flight or sent in the last ${RELEASE_QUIET_DAYS} days; its vendor and mode cannot change until its vendor's responses have had time to arrive`,
-      );
+      if (!lockSuspended) {
+        throw conflict(
+          "CLEARINGHOUSE_VENDOR_LOCKED",
+          `this organization has production submissions in flight or sent in the last ${RELEASE_QUIET_DAYS} days; its vendor and mode cannot change until its vendor's responses have had time to arrive`,
+        );
+      }
+      lockExceptionUsed = true; // the tenant's own audit row says the lock was set aside, and why
     }
     // A config that is not active sends nothing and cannot drain what waits (the workers hold it), so the queue does not lock it:
     // refusing the switch would leave the tenant with no way out (re-review M3).
-    if (existing.status !== "active") return;
+    if (existing.status !== "active") return lockExceptionUsed;
     const waiting = await deps.waitingWork?.(organizationId, store.tx);
     if (waiting && waiting.claims + waiting.commercialSubmissions > 0) {
       throw new ChartWardenError(
@@ -615,6 +669,7 @@ export function createTenantClearinghouseService(
         ],
       );
     }
+    return lockExceptionUsed;
   }
 
   async function changeExisting(
@@ -638,9 +693,15 @@ export function createTenantClearinghouseService(
     const target = input.vendor === "outside" ? null : (input.mode ?? null);
     const retargeted = existing.vendor !== input.vendor || existing.mode !== target;
     if (!retargeted && input.secret === undefined) {
-      return { created: false, view: viewOf(existing, organizationId), changedFields: [] }; // nothing changes
+      return {
+        created: false,
+        view: viewOf(existing, organizationId, isOperator(actor)),
+        changedFields: [],
+      }; // nothing changes
     }
-    if (retargeted) await assertSwitchAllowed(store, existing, organizationId);
+    const lockExceptionUsed = retargeted
+      ? await assertSwitchAllowed(store, actor, existing, organizationId)
+      : false;
     if (retargeted && input.vendor !== "outside" && input.secret === undefined) {
       throw invalid(
         "secret",
@@ -653,14 +714,15 @@ export function createTenantClearinghouseService(
     const row = await save(store, existing, patch);
     return {
       created: false,
-      view: viewOf(row, organizationId),
+      view: viewOf(row, organizationId, isOperator(actor)),
       changedFields: changedFieldsOf(existing, input),
+      ...(lockExceptionUsed ? { lockExceptionUsed } : {}),
     };
   }
 
   return {
-    async view(store, organizationId) {
-      return viewOf(await store.find(organizationId), organizationId);
+    async view(store, organizationId, options) {
+      return viewOf(await store.find(organizationId), organizationId, options?.operator === true);
     },
 
     async put(store, actor, input, expectedVersion) {
@@ -685,7 +747,7 @@ export function createTenantClearinghouseService(
       const row = await lockedRow(store, actor.organizationId);
       requireVendorAccount(row);
       if (sameBaa(row, record)) {
-        return { view: viewOf(row, actor.organizationId), changedFields: [] };
+        return { view: viewOf(row, actor.organizationId, isOperator(actor)), changedFields: [] };
       }
       const saved = await save(store, row, {
         // the vendor the record is for: the table keeps a live config on a BAA for ITS vendor (requireVendorAccount: not `outside`)
@@ -696,12 +758,18 @@ export function createTenantClearinghouseService(
         baaRecordedByMembershipId: actor.membershipId,
         // a changed record has not been looked at: the operator verifies it again
         ...BAA_VERIFICATION_CLEARED,
+        // a new record is a new agreement: a revocation of the old one does not carry over
+        ...BAA_REVOCATION_CLEARED,
         // a live config cannot rest on an unverified BAA: it waits at `verified` until the operator re-verifies
         ...(row.status === "active"
           ? { status: "verified", activatedAt: null, activatedByMembershipId: null }
           : {}),
       });
-      return { view: viewOf(saved, actor.organizationId), changedFields: ["baa"] };
+      return {
+        view: viewOf(saved, actor.organizationId, isOperator(actor)),
+        // names only: the audit row says the tenant's new record also cleared a revocation
+        changedFields: row.baaRevokedAt !== null ? ["baa", "baaRevocation"] : ["baa"],
+      };
     },
 
     async verifyBaa(store, actor, expected) {
@@ -720,18 +788,58 @@ export function createTenantClearinghouseService(
           "the tenant has not recorded its vendor BAA yet",
         );
       }
+      // A revoked record is not verified again: the tenant records a new BAA (a new agreement) and the operator verifies that.
+      if (row.baaRevokedAt) throw baaRevoked("it cannot be verified again");
       if (!baaMatchesPin(row, expected)) {
         throw conflict(
           "CLEARINGHOUSE_BAA_CHANGED",
           "the tenant's BAA record changed since it was read; read it again and verify what it now says",
         );
       }
-      if (row.baaVerifiedAt) return viewOf(row, actor.organizationId); // idempotent
+      if (row.baaVerifiedAt) return viewOf(row, actor.organizationId, isOperator(actor)); // idempotent
       const saved = await save(store, row, {
         baaVerifiedAt: now(),
         baaVerifiedByMembershipId: actor.membershipId,
       });
-      return viewOf(saved, actor.organizationId);
+      return viewOf(saved, actor.organizationId, isOperator(actor));
+    },
+
+    async revokeBaa(store, actor, expected, reason) {
+      if (!isOperator(actor)) {
+        throw new ChartWardenError(
+          "FORBIDDEN",
+          "only a platform operator may revoke a clearinghouse vendor BAA",
+          403,
+        );
+      }
+      const text = normalizeRevokeReason(reason);
+      const row = await lockedRow(store, actor.organizationId);
+      requireVendorAccount(row);
+      if (!row.baaRecordedAt) {
+        throw conflict(
+          "CLEARINGHOUSE_BAA_NOT_RECORDED",
+          "the tenant has not recorded a vendor BAA, so there is none to revoke",
+        );
+      }
+      if (!baaMatchesPin(row, expected)) {
+        throw conflict(
+          "CLEARINGHOUSE_BAA_CHANGED",
+          "the tenant's BAA record changed since it was read; read it again and revoke what it now says",
+        );
+      }
+      if (row.baaRevokedAt) throw baaRevoked("it cannot be revoked again");
+      const wasActive = row.status === "active";
+      const saved = await save(store, row, {
+        baaRevokedAt: now(),
+        baaRevokedByMembershipId: actor.membershipId,
+        baaRevokedReason: text,
+        // a revoked record holds no verification (the table's CHECK), and a live config cannot rest on one
+        ...BAA_VERIFICATION_CLEARED,
+        ...(wasActive
+          ? { status: "verified", activatedAt: null, activatedByMembershipId: null }
+          : {}),
+      });
+      return { view: viewOf(saved, actor.organizationId, true), wasActive };
     },
 
     async prepareVerify(store, actor, input) {
@@ -815,12 +923,12 @@ export function createTenantClearinghouseService(
           verifiedAt: at,
           verifiedByMembershipId: actor.membershipId,
         });
-        return { view: viewOf(saved, organizationId), test: null };
+        return { view: viewOf(saved, organizationId, isOperator(actor)), test: null };
       }
       const tested = { lastTestAt: at, lastTestOutcome: outcome };
       if (outcome !== "ok") {
         const saved = await save(store, row, tested);
-        return { view: viewOf(saved, organizationId), test: { outcome } };
+        return { view: viewOf(saved, organizationId, isOperator(actor)), test: { outcome } };
       }
       const saved = await save(store, row, {
         ...tested,
@@ -830,7 +938,7 @@ export function createTenantClearinghouseService(
         verifiedAt: at,
         verifiedByMembershipId: actor.membershipId,
       });
-      return { view: viewOf(saved, organizationId), test: { outcome } };
+      return { view: viewOf(saved, organizationId, isOperator(actor)), test: { outcome } };
     },
 
     async activate(store, actor) {
@@ -846,7 +954,9 @@ export function createTenantClearinghouseService(
       }
       const { organizationId } = actor;
       const row = await lockedRow(store, organizationId);
-      if (row.status === "active") return viewOf(row, organizationId); // idempotent; `outside` is always here
+      if (row.status === "active") return viewOf(row, organizationId, isOperator(actor)); // idempotent; `outside` is always here
+      // Before the other refusals: a revoked BAA is the larger blocker, and a draft config needs a new BAA as well as a fresh check.
+      if (row.baaRevokedAt) throw baaRevoked("the clearinghouse cannot be activated");
       if (row.status !== "verified") {
         throw conflict(
           "CLEARINGHOUSE_NOT_VERIFIED",
@@ -864,7 +974,7 @@ export function createTenantClearinghouseService(
         activatedAt: now(),
         activatedByMembershipId: actor.membershipId,
       });
-      return viewOf(saved, organizationId);
+      return viewOf(saved, organizationId, isOperator(actor));
     },
 
     async releaseCredentials(store, actor, reason) {
@@ -883,7 +993,7 @@ export function createTenantClearinghouseService(
         reason,
         at: now(),
       });
-      return { released, view: viewOf(row, organizationId) };
+      return { released, view: viewOf(row, organizationId, isOperator(actor)) };
     },
   };
 }

@@ -21820,6 +21820,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the vendor BAA the tenant recorded for its own clearinghouse account (the vendor ended it): the verification is voided and a live config leaves active (it becomes verified, as when a changed BAA is re-recorded), so its claims, NOE, NOTR and transfer notices are held, and its acknowledgment and 835 pulls skip, until the tenant records a new BAA, an operator verifies it and the tenant activates the config again. While revoked, baa/verify and activate are refused with 409 CLEARINGHOUSE_BAA_REVOKED, and the tenant (never the operator) may change vendor or mode or switch to outside although production traffic is recent (it is not locked by 409 CLEARINGHOUSE_VENDOR_LOCKED). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; 409 CLEARINGHOUSE_BAA_NOT_RECORDED when none was recorded, 409 CLEARINGHOUSE_BAA_REVOKED when it is already revoked, 422 CLEARINGHOUSE_BAA_NOT_APPLICABLE for outside. A revoke is not an expiry: nothing ends a BAA by itself and no vendor signal reaches ChartWarden. The reason is recorded as given on the tenant's own audit trail, which the tenant can read (the tenant's config view shows only baa.revoked and baa.revokedAt): give a ticket reference only, never a patient. tenant_clearinghouse.revoke_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, SSN- and MBI-shaped identifiers refused; recorded as given on the audit row beside the operator, the tenant, the vendor and whether a live config was stopped, and screened on the BAA record) are required. NOT limited to an onboarding tenant (a live tenant is the point); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseBaaRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify": {
         parameters: {
             query?: never;
@@ -28020,7 +28037,7 @@ export interface paths {
         };
         /** The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.read (org-level) */
         get: operations["getApiV1TenantClearinghouse"];
-        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, except while a platform operator has revoked the vendor BAA (then the tenant may change vendor or mode or switch to outside), and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         put: operations["putApiV1TenantClearinghouse"];
         post?: never;
         delete?: never;
@@ -28038,7 +28055,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        /** Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA, 409 CLEARINGHOUSE_BAA_REVOKED while an operator's revocation of it stands; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required */
         post: operations["postApiV1TenantClearinghouseActivate"];
         delete?: never;
         options?: never;
@@ -28055,7 +28072,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        /** Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1TenantClearinghouseBaa"];
         delete?: never;
         options?: never;
@@ -96077,6 +96094,11 @@ export interface operations {
                                 /** Format: date-time */
                                 at: string;
                             } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            /** @description The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedReason?: string;
                         } | null;
                         activatedAt: string | null;
                         version: number | null;
@@ -96154,6 +96176,89 @@ export interface operations {
                                 /** Format: date-time */
                                 at: string;
                             } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            /** @description The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedReason?: string;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseBaaRevoke: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            /** @description The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedReason?: string;
                         } | null;
                         activatedAt: string | null;
                         version: number | null;
@@ -96227,6 +96332,11 @@ export interface operations {
                                 /** Format: date-time */
                                 at: string;
                             } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            /** @description The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedReason?: string;
                         } | null;
                         activatedAt: string | null;
                         version: number | null;
@@ -96301,6 +96411,11 @@ export interface operations {
                                     /** Format: date-time */
                                     at: string;
                                 } | null;
+                                /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA. */
+                                revoked: boolean;
+                                revokedAt: string | null;
+                                /** @description The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                                revokedReason?: string;
                             } | null;
                             activatedAt: string | null;
                             version: number | null;
@@ -96378,6 +96493,11 @@ export interface operations {
                                     /** Format: date-time */
                                     at: string;
                                 } | null;
+                                /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA. */
+                                revoked: boolean;
+                                revokedAt: string | null;
+                                /** @description The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                                revokedReason?: string;
                             } | null;
                             activatedAt: string | null;
                             version: number | null;
@@ -114512,6 +114632,9 @@ export interface operations {
                                 /** Format: date-time */
                                 at: string;
                             } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
                         } | null;
                         activatedAt: string | null;
                         version: number | null;
@@ -114584,6 +114707,9 @@ export interface operations {
                                 /** Format: date-time */
                                 at: string;
                             } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
                         } | null;
                         activatedAt: string | null;
                         version: number | null;
@@ -114645,6 +114771,9 @@ export interface operations {
                                 /** Format: date-time */
                                 at: string;
                             } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
                         } | null;
                         activatedAt: string | null;
                         version: number | null;
@@ -114723,6 +114852,9 @@ export interface operations {
                                 /** Format: date-time */
                                 at: string;
                             } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
                         } | null;
                         activatedAt: string | null;
                         version: number | null;
@@ -114794,6 +114926,9 @@ export interface operations {
                                     /** Format: date-time */
                                     at: string;
                                 } | null;
+                                /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies. The operator's reason is not shown here. */
+                                revoked: boolean;
+                                revokedAt: string | null;
                             } | null;
                             activatedAt: string | null;
                             version: number | null;

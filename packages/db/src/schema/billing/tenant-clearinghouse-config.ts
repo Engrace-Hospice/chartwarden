@@ -42,6 +42,11 @@ export const tenantClearinghouseConfig = pgTable(
     baaRecordedByMembershipId: uuid("baa_recorded_by_membership_id"),
     baaVerifiedAt: timestamp("baa_verified_at", { withTimezone: true }),
     baaVerifiedByMembershipId: uuid("baa_verified_by_membership_id"),
+    // Migration 1468: a platform operator's revoke of the recorded BAA (the vendor ended it). All three or none; a revoked record
+    // holds no verification, and recording a new BAA clears them. The reason is operator text, never returned to the tenant's view.
+    baaRevokedAt: timestamp("baa_revoked_at", { withTimezone: true }),
+    baaRevokedByMembershipId: uuid("baa_revoked_by_membership_id"),
+    baaRevokedReason: text("baa_revoked_reason"),
     setByMembershipId: uuid("set_by_membership_id").notNull(),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -120,6 +120,22 @@ describe("per-organization clearinghouse binding", () => {
     }
   });
 
+  it("serves nothing for a config whose BAA a platform operator revoked: it left `active`, so every consumer of the binding (sends, acknowledgment and 835 pulls) skips it", async () => {
+    const { runtime, put } = await setup();
+    await put(ORG_A, {
+      vendor: "claimmd",
+      mode: "production",
+      status: "verified",
+      secret: KEY,
+      baaRevokedAt: new Date("2026-11-09T12:00:00Z"),
+      baaRevokedReason: "Vendor ended the BAA, ticket SEC-42",
+    });
+    const binding = await runtime.binding.forOrg?.(ORG_A);
+    expect(binding).toBe(UNBOUND_NOT_ACTIVE);
+    expect(binding?.vendor).toBeNull();
+    expect(await runtime.usageFor(ORG_A)).toBeNull();
+  });
+
   it("says WHY an org is unbound: outside, a config that is not live yet, nothing chosen", async () => {
     const { runtime, put } = await setup();
     await put(ORG_A, { vendor: "outside", mode: null });
