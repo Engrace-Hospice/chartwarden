@@ -102,7 +102,7 @@ function makeServer(
     caseload?: readonly string[];
     /** GAP-182 — the caseload seam rejects (the worklist must fail CLOSED). */
     caseloadFails?: boolean;
-    /** #883 regression: model a pre-1394 row whose frozen attribution is absent. */
+    /** #883 regression: model a pre-1452 row whose frozen attribution is absent. */
     assessmentAuthorDisciplineOverride?: string | null;
   } = {},
 ) {
@@ -139,7 +139,7 @@ function makeServer(
         status: "signed",
         signedAt: "2026-06-02T10:00:00.000Z",
         signedBy: "rn_1",
-        // Pre-1394 production rows may be NULL even though new in-memory records are typed non-null.
+        // Pre-1452 production rows may be NULL even though new in-memory records are typed non-null.
         ...(options.assessmentAuthorDisciplineOverride !== undefined
           ? { authorDiscipline: options.assessmentAuthorDisciplineOverride as unknown as string }
           : {}),

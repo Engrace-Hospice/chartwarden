@@ -173,12 +173,13 @@ controls:
       review_by: 2026-12-31
 
   - id: CW-AC-11
-    title: Request-integrity route kit — pagination cursors are HMAC-signed per org and checked against the list's anchor shape (a cursor replayed in another org or tampered with is a 422, proven live as the NOBYPASSRLS app role), writes without an active membership are refused 403 (unit-tested; a pure check on the request context), and optimistic concurrency, Idempotency-Key and the D13 AI block run through the shared kit (M21's timestamp If-Match and M24's optional If-Match are documented variants on it)
+    title: Request-integrity route kit — pagination cursors are HMAC-signed per org and bound to the list identity, anchor shape and normalized filters (a cursor replayed in another org, list or filter context, or tampered with is a 422, proven live as the NOBYPASSRLS app role), writes without an active membership are refused 403 (unit-tested; a pure check on the request context), and optimistic concurrency, Idempotency-Key and the D13 AI block run through the shared kit (M21's timestamp If-Match and M24's optional If-Match are documented variants on it
     hipaa: ["164.312(c)(1)", "164.312(a)(1)"]
     soc2: ["CC6.1", "PI1.4"]
     status: implemented
     evidence:
       - script: test
+      - script: arch:offset-cursors
       - file: packages/shared/src/route-kit/pagination.ts
       - file: packages/shared/src/route-kit/actor.ts
       - file: packages/shared/src/route-kit/concurrency.ts

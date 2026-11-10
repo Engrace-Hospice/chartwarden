@@ -194,7 +194,7 @@ export function buildHopeAbacPredicates(
       const actorDisciplines = hopeDisciplinesOf(context);
       if (!actorDisciplines.some((d) => allowed(d))) return false;
       // Existing-row writes preserve the record's frozen attribution: holding some other eligible
-      // discipline is insufficient, and a pre-1394 NULL cannot silently acquire an attribution.
+      // discipline is insufficient, and a pre-1452 NULL cannot silently acquire an attribution.
       if (id && (!facts?.authorDiscipline || !actorDisciplines.includes(facts.authorDiscipline))) {
         return false;
       }

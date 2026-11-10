@@ -489,13 +489,26 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     expect(first.statusCode).toBe(200);
     const { nextCursor } = first.json() as { nextCursor: string };
     expect(nextCursor).toContain(".");
+    expect(first.json().items.map((i: { id: string }) => i.id)).toEqual([ADMISSION]);
     const second = await get(
       `/api/v1/admissions?state=active&limit=1&cursor=${encodeURIComponent(nextCursor)}`,
     );
     expect(second.statusCode).toBe(200);
-    expect(second.json().items.map((i: { id: string }) => i.id)).not.toEqual(
-      first.json().items.map((i: { id: string }) => i.id),
+    expect(second.json().items.map((i: { id: string }) => i.id)).toEqual([ADMISSION_OTHER_PATIENT]);
+    expect(second.json().nextCursor).toBeNull();
+
+    const changedFilter = await get(
+      `/api/v1/admissions?state=pending&limit=1&cursor=${encodeURIComponent(nextCursor)}`,
     );
+    expect(changedFilter.statusCode).toBe(422);
+    expect(changedFilter.json().error.code).toBe("INVALID_CURSOR");
+    const changedList = await app.inject({
+      method: "GET",
+      url: `/api/v1/referrals?limit=1&cursor=${encodeURIComponent(nextCursor)}`,
+      headers: INTAKE,
+    });
+    expect(changedList.statusCode).toBe(422);
+    expect(changedList.json().error.code).toBe("INVALID_CURSOR");
     const readers = [
       ["admissions", RN],
       ["referrals", INTAKE],

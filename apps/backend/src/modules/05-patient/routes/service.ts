@@ -3,7 +3,11 @@
 // (writes under withOrgContext so RLS scopes by app.org_id). The slice runs the REAL T06 matcher so
 // the §7.1 admit-no-dup workflow is exercised end-to-end. Pure-ish: no clock except an injected
 // `now()` so the §7.7 60-day SLA is deterministic in tests.
-import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
+import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  offsetCursorScope,
+} from "@chartwarden/shared/route-kit";
 import { ChartWardenError } from "@chartwarden/types";
 import { addDaysIso, replacementClosesOn } from "../coverage-intervals";
 import {
@@ -590,13 +594,19 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
           : a.lastName.localeCompare(b.lastName),
       );
       const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-      const offset = decodeOffsetCursor(organizationId, query.cursor);
+      const cursorScope = offsetCursorScope("m5.patient-census", {
+        q: q ?? null,
+        status: query.status ?? null,
+      });
+      const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
       const page = filtered.slice(offset, offset + limit);
       const nextOffset = offset + page.length;
       return {
         items: page,
         nextCursor:
-          nextOffset < filtered.length ? encodeOffsetCursor(organizationId, nextOffset) : null,
+          nextOffset < filtered.length
+            ? encodeOffsetCursor(organizationId, nextOffset, cursorScope)
+            : null,
       };
     },
 

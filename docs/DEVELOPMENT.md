@@ -37,6 +37,7 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. RLS policy predicates are judged on the migrations' **net effect** (replayed in apply order), and the rule's audit/key-ring exemptions are scoped to a single statement — never a policy body. |
 | `bun run arch:ddl` | PostgreSQL DDL legality (partition keys, CHECK subqueries, duplicate enums). |
 | `bun run arch:gaps` | event-catalog `mN.` naming, seam-registry completeness, PHI RLS/audit presence. |
+| `bun run arch:offset-cursors` | rejects direct `offset`/`nextOffset` stringification (the #999 regression pattern); offset lists use signed, list/filter-bound route-kit cursors. |
 | `bun run docs:ui` | UI screen-spec corpus consistency. |
 | `bun run arch:ai-governance` | AI capability catalog ↔ per-capability docs parity (AI Governance §4.1/§4.4). |
 | `bun run arch:ai-messaging-readonly` | The M36 AI folder (`36-messaging/ai/`) imports no send/order/write path; the two messaging capabilities are high-risk HITL; the live proof exists (ADR-0095 §4). |

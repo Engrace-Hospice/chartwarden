@@ -9,7 +9,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { encodeOffsetCursor } from "@chartwarden/shared/route-kit";
+import { encodeOffsetCursor, offsetCursorScope } from "@chartwarden/shared/route-kit";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -163,7 +163,7 @@ describe("organizations", () => {
       expect(res.statusCode).toBe(422);
       expect(res.json().error.code).toBe("INVALID_CURSOR");
     }
-    const foreignOrgCursor = encodeOffsetCursor("org_b", 1);
+    const foreignOrgCursor = encodeOffsetCursor("org_b", 1, offsetCursorScope("m2.organizations"));
     const foreign = await list(`limit=1&cursor=${encodeURIComponent(foreignOrgCursor)}`);
     expect(foreign.statusCode).toBe(422);
     expect(foreign.json().error.code).toBe("INVALID_CURSOR");

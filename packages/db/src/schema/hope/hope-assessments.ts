@@ -68,7 +68,7 @@ export const hopeAssessments = pgTable(
     status: hopeAssessmentStatus("status").notNull().default("draft"),
     data: jsonb("data").notNull(), // per-Section discriminated union (free-text denylisted from audit)
     // Frozen at record/correction time from the route-bound, actor-owned discipline. Nullable only for
-    // rows created before migration 1394; write/sign authorization fails closed for those legacy rows.
+    // rows created before migration 1452; write/sign authorization fails closed for those legacy rows.
     authorDiscipline: hopeAuthorDiscipline("author_discipline"),
 
     // Derived from data.J at sign; server-authoritative (§J/j2051-evaluator).
