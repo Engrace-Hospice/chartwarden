@@ -15944,7 +15944,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23ClearinghouseConfigViewSchema,
   },
   "PUT /api/v1/tenant/clearinghouse": {
-    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
     body: M23PutClearinghouseBodySchema,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,
@@ -15976,7 +15976,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseViewSchema,
   },
   "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
-    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named) — ${CLEARINGHOUSE_CHOICE_NOTE}. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the route allows 10 saves a minute per operator and tenant, and answers 503 when its limiter is unavailable) — ${CLEARINGHOUSE_CHOICE_NOTE}. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
     body: M34OnboardingClearinghousePutRequest,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,

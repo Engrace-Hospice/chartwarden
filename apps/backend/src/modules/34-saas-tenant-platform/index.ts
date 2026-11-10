@@ -329,6 +329,8 @@ export function mountTenantPlatformRoutes(
       service: OnboardingDataService;
       /** Per-user cap on the clearinghouse `verify` (a vendor call per request). */
       clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-target-tenant cap on the clearinghouse `PUT` (its 409 is an account-in-use oracle); fail-closed in production. */
+      clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>;
     };
     public?: {
       service?: _SignupIntentRouteService;
@@ -387,6 +389,9 @@ export function mountTenantPlatformRoutes(
             clearinghouseVerifyRateLimit: services.onboardingData
               .clearinghouseVerifyRateLimit as never,
           }
+        : {}),
+      ...(services.onboardingData.clearinghousePutRateLimit
+        ? { clearinghousePutRateLimit: services.onboardingData.clearinghousePutRateLimit as never }
         : {}),
     });
   }
