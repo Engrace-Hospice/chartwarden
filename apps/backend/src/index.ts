@@ -1764,7 +1764,11 @@ import {
   runLegacyBodyBootCheck,
 } from "./modules/36-messaging/body-legacy-key-check";
 import { buildCareTeamReviewRouter } from "./modules/36-messaging/care-team-sync/binding";
-import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import {
+  type CronAlertEmitter,
+  cronAlertCorrelationId,
+  emitCronAlert,
+} from "./modules/36-messaging/cron-alert-correlation";
 import { sweepEmergenciesForOrg } from "./modules/36-messaging/emergency/emergency-sweep";
 import {
   registerM36EmergencySweepWorker,
@@ -10653,12 +10657,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ? (await m23ActiveOrgs.listActiveOrgs()).map((o) => o.organizationId)
             : [organizationId];
         for (const orgId of targetOrgs) {
-          await m23AlertEmitter.emit(orgId, {
-            eventType: alertCode,
-            payload,
-            severity,
-            correlationId: cronAlertCorrelationId("m23-cron", alertCode, payload),
-          });
+          // the held-work alert is keyed on its severity, queue, reason and six-hour window, and refused when it addressed nobody
+          // (cron-alert-correlation.ts); every other M23 alert keeps its per-day key
+          await emitCronAlert(m23AlertEmitter, "m23-cron", orgId, { alertCode, severity, payload });
         }
       },
     };
@@ -11276,24 +11277,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         organizationId: string;
         payload: Record<string, unknown>;
       }) => {
-        await (
-          getSeam("AlertEmitter") as {
-            emit(
-              orgId: string,
-              input: {
-                eventType: string;
-                payload: Record<string, unknown>;
-                severity: string;
-                correlationId: string;
-              },
-            ): Promise<unknown>;
-          }
-        ).emit(organizationId, {
-          eventType: alertCode,
-          payload,
-          severity,
-          correlationId: cronAlertCorrelationId("m41-cron", alertCode, payload),
-        });
+        // keyed on queue, reason/code and a six-hour window, so the drain and the ack pull alert apart, and refused when it addressed
+        // nobody (cron-alert-correlation.ts)
+        await emitCronAlert(
+          getSeam("AlertEmitter") as CronAlertEmitter,
+          "m41-cron",
+          organizationId,
+          { alertCode, severity, payload },
+        );
       },
     };
     const m41SubmissionWorker = registerM41SubmissionWorker(queueConnection, {
