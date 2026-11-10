@@ -109,6 +109,8 @@ if command -v nginx >/dev/null 2>&1; then
   install -d -m 0755 /etc/nginx/sites-available /etc/nginx/sites-enabled
   install -d -m 0755 /etc/nginx/conf.d
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-log-format.conf" /etc/nginx/conf.d/chartwarden-log-format.conf
+  # The Platform Ops vhost's request / connection limit zones (http context): the signed-BAA upload location names them.
+  install -m 0644 "$SOURCE_DIR/nginx/chartwarden-platform-limits.conf" /etc/nginx/conf.d/chartwarden-platform-limits.conf
   # Maintenance switch (#865): the app vhosts include this snippet (the 503 page is inline in it).
   install -d -m 0755 /etc/nginx/snippets
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-maintenance.conf" /etc/nginx/snippets/chartwarden-maintenance.conf
