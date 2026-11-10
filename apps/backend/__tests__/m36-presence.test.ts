@@ -279,6 +279,9 @@ describe("presence routes", () => {
       complete: async () => {
         touched.push("complete");
       },
+      release: async () => {
+        touched.push("release");
+      },
     };
     const app = makeServer({
       enabled: true,

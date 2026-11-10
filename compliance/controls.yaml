@@ -98,7 +98,8 @@ controls:
       review_by: 2027-01-31
 
   - id: CW-AC-05B
-    title: Clearinghouse webhook payloads (which may carry provider tax ids and vendor free text) are AES-256-GCM encrypted at rest in a platform-only, RLS-forced table with no tenant grant, and the ciphertext is cleared 90 days after processing; tenants receive ids and one bounded status word only
+    title: >-
+      Clearinghouse webhook payloads (which may carry provider tax ids and vendor free text) are AES-256-GCM encrypted at rest in a platform-only, RLS-forced table with no tenant grant, and the ciphertext of EVERY receipt, settled or not, is cleared 90 days after it was received (a receipt that never settled is first made terminal `failed` and alerted, so a stuck row cannot hold ciphertext for longer); tenants receive ids and one bounded status word only. Each row records the key id it was sealed under (payload_key_ref) and the sweep decrypts only rows sealed under the key id this process holds: a row under another id is refused before any decrypt (outcome payload_key_mismatch), a row that will not open under the right id is outcome payload_undecryptable, both spend no attempt and raise one ops alert per sweep, rows that already failed sort after fresh receipts so they cannot starve new ones, and a row still unreadable 7 days after receipt goes terminal `failed` with an ops alert. KEY ROTATION: CLAIMMD_WEBHOOK_KEY_ID is a code constant paired with the CLAIMMD_WEBHOOK_PAYLOAD_KEY secret and the process holds ONE key, so change both together only after every unsettled receipt has settled (no row with processed_at NULL and a cipher), because rows sealed under the old id are never decrypted again, and settled rows lose their ciphertext at 90 days regardless
     hipaa: ["164.312(a)(2)(iv)", "164.312(a)(1)", "164.502(b)"]
     soc2: ["CC6.1", "C1.1", "C1.2"]
     status: implemented
@@ -106,6 +107,7 @@ controls:
       - script: test:m23:claimmd-webhook:live
       - script: arch:tenancy
       - file: packages/db/migrations/1322_m23_claimmd_webhook_event.sql
+      - file: apps/backend/src/modules/23-billing-medicare/claimmd-webhook/sweep.ts
       - file: packages/shared/src/crypto/webhook-payload-cipher.ts
       - ci: "M23 Claim.MD webhook"
 
@@ -246,7 +248,8 @@ controls:
       review_by: 2027-01-31
 
   - id: CW-AC-25
-    title: Vendor-reported state never applies itself — Claim.MD enrollment reports are advisory (the commercial send gate opens only after staff record the enrollment through the existing step-up-guarded routes) and Claim.MD appeal reports open or link a draft appeal level but never decide, close or withdraw an appeal case
+    title: >-
+      Vendor-reported state is advisory with ONE disclosed exception — Claim.MD enrollment reports never open the commercial send gate (it opens only after staff record the enrollment through the existing step-up-guarded routes), and Claim.MD appeal reports never decide, close or withdraw an appeal case. The exception: a signed Claim.MD `appeal` report with the word `created`, for an unbound vendor appeal whose control number names exactly one live non-Medicare denial with no in-flight appeal level, opens a draft appeal level (created_by_membership_id NULL, labelled unconfirmed, no derived deadline) AND, when that denial is `escalated`, moves denial_case.state from escalated to appealed on the system actor with no staff step (m23-appeal-reported.ts, asserted in test:m25:appeal-reports:live); a denial in any other state keeps its state. A report that links an existing in-flight level or adds a timeline event changes no denial state, and every report is recorded and alerts billing staff
     hipaa: ["164.312(c)(1)", "164.308(a)(4)(ii)(B)"]
     soc2: ["CC5.2", "CC8.1", "PI1.3"]
     status: implemented
@@ -299,10 +302,10 @@ controls:
 
   - id: CW-AC-14
     title: >-
-      The platform BAA register is written only by a platform operator holding platform_tenant_baa.write_platform with a fresh step-up and a human (non-AI) actor; the read key no longer permits writes. An executed BAA must reference its executed document (422 BAA_DOCUMENT_REQUIRED, on create and update). Each row records the user who filed it and the user who last changed it, and go-live approval refuses an approver who wrote the governing record (409 GO_LIVE_APPROVER_WROTE_BAA). The platform carrier's INSERT and UPDATE on the register are column-level (INSERT: tenant, organization, version, status, dates, breach contacts, document, filer; UPDATE: status, dates, breach contacts, document link, last writer), so it can never rewrite tenant, organization, version, filer, the subcontractor disclosure set or the tenant officer's attestation; the repository inserts through a narrow table object so the column grant is usable. A write names the operator as audit actor and revokes a pending go-live attestation in the same transaction. A duplicate (tenant, addendum version) is a 409.
+      The platform BAA register is written only by a platform operator holding platform_tenant_baa.write_platform with a fresh step-up and a human (non-AI) actor; the read key no longer permits writes. An executed BAA must carry a document reference (422 BAA_DOCUMENT_REQUIRED, on create and update; the check is that a documentId is present, and NOT that it names a real executed document, see the gap). Each row records the user who filed it and the user who last changed it, and go-live approval refuses an approver who wrote the governing record (409 GO_LIVE_APPROVER_WROTE_BAA). The platform carrier's INSERT and UPDATE on the register are column-level (INSERT: tenant, organization, version, status, dates, breach contacts, document, filer; UPDATE: status, dates, breach contacts, document link, last writer), so it can never rewrite tenant, organization, version, filer, the subcontractor disclosure set or the tenant officer's attestation; the repository inserts through a narrow table object so the column grant is usable. A write names the operator as audit actor and revokes a pending go-live attestation in the same transaction. A duplicate (tenant, addendum version) is a 409.
     hipaa: ["164.308(b)(1)", "164.314(a)(1)"]
     soc2: ["CC6.1", "CC9.2"]
-    status: implemented
+    status: partial
     evidence:
       - script: test:m34:onboarding-wizard:live
       - ci: "Unit + integration suite (bun run test)"
@@ -312,6 +315,10 @@ controls:
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-guards.ts
       - file: packages/saas-tenant-platform/src/repositories/baa-register.ts
       - file: scripts/db/provision-runtime-roles.ts
+    gap:
+      reason: As of 2026-11-09 the executed-BAA document reference is UNVERIFIED. BAA_DOCUMENT_REQUIRED (baa-guards.ts, applied by the Drizzle service and the baa-record repository) only checks that documentId is non-null; nothing checks that the document exists, is the executed-BAA kind, belongs to this tenant, or matches a hash, so one operator can mark a BAA `executed` with an arbitrary UUID. The rule that the go-live approver did not write the BAA (409 GO_LIVE_APPROVER_WROTE_BAA) also cannot judge rows written before migration 1332, whose filer and last-writer columns are NULL. The full document check is built in a later slice of this stack (the onboarding-wizard slice), not on this branch; this row stays partial until that slice lands and a live assertion proves it.
+      owner: engineering
+      review_by: 2027-01-31
 
   - id: CW-AC-15
     title: >-
@@ -476,7 +483,7 @@ controls:
       owner: engineering
       review_by: 2027-01-31
   - id: CW-TX-03
-    title: Clearinghouse enrollment reports are routed to a tenant only when platform staff have verified that the tenant's provider entity owns the reported NPI (a platform-written, RLS-forced record tenants can read but never write; verify/revoke need a platform-ops role, the platform-admin key, a fresh step-up and an Idempotency-Key, are audited with the operator, and a changed NPI stops routing), and the platform login can only revoke a verification (column-level UPDATE), never rewrite its NPI or evidence
+    title: Clearinghouse enrollment reports are routed to a tenant only when platform staff have verified that the tenant's provider entity owns the reported NPI (a platform-written, RLS-forced record tenants can read but never write; verify/revoke need a platform-ops role, the platform-admin key, a fresh step-up and an Idempotency-Key, are audited with the operator, and a changed NPI stops routing), the operator's evidence text, which a tenant can read, is screened for patient identifiers before any write (422 EVIDENCE_LOOKS_LIKE_PHI), and the platform login can only revoke a verification (column-level UPDATE), never rewrite its NPI or evidence
     hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
     soc2: ["CC6.1", "CC6.3", "CC7.2"]
     status: implemented
@@ -486,7 +493,23 @@ controls:
       - file: packages/db/migrations/1326_m23_provider_npi_verification.sql
       - file: apps/backend/src/modules/23-billing-medicare/routes/npi-verification.routes.ts
       - file: apps/backend/__tests__/m23-npi-verification-routes.test.ts
+      - file: apps/backend/__tests__/operator-free-text-phi-screen.test.ts
       - file: scripts/db/provision-runtime-roles.ts
+
+  - id: CW-AC-35
+    title: >-
+      The claims-billing add-on's patient census is a bulk read of every active patient id of an org by a scheduled job, so it leaves its own read trail and never persists an identifier: each pass writes ONE m35.patient_census.run audit event per org on the system actor (the organization, the period key and the seen/inserted counts only, never a patient id or pseudonym; a pass that fails after the read began writes a failure event and still raises its error), registered in the action catalog with compliance retention. M5's reader returns ids only (no name, MRN or DOB) under the org's RLS scope, every id is HMAC-pseudonymized in memory with the billing key and only the 32-hex pseudonym is written to patient_active_period (a rerun inserts nothing; no raw id reaches the table or a log); the pseudonym key is a random 32-byte key minted once platform-wide, wrapped under the separate M35_PSEUDONYM_KEY_KEK ring and stored in the platform-only patient_pseudonym_key table (no tenant grant; without the KEK the provider fails closed and no census runs), the epoch of the key that produced each row is stored beside it, and the counter reads only the newest epoch recorded for a period. KEY ROTATION: a new key epoch starts a new pseudonym space, so a patient discharged before a mid-period rotation exists only under the old epoch and drops out of that period's count (accepted while keys rotate yearly)
+    hipaa: ["164.312(b)", "164.312(a)(1)", "164.502(b)"]
+    soc2: ["CC6.1", "CC7.2", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test:m35:claims-billing-census:live
+      - script: arch:tenancy
+      - file: apps/backend/src/modules/35-subscription/billing-runtime/census.ts
+      - file: apps/backend/src/modules/05-patient/census-reader.ts
+      - file: apps/backend/src/modules/35-subscription/pseudonym-key-provider.ts
+      - file: packages/audit/src/actions/m35.ts
+      - file: packages/audit/__tests__/action-catalog-m35.test.ts
 
   # ---------------------------------------------------------------- §164.308 administrative (engineering-side)
   - id: CW-RA-01

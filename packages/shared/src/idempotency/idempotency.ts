@@ -44,6 +44,13 @@ export interface IdempotencyStore {
   load(organizationId: string, key: string): Promise<IdempotencyRecord | null>;
   putPending(organizationId: string, key: string, requestHash: string): Promise<boolean>;
   complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
+  /**
+   * Drops the caller's own still-`pending` claim so the SAME key can run again. For an outcome that must not be
+   * replayed because the write did not happen (a deadlock/serialization 409, any 5xx): caching it would answer every
+   * retry with the failure for the whole TTL. Only the claimant's row goes: a row that is no longer `pending`, or whose
+   * `requestHash` is another claimant's, is left alone.
+   */
+  release(organizationId: string, key: string, requestHash: string): Promise<void>;
 }
 
 /** The one `Idempotency-Key`-reused-with-a-different-body error (409 IDEMPOTENCY_CONFLICT, SEC-025). */
