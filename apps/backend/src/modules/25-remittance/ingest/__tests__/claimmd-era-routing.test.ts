@@ -88,6 +88,7 @@ describe("BIL-1.4 independent runtime gates", () => {
       captureEnabled: false,
       deliveryEnabled: false,
       ownershipResolutionEnabled: false,
+      controlledPostingEnabled: false,
       autoPostEnabled: false,
     });
     expect(

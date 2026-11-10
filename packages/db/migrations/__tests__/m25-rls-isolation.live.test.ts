@@ -5,7 +5,7 @@
  * adapter but never touch a database, so they cannot catch a wrong RLS predicate, a missing WITH CHECK, or
  * a base-table grant that leaks across tenants. This test applies the actual migrations to a real Postgres
  * and exercises the policies as the unprivileged `chartwarden_app` role (no BYPASSRLS), proving cross-tenant
- * denial for real on ALL 11 M25 tables under the canonical `organization_id = current_setting('app.org_id')`
+ * denial for real on all covered M25 tables under the canonical `organization_id = current_setting('app.org_id')`
  * predicate — including the four monthly RANGE(received_at)-partitioned tables (the policy is on the parent
  * and propagates to every partition, PG11+).
  *
@@ -37,6 +37,9 @@ type SeedIds = {
   appealEvent: string;
   overlay: string;
   prLedger: string;
+  eraStage: string;
+  matchDecision: string;
+  financialReviewDecision: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -51,6 +54,8 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "appeal_case_event", key: "appealEvent" },
   { table: "denial_taxonomy_overlay", key: "overlay" },
   { table: "patient_responsibility_ledger", key: "prLedger" },
+  { table: "claimmd_era_match_decision", key: "matchDecision" },
+  { table: "claimmd_era_financial_review_decision", key: "financialReviewDecision" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -176,6 +181,37 @@ describe.skipIf(!DB_URL)(
           [org, line, adjustment],
         )
       ).rows[0].id as string;
+      const eraStage = (
+        await db.query(
+          `INSERT INTO claimmd_era_m25_stage (organization_id, provider_entity_id, source_inbox_id,
+           account_reference, usage, era_id, file_index, interchange_control_number,
+           transaction_set_control_number, original_835_digest, source_evidence, state)
+           VALUES ($1,$2,gen_random_uuid(),'synthetic-m25-rls','test','${n === "A" ? "71" : "72"}',0,
+           '${n === "A" ? "000000071" : "000000072"}','${n === "A" ? "0071" : "0072"}',repeat('a',64),
+           '{"codes":["EXACT_PAYEE_NPI"]}'::jsonb,'staged') RETURNING id`,
+          [org, pe],
+        )
+      ).rows[0].id as string;
+      const matchDecision = (
+        await db.query(
+          `INSERT INTO claimmd_era_match_decision (organization_id, provider_entity_id, stage_id,
+           transaction_set_control_number, claim_index, decision_version, outcome, claim_id,
+           source_digest, evidence, reason, actor_membership_id)
+           VALUES ($1,$2,$3,$4,0,1,'confirmed',gen_random_uuid(),repeat('b',64),
+           '{"sourceOutcome":"verified"}'::jsonb,'Verified synthetic source identity',gen_random_uuid()) RETURNING id`,
+          [org, pe, eraStage, n === "A" ? "0071" : "0072"],
+        )
+      ).rows[0].id as string;
+      const financialReviewDecision = (
+        await db.query(
+          `INSERT INTO claimmd_era_financial_review_decision (organization_id, provider_entity_id, stage_id,
+           item_type, item_index, decision_version, disposition, source_digest, idempotency_key_hash,
+           reason, actor_membership_id)
+           VALUES ($1,$2,$3,'era',-1,1,'reviewed',repeat('c',64),repeat('d',64),
+           'Reviewed synthetic ERA totals',gen_random_uuid()) RETURNING id`,
+          [org, pe, eraStage],
+        )
+      ).rows[0].id as string;
       return {
         advice,
         line,
@@ -188,6 +224,9 @@ describe.skipIf(!DB_URL)(
         appealEvent,
         overlay,
         prLedger,
+        eraStage,
+        matchDecision,
+        financialReviewDecision,
       };
     }
 
@@ -333,6 +372,96 @@ describe.skipIf(!DB_URL)(
             `INSERT INTO denial_taxonomy_overlay (organization_id, carc_code, suggested_action, owner_role, severity)
            VALUES ($1,'99','x','billing_specialist','info')`,
             [ORG_A], // B tries to write a row scoped to A
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("match decisions are tenant scoped and cannot be inserted for another organization", async () => {
+      expect(
+        (
+          await withOrg(ORG_A, () =>
+            db.query("SELECT id FROM claimmd_era_match_decision WHERE id=$1", [a.matchDecision]),
+          )
+        ).rows,
+      ).toHaveLength(1);
+      expect(
+        (
+          await withOrg(ORG_B, () =>
+            db.query("SELECT id FROM claimmd_era_match_decision WHERE id=$1", [a.matchDecision]),
+          )
+        ).rows,
+      ).toHaveLength(0);
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO claimmd_era_match_decision (organization_id, provider_entity_id, stage_id,
+         transaction_set_control_number, claim_index, decision_version, outcome, claim_id,
+         source_digest, evidence, reason, actor_membership_id)
+         VALUES ($1,gen_random_uuid(),$2,'0071',1,1,'confirmed',gen_random_uuid(),repeat('c',64),'{}',
+         'Cross-tenant insert must fail',gen_random_uuid())`,
+            [ORG_A, a.eraStage],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("match decision history is append-only", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query("UPDATE claimmd_era_match_decision SET reason='rewritten' WHERE id=$1", [
+            a.matchDecision,
+          ]),
+        ),
+      ).rejects.toThrow(/permission denied|append-only/);
+      await expect(
+        db.query("UPDATE claimmd_era_match_decision SET reason='rewritten' WHERE id=$1", [
+          a.matchDecision,
+        ]),
+      ).rejects.toThrow(/append-only/);
+    });
+
+    it("financial review history is tenant scoped and append-only", async () => {
+      expect(
+        (
+          await withOrg(ORG_A, () =>
+            db.query("SELECT id FROM claimmd_era_financial_review_decision WHERE id=$1", [
+              a.financialReviewDecision,
+            ]),
+          )
+        ).rows,
+      ).toHaveLength(1);
+      expect(
+        (
+          await withOrg(ORG_B, () =>
+            db.query("SELECT id FROM claimmd_era_financial_review_decision WHERE id=$1", [
+              a.financialReviewDecision,
+            ]),
+          )
+        ).rows,
+      ).toHaveLength(0);
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE claimmd_era_financial_review_decision SET reason='rewritten' WHERE id=$1",
+            [a.financialReviewDecision],
+          ),
+        ),
+      ).rejects.toThrow(/permission denied|append-only/);
+      await expect(
+        db.query(
+          "UPDATE claimmd_era_financial_review_decision SET reason='rewritten' WHERE id=$1",
+          [a.financialReviewDecision],
+        ),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO claimmd_era_financial_review_decision (organization_id, provider_entity_id, stage_id,
+         item_type, item_index, decision_version, disposition, source_digest, idempotency_key_hash,
+         reason, actor_membership_id)
+         VALUES ($1,gen_random_uuid(),$2,'era',-1,2,'reviewed',repeat('e',64),repeat('f',64),'Cross-tenant attempt',gen_random_uuid())`,
+            [ORG_A, a.eraStage],
           ),
         ),
       ).rejects.toThrow();

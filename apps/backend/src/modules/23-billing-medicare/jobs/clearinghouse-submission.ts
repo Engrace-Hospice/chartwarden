@@ -143,6 +143,16 @@ export type TransportUpload = (input: {
   readonly noticeId?: string;
   /** Server-stamped route snapshot carried by the durable submit request; never accepted from user input. */
   readonly expectedRouteFingerprint?: string;
+  /** Internal source-line identities from the same renderer invocation as `x12`; never accepted from a client. */
+  readonly submittedLines?: readonly {
+    readonly internalClaimLineId: string | null;
+    readonly revenueCode: string;
+    readonly procedureCode: string | null;
+    readonly serviceFrom: string;
+    readonly serviceTo: string;
+    readonly units: string;
+    readonly chargeCents: number;
+  }[];
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
 
 /**
@@ -265,6 +275,19 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
             accountReference: evidenceStore.accountReference,
             usage: ctx.usage,
             x12Claim: outbound,
+            ...(input.submittedLines === undefined
+              ? {}
+              : {
+                  submittedLines: input.submittedLines.map((line) => {
+                    if (line.internalClaimLineId === null)
+                      throw failure(
+                        kind,
+                        CH.INVALID_REQUEST,
+                        "original claim-line identity is unavailable",
+                      );
+                    return { ...line, internalClaimLineId: line.internalClaimLineId };
+                  }),
+                }),
             payloadSha256: parsed.payloadSha256,
             outboundReference: claimMdFilename(
               scopeKey(ctx),

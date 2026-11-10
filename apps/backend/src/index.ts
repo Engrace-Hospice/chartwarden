@@ -1168,7 +1168,9 @@ import {
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
   priorElectionClosureForOrg,
+  readClaimMdEraCandidateEvidence,
   readClaimMdEraSubmissionFacts,
+  readM23HistoricalEraCandidates,
   registerBillingErasers,
   registerDdeAgingAlertWorker,
   registerDdeDailyChangeWorker,
@@ -1315,6 +1317,7 @@ import {
   CLAIMMD_ERA_CAPTURE_JOB_ID,
   CLAIMMD_ERA_DELIVERY_JOB_ID,
   CLAIMMD_ERA_METRICS_JOB_ID,
+  CLAIMMD_ERA_REVIEW_HISTORY_JOB_ID,
   createClaimMdEraStore,
 } from "./modules/25-remittance/ingest/claimmd-era-store";
 import { startClaimMdEraCaptureWorker } from "./modules/25-remittance/ingest/claimmd-era-worker";
@@ -1943,6 +1946,7 @@ import {
   createScheduleProbe,
   createSharedDrainReadiness,
   mountM41Routes,
+  readM41HistoricalEraCandidates,
   registerM41AckWorker,
   registerM41QuarantinePruneWorker,
   registerM41SubmissionWorker,
@@ -7263,6 +7267,21 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       claimMdEraReviewKeyRing,
                       "claimmd-era-stage:v1",
                     ),
+                    claimMdEraStore,
+                    [
+                      async (query) => {
+                        const evidenceRows = await readClaimMdEraCandidateEvidence(query);
+                        const [medicare, commercial] = await Promise.all([
+                          readM23HistoricalEraCandidates(query),
+                          readM41HistoricalEraCandidates({ ...query, evidenceRows }),
+                        ]);
+                        return [...medicare, ...commercial];
+                      },
+                    ],
+                    {
+                      ingestService: m25IngestService,
+                      enabled: claimMdEraConfig.controlledPostingEnabled,
+                    },
                   ),
                 }
               : {}),
@@ -8203,7 +8222,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     (claimMdRecoveryUsage === "test" || claimMdRecoveryUsage === "production")
   ) {
     registerPlatformJob(CLAIMMD_RESPONSE_METRICS_JOB_ID);
-    if (claimMdEraStore) registerPlatformJob(CLAIMMD_ERA_METRICS_JOB_ID);
+    if (claimMdEraStore) {
+      registerPlatformJob(CLAIMMD_ERA_METRICS_JOB_ID);
+      registerPlatformJob(CLAIMMD_ERA_REVIEW_HISTORY_JOB_ID);
+    }
   }
   const claimMdResponseOperationalReader =
     platformDbHandle &&

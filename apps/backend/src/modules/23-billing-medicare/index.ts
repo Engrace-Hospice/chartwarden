@@ -31,6 +31,12 @@ export {
   type ClaimMdEraSubmissionFact,
 } from "./claimmd-identity/era-evidence-reader";
 export {
+  readM23HistoricalEraCandidates,
+  readClaimMdEraCandidateEvidence,
+  type HistoricalEraAttemptCandidate,
+  type ClaimMdEraCandidateEvidence,
+} from "./claimmd-identity/historical-era-candidates";
+export {
   claimMdResponseCaptureEnabled,
   CLAIMMD_RESPONSE_CAPTURE_ENABLED_ENV,
 } from "./claimmd-capture/config";

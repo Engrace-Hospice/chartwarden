@@ -1,6 +1,8 @@
 import {
+  bigint,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -56,6 +58,57 @@ export const claimmdSubmissionEvidence = pgTable(
     ),
     index("claimmd_submission_evidence_external_ix").on(t.accountReference, t.usage, t.pcn),
     index("claimmd_submission_evidence_claim_ix").on(t.organizationId, t.claimId, t.createdAt),
+  ],
+);
+
+/** Attempt-specific facts for source claim lines, projected from the immutable outbound payload. */
+export const claimmdSubmissionLineEvidence = pgTable(
+  "claimmd_submission_line_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    evidenceId: uuid("evidence_id").notNull(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id").notNull(),
+    claimId: uuid("claim_id").notNull(),
+    submissionId: uuid("submission_id").notNull(),
+    attemptKey: text("attempt_key").notNull(),
+    internalClaimLineId: uuid("internal_claim_line_id").notNull(),
+    linePosition: integer("line_position").notNull(),
+    lineItemControlNumber: text("line_item_control_number"),
+    revenueCode: text("revenue_code"),
+    procedureCode: text("procedure_code"),
+    serviceFrom: text("service_from"),
+    serviceTo: text("service_to"),
+    units: text("units"),
+    chargeCents: bigint("charge_cents", { mode: "number" }),
+    payloadSha256: text("payload_sha256").notNull(),
+    accountReference: text("account_reference").notNull(),
+    usage: text("usage").$type<"test" | "production">().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("claimmd_submission_line_evidence_pos_uq").on(t.evidenceId, t.linePosition),
+    uniqueIndex("claimmd_submission_line_evidence_ref_uq").on(
+      t.evidenceId,
+      t.lineItemControlNumber,
+    ),
+    foreignKey({
+      columns: [t.evidenceId, t.organizationId, t.accountReference, t.usage],
+      foreignColumns: [
+        claimmdSubmissionEvidence.id,
+        claimmdSubmissionEvidence.organizationId,
+        claimmdSubmissionEvidence.accountReference,
+        claimmdSubmissionEvidence.usage,
+      ],
+      name: "claimmd_submission_line_evidence_scope_fk",
+    }).onDelete("restrict"),
+    index("claimmd_submission_line_evidence_claim_ix").on(
+      t.organizationId,
+      t.claimId,
+      t.submissionId,
+    ),
   ],
 );
 

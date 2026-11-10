@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 216 statically-routable `web` screen(s) — 26/216 E2E-reached, 204/216 axe-reached.
+**Coverage:** 217 statically-routable `web` screen(s) — 26/217 E2E-reached, 205/217 axe-reached.
 
 ## Zero E2E coverage
 
@@ -145,6 +145,7 @@
 | `remittance.adrs` | 25-remittance | `/remittance/adrs` | adr.read |
 | `remittance.appeals` | 25-remittance | `/remittance/appeals` | appeal.read |
 | `remittance.audits` | 25-remittance | `/remittance/audits` | audit_request.read |
+| `remittance.claimmd-era-review` | 25-remittance | `/remittance/claimmd-era-review` | remittance.read |
 | `remittance.denials` | 25-remittance | `/remittance/denials` | denial.worklist.read |
 | `remittance.payer-appeal-paths` | 25-remittance | `/remittance/payer-appeal-paths` | payer_appeal_path.read |
 | `remittance.playbooks` | 25-remittance | `/remittance/playbooks` | playbook.read |
