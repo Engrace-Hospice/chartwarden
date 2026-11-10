@@ -111,6 +111,7 @@ function MacBody({ step, view, held, onChanged, skip }: StepPanelProps): JSX.Ele
 
   function open(existing: Credential | null): void {
     write.clear();
+    setTested(null);
     setErrors({});
     setSecret("");
     setForm(
