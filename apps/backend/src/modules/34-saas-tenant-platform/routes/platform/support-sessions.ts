@@ -128,13 +128,15 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions",
     { preHandler: [START, ABAC_DISTINCT_ACTOR, STEPUP_START] },
     async (request, reply) => {
-      const { organizationId, membershipId } = writeActorOf(request);
+      // No organization here: the session is recorded in the organization of the consent GRANT (the tenant's), never in the
+      // operator's own session organization.
+      const { membershipId, userId } = writeActorOf(request);
       const actorIp = request.ip ?? null;
       const body = parse(StartSessionRequest, request.body);
       const res = await service.startSession({
-        organizationId,
         supportConsentGrantId: body.supportConsentGrantId,
         actorMembershipId: membershipId,
+        actorUserId: userId,
         actorIp,
       });
       return reply.code(201).send(res);
@@ -146,11 +148,10 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions/:id/elevate",
     { preHandler: [ELEVATE, ABAC_SUPPORT_ACTIVE, STEPUP_ELEVATE] },
     async (request, reply) => {
-      const { organizationId, membershipId } = writeActorOf(request);
+      const { membershipId } = writeActorOf(request);
       const actorIp = request.ip ?? null;
       parse(ElevateSessionRequest, request.body);
       const res = await service.elevateSession({
-        organizationId,
         supportSessionId: sessionIdOf(request),
         actorMembershipId: membershipId,
         actorIp,
@@ -183,11 +184,10 @@ export function registerSupportSessionRoutes(
     "/api/v1/platform/support-sessions/:id/close",
     { preHandler: [CLOSE, ABAC_CLOSE] },
     async (request) => {
-      const { organizationId, membershipId } = writeActorOf(request);
+      const { membershipId } = writeActorOf(request);
       const actorIp = request.ip ?? null;
       parse(CloseSessionRequest, request.body);
       return service.closeSession({
-        organizationId,
         supportSessionId: sessionIdOf(request),
         actorMembershipId: membershipId,
         actorIp,

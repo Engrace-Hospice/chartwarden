@@ -18,7 +18,7 @@
 //   SignupIntentRepository   — tenant_signup_intent + tenant_signup_token (org-less, pre-provision, §3.9)
 export { type SaasDb, type StatusEventCursor, TenantAccountRepository } from "./tenant-account";
 export { type DestructionPhase, TenantKeyRingRepository } from "./tenant-key-ring";
-export { type SupportEventCursor, SupportRepository } from "./support";
+export { OPS_WRITE_EVENT_KIND, type SupportEventCursor, SupportRepository } from "./support";
 export { type DsarEventCursor, DsarExportRepository } from "./dsar-export";
 export { type TenantExportEventCursor, TenantExportRepository } from "./tenant-export";
 export { BaaRegisterRepository } from "./baa-register";

@@ -11,6 +11,7 @@
  */
 import {
   M34_PLATFORM_OPS_ONBOARDING_KEYS,
+  M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS,
   M35_BILLING_ADMIN_READ_KEYS,
   M35_BILLING_ADMIN_WRITE_KEYS,
   M35_CONTRIBUTED_PERMISSIONS,
@@ -67,6 +68,7 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
         "user.deactivate",
         "user.password.reset",
         ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+        ...M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS,
         ...M35_PLATFORM_OPS_ONBOARDING_KEYS,
         M35_PRICING_READ_KEY,
         ...PLATFORM_ONBOARDING_DATA_KEYS,
@@ -78,6 +80,13 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     for (const key of M34_PLATFORM_OPS_ONBOARDING_KEYS) {
       expect(rolesForPermission(key)).toEqual(["platform_ops"]);
     }
+  });
+
+  it("slice 7: the support-session keys bind to platform_ops alone (the routes' predicates admit that role), never elevate", () => {
+    for (const key of M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS) {
+      expect([...rolesForPermission(key)]).toEqual(["platform_ops"]);
+    }
+    expect(rolesForPermission("support_session.elevate_phi_read")).toEqual([]);
   });
 
   it("slice 2: the onboarding contract key binds to platform_ops alone; the pricing read key to platform_ops and the three billing roles", () => {
@@ -144,6 +153,7 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
       "user.deactivate",
       "user.password.reset",
       ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+      ...M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS,
       ...M35_PLATFORM_OPS_ONBOARDING_KEYS,
       M35_PRICING_READ_KEY,
       ...PLATFORM_ONBOARDING_DATA_KEYS,
@@ -163,6 +173,7 @@ describe("ADMIN-T02 platform-ops grant seed", () => {
         "user.deactivate",
         "user.password.reset",
         ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+        ...M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS,
         ...M35_PLATFORM_OPS_ONBOARDING_KEYS,
         M35_PRICING_READ_KEY,
         ...PLATFORM_ONBOARDING_DATA_KEYS,

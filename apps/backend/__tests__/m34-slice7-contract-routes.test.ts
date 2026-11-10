@@ -1,5 +1,7 @@
 // Slice 7 wave 0 - the new routes driven through their REAL guard chains (RBAC, the M34 ABAC predicates, step-up, the AI-actor
-// block, the Idempotency-Key requirement, the filing rate limit) with the service behind them still the 501 stand-in:
+// block, the Idempotency-Key requirement, the filing rate limit) with the service behind them still the 501 stand-in
+// (7S has since replaced the stand-in on the tenant support-session reads, the `assist` scope on grant issue and the platform
+// consent-grant list; those cases now answer for real and are the ones below that do not call `expectNotBuilt`):
 //   tenant:   GET|POST /help-requests, POST /help-requests/:id/approve | close, GET /support-sessions and /:id/events,
 //             POST /onboarding/:taskId/skip, and the `assist` scope on POST /support-consent-grants
 //   platform: GET /help-requests, POST /help-requests/:id/resolve, GET /support-consent-grants
@@ -28,6 +30,8 @@ import {
 import {
   type TenantPlatformAbacResolver,
   buildTenantPlatformAbacPredicates,
+  createInMemoryTenantBackend,
+  createInMemoryTenantPlatformBackend,
   createMemoryOrgProfile,
   createMemoryWizardRunner,
   createMemoryWizardState,
@@ -64,6 +68,17 @@ function headerAuth(request: FastifyRequest): void {
 
 const ADMIN = { "x-test-user": "admin", "x-test-org": TENANT_ORG, "x-test-roles": "org_admin" };
 const MEMBER = { "x-test-user": "member", "x-test-org": TENANT_ORG, "x-test-roles": "nurse" };
+const OFFICER = {
+  "x-test-user": "officer",
+  "x-test-org": TENANT_ORG,
+  "x-test-roles": "compliance_officer",
+};
+// Holds the issue key and neither role the assist scope needs.
+const ISSUER_ONLY = {
+  "x-test-user": "issuer",
+  "x-test-org": TENANT_ORG,
+  "x-test-roles": "administrator",
+};
 const OPS = { "x-test-user": "ops", "x-test-org": PLATFORM_ORG, "x-test-roles": "platform_ops" };
 const NOT_OPS = { "x-test-user": "ops2", "x-test-org": PLATFORM_ORG, "x-test-roles": "staff" };
 const FRESH = { "x-step-up": "fresh" };
@@ -73,7 +88,9 @@ const ADMIN_KEYS = [
   "onboarding.manage_own",
   "support_consent_grant.list_own",
   "support_consent_grant.issue",
+  "support_consent_grant.revoke",
 ];
+const SESSION_ID = "70000000-0000-4000-8000-0000000000a1";
 const OPS_KEYS = ["support_session.list_platform", "support_session.close"];
 
 type Headers = Record<string, string>;
@@ -111,7 +128,13 @@ const createdOrgAuthenticate = createSessionAuthenticate({
 });
 
 function makeServer(
-  opts: { fileRateLimit?: boolean; wizard?: OnboardingWizard; createdOrg?: boolean } = {},
+  opts: {
+    fileRateLimit?: boolean;
+    wizard?: OnboardingWizard;
+    createdOrg?: boolean;
+    tenantSeed?: Parameters<typeof createInMemoryTenantBackend>[0];
+    platformSeed?: Parameters<typeof createInMemoryTenantPlatformBackend>[0];
+  } = {},
 ) {
   const grant = (orgId: string, userId: string, permissionKeys: string[]) => ({
     orgId,
@@ -121,6 +144,8 @@ function makeServer(
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       grant(TENANT_ORG, "admin", ADMIN_KEYS),
+      grant(TENANT_ORG, "officer", ADMIN_KEYS),
+      grant(TENANT_ORG, "issuer", ADMIN_KEYS),
       grant(TENANT_ORG, "member", []),
       grant(PLATFORM_ORG, "ops", OPS_KEYS),
       grant(PLATFORM_ORG, "ops2", OPS_KEYS),
@@ -158,6 +183,8 @@ function makeServer(
   });
   mountTenantPlatformRoutes(app, {} as DbClient, {
     ...(opts.wizard ? { onboarding: { wizard: opts.wizard } } : {}),
+    tenant: createInMemoryTenantBackend(opts.tenantSeed ?? {}),
+    platform: createInMemoryTenantPlatformBackend(opts.platformSeed ?? {}),
     help: opts.fileRateLimit
       ? {
           fileRateLimit: createRouteRateLimit({
@@ -284,23 +311,85 @@ describe("tenant help requests", () => {
 });
 
 describe("tenant support-session reads", () => {
-  it("need the support-consent-grant list key and reach the stand-in", async () => {
-    const { app, send } = makeServer();
-    for (const url of [
-      "/api/v1/tenant/support-sessions",
-      `/api/v1/tenant/support-sessions/${ID}/events`,
-    ]) {
-      expect((await send("GET", url)).statusCode).toBe(401);
-      expect((await send("GET", url, MEMBER)).statusCode).toBe(403);
-      await expectNotBuilt(await send("GET", url, ADMIN));
-    }
+  it("need the support-consent-grant list key; the list pages the organization's sessions, never an operator", async () => {
+    const { app, send } = makeServer({
+      tenantSeed: {
+        supportSessions: [
+          {
+            id: SESSION_ID,
+            organizationId: TENANT_ORG,
+            state: "closed",
+            closeReason: "manual",
+            actionCount: 2,
+          },
+          {
+            id: "70000000-0000-4000-8000-0000000000a2",
+            organizationId: "22222222-2222-4222-8222-222222222222",
+          },
+        ],
+      },
+    });
+    const url = "/api/v1/tenant/support-sessions";
+    expect((await send("GET", url)).statusCode).toBe(401);
+    expect((await send("GET", url, MEMBER)).statusCode).toBe(403);
+    const res = await send("GET", url, ADMIN);
+    expect(res.statusCode).toBe(200);
+    const page = res.json() as { items: { id: string; actionCount: number }[]; hasMore: boolean };
+    // Only this organization's session: another tenant's is not shown.
+    expect(page.items.map((i) => i.id)).toEqual([SESSION_ID]);
+    expect(page.items[0]?.actionCount).toBe(2);
+    expect(page.hasMore).toBe(false);
+    expect(JSON.stringify(page)).not.toMatch(/actor|operator/i);
+    await app.close();
+  });
+
+  it("the ledger needs the same key, answers 404 for a session of another organization, and shows route, method and status only", async () => {
+    const { app, send } = makeServer({
+      tenantSeed: {
+        supportSessions: [{ id: SESSION_ID, organizationId: TENANT_ORG }],
+        supportSessionEvents: [
+          {
+            id: "70000000-0000-4000-8000-0000000000b1",
+            organizationId: TENANT_ORG,
+            supportSessionId: SESSION_ID,
+          },
+          {
+            id: "70000000-0000-4000-8000-0000000000b2",
+            organizationId: TENANT_ORG,
+            supportSessionId: SESSION_ID,
+            eventKind: "ops.write",
+            occurredAt: "2026-06-21T12:05:00.000Z",
+            detail: {
+              route: "/api/v1/platform/tenants/:orgSlug/locations",
+              method: "POST",
+              status: 201,
+            },
+          },
+        ],
+      },
+    });
+    const url = `/api/v1/tenant/support-sessions/${SESSION_ID}/events`;
+    expect((await send("GET", url)).statusCode).toBe(401);
+    expect((await send("GET", url, MEMBER)).statusCode).toBe(403);
+    const res = await send("GET", url, ADMIN);
+    expect(res.statusCode).toBe(200);
+    const events = (res.json() as { items: { eventKind: string; detail: unknown }[] }).items;
+    expect(events.map((e) => e.eventKind)).toEqual(["ops.write", "session.start"]);
+    expect(events[0]?.detail).toEqual({
+      route: "/api/v1/platform/tenants/:orgSlug/locations",
+      method: "POST",
+      status: 201,
+    });
+    expect(events[1]?.detail).toBeNull();
+    const missing = await send("GET", `/api/v1/tenant/support-sessions/${ID}/events`, ADMIN);
+    expect(missing.statusCode).toBe(404);
     expect(
       (await send("GET", "/api/v1/tenant/support-sessions/not-a-uuid/events", ADMIN)).statusCode,
     ).toBe(422);
     await app.close();
   });
 
-  it("accept the assist scope on grant issue, which the stand-in then refuses with the typed 501", async () => {
+  it("accept the assist scope on grant issue: the org_admin or the compliance_officer issue it, anyone else is refused", async () => {
     const { app, send } = makeServer();
     const body = {
       grantReason: "help request 70000000-0000-4000-8000-000000000001",
@@ -311,9 +400,73 @@ describe("tenant support-session reads", () => {
       (await send("POST", url, { ...ADMIN, ...FRESH }, { ...body, scope: "everything" }))
         .statusCode,
     ).toBe(422);
-    await expectNotBuilt(
-      await send("POST", url, { ...ADMIN, ...FRESH }, { ...body, scope: "assist" }),
+    const issued = await send("POST", url, { ...ADMIN, ...FRESH }, { ...body, scope: "assist" });
+    expect(issued.statusCode).toBe(201);
+    expect(issued.json()).toMatchObject({ scope: "assist", active: true });
+    const officer = await send("POST", url, { ...OFFICER, ...FRESH }, { ...body, scope: "assist" });
+    expect(officer.statusCode).toBe(201);
+    const other = await send(
+      "POST",
+      url,
+      { ...ISSUER_ONLY, ...FRESH },
+      { ...body, scope: "assist" },
     );
+    expect(other.statusCode).toBe(403);
+    expect(other.json().error.code).toBe("SUPPORT_GRANT_SCOPE_NOT_ALLOWED");
+    // The existing scopes keep their rule: the key and the step-up decide, in an active organization.
+    const phi = await send(
+      "POST",
+      url,
+      { ...ISSUER_ONLY, ...FRESH },
+      { ...body, scope: "organization_scoped" },
+    );
+    expect(phi.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("a confined organization may issue ONLY assist", async () => {
+    const { app, send } = makeServer({ tenantSeed: { organizationActive: false } });
+    const body = {
+      grantReason: "help request 70000000-0000-4000-8000-000000000001",
+      expiresAtIsoOffsetHours: 8,
+    };
+    const url = "/api/v1/tenant/support-consent-grants";
+    const refused = await send(
+      "POST",
+      url,
+      { ...ADMIN, ...FRESH },
+      { ...body, scope: "organization_scoped" },
+    );
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error.code).toBe("SUPPORT_GRANT_SCOPE_NOT_ALLOWED");
+    expect(
+      (await send("POST", url, { ...ADMIN, ...FRESH }, { ...body, scope: "assist" })).statusCode,
+    ).toBe(201);
+    await app.close();
+  });
+
+  it("revoking a grant closes the sessions open on it", async () => {
+    const grantId = "70000000-0000-4000-8000-0000000000c1";
+    const { app, send } = makeServer({
+      tenantSeed: {
+        grants: [{ id: grantId, organizationId: TENANT_ORG }],
+        supportSessions: [
+          { id: SESSION_ID, organizationId: TENANT_ORG, supportConsentGrantId: grantId },
+        ],
+      },
+    });
+    const res = await send(
+      "POST",
+      `/api/v1/tenant/support-consent-grants/${grantId}/revoke`,
+      ADMIN,
+      { revocationReason: "support is finished" },
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ id: grantId, active: false });
+    const sessions = (await send("GET", "/api/v1/tenant/support-sessions", ADMIN)).json() as {
+      items: { id: string; state: string; closeReason: string }[];
+    };
+    expect(sessions.items[0]).toMatchObject({ state: "closed", closeReason: "grant_revoked" });
     await app.close();
   });
 });
@@ -529,14 +682,48 @@ describe("platform help requests", () => {
     await app.close();
   });
 
-  it("GET support-consent-grants is an audited platform read behind the same guards", async () => {
-    const { app, send } = makeServer();
+  it("GET support-consent-grants is an audited platform read behind the same guards, filtered by tenant and state", async () => {
+    const tenant = "33333333-3333-4333-8333-333333333333";
+    const { app, send } = makeServer({
+      platformSeed: {
+        consentGrants: [
+          {
+            id: "70000000-0000-4000-8000-0000000000d1",
+            organizationId: TENANT_ORG,
+            tenantAccountId: tenant,
+            grantorMembershipId: "30000000-0000-4000-8000-000000000009",
+            expiresAt: "2999-01-01T00:00:00.000Z",
+            scope: "assist",
+          },
+          {
+            id: "70000000-0000-4000-8000-0000000000d2",
+            organizationId: TENANT_ORG,
+            tenantAccountId: tenant,
+            grantorMembershipId: "30000000-0000-4000-8000-000000000009",
+            expiresAt: "2999-01-01T00:00:00.000Z",
+            revokedAt: "2026-06-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
     const grants = "/api/v1/platform/support-consent-grants";
     expect((await send("GET", grants)).statusCode).toBe(401);
     expect((await send("GET", grants, ADMIN)).statusCode).toBe(403);
     expect((await send("GET", grants, NOT_OPS)).statusCode).toBe(403);
     expect((await send("GET", `${grants}?tenantAccountId=x`, OPS)).statusCode).toBe(422);
-    await expectNotBuilt(await send("GET", `${grants}?tenantAccountId=${ID}&active=true`, OPS));
+    const active = await send("GET", `${grants}?tenantAccountId=${tenant}&active=true`, OPS);
+    expect(active.statusCode).toBe(200);
+    const items = (active.json() as { items: { id: string; scope: string; active: boolean }[] })
+      .items;
+    expect(items.map((g) => [g.scope, g.active])).toEqual([["assist", true]]);
+    // Never the grantor, never the patients in scope.
+    expect(JSON.stringify(active.json())).not.toMatch(/grantor|patient/i);
+    const all = await send("GET", `${grants}?tenantAccountId=${tenant}`, OPS);
+    expect((all.json() as { items: unknown[] }).items).toHaveLength(2);
+    const inactive = await send("GET", `${grants}?active=false`, OPS);
+    expect(
+      (inactive.json() as { items: { revokedAt: string | null }[] }).items.map((g) => g.revokedAt),
+    ).toEqual(["2026-06-01T00:00:00.000Z"]);
     await app.close();
   });
 });

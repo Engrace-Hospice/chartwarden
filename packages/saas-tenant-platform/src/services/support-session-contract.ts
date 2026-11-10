@@ -1,8 +1,8 @@
 // @chartwarden/saas-tenant-platform · services — the support-session CONTRACT slice 7 builds against (types only).
 //
 // Frozen by the wave-0 contract builder so two pieces can be built in parallel without reading each other's code:
-//   * 7S (support-session repair) IMPLEMENTS these in this package (`support-session-service.ts` and its repository) and
-//     binds them in the backend composition root;
+//   * 7S (support-session repair) IMPLEMENTS these in this package (`support-grant-service.ts`, over `support-session-service.ts`
+//     and the support repository) and binds them in the backend composition root (`createSupportGrantOperationsOver`);
 //   * 7B (help requests, `apps/backend/.../34-saas-tenant-platform/help/`) CALLS them through the
 //     {@link SupportGrantOperations} bundle it is handed, so its unit tests inject fakes and never import 7S's bodies.
 // It lives HERE, not in the backend module, because the backend imports this package and never the other way round (M34's
@@ -41,6 +41,11 @@ export interface IssueAssistGrantInput {
   readonly hours: number;
   /** `grant_reason`, e.g. `help request <id>`: ids only, never the member's message. */
   readonly reason: string;
+  /**
+   * Additive (7S): the help request the grant answers, carried on `m34.support_consent_grant.issued` as `helpRequestId`
+   * (null when absent). 7B passes the request id it has just created or is approving.
+   */
+  readonly helpRequestId?: string | null;
 }
 
 export interface IssueAssistGrantResult {
@@ -67,6 +72,11 @@ export interface RevokeGrantAndCloseSessionsInput {
   /** `revocation_reason`: ids and codes only. */
   readonly reason: string;
   readonly source: GrantRevocationSource;
+  /**
+   * Additive (7S): the acting user, handed to `LinkedHelpRequestPort.resolveForRevokedGrant` as `closedByUserId` (the contract's
+   * port wants a user while the input names a membership; an operator's membership is not a user). Null / absent for the system.
+   */
+  readonly closedByUserId?: string | null;
 }
 
 export interface RevokeGrantAndCloseSessionsResult {

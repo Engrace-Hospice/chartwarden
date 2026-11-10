@@ -164,6 +164,30 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
 ] as const;
 
 /**
+ * Slice 7 (7S, migration 1480): the support-session keys the platform console's routes gate on. `support_session.list_platform` and
+ * `.close` gate on `tenant_lifecycle_platform_ops` (the exact `platform_ops` role) and `.start` on the distinct-actor predicate, but no
+ * template or migration granted them, so a template operator was refused every one (as 1438 found for the onboarding pair). Only
+ * `platform_ops` carries them: the console that starts, lists and ends sessions is that role's. `support_session.elevate_phi_read` is NOT
+ * here: an elevation is PHI work no slice grants yet, and a session on an `assist` grant can never be elevated.
+ */
+export const M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS = [
+  "support_session.list_platform",
+  "support_session.start",
+  "support_session.close",
+] as const;
+
+/**
+ * Slice 7 (7S, migration 1480): the compliance officer's consent-grant keys. Until now only org_admin and administrator held them (through
+ * the full non-platform catalog), so the officer, who is the grantor the spec names, could not issue, list or revoke a grant. The
+ * template gives NEW tenants the same; migration 1480 covers existing roles. Who may issue WHICH scope is the service's rule, not this list's.
+ */
+export const M34_COMPLIANCE_OFFICER_SUPPORT_GRANT_KEYS = [
+  "support_consent_grant.list_own",
+  "support_consent_grant.issue",
+  "support_consent_grant.revoke",
+] as const;
+
+/**
  * The platform onboarding-data keys (M34 `/api/v1/platform/tenants/:orgSlug/{provider-entities,locations,mac-credentials}`):
  * operators fill in a tenant's provider entities, service locations and MAC credentials on its behalf while it is
  * still onboarding. The routes also gate on the `tenant_lifecycle_platform_ops` predicate, which admits the EXACT
@@ -214,6 +238,7 @@ function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
   if (PLATFORM_USER_LIFECYCLE_ROLES.includes(role))
     keys.push(PLATFORM_USER_LIFECYCLE_KEY, PLATFORM_PASSWORD_RESET_KEY);
   if (role === "platform_ops") keys.push(...M34_PLATFORM_OPS_ONBOARDING_KEYS);
+  if (role === "platform_ops") keys.push(...M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS);
   if (role === "platform_ops") keys.push(...M35_PLATFORM_OPS_ONBOARDING_KEYS);
   if (PRICING_READ_ROLES.includes(role)) keys.push(M35_PRICING_READ_KEY);
   if (PLATFORM_ONBOARDING_DATA_ROLES.includes(role)) keys.push(...PLATFORM_ONBOARDING_DATA_KEYS);
@@ -396,6 +421,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       // and attests go-live readiness.
       "onboarding.read_own",
       "go_live.attest",
+      // Slice 7 (7S, migration 1480 covers existing roles): the officer lists, issues and revokes support consent grants.
+      ...M34_COMPLIANCE_OFFICER_SUPPORT_GRANT_KEYS,
       // WP 5.6 (ADR-0086): migration 1138 grants this to EXISTING compliance_officer roles; this entry gives NEW tenants the same
       // (administrator / org_admin get it through the non-platform catalog, the mirror in permissions/contributed.ts).
       "messaging.retention.manage",

@@ -1073,6 +1073,10 @@ jobs:
           # Slice 5 (admin console): the tenant list's onboarding progress (gating steps only, one batch, on the platform
           # credential) and the compliance-officer picker's members read (active staff, roles held now, the tenant's own RLS).
           - { name: "M34 tenant hub reads", scripts: "test:m34:tenant-hub-reads:live" }
+          # Slice 7 (7S): the support session end to end on the real roles - an HTTP start in the tenant's organization, the carrier's
+          # INSERT, the tenant role boxed to the revoke cascade, the issue matrix, the cascade through the real outbox publisher, the
+          # ledger hook, the expiry sweep and a start racing a revoke.
+          - { name: "M34 support session", scripts: "test:m34:support-session:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
