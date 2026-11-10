@@ -148,6 +148,36 @@ describe("the refusal text", () => {
   });
 });
 
+describe("a caller-supplied refusal text", () => {
+  it("replaces the default in the message and in the detail, and is still a typed 422 for the same code", () => {
+    try {
+      assertNoPatientIdentifier(
+        "displayName",
+        "Acme 900-12-3456",
+        "displayName is a name, not a record.",
+      );
+      expect.unreachable("should have refused");
+    } catch (err) {
+      const e = err as {
+        code: string;
+        statusCode: number;
+        message: string;
+        details: Array<{ field: string; message: string }>;
+      };
+      expect(e.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(e.statusCode).toBe(422);
+      expect(e.message).toBe("displayName is a name, not a record.");
+      expect(e.details).toEqual([
+        {
+          field: "displayName",
+          code: "EVIDENCE_LOOKS_LIKE_PHI",
+          message: "displayName is a name, not a record.",
+        },
+      ]);
+    }
+  });
+});
+
 describe("assertNoPatientIdentifier", () => {
   it("throws the typed 422 for every separator form, never echoing the value", () => {
     for (const text of [
