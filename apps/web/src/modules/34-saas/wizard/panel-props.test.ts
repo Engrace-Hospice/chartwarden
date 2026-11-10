@@ -1,6 +1,6 @@
 // The one decision panel-props makes for the panels: whether a step's own forms are offered at all.
 import { describe, expect, it } from "vitest";
-import { STEPS_SETTLED_BY_PANEL, isStepOpenForWork } from "./panel-props";
+import { canAttestStep, isStepOpenForWork } from "./panel-props";
 
 const onboarding = { tenantStatus: "onboarding" };
 
@@ -31,8 +31,22 @@ describe("isStepOpenForWork", () => {
   });
 });
 
-describe("STEPS_SETTLED_BY_PANEL", () => {
-  it("names the clearinghouse step only", () => {
-    expect([...STEPS_SETTLED_BY_PANEL]).toEqual(["clearinghouse_selected"]);
+describe("canAttestStep", () => {
+  it("offers no Mark done on the clearinghouse step even though its completion mode is 'either'", () => {
+    expect(canAttestStep({ key: "clearinghouse_selected", completionMode: "either" })).toBe(false);
+    expect(canAttestStep({ key: "clearinghouse_selected", completionMode: "attestation" })).toBe(
+      false,
+    );
+  });
+
+  it("offers it on a step settled by evidence, 'either' included (the MAC credential, DoseSpot kickoff)", () => {
+    expect(canAttestStep({ key: "mac_configured", completionMode: "either" })).toBe(true);
+    expect(
+      canAttestStep({ key: "dosespot_kickoff_initiated", completionMode: "attestation" }),
+    ).toBe(true);
+  });
+
+  it("offers it on no step the server settles from its own facts", () => {
+    expect(canAttestStep({ key: "locations_seeded", completionMode: "auto" })).toBe(false);
   });
 });

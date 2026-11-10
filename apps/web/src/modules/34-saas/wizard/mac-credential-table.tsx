@@ -15,21 +15,21 @@ export function MacCredentialTable({
   items,
   nameOf,
   canWrite,
-  testing,
+  locked,
   onReplace,
   onTest,
 }: {
   items: readonly Credential[];
   nameOf: (providerEntityId: string) => string;
   canWrite: boolean;
-  /** A portal test is running: Test waits. */
-  testing: boolean;
+  /** An editor is open or a write is running: Replace and the check wait, so none bumps the version an open editor is pinned to. */
+  locked: boolean;
   onReplace: (credential: Credential) => void;
   onTest: (providerEntityId: string) => void;
 }): JSX.Element {
   return (
     <table className="wx-list-table wx-list-table-static">
-      <caption className="wx-sr-only">MAC credentials</caption>
+      <caption className="wx-sr-only">MAC credentials on file</caption>
       <thead>
         <tr>
           <th scope="col">Provider entity</th>
@@ -37,7 +37,7 @@ export function MacCredentialTable({
           <th scope="col">Submitter id</th>
           <th scope="col">Client id</th>
           <th scope="col">Secret</th>
-          <th scope="col">Last tested</th>
+          <th scope="col">Last portal check</th>
           <th scope="col">
             <span className="wx-sr-only">Actions</span>
           </th>
@@ -52,7 +52,7 @@ export function MacCredentialTable({
             <td className="wx-data-md">{c.clientId}</td>
             <td>{c.hasSecret ? "Secret on file" : "None"}</td>
             <td className="wx-nums">
-              {c.lastSandboxTestAt ? new Date(c.lastSandboxTestAt).toLocaleString() : "Never"}
+              {c.lastSandboxTestAt ? new Date(c.lastSandboxTestAt).toLocaleString() : "Not yet"}
             </td>
             <td>
               {canWrite ? (
@@ -62,6 +62,7 @@ export function MacCredentialTable({
                     tone="tertiary"
                     aria-label={`Replace credential for ${nameOf(c.providerEntityId)}`}
                     data-editor-return="mac"
+                    disabled={locked}
                     onClick={() => onReplace(c)}
                   >
                     Replace
@@ -69,11 +70,11 @@ export function MacCredentialTable({
                   <Button
                     size="sm"
                     tone="tertiary"
-                    aria-label={`Test the connection for ${nameOf(c.providerEntityId)}`}
-                    disabled={testing}
+                    aria-label={`Check the MAC portal for ${nameOf(c.providerEntityId)}`}
+                    disabled={locked}
                     onClick={() => onTest(c.providerEntityId)}
                   >
-                    Test
+                    Check portal
                   </Button>
                 </>
               ) : null}

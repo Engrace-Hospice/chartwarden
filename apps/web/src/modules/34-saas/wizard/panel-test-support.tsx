@@ -1,12 +1,15 @@
 // Test harness for the billing step panels' suites: a stub API client that dispatches on method + typed path and records every call, and a
 // renderer with a signed-in tenant member. (7C-a keeps its own `test-support.tsx` for the shell; this one carries only what the 7C-b
 // panels need. The step/view/clearinghouse fixtures are in `panel-fixtures.ts` and re-exported here.)
-import { type ApiClient, ApiClientProvider, STEP_UP_RETURN_STATE } from "@chartwarden/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
+import type { StubClient } from "@chartwarden/ui/testing";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
+import { clearAllDrafts } from "../../../shell/ceremony-drafts";
 import { ActorSessionProvider, type Session } from "../../../shell/session";
+import { markStepUpReturn } from "../../../shell/step-up-redirect";
 import {
   ORG_ADMIN_ROLE,
   type StepPanelProps,
@@ -16,75 +19,21 @@ import {
 
 export * from "./panel-fixtures";
 
-type Reply = { data?: unknown; error?: unknown; response?: { status: number; ok?: boolean } };
-export type Handler = (init: {
-  params?: Record<string, unknown>;
-  body?: unknown;
-  headers?: Record<string, string>;
-}) => Reply | Promise<Reply>;
-export type Handlers = Partial<
-  Record<"GET" | "POST" | "PUT" | "PATCH" | "DELETE", Record<string, Handler>>
->;
-
-const NOT_STUBBED: Reply = {
-  error: { error: { code: "NOT_STUBBED", message: "no stub for this call" } },
-  response: { status: 500 },
-};
-
-/** A client whose methods dispatch on the typed path and record every call (`client.POST.mock.calls`). */
-export function stubClient(handlers: Handlers) {
-  const method = (name: keyof Handlers) =>
-    vi.fn(async (path: string, init: Parameters<Handler>[0] = {}) => {
-      const handler = handlers[name]?.[path];
-      return handler ? await handler(init) : NOT_STUBBED;
-    });
-  return {
-    GET: method("GET"),
-    POST: method("POST"),
-    PUT: method("PUT"),
-    PATCH: method("PATCH"),
-    DELETE: method("DELETE"),
-  };
-}
-export type StubClient = ReturnType<typeof stubClient>;
-
-export const ok = (data: unknown, status = 200): Reply => ({
-  data,
-  response: { status, ok: true },
-});
-export const refused = (
-  status: number,
-  code: string,
-  message = "refused",
-  details?: unknown[],
-): Reply => ({
-  error: { error: { code, message, correlationId: "corr-test", ...(details ? { details } : {}) } },
-  response: { status },
-});
-
-/** The Idempotency-Key a recorded call carried (top-level `headers` or `params.header`). */
-export function idempotencyKeyOf(call: unknown[]): string | undefined {
-  const init = call[1] as {
-    headers?: Record<string, string>;
-    params?: { header?: Record<string, string> };
-  };
-  return init.params?.header?.["Idempotency-Key"] ?? init.headers?.["Idempotency-Key"];
-}
-/** The If-Match a recorded call carried, or undefined. */
-export function ifMatchOf(call: unknown[]): string | undefined {
-  const init = call[1] as {
-    headers?: Record<string, string>;
-    params?: { header?: Record<string, string> };
-  };
-  return init.params?.header?.["If-Match"] ?? init.headers?.["If-Match"];
-}
+// The stub API client is @chartwarden/ui's (every wizard suite shares it): dispatches on method + typed path, records every call.
+export {
+  idempotencyKeyOf,
+  ifMatchOf,
+  ok,
+  refused,
+  stubClient,
+  type StubClient,
+} from "@chartwarden/ui/testing";
 
 export const BILLING_KEYS = [
   "billing.clearinghouse.read",
   "billing.clearinghouse.admin",
   "billing.mac_credential.read",
   "billing.mac_credential.admin",
-  "org.manage",
   "onboarding.read_own",
   "onboarding.update",
   "onboarding.manage_own",
@@ -118,8 +67,18 @@ export function panelProps(
   };
 }
 
-/** Where a panel mounts on the member's return from a successful Re-verify: the only visit a stashed draft is restored on. */
-export const RETURNED_FROM_STEP_UP = { pathname: "/x", state: STEP_UP_RETURN_STATE };
+/**
+ * The member just completed a step-up for the panel's path: the only visit a stashed draft is restored on. Call before `renderPanel`
+ * (the step-up page does this, through `markStepUpReturn`, just before it navigates back).
+ */
+export const returnFromStepUp = (path = "/x"): void => markStepUpReturn(path);
+
+/** Forget every stashed draft and the return marker, as sign-out does: call after each test so one suite's draft never reaches the next. */
+export const resetDrafts = (): void => clearAllDrafts();
+
+/** The scope key of a billing draft for the default member (`org|user|action|step`), as the panels store it. */
+export const draftKey = (action: string, stepKey: string): string =>
+  `${ORG_ADMIN.organizationId}|${ORG_ADMIN.userId}|${action}|${stepKey}`;
 
 function Where(): ReactElement {
   const { pathname, search } = useLocation();
@@ -130,7 +89,7 @@ function Where(): ReactElement {
 export function renderPanel(
   element: ReactElement,
   client: StubClient,
-  url: string | { pathname: string; state?: unknown } = "/x",
+  url = "/x",
   session: Session = ORG_ADMIN,
 ) {
   return render(

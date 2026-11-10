@@ -1,7 +1,12 @@
 // What the tenant is shown and offered on the clearinghouse step, as pure functions of the server's masked view. The server owns every rule
 // (verify before activate, the BAA gate, the vendor lock); this only keeps the member from being handed a button it is certain to refuse.
 import { describe, expect, it } from "vitest";
-import { tenantActionsOf, tenantConsequenceOf, tenantFactsOf } from "./clearinghouse-tenant";
+import {
+  isChosenOutside,
+  tenantActionsOf,
+  tenantConsequenceOf,
+  tenantFactsOf,
+} from "./clearinghouse-tenant";
 import { CLAIMMD_DRAFT, clearinghouseView } from "./panel-fixtures";
 
 const verifiedBaa = (over = {}) => ({
@@ -123,5 +128,16 @@ describe("tenantConsequenceOf", () => {
     expect(
       tenantConsequenceOf(CLAIMMD_DRAFT, { vendor: "claimmd", mode: "production" }),
     ).toBeUndefined();
+  });
+});
+
+describe("isChosenOutside", () => {
+  it("is true only for the organization's own choice of billing outside ChartWarden", () => {
+    expect(isChosenOutside(clearinghouseView({ vendor: "outside", source: "tenant" }))).toBe(true);
+    expect(isChosenOutside(clearinghouseView({ vendor: "outside", source: "platform_env" }))).toBe(
+      false,
+    );
+    expect(isChosenOutside(CLAIMMD_DRAFT)).toBe(false);
+    expect(isChosenOutside(clearinghouseView())).toBe(false);
   });
 });

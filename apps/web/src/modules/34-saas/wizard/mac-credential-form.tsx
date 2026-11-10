@@ -1,7 +1,7 @@
 // apps/web/src/modules/34-saas/wizard — step 8's credential form: the Medicare submitter credential the organization's claims go out under.
 // The client secret is write-only (sealed under the organization's own key, never returned, never stashed through a Re-verify), and the
 // server requires it on every save, a replacement included.
-import { Button, SelectField, TextField } from "@chartwarden/ui";
+import { Button, SECRET_INPUT_PROPS, SelectField, TextField } from "@chartwarden/ui";
 import type { JSX, ReactNode, Ref } from "react";
 
 export type MacJurisdiction =
@@ -83,8 +83,10 @@ export function MacCredentialForm({
   entities,
   creating,
   busy,
+  locked,
   headingRef,
   failure,
+  warning,
   onChange,
   onSecret,
   onCancel,
@@ -97,16 +99,20 @@ export function MacCredentialForm({
   /** A first credential (the provider entity is picked); a replacement keeps its provider entity. */
   creating: boolean;
   busy: boolean;
+  /** A sibling write is running: the fields and Save wait. */
+  locked: boolean;
   headingRef: Ref<HTMLHeadingElement>;
   /** A refusal that is not about an input (step-up, a lock, no answer), read under the fields. */
   failure: ReactNode;
-  onChange: (next: MacForm) => void;
+  /** Said before anything is saved (a pending go-live attestation this save voids). */
+  warning: ReactNode;
+  onChange: (next: MacForm, field: keyof MacForm) => void;
   onSecret: (value: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
 }): JSX.Element {
   const set = (field: keyof MacForm) => (e: { target: { value: string } }) =>
-    onChange({ ...form, [field]: e.target.value });
+    onChange({ ...form, [field]: e.target.value }, field);
   return (
     <form
       className="wx-drawer-card"
@@ -114,7 +120,8 @@ export function MacCredentialForm({
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit();
+        // aria-disabled while a write runs (the pressed button keeps focus): a second press is dropped here and by the write's own guard.
+        if (!busy && !locked) onSubmit();
       }}
     >
       <div className="wx-drawer-card-head">
@@ -122,11 +129,12 @@ export function MacCredentialForm({
           {creating ? "New MAC credential" : "Replace MAC credential"}
         </h3>
       </div>
+      {warning}
       <div className="wx-form-grid">
         <SelectField
           label="Provider entity"
           value={form.providerEntityId}
-          disabled={!creating}
+          disabled={!creating || locked}
           onChange={set("providerEntityId")}
           options={[
             ...(creating ? [{ value: "", label: "Choose the provider entity…" }] : []),
@@ -139,6 +147,13 @@ export function MacCredentialForm({
         />
         <SelectField
           label="MAC jurisdiction"
+          // The server refuses a changed jurisdiction on an existing credential ("a new credential"), so a replacement keeps it.
+          hint={
+            creating
+              ? undefined
+              : "The jurisdiction of a credential cannot be changed. Ask ChartWarden for help."
+          }
+          disabled={!creating || locked}
           value={form.macJurisdiction}
           onChange={set("macJurisdiction")}
           options={JURISDICTIONS}
@@ -146,18 +161,24 @@ export function MacCredentialForm({
         />
         <TextField
           label="Submitter id"
+          autoComplete="off"
+          disabled={locked}
           value={form.submitterId}
           onChange={set("submitterId")}
           error={errors.submitterId}
         />
         <TextField
           label="Trading partner id"
+          autoComplete="off"
+          disabled={locked}
           value={form.tradingPartnerId}
           onChange={set("tradingPartnerId")}
           error={errors.tradingPartnerId}
         />
         <TextField
           label="Client id"
+          autoComplete="off"
+          disabled={locked}
           value={form.clientId}
           onChange={set("clientId")}
           error={errors.clientId}
@@ -165,8 +186,8 @@ export function MacCredentialForm({
         <TextField
           label="Client secret"
           hint="Write-only. Sealed under your organization's own key and never shown again. Enter it again on every save."
-          type="password"
-          autoComplete="new-password"
+          {...SECRET_INPUT_PROPS}
+          disabled={locked}
           value={secret}
           onChange={(e) => onSecret(e.target.value)}
           error={errors.clientSecret}
@@ -174,6 +195,8 @@ export function MacCredentialForm({
         <TextField
           label="BAA record reference (optional)"
           hint="Where your BAA with the MAC portal is kept. Never a patient."
+          autoComplete="off"
+          disabled={locked}
           value={form.baaRecordRef}
           onChange={set("baaRecordRef")}
           error={errors.baaRecordRef}
@@ -184,7 +207,7 @@ export function MacCredentialForm({
         <Button tone="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" disabled={locked} aria-disabled={busy || undefined}>
           Save credential
         </Button>
       </div>

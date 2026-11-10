@@ -198,37 +198,61 @@ A credential update is pinned to the version the operator read (If-Match); a sta
 
 The tenant's own wizard (`apps/web`, `/admin/onboarding/:stepKey`) draws these panels inside the same step frame as every
 other step: the frame owns the heading, the owner, why a step is read-only, how it was settled, and Start / Mark done with
-evidence / Re-open / **This does not apply to us** (steps 8, 9 and 10 only; the organization administrator, with a rationale and
+evidence / Re-open / **Skip this step** (steps 8, 9 and 10 only; the organization administrator, with a rationale and
 a fresh step-up). A panel owns only what its step edits, and reads the step view, the held permission keys and the role keys the
 shell hands it. Nothing here is operator wording: "your organization", "ChartWarden".
 
-| Step | Panel | Tenant calls | Keys | Settles |
-|------|-------|--------------|------|---------|
-| 7 Billing: clearinghouse | choose, BAA, connection, activation | `GET` / `PUT /api/v1/tenant/clearinghouse`, `POST` `.../baa`, `.../verify`, `.../activate` | `billing.clearinghouse.read` / `.admin` | the server, when the clearinghouse is active (or the choice is billing outside ChartWarden); the frame offers no Mark done |
-| 8 Billing: MAC credentials | list, add, replace, test | `GET` / `POST /api/v1/billing/mac-credentials`, `POST` `.../{providerEntityId}/test`, `GET /api/v1/provider-entities` | `billing.mac_credential.read` / `.admin`, `org.manage` | the member marks it done with evidence, or skips it |
-| 10 e-Prescribing (DoseSpot) | what the kickoff is, an empty registration seam | none | none | the member marks it done with evidence, or skips it |
+**Skip is the frame's button.** A panel renders no skip button of its own, so there is never a second entry point: it shows one
+short hint ("If this does not apply to your organization, use Skip this step below.") while the frame says the member may skip.
+A step the system skipped (an organization that bills outside ChartWarden) is routed to the system-skipped panel before any
+step panel, so none of these panels renders for it.
+
+| Step | Panel | Tenant calls | Keys | Voids a pending go-live attestation | Settles |
+|------|-------|--------------|------|-------------------------------------|---------|
+| 7 Billing: clearinghouse | choose, BAA, connection, activation | `GET` / `PUT /api/v1/tenant/clearinghouse`, `POST` `.../baa`, `.../verify`, `.../activate` | `billing.clearinghouse.read` / `.admin` | every write | the server, when the clearinghouse is active (or the choice is billing outside ChartWarden); the frame offers no Mark done |
+| 8 Billing: MAC credentials | list, add, replace, check the portal | `GET` / `POST /api/v1/billing/mac-credentials`, `POST` `.../{providerEntityId}/test`, `GET /api/v1/provider-entities` | `billing.mac_credential.read` / `.admin` | the save; not the portal check | the member marks it done with evidence, or skips it |
+| 10 e-Prescribing (DoseSpot) | what the kickoff is, an empty registration seam | none | none | writes nothing | the member marks it done with evidence, or skips it |
+
+Every form that writes says so BEFORE anything is saved: while go-live is waiting for approval the form shows "Your compliance
+officer has attested that you are ready to go live. Saving a change here voids that attestation, and they will need to attest
+again." The provider-entity list read has no permission check; the MAC writes and the portal check are scoped to a provider
+entity, so a member whose role does not cover one is told so plainly when the server refuses (the panel cannot know the scope).
 
 Step 7. The first choice carries no `If-Match`; a change carries the `version` the member read, and a 412 or 428 closes the
-form, reloads the record and says so. Billing outside takes no mode and no credential, and says "ChartWarden will not send
-claims; steps 8 and 9 are skipped." A tenant cannot change its billing service mode: moving off outside while a contract exists is
-refused (409) and the panel says to ask ChartWarden. The vendor credential is write-only and is never stashed through a Re-verify;
-the choice, its mode and its pinned version are, in memory only. The BAA is recorded by the organization (where it is kept and
-its effective date), then the panel says it is **waiting for ChartWarden to verify** it, and the activation button appears only
-once the connection and the BAA are both verified. Claim.MD runs a no-patient connection test; Stedi has none, so the member
-attests what was checked and confirms the note names no patient.
+form, reloads the record AND the wizard (another tab may have chosen outside, which skips steps 8 and 9) and says so. So does a
+refusal whose sentence says the settings were reloaded (the connection or BAA verification moved under the member: an operator
+voided the BAA, a colleague changed the choice). Billing outside takes no mode and no credential, and says "ChartWarden will
+not send claims; steps 8 and 9 are skipped." An organization that already bills outside is not offered the vendor form: leaving
+outside while a contract exists also sets the billing service mode, which only ChartWarden can do, so the panel says to ask
+ChartWarden. The vendor credential is write-only: never stashed, cleared the moment the vendor or the mode it was typed for
+changes (a Claim.MD key never reaches Stedi), and cleared on Cancel and on send. The choice, its mode and its pinned version are
+stashed through a Re-verify in the shell's owner-scoped, in-memory draft store (`org|user|action|step`), so sign-out, the idle
+lock and an expired session wipe them. The BAA is recorded by the organization (where it is kept and its effective date), then
+the panel says it is **waiting for ChartWarden to verify** it, and the activation button appears only once the connection and
+the BAA are both verified. Claim.MD runs a no-patient connection test; Stedi has none, so the member attests what was checked
+and confirms the note names no patient. The cards hold still while one has an editor open or a write running, so a sibling write
+never bumps the version under an open form.
 
-Step 8. The client secret is write-only, entered again on every save, and never stashed. A replacement is pinned to the version
-the member read (`If-Match`; a stale pin is a 409 `STALE_VERSION` that reloads the list). Test probes the MAC portal and says in
-words whether it answered.
+Step 8. A provider entity holds one credential: Add offers the entities that have none, Replace the one that has, and a
+replacement keeps its provider entity and its jurisdiction (the server refuses a changed jurisdiction: a different one is a new
+credential). The client secret is write-only, entered again on every save, never stashed, and gone from the page before the
+reloads that follow a save. A replacement is pinned to the version the member read (`If-Match`; a stale pin is a 409
+`STALE_VERSION` that reloads the list and the wizard). **Check the MAC portal** probes the portal for the credential's
+jurisdiction and says whether it ANSWERED; it does not read or validate the client secret, so the panel never says a credential
+"passed" anything. Its result names the provider entity, is shown on the status line, and is cleared when the credential is edited
+or saved. Until the provider entities load a row reads "A provider entity", never a raw id; only the first 100 of each list are
+read, and the panel says so when there are more.
 
-Step 10. In this tree step 10 is an ordinary step: the panel is DoseSpot copy plus one named seam, `DoseSpotRegistrationSlot`,
-that renders nothing. It calls no API and checks no DoseSpot permission key, and it never assumes how the step settles, so the
-DoseSpot branch (clinic registration, prescriber enrolment, a fact that settles the step by itself) fills the seam later without
-rework here.
+Step 10. In this tree step 10 is an ordinary step: the panel is DoseSpot copy plus one named seam, `DoseSpotRegistrationSlot` (its
+own file), that renders nothing. It calls no API and checks no DoseSpot permission key, and it never assumes how the step settles,
+so the DoseSpot branch (clinic registration, prescriber enrolment, a fact that settles the step by itself) fills the seam later
+without rework here.
 
 Every write on these panels needs a fresh step-up (Re-verify keeps what was typed, never a credential), is refused for an AI
-principal, and carries one Idempotency-Key per intent, kept across a request that got no answer and renewed by any answer. The
-onboarding view is audited per read, so a panel reloads it once per finished write, never on a timer.
+principal, and carries one Idempotency-Key per intent, kept across a request that got no answer and renewed by any answer. A
+write's result lands on a status line that outlives the card that raised it (a verified connection removes its own card), and
+focus moves to that line when the control that had it is gone. The onboarding view is audited per read, so a panel reloads it once
+per finished write, never on a timer.
 
 ---
 

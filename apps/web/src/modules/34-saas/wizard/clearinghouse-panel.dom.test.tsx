@@ -2,23 +2,25 @@
 // Step 7, Billing: clearinghouse, on the tenant's side. Choose Stedi, Claim.MD or billing outside ChartWarden, record the vendor BAA, verify
 // the connection, then activate once ChartWarden has verified the BAA. The credential is write-only (never shown, never stashed), every write
 // needs a fresh step-up and carries one Idempotency-Key per intent, and a change sends the version the member read.
-import { peekStepUpMemoryDraft } from "@chartwarden/ui";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { peekStepUpDraft, stepUpDraftKeys } from "../../../shell/step-up-redirect";
 import { ClearinghousePanel } from "./clearinghouse-panel";
 import {
   BILLING_KEYS,
   CLAIMMD_DRAFT,
   ORG_ADMIN,
-  RETURNED_FROM_STEP_UP,
   type StubClient,
   clearinghouseView,
+  draftKey,
   idempotencyKeyOf,
   ifMatchOf,
   ok,
   panelProps,
   refused,
   renderPanel,
+  resetDrafts,
+  returnFromStepUp,
   stubClient,
   tenantStep,
   tenantView,
@@ -26,7 +28,7 @@ import {
 
 const PATH = "/api/v1/tenant/clearinghouse";
 const SECRET = "sk_live_correct-horse-battery";
-const DRAFT_KEY = "wizard:clearinghouse_selected:choice";
+const DRAFT_KEY = draftKey("tenant-clearinghouse-choice", "clearinghouse_selected");
 
 const STEPS = [
   tenantStep("provider_setup", 1, { status: "done" }),
@@ -47,12 +49,11 @@ function mount(
   options: {
     view?: typeof VIEW;
     keys?: readonly string[];
-    url?: string | { pathname: string; state?: unknown };
   } = {},
 ) {
   const session = { ...ORG_ADMIN, permissions: [...(options.keys ?? BILLING_KEYS)] };
   const props = panelProps(options.view ?? VIEW, "clearinghouse_selected", {}, session);
-  renderPanel(<ClearinghousePanel {...props} />, client, options.url, session);
+  renderPanel(<ClearinghousePanel {...props} />, client, "/x", session);
   return props;
 }
 
@@ -72,12 +73,9 @@ async function openChoice(name: RegExp) {
   fireEvent.click(await screen.findByRole("button", { name }));
 }
 
-beforeEach(() => {
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
-});
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  resetDrafts();
 });
 
 describe("choosing a clearinghouse", () => {
@@ -212,7 +210,7 @@ describe("step-up and the write-only credential", () => {
 
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     expect(await screen.findByText("step-up page")).toBeTruthy();
-    const stashed = peekStepUpMemoryDraft<{
+    const stashed = peekStepUpDraft<{
       form: { vendor: string; mode: string };
       pinnedVersion: number;
     }>(DRAFT_KEY);
@@ -221,10 +219,8 @@ describe("step-up and the write-only credential", () => {
     expect(JSON.stringify(stashed)).not.toContain(SECRET);
 
     cleanup();
-    mount(
-      stubClient({ GET: { [PATH]: () => ok(CLAIMMD_DRAFT) }, PUT: { [PATH]: stepUpRefused } }),
-      { url: RETURNED_FROM_STEP_UP },
-    );
+    returnFromStepUp();
+    mount(stubClient({ GET: { [PATH]: () => ok(CLAIMMD_DRAFT) }, PUT: { [PATH]: stepUpRefused } }));
     expect(await screen.findByRole("form", { name: "Clearinghouse choice" })).toBeTruthy();
     expect((screen.getByLabelText("Mode") as HTMLSelectElement).value).toBe("test");
     expect((screen.getByLabelText("Vendor credential") as HTMLInputElement).value).toBe("");
@@ -241,16 +237,17 @@ describe("step-up and the write-only credential", () => {
           }) as never,
       },
     });
-    mount(stub);
+    const props = mount(stub);
     await openChoice(/^Choose the clearinghouse$/);
     fireEvent.change(screen.getByLabelText("Vendor credential"), { target: { value: SECRET } });
-    const save = screen.getByRole("button", { name: "Save choice" });
-    fireEvent.click(save);
+    fireEvent.click(screen.getByRole("button", { name: "Save choice" }));
     fireEvent.submit(screen.getByRole("form", { name: "Clearinghouse choice" }));
 
     await waitFor(() => expect(stub.PUT).toHaveBeenCalledTimes(1));
     release(ok(CLAIMMD_DRAFT, 201));
-    await waitFor(() => expect(stub.PUT).toHaveBeenCalledTimes(1));
+    // the one write ran to completion (its follow-up reloaded the wizard once) and no second write was ever sent
+    await waitFor(() => expect(props.onChanged).toHaveBeenCalledTimes(1));
+    expect(stub.PUT).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the same Idempotency-Key when the first try got no answer", async () => {
@@ -284,7 +281,7 @@ describe("recording the vendor BAA", () => {
   it("sends the BAA the tenant holds under one Idempotency-Key and reloads", async () => {
     const stub = client(CLAIMMD_DRAFT, { POST: { [BAA_PATH]: () => ok(CLAIMMD_DRAFT) } });
     const props = mount(stub);
-    const form = await screen.findByRole("form", { name: "Vendor BAA" });
+    const form = await screen.findByRole("form", { name: "Record the vendor BAA" });
     expect(form).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Effective date"), { target: { value: "2026-10-01" } });
@@ -308,7 +305,7 @@ describe("recording the vendor BAA", () => {
   it("refuses a missing date, a future date and a too short reference before sending", async () => {
     const stub = client(CLAIMMD_DRAFT, { POST: { [BAA_PATH]: () => ok(CLAIMMD_DRAFT) } });
     mount(stub);
-    await screen.findByRole("form", { name: "Vendor BAA" });
+    await screen.findByRole("form", { name: "Record the vendor BAA" });
     fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
     expect(await screen.findByText("Enter the date the BAA took effect.")).toBeTruthy();
     expect(
@@ -338,7 +335,7 @@ describe("recording the vendor BAA", () => {
       POST: { [BAA_PATH]: () => refused(403, "STEP_UP_REQUIRED") as never },
     });
     mount(stub);
-    await screen.findByRole("form", { name: "Vendor BAA" });
+    await screen.findByRole("form", { name: "Record the vendor BAA" });
     fireEvent.change(screen.getByLabelText("Effective date"), { target: { value: "2026-10-01" } });
     fireEvent.change(screen.getByLabelText("Where the signed BAA is kept"), {
       target: { value: "Claim.MD BAA" },
@@ -455,7 +452,7 @@ describe("what the member may see and do", () => {
     mount(client(CLAIMMD_DRAFT), { keys: ["billing.clearinghouse.read"] });
     expect(await screen.findByText("The vendor credential is on file")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /clearinghouse$/i })).toBeNull();
-    expect(screen.queryByRole("form", { name: "Vendor BAA" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Record the vendor BAA" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Test the connection" })).toBeNull();
   });
 

@@ -2,9 +2,10 @@
 // Step 10, e-Prescribing kickoff, on the tenant's side. In this tree step 10 is an ordinary wizard step: the panel is DoseSpot copy, the
 // "This does not apply to us" entry point (the frame owns the skip), and an empty seam for the clinic registration. It reads only the
 // step view the shell hands it: it calls no API, so a branch that auto-settles the step, or fills the seam, changes nothing here.
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DoseSpotPanel, DoseSpotRegistrationSlot } from "./dosespot-panel";
+import { DoseSpotPanel } from "./dosespot-panel";
+import { DoseSpotRegistrationSlot } from "./dosespot-registration-slot";
 import type { StepPanelProps, TenantWizardStep } from "./panel-props";
 import {
   ORG_ADMIN,
@@ -51,15 +52,16 @@ describe("DoseSpotPanel", () => {
     }
   });
 
-  it("offers 'This does not apply to us' when the frame says the member may skip, and asks the frame to open it", () => {
+  it("only HINTS at skipping when the frame says the member may skip: the frame owns the one Skip button", () => {
     const { props } = mount({}, { skipAvailable: true });
-    fireEvent.click(screen.getByRole("button", { name: "This does not apply to us" }));
-    expect(props.skip.request).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/use Skip this step below/)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(props.skip.request).not.toHaveBeenCalled();
   });
 
-  it("offers no skip entry point when the frame does not", () => {
+  it("shows no skip hint when the frame does not offer a skip", () => {
     mount();
-    expect(screen.queryByRole("button", { name: "This does not apply to us" })).toBeNull();
+    expect(screen.queryByText(/use Skip this step below/)).toBeNull();
   });
 
   it("says a recorded kickoff is recorded", () => {
@@ -69,13 +71,12 @@ describe("DoseSpotPanel", () => {
   });
 
   it.each([
-    ["tenant", /You skipped this step/],
+    ["tenant", /Your organization skipped this step/],
     ["platform_ops", /ChartWarden operations skipped this step/],
     ["system", /skipped automatically/],
   ] as const)("says who skipped it: %s", (skippedBy, text) => {
     mount({ status: "skipped", skippedBy, systemSkipped: skippedBy === "system" });
     expect(screen.getByText(text)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "This does not apply to us" })).toBeNull();
   });
 
   it("is read-only for a member who is not an organization administrator", () => {
@@ -93,7 +94,5 @@ describe("DoseSpotRegistrationSlot", () => {
   it("renders nothing: the DoseSpot branch fills the seam", () => {
     const { container } = render(<DoseSpotRegistrationSlot />);
     expect(container.innerHTML).toBe("");
-    mount();
-    expect(document.querySelector("[data-dosespot-registration]")).toBeNull();
   });
 });

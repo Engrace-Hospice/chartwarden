@@ -1,14 +1,14 @@
-// apps/web/src/modules/34-saas/wizard — step 7, Billing: clearinghouse, in the tenant's voice, as pure functions of the server's masked view.
-// The hoisted `clearinghouseFacts` / `clearinghouseActions` in @chartwarden/ui speak to an operator ("the tenant recorded its BAA, an
-// operator verified it"); these say the same facts to the organization itself. The server owns every rule (verify before activate, the
-// BAA gate, the vendor lock); this only keeps the member from being handed a button the server is certain to refuse.
+// apps/web/src/modules/34-saas/wizard — step 7, Billing: clearinghouse, in the tenant's voice. The facts are @chartwarden/ui's
+// `clearinghouseFacts` with the tenant's wording (an operator reads about "the tenant", the tenant about "your organization"); this adds
+// what only the tenant's panel decides: which actions to OFFER now. The server owns every rule (verify before activate, the BAA gate, the
+// vendor lock, who may leave "outside"); this only keeps the member from being handed a button the server is certain to refuse.
 import {
   type ClearinghouseMode,
   type ClearinghouseVendor,
-  type ClearinghouseView,
+  type ClearinghouseWording,
   type Fact,
-  MODE_LABEL,
-  VENDOR_LABEL,
+  clearinghouseFacts,
+  isChosen,
   isTransmitting,
   needsSecret,
   type operations,
@@ -17,100 +17,26 @@ import {
 export type TenantClearinghouseView =
   operations["getApiV1TenantClearinghouse"]["responses"][200]["content"]["application/json"];
 
-/**
- * The tenant's view is the platform view minus `hasContract` (a tenant cannot change its billing service mode: that switch is refused with
- * CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR). The shared form and model take the platform shape, so say "no contract" for the tenant.
- */
-export const asSharedView = (view: TenantClearinghouseView): ClearinghouseView => ({
-  ...view,
-  hasContract: false,
-});
-
-const isChosen = (view: TenantClearinghouseView): boolean =>
-  view.vendor !== null && view.source === "tenant";
-
-const TEST_OUTCOME: Readonly<Record<string, string>> = {
-  ok: "the connection answered",
-  credential_rejected: "the vendor rejected the credential",
-  unreachable: "the vendor could not be reached",
+export const TENANT_WORDING: ClearinghouseWording = {
+  platformEnvDetail:
+    "Only the deployment's shared setting names one; none is recorded for your organization.",
+  outsideDetail:
+    "ChartWarden will not send claims for your organization. No credential, BAA or activation is needed.",
+  baaRecordedLabel: "You recorded your vendor BAA",
+  baaNotRecordedDetail: "Record the BAA your organization holds with this vendor.",
+  baaVerifiedLabel: "ChartWarden verified your vendor BAA",
 };
 
-const when = (iso: string): string => new Date(iso).toLocaleString();
+export const tenantFactsOf = (view: TenantClearinghouseView): Fact[] =>
+  clearinghouseFacts(view, TENANT_WORDING);
 
-export function tenantFactsOf(view: TenantClearinghouseView): Fact[] {
-  if (!isChosen(view)) {
-    return [
-      {
-        key: "chosen",
-        label: "A clearinghouse is chosen",
-        state: "pending",
-        ...(view.source === "platform_env"
-          ? {
-              detail:
-                "Only the deployment's shared setting names one; none is recorded for your organization.",
-            }
-          : {}),
-      },
-    ];
-  }
-  const shared = asSharedView(view);
-  if (!isTransmitting(shared)) {
-    return [
-      {
-        key: "chosen",
-        label: "Billing outside ChartWarden",
-        state: "ok",
-        detail:
-          "ChartWarden will not send claims for your organization. No credential, BAA or activation is needed.",
-      },
-    ];
-  }
-  const vendor = VENDOR_LABEL[view.vendor ?? ""] ?? "The vendor";
-  const connected = view.status === "verified" || view.status === "active";
-  const lastTest = view.lastTest;
-  return [
-    {
-      key: "chosen",
-      label: "A clearinghouse is chosen",
-      state: "ok",
-      detail: `${vendor}${view.mode ? `, ${MODE_LABEL[view.mode].toLowerCase()} mode` : ""}`,
-    },
-    {
-      key: "secret",
-      label: "The vendor credential is on file",
-      state: view.hasSecret ? "ok" : "pending",
-    },
-    {
-      key: "baa-recorded",
-      label: "You recorded your vendor BAA",
-      state: view.baa ? "ok" : "pending",
-      detail: view.baa
-        ? `${view.baa.documentRef}, effective ${view.baa.effectiveDate}`
-        : "Record the BAA your organization holds with this vendor.",
-    },
-    {
-      key: "baa-verified",
-      label: "ChartWarden verified your vendor BAA",
-      state: view.baa?.verified ? "ok" : "pending",
-      ...(view.baa?.verified ? { detail: `Verified ${when(view.baa.verified.at)}` } : {}),
-    },
-    {
-      key: "connection",
-      label: "The connection is verified",
-      state: connected ? "ok" : "pending",
-      ...(!connected && lastTest
-        ? {
-            detail: `Last test ${when(lastTest.at)}: ${TEST_OUTCOME[lastTest.outcome] ?? lastTest.outcome}.`,
-          }
-        : {}),
-    },
-    {
-      key: "active",
-      label: "The clearinghouse is active",
-      state: view.status === "active" ? "ok" : "pending",
-    },
-  ];
-}
+/**
+ * The organization chose to bill outside ChartWarden. It cannot move to a vendor from the wizard: the server refuses whenever a pricing
+ * contract exists (CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets the billing service mode), and the tenant's view
+ * carries no contract flag to tell the two cases apart. Step 7 comes after the plan step, so a contract is the normal case.
+ */
+export const isChosenOutside = (view: TenantClearinghouseView): boolean =>
+  isChosen(view) && view.vendor === "outside";
 
 export interface TenantClearinghouseActions {
   readonly canRecordBaa: boolean;
@@ -135,7 +61,7 @@ export function tenantActionsOf(
     waitingForBaa: false,
     showActivation: false,
   };
-  if (!canWrite || !isChosen(view) || !isTransmitting(asSharedView(view))) return none;
+  if (!canWrite || !isChosen(view) || !isTransmitting(view)) return none;
   const baaVerified = view.baa?.verified != null;
   return {
     canRecordBaa: view.baaRequired,
@@ -160,7 +86,7 @@ export function tenantConsequenceOf(
   if (!isChosen(view)) {
     return "The credential is sealed under your organization's own key and is never shown again.";
   }
-  if (needsSecret(asSharedView(view), choice)) {
+  if (needsSecret(view, choice)) {
     return "Changing the vendor or the mode starts the new configuration at draft: it must be verified and activated again, and claims work waits until then. A change of vendor also voids your vendor BAA.";
   }
   return undefined;

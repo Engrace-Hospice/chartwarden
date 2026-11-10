@@ -1,26 +1,30 @@
 // apps/web/src/modules/34-saas/wizard — step 7, the connection and the activation. Claim.MD has a safe connection test, so the member runs
 // it; Stedi has none, so the member attests what was checked (a note, and a confirmation that it names no patient information). Activation
 // is the organization's own administrator's act, and the server refuses it until the connection and the BAA are both verified. Each write
-// needs a fresh step-up and carries one Idempotency-Key per intent (a retry after no answer replays under the same key).
+// needs a fresh step-up, carries one Idempotency-Key per intent (a retry after no answer replays under the same key), and voids a
+// pending go-live attestation. Results go to the panel's status line: a verified connection takes this card away, and its message with it.
 import {
   Button,
-  InlineAlert,
+  PendingAttestationWarning,
   TextAreaField,
-  stashStepUpMemoryDraft,
+  isAboutAnInput,
   useApiClient,
   useOpsWrite,
-  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { JSX } from "react";
-import { BILLING_ERROR_COPY, isAboutAnInput } from "./billing-errors";
+import { DRAFT_ACTIONS, draftKeyFor, stashDraft, useRestoredDraft } from "./billing-drafts";
+import { BILLING_ERROR_COPY, isViewMoved } from "./billing-errors";
+import { BillingFailureNotice } from "./billing-failure-notice";
+import { useServerFieldErrors } from "./billing-field-errors";
+import type { CardContext } from "./card-context";
 import type { TenantClearinghouseActions, TenantClearinghouseView } from "./clearinghouse-tenant";
-import { WriteFailureNotice } from "./write-failure";
+import { useGuarded } from "./use-guarded";
 
 const BASE = "/api/v1/tenant/clearinghouse";
-const DRAFT_KEY = "wizard:clearinghouse_selected:verify";
 const EVIDENCE_MIN = 8;
 const EVIDENCE_MAX = 500;
+const FIELDS: ReadonlySet<string> = new Set(["evidenceNote"]);
 
 const TEST_PROBLEM: Readonly<Record<string, string>> = {
   credential_rejected:
@@ -40,20 +44,27 @@ const collapse = (text: string): string => text.trim().replace(/\s+/g, " ");
 
 export function VerifyCard({
   view,
-  onSettled,
+  ctx,
 }: {
   view: TenantClearinghouseView;
-  onSettled: () => Promise<void>;
+  ctx: CardContext;
 }): JSX.Element {
   const client = useApiClient();
   const write = useOpsWrite(BILLING_ERROR_COPY);
+  const { guard, notice } = useGuarded();
+  const serverErrors = useServerFieldErrors(write.failure);
   const attesting = view.verifiableBy === "attestation";
-  const restored = useStepUpMemoryDraft<{ note: string }>(DRAFT_KEY);
+  const draftKey = draftKeyFor(ctx.scope, DRAFT_ACTIONS.clearinghouseVerify, ctx.stepKey);
+  const restored = useRestoredDraft<{ note: string }>(draftKey, ctx.scope.returning);
   const [note, setNote] = useState(restored?.note ?? "");
   const [confirmed, setConfirmed] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [done, setDone] = useState("");
+  const locked = ctx.lockedFor("verify");
+  const headingId = useId();
+  const { onBusy } = ctx;
+  useEffect(() => {
+    onBusy("verify", write.busy);
+  }, [onBusy, write.busy]);
 
   async function verify(): Promise<void> {
     const trimmed = collapse(note);
@@ -70,39 +81,43 @@ export function VerifyCard({
       }
     }
     setNoteError(null);
-    setProblem(null);
-    setDone("");
+    ctx.announce(null);
     const body = attesting
       ? { evidenceNote: trimmed, confirmNoPatientInformation: true as const }
       : {};
-    await write.run(
+    const outcome = await write.run(
       attesting ? `verify:${trimmed}` : "verify:test",
       (key) =>
         client.POST(`${BASE}/verify`, { params: { header: { "Idempotency-Key": key } }, body }),
       async (data) => {
         // An attestation runs no vendor test; a connection test that reports nothing is not a pass.
-        const found = attesting ? null : testProblemOf(data?.test?.outcome);
-        setProblem(found);
-        setDone(
-          found !== null
-            ? ""
-            : attesting
-              ? "The connection was attested."
-              : "The connection test passed.",
+        const problem = attesting ? null : testProblemOf(data?.test?.outcome);
+        ctx.announce(
+          problem !== null
+            ? { tone: "error", text: problem }
+            : {
+                tone: "success",
+                text: attesting ? "The connection was attested." : "The connection test passed.",
+              },
+          true,
         );
         setNote("");
         setConfirmed(false);
-        await onSettled();
+        await ctx.onSettled();
       },
     );
+    if (!outcome.ok && isViewMoved(outcome.failure)) await ctx.onMoved();
   }
 
-  const fieldNote = noteError ?? write.failure?.fieldErrors.evidenceNote;
+  const fieldNote = noteError ?? serverErrors.errors.evidenceNote;
+  const stray = write.failure && !isAboutAnInput(write.failure, (f) => FIELDS.has(f));
   return (
-    <section className="wx-drawer-card" aria-label="Connection">
+    <section className="wx-drawer-card" aria-labelledby={headingId}>
       <div className="wx-drawer-card-head">
-        <h3>Connection</h3>
+        <h3 id={headingId}>Connection</h3>
       </div>
+      {locked ? <p className="wx-row-sub">Finish or cancel the change above first.</p> : null}
+      {locked ? null : <PendingAttestationWarning view={ctx.wizard} audience="tenant" />}
       {attesting ? (
         <form
           className="wx-form-stack"
@@ -110,7 +125,7 @@ export function VerifyCard({
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            void verify();
+            if (!write.busy && !locked) void guard(verify);
           }}
         >
           <p className="wx-row-sub">
@@ -120,10 +135,13 @@ export function VerifyCard({
           <TextAreaField
             label="What was checked, and by whom"
             hint={`${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters. No patient information.`}
+            disabled={locked}
             value={note}
             onChange={(e) => {
               setNote(e.target.value);
               setConfirmed(false); // the confirmation is about THESE words
+              setNoteError(null);
+              serverErrors.touch("evidenceNote");
             }}
             error={fieldNote}
           />
@@ -131,18 +149,19 @@ export function VerifyCard({
             <input
               type="checkbox"
               checked={confirmed}
+              disabled={locked}
               onChange={(e) => setConfirmed(e.target.checked)}
             />
             This note names no patient information
           </label>
-          {write.failure && !isAboutAnInput(write.failure) ? (
-            <WriteFailureNotice
+          {stray ? (
+            <BillingFailureNotice
               failure={write.failure}
-              onReverify={() => stashStepUpMemoryDraft(DRAFT_KEY, { note })}
+              onReverify={() => stashDraft(draftKey, { note })}
             />
           ) : null}
           <div className="wx-drawer-actions">
-            <Button type="submit" disabled={write.busy}>
+            <Button type="submit" disabled={locked} aria-disabled={write.busy || undefined}>
               Verify the connection
             </Button>
           </div>
@@ -153,81 +172,21 @@ export function VerifyCard({
             ChartWarden sends a test that carries no patient information to check the vendor accepts
             your credential.
           </p>
-          {write.failure ? <WriteFailureNotice failure={write.failure} /> : null}
+          {write.failure ? <BillingFailureNotice failure={write.failure} /> : null}
           <div className="wx-drawer-actions">
-            <Button disabled={write.busy} onClick={() => void verify()}>
+            <Button
+              disabled={locked}
+              aria-disabled={write.busy || undefined}
+              onClick={() => {
+                if (!write.busy) void guard(verify);
+              }}
+            >
               Test the connection
             </Button>
           </div>
         </div>
       )}
-      {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
-      {done ? <InlineAlert tone="success">{done}</InlineAlert> : null}
-    </section>
-  );
-}
-
-export function ActivateCard({
-  view,
-  actions,
-  onSettled,
-  onRefresh,
-}: {
-  view: TenantClearinghouseView;
-  actions: TenantClearinghouseActions;
-  onSettled: () => Promise<void>;
-  /** Read this step's data again (not the wizard: that read is audited per call). */
-  onRefresh: () => Promise<void>;
-}): JSX.Element {
-  const client = useApiClient();
-  const write = useOpsWrite(BILLING_ERROR_COPY);
-
-  async function activate(): Promise<void> {
-    await write.run(
-      "activate",
-      (key) => client.POST(`${BASE}/activate`, { params: { header: { "Idempotency-Key": key } } }),
-      onSettled,
-    );
-  }
-
-  return (
-    <section className="wx-drawer-card" aria-label="Activation">
-      <div className="wx-drawer-card-head">
-        <h3>Activation</h3>
-      </div>
-      {view.status === "active" ? (
-        <p className="wx-row-sub">The clearinghouse is active.</p>
-      ) : actions.canActivate ? (
-        <div className="wx-form-stack">
-          <p className="wx-row-sub">
-            The connection and your vendor BAA are verified. Activating lets claims go out under
-            your vendor account.
-          </p>
-          {write.failure ? <WriteFailureNotice failure={write.failure} /> : null}
-          <div className="wx-drawer-actions">
-            <Button disabled={write.busy} onClick={() => void activate()}>
-              Activate the clearinghouse
-            </Button>
-          </div>
-        </div>
-      ) : actions.waitingForBaa ? (
-        <div className="wx-form-stack">
-          <InlineAlert tone="info">
-            Waiting for ChartWarden to verify your vendor BAA. Activation opens once it has, and the
-            connection is verified.
-          </InlineAlert>
-          <div>
-            <Button size="sm" tone="secondary" onClick={() => void onRefresh()}>
-              Check again
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <p className="wx-row-sub">
-          Activation opens once the connection is verified and ChartWarden has verified your vendor
-          BAA.
-        </p>
-      )}
+      {notice}
     </section>
   );
 }
