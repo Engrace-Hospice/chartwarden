@@ -687,6 +687,23 @@ describe.skipIf(!DB_URL)(
           r.actor_membership_id,
         ]);
       }
+      /**
+       * Wait until `count` sessions are blocked on a row lock in a `... FOR UPDATE` statement (polled from pg_stat_activity, not slept): the
+       * races below queue two lock waiters behind a held lock, and the order they queue in is the order they are served in.
+       */
+      async function waitForLockWaiters(count: number, timeoutMs = 15_000): Promise<void> {
+        const deadline = Date.now() + timeoutMs;
+        for (;;) {
+          const { rows } = await admin.query(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND pid <> pg_backend_pid()
+                AND wait_event_type = 'Lock' AND query ILIKE '%for update%'`,
+          );
+          if (rows[0].n >= count) return;
+          if (Date.now() > deadline) throw new Error(`no ${count} sessions waiting on a row lock`);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      }
       const suspendNow = (organizationId: string, now: Date = SWEPT_AT) =>
         buildM35OrgLifecycleConsumer({ db: handle.db, outbox: publisher, now: () => now }).handle({
           eventType: "m2.organization.suspended",
@@ -945,28 +962,264 @@ describe.skipIf(!DB_URL)(
         expect(logged).toEqual([]);
       });
 
-      it("the newest pause is left alone when an OLDER subscription is live (resuming it would break one-live-per-org): the org's sweep does not fail, and it is reported once", async () => {
+      describe("the exact blocked state: an OLDER subscription A is live, the newest B is paused with a date that has passed", () => {
+        const TENANT_USER_BLOCKED = "0a000000-0000-4000-8000-0000000000b4";
+        const tenantResume = (organizationId: string) =>
+          buildDrizzleM35RouteService(handle.db, {
+            outbox: publisher,
+            now: () => SWEPT_AT,
+          }).resumeSubscription({
+            organizationId,
+            userId: TENANT_USER_BLOCKED,
+            roles: ["org_admin"],
+            membershipId: "0b000000-0000-4000-8000-0000000000b4",
+            stepUpRecent: true,
+          });
+        async function blockedOrg() {
+          await admin.query(
+            `INSERT INTO "user" (id,email,name) VALUES ($1,'tenant-b4@m35-live.example','tenant b4')
+             ON CONFLICT (id) DO NOTHING`,
+            [TENANT_USER_BLOCKED],
+          );
+          const org = await newOrg();
+          const a = nextSubId();
+          await seedSubscription({
+            id: a,
+            organizationId: org,
+            status: "active",
+            startedAt: "2026-09-01T00:00:00Z",
+          });
+          const b = await seedOperatorPause(org, UNTIL, "2026-11-01T00:00:00Z");
+          return { org, a, b };
+        }
+        const HOUR_MS = 3_600_000;
+
+        it("the tenant's resume is a typed 409 SUBSCRIPTION_OTHER_LIVE_EXISTS (not the unique index's raw failure), and nothing is written or announced", async () => {
+          const { org, a, b } = await blockedOrg();
+          const before = await subscriptionRow(b);
+
+          await expect(tenantResume(org)).rejects.toMatchObject({
+            code: "SUBSCRIPTION_OTHER_LIVE_EXISTS",
+            statusCode: 409,
+          });
+
+          const after = await subscriptionRow(b);
+          expect(after.status).toBe("paused");
+          expect(after.updated_at.toISOString()).toBe(before.updated_at.toISOString());
+          expect((await subscriptionRow(a)).status).toBe("active");
+          expect(await ledger(b)).toHaveLength(1);
+          expect(await outboxRows(org, "m35.subscription.resumed")).toHaveLength(0);
+        });
+
+        it("the sweep leaves it alone and reports it (log and ops alert) at most once a DAY per subscription; once the operator cancels A the next sweep resumes B", async () => {
+          const { org, a, b } = await blockedOrg();
+          const logged: string[] = [];
+          const alerts: unknown[] = [];
+          const sweepAt = (hours: number) =>
+            runPauseResumeSweep({
+              ...jobs(only(org), new Date(SWEPT_AT.getTime() + hours * HOUR_MS)),
+              log: (m) => void logged.push(m),
+              onPauseBlocked: (e) => void alerts.push(e),
+            });
+
+          await sweepAt(0);
+          await sweepAt(1);
+          await sweepAt(23);
+          expect(alerts).toEqual([
+            { organizationId: org, subscriptionId: b, olderLiveSubscriptionId: a },
+          ]);
+          expect(logged).toEqual([
+            "m35 lapsed pause not resumed: an older subscription of the organization is live",
+          ]);
+          await sweepAt(25); // a day later: reported again
+          expect(alerts).toHaveLength(2);
+          expect((await subscriptionRow(b)).status).toBe("paused");
+          expect(await ledger(b)).toHaveLength(1);
+
+          // the operator cancels the older one (by id): the next tick resumes B, and B is forgotten
+          await admin.query(
+            "UPDATE subscription SET status='canceled', canceled_at=now() WHERE id=$1",
+            [a],
+          );
+          await sweepAt(26);
+          expect((await subscriptionRow(b)).status).toBe("active");
+          expect(
+            (await outboxRows(org, "m35.subscription.resumed")).map(
+              (e) => e.payload.subscriptionId,
+            ),
+          ).toEqual([b]);
+          expect(alerts).toHaveLength(2);
+        });
+      });
+
+      it("a canceled subscription with a cancel-at-period-end flag still set is final: the tenant's resume is refused 409 SUBSCRIPTION_CANCELED and the row is not touched", async () => {
+        await admin.query(
+          `INSERT INTO "user" (id,email,name) VALUES ($1,'tenant-b5@m35-live.example','tenant b5')
+           ON CONFLICT (id) DO NOTHING`,
+          ["0a000000-0000-4000-8000-0000000000b5"],
+        );
         const org = await newOrg();
-        const olderLive = nextSubId();
+        const subId = nextSubId();
         await seedSubscription({
-          id: olderLive,
+          id: subId,
+          organizationId: org,
+          status: "canceled",
+          cancelAtPeriodEnd: true,
+          startedAt: "2026-10-01T00:00:00Z",
+        });
+        await admin.query(
+          "UPDATE subscription SET canceled_at='2026-11-01T00:00:00Z' WHERE id=$1",
+          [subId],
+        );
+        const before = await subscriptionRow(subId);
+
+        await expect(
+          buildDrizzleM35RouteService(handle.db, {
+            outbox: publisher,
+            now: () => SWEPT_AT,
+          }).resumeSubscription({
+            organizationId: org,
+            userId: "0a000000-0000-4000-8000-0000000000b5",
+            roles: ["org_admin"],
+            membershipId: "0b000000-0000-4000-8000-0000000000b5",
+            stepUpRecent: true,
+          }),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELED", statusCode: 409 });
+
+        const after = await subscriptionRow(subId);
+        expect(after.status).toBe("canceled");
+        expect(after.cancel_at_period_end).toBe(true); // the flag was not flipped
+        expect(after.updated_at.toISOString()).toBe(before.updated_at.toISOString());
+        expect(await outboxRows(org, "m35.subscription.resumed")).toHaveLength(0);
+      });
+
+      it("a lapsed pause under a NEWER open-ended pause (an org suspension's) is never resurrected", async () => {
+        const org = await newOrg();
+        const lapsed = await seedOperatorPause(org, UNTIL, "2026-09-01T00:00:00Z");
+        const suspension = await seedOperatorPause(org, null, "2026-11-01T00:00:00Z");
+
+        expect(await runPauseResumeForOrg(jobs(only(org)), org)).toBe(0);
+
+        expect((await subscriptionRow(lapsed)).status).toBe("paused");
+        expect((await subscriptionRow(suspension)).status).toBe("paused");
+        expect(await outboxRows(org, "m35.subscription.resumed")).toHaveLength(0);
+      });
+
+      describe("two subscriptions that START at the same instant (one transaction inserted both): every reader and writer picks the same one", () => {
+        const SAME_START = "2026-10-01T00:00:00Z";
+        const TIE_USER = "0a000000-0000-4000-8000-0000000000b6";
+        const tieActor = (organizationId: string) => ({
+          organizationId,
+          userId: TIE_USER,
+          roles: ["org_admin"],
+          membershipId: "0b000000-0000-4000-8000-0000000000b6",
+          stepUpRecent: true,
+        });
+        const service = () =>
+          buildDrizzleM35RouteService(handle.db, { outbox: publisher, now: () => SWEPT_AT });
+        /** Both paused with a lapsed date. The lower id is inserted FIRST, so the heap's first row is not the winner: only the id picks. */
+        async function tiedOrg() {
+          await admin.query(
+            `INSERT INTO "user" (id,email,name) VALUES ($1,'tenant-b6@m35-live.example','tenant b6')
+             ON CONFLICT (id) DO NOTHING`,
+            [TIE_USER],
+          );
+          const org = await newOrg();
+          const low = await seedOperatorPause(org, UNTIL, SAME_START);
+          const high = await seedOperatorPause(org, UNTIL, SAME_START);
+          expect(high > low).toBe(true);
+          return { org, low, high };
+        }
+
+        it("the tenant's read, the sweep, the tenant's resume and the suspension consumer all act on the higher id", async () => {
+          const read = await tiedOrg();
+          expect((await service().getSubscription(tieActor(read.org)))?.id).toBe(read.high);
+
+          const sweep = await tiedOrg();
+          expect(await runPauseResumeForOrg(jobs(only(sweep.org)), sweep.org)).toBe(1);
+          expect((await subscriptionRow(sweep.high)).status).toBe("active");
+          expect((await subscriptionRow(sweep.low)).status).toBe("paused");
+
+          const tenant = await tiedOrg();
+          expect((await service().resumeSubscription(tieActor(tenant.org))).id).toBe(tenant.high);
+          expect((await subscriptionRow(tenant.high)).status).toBe("active");
+          expect((await subscriptionRow(tenant.low)).status).toBe("paused");
+
+          const consumerOrg = await tiedOrg();
+          await suspendNow(consumerOrg.org);
+          expect((await ledger(consumerOrg.high)).map((r) => r[2])).toEqual([
+            "platform_ops_pause",
+            "platform_ops_pause_lapsed",
+            "org_suspended_by_platform_admin",
+          ]);
+          expect(await ledger(consumerOrg.low)).toHaveLength(1);
+        });
+      });
+
+      it("an organization whose newest subscription is NOT a lapsed pause takes no row lock: a held lock does not stall its sweep", async () => {
+        const org = await newOrg();
+        const active = nextSubId();
+        await seedSubscription({
+          id: active,
           organizationId: org,
           status: "active",
-          startedAt: "2026-09-01T00:00:00Z",
+          startedAt: "2026-10-01T00:00:00Z",
         });
-        const newestPaused = await seedOperatorPause(org, UNTIL, "2026-11-01T00:00:00Z");
-        const logged: string[] = [];
-        const j = { ...jobs(only(org)), log: (m: string) => void logged.push(m) };
+        const holder = new Client({ connectionString: DB_URL });
+        await holder.connect();
+        try {
+          await holder.query("BEGIN");
+          await holder.query("SELECT id FROM subscription WHERE id=$1 FOR UPDATE", [active]);
 
-        await runPauseResumeSweep(j);
-        await runPauseResumeSweep(j);
+          const outcome = await Promise.race([
+            runPauseResumeForOrg(jobs(only(org)), org).then(() => "done"),
+            new Promise((resolve) => setTimeout(() => resolve("stalled"), 4_000)),
+          ]);
 
-        expect((await subscriptionRow(newestPaused)).status).toBe("paused");
-        expect((await subscriptionRow(olderLive)).status).toBe("active");
-        expect(await ledger(newestPaused)).toHaveLength(1);
-        expect(logged).toEqual([
-          "m35 lapsed pause not resumed: an older subscription of the organization is live",
-        ]);
+          expect(outcome).toBe("done"); // read plainly: the holder's lock was never waited on
+        } finally {
+          await holder.query("ROLLBACK");
+          await holder.end();
+        }
+      });
+
+      it("a lapsed pause whose row is held longer than the lock timeout fails THAT org's run (SQLSTATE 55P03), the other orgs are still processed, and the next run resumes it", async () => {
+        const stuckOrg = await newOrg();
+        const stuck = await seedOperatorPause(stuckOrg);
+        const freeOrg = await newOrg();
+        const free = await seedOperatorPause(freeOrg);
+        const holder = new Client({ connectionString: DB_URL });
+        await holder.connect();
+        const both = async () => [{ organizationId: stuckOrg }, { organizationId: freeOrg }];
+        try {
+          await holder.query("BEGIN");
+          await holder.query("SELECT id FROM subscription WHERE id=$1 FOR UPDATE", [stuck]);
+
+          const failure = await runPauseResumeSweep({
+            ...jobs(both),
+            lockTimeoutMs: 300,
+            log: () => undefined,
+          }).then(
+            () => null,
+            (error: unknown) => error as AggregateError,
+          );
+
+          expect(failure).toBeInstanceOf(AggregateError);
+          const [first] = (failure as AggregateError).errors as {
+            code?: string;
+            cause?: { code?: string };
+          }[];
+          expect(first?.cause?.code ?? first?.code).toBe("55P03");
+          expect((await subscriptionRow(stuck)).status).toBe("paused"); // nothing of the failed run survived
+          expect(await ledger(stuck)).toHaveLength(1);
+          expect((await subscriptionRow(free)).status).toBe("active"); // the next org in the fan-out was still processed
+        } finally {
+          await holder.query("COMMIT");
+          await holder.end();
+        }
+
+        await runPauseResumeSweep(jobs(both)); // the next hour
+        expect((await subscriptionRow(stuck)).status).toBe("active");
       });
 
       it("a failing publish rolls the WHOLE org transaction back (no ledger row, status unchanged, no event), the other orgs are still processed, and the next run retries it", async () => {
@@ -1020,7 +1273,6 @@ describe.skipIf(!DB_URL)(
             outbox: publisher,
             now: () => SWEPT_AT,
           }).resumeSubscription(tenantActor(organizationId));
-        const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
         async function race(order: "sweep first" | "tenant first") {
           await admin.query(
@@ -1037,9 +1289,9 @@ describe.skipIf(!DB_URL)(
             await holder.query("SELECT id FROM subscription WHERE id=$1 FOR UPDATE", [subId]);
             const sweep = () => runPauseResumeForOrg(jobs(only(org)), org);
             const first = order === "sweep first" ? sweep() : tenantResume(org);
-            await wait(400); // the first is queued behind the holder's lock, then the second behind it
+            await waitForLockWaiters(1); // the first is queued behind the holder's lock ...
             const second = order === "sweep first" ? tenantResume(org) : sweep();
-            await wait(400);
+            await waitForLockWaiters(2); // ... then the second behind it
             await holder.query("COMMIT");
             const [a, b] = await Promise.allSettled([first, second]);
             return {
@@ -1249,12 +1501,8 @@ describe.skipIf(!DB_URL)(
              VALUES ($1,$2,'paused','active','2026-12-20T03:00:00Z','platform_ops_resume')`,
             [subId, org],
           );
-          let settled = false;
-          const sweep = runPauseResumeForOrg(jobs(only(org)), org).finally(() => {
-            settled = true;
-          });
-          await new Promise((resolve) => setTimeout(resolve, 600));
-          expect(settled).toBe(false); // it is waiting on the operator's row lock, not racing past it
+          const sweep = runPauseResumeForOrg(jobs(only(org)), org);
+          await waitForLockWaiters(1); // it is waiting on the operator's row lock, not racing past it
           await operator.query("COMMIT");
 
           expect(await sweep).toBe(0);

@@ -24,7 +24,8 @@ import type { BillingServiceMode } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import { desc, eq } from "drizzle-orm";
 import { refuseForeignAmbientOrg } from "../../../bootstrap/ambient-org-guard";
-import type { M35WriteActor } from "../routes/actor";
+import { currentSubscriptionOrder } from "../routes/current-subscription";
+import type { M35WriteActor } from "../routes/service";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
 import { utcDateOf } from "./census-daily";
 import {
@@ -324,7 +325,7 @@ async function resumeIfSigned(
     .select()
     .from(SUB)
     .where(eq(SUB.organizationId, tenant.organizationId))
-    .orderBy(desc(SUB.createdAt));
+    .orderBy(...currentSubscriptionOrder());
   const open = subs.find((s) => s.status !== "canceled");
   if (!open) return null;
   const found = await loadContract(tx, "live", at, tenant.organizationId);

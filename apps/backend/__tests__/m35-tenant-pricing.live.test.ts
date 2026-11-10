@@ -85,6 +85,7 @@ const ORG_M = "ad000000-0000-4000-8000-0000000000ad"; // suspended (paused) mid-
 const ORG_N = "ae000000-0000-4000-8000-0000000000ae"; // re-signed: two contracts, the first canceled
 const ORG_O = "af000000-0000-4000-8000-0000000000af"; // an operator's dated pause that the hourly sweep resumes: the statement must not move
 const ORG_P = "b0000000-0000-4000-8000-0000000000b0"; // an operator's dated pause still running when the platform suspends the org
+const ORG_Q = "b1000000-0000-4000-8000-0000000000b1"; // an older live subscription beside the newest, paused one: the operator's resume is refused
 const OPERATOR_USER = "0a000000-0000-4000-8000-000000000001";
 const OPERATOR_MEMBERSHIP = "0b000000-0000-4000-8000-000000000001";
 const KEY = {
@@ -2995,6 +2996,65 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         selectNewestContract(tx, "live", new Date("2026-11-28T12:00:00Z"), ORG_P),
       );
       expect(live).toBeNull(); // not billable: the suspended org stays exempt
+    });
+
+    it("PRC-5: the operator's resume of a paused subscription while an OLDER subscription of the organization is live is a typed 409 (not the unique index's raw failure); after the operator cancels the older one the sweep resumes it", async () => {
+      await seedOrg(ORG_Q, "pricing-q", "onboarding");
+      const older = "c1000000-0000-4000-8000-000000000001";
+      const newest = "c1000000-0000-4000-8000-000000000002";
+      await admin.query(
+        `INSERT INTO subscription (id, organization_id, plan_id, status, started_at)
+         VALUES ($1,$2,$3,'active','2026-09-01T00:00:00Z')`,
+        [older, ORG_Q, planV2Id],
+      );
+      await admin.query(
+        `INSERT INTO subscription (id, organization_id, plan_id, status, started_at, paused_at, paused_until)
+         VALUES ($1,$2,$3,'paused','2026-11-01T00:00:00Z','2026-11-10T00:00:00Z','2026-12-15T00:00:00Z')`,
+        [newest, ORG_Q, planV2Id],
+      );
+      // what the refusal replaces: the database itself refuses a second live subscription, with a raw failure
+      await expect(
+        admin.query("UPDATE subscription SET status='active' WHERE id=$1", [newest]),
+      ).rejects.toMatchObject({ code: "23505", constraint: "subscription_org_active_uq" });
+
+      const route = operatorRoute("2026-12-20T00:00:00Z");
+      await expect(route.adminResumeSubscription(operator, newest)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_OTHER_LIVE_EXISTS",
+        statusCode: 409,
+      });
+      // nothing written, audited or announced for the refusal
+      expect(
+        (await q<{ status: string }>("SELECT status FROM subscription WHERE id=$1", [newest]))[0],
+      ).toEqual({ status: "paused" });
+      expect(
+        await q("SELECT 1 FROM subscription_state_history WHERE subscription_id=$1", [newest]),
+      ).toHaveLength(0);
+      expect(
+        await q(
+          "SELECT 1 FROM audit_event WHERE event_type='m35.subscription.platform_resumed' AND resource_id=$1",
+          [newest],
+        ),
+      ).toHaveLength(0);
+      expect(
+        await q(
+          "SELECT 1 FROM outbox_event WHERE organization_id=$1 AND event_type='m35.subscription.resumed'",
+          [ORG_Q],
+        ),
+      ).toHaveLength(0);
+
+      // the operator cancels the older one by id; the next hourly tick resumes the newest
+      await route.adminCancelSubscription(operator, older);
+      const sweepDeps = {
+        db: app.db,
+        platformRunner,
+        outbox,
+        listOrgs: async () => [{ organizationId: ORG_Q }],
+        now: at("2026-12-20T03:05:00Z"),
+      };
+      expect(await runPauseResumeForOrg(sweepDeps, ORG_Q)).toBe(1);
+      expect(
+        (await q<{ status: string }>("SELECT status FROM subscription WHERE id=$1", [newest]))[0],
+      ).toEqual({ status: "active" });
     });
 
     it("MEDIUM: a platform operator's pause, resume and cancel name the operator in the PLATFORM audit row and NOT in the tenant-readable history or its audit copy", async () => {

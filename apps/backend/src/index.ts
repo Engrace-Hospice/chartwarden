@@ -9408,6 +9408,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           outbox: m35OutboxPublisher,
           listOrgs: () => m35Orgs.listActiveOrgs(),
           log: m35Log,
+          // A lapsed pause that cannot resume because an OLDER subscription of the org is live stays `paused` until an operator cancels or
+          // pauses the older one: raised through the same ops alert sink as a worker's dead letters (log at error level, plus the webhook
+          // when OPS_ALERT_WEBHOOK_URL is set), at most once a day per subscription. Ids only.
+          onPauseBlocked: (blocked) =>
+            dlqPromotionSink({
+              source: "m35:pause-resume-blocked",
+              organizationId: blocked.organizationId,
+              jobId: blocked.subscriptionId,
+              error: `the lapsed pause cannot be resumed while the older subscription ${blocked.olderLiveSubscriptionId} is live: cancel or pause that one, then the next hourly sweep resumes it`,
+              occurredAt: new Date().toISOString(),
+            }),
         },
         ...(m35Stripe.cipher ? { cipher: m35Stripe.cipher } : {}),
         ...(m35Stripe.client

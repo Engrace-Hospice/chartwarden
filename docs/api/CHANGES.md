@@ -30,6 +30,16 @@ claims-billing entitlement) until an operator remembered to resume it.
   neither paused nor scheduled to cancel (it used to answer `200`, touch `updatedAt` and publish `m35.subscription.resumed` again).
   Resuming a subscription scheduled to cancel at period end still clears the schedule; it no longer publishes `m35.subscription.resumed`,
   which means "resumed from paused".
+- `POST /api/v1/subscription/resume` also answers `409 SUBSCRIPTION_CANCELED` for a canceled subscription (it is final), even when it still
+  carries a cancel-at-period-end schedule: it used to answer `200`, flip the schedule and clear the pause columns of a canceled row.
+- `POST /api/admin/subscriptions/{id}/resume` and `POST /api/v1/subscription/resume` answer `409 SUBSCRIPTION_OTHER_LIVE_EXISTS` when the
+  organization already has another live subscription (an organization can hold one live subscription; a paused one does not count). They used
+  to fail with a raw `500` from the database's unique index. Cancel or pause the other subscription by id; the hourly sweep then resumes this
+  one on its next tick (or resume it again by hand). The sweep itself leaves such a pause alone and raises an operator alert (the ops alert
+  sink, ids only) at most once a day per subscription until it is unblocked.
+- An organization's current subscription is the one with the newest `startedAt`; two subscriptions that start at the same instant (one
+  transaction inserted both) are now ordered by the higher `id` on every read and write path, so the tenant's view, the resume routes, the
+  suspension consumer and the sweep always agree on which one it is.
 - No request or response shape changes.
 
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status

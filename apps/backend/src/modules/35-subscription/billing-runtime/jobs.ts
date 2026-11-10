@@ -48,6 +48,18 @@ export interface M35JobDeps {
   readonly listOrgs: () => Promise<readonly { readonly organizationId: string }[]>;
   readonly now?: () => Date;
   readonly log?: (message: string, detail: Record<string, unknown>) => void;
+  /**
+   * The pause-resume sweep found the newest subscription's lapsed pause blocked by an OLDER live subscription (it cannot be resumed until
+   * an operator acts): the composition root binds the ops alert sink here. Ids only, at most once per day per subscription.
+   */
+  readonly onPauseBlocked?: (event: PauseBlockedEvent) => void;
+}
+
+/** What an operator needs to unblock a lapsed pause: the pause that cannot resume, and the older live subscription in its way. */
+export interface PauseBlockedEvent {
+  readonly organizationId: string;
+  readonly subscriptionId: string;
+  readonly olderLiveSubscriptionId: string;
 }
 
 const nowOf = (deps: M35JobDeps): Date => (deps.now ?? (() => new Date()))();
