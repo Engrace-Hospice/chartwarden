@@ -167,10 +167,11 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
       },
       lifecycleAlerts,
       supportSessionPorts: {
-        audit: { async emitCriticalAudit() {} },
-        outbox: { async publish() {} },
-        alerts: { async emitAlert() {} },
         now: () => new Date(),
+        // This suite never opens or closes a support session.
+        bind() {
+          throw new Error("support-session ports are not bound in this suite");
+        },
       },
       platformJobId: PLATFORM_JOB_ID,
     };

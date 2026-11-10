@@ -1,3 +1,4 @@
+import { assertGrantorMayIssueScope } from "@chartwarden/saas-tenant-platform";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/service.ts — M34 the TenantRouteService
 // + an in-memory slice (§4.1 "Tenant-scoped routes").
 //
@@ -12,7 +13,6 @@
 // is a non-leaking 404 — the way RLS behaves in prod), cursor pagination on every list.
 import type { OrgId } from "@chartwarden/types";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { notBuilt } from "../../not-built";
 import { type CursorPage, paginate } from "../keyset-page";
 
 // ── enqueue port (Phase 2D worker-trigger seam) ───────────────────────────────────────────────────
@@ -49,6 +49,13 @@ export interface SupportConsentGrantView {
   readonly revokedAt: string | null;
   readonly active: boolean;
   readonly createdAt: string;
+}
+
+/** Who acts on a grant: the membership and user recorded, and the role keys the issue rule reads. */
+export interface GrantActor {
+  readonly membershipId: string;
+  readonly userId: string;
+  readonly roles: readonly string[];
 }
 
 export interface IssueGrantArgs {
@@ -154,15 +161,21 @@ export interface TenantRouteService {
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<SupportConsentGrantView>>;
+  /**
+   * Issue a consent grant. Scope rule (slice 7): `assist` (non-PHI) only by an actor holding org_admin or compliance_officer; an
+   * organization that is not active may issue only `assist` (403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED). The existing scopes keep
+   * their rule. Emits `m34.support_consent_grant.issued` and alerts the operators.
+   */
   issueConsentGrant(
     organizationId: OrgId,
-    actorMembershipId: string,
+    actor: GrantActor,
     args: IssueGrantArgs,
   ): Promise<SupportConsentGrantView>;
+  /** Revoke a grant AND close every session open on it (and resolve a linked help request): the cascade, in one transaction. */
   revokeConsentGrant(
     organizationId: OrgId,
     grantId: string,
-    actorMembershipId: string,
+    actor: GrantActor,
     reason: string,
   ): Promise<SupportConsentGrantView>;
   // --- support sessions on this organization (slice 7; read-only, never an operator id) ---
@@ -258,6 +271,20 @@ export interface TenantRouteSeed {
     Partial<TenantExportRecord> & { id: string; organizationId: string }
   >;
   readonly baaRecords?: ReadonlyArray<Partial<BaaRecord> & { id: string; organizationId: string }>;
+  /** Support sessions on the organization (the tenant's read-only view: never an operator). */
+  readonly supportSessions?: ReadonlyArray<
+    Partial<Mutable<TenantSupportSessionView>> & { id: string; organizationId: string }
+  >;
+  /** Ledger rows of those sessions. */
+  readonly supportSessionEvents?: ReadonlyArray<
+    Partial<Mutable<TenantSupportSessionEventView>> & {
+      id: string;
+      organizationId: string;
+      supportSessionId: string;
+    }
+  >;
+  /** Whether the organization is `active` (default true); an organization that is not may issue only `assist`. */
+  readonly organizationActive?: boolean;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M22 slice). */
@@ -283,6 +310,11 @@ export function createInMemoryTenantBackend(
   const dsar = new Map<string, DsarRecord>();
   const tenantExports = new Map<string, TenantExportRecord>();
   const baa = new Map<string, BaaRecord>();
+  const supportSessions = new Map<
+    string,
+    Mutable<TenantSupportSessionView> & { organizationId: string }
+  >();
+  const supportEvents: Array<TenantSupportSessionEventView & { organizationId: string }> = [];
   const enqueueLog: { queue: M34TenantQueueName; jobId: string }[] = [];
   let created = 0;
   const now = () => "2026-06-21T12:00:00.000Z";
@@ -335,6 +367,27 @@ export function createInMemoryTenantBackend(
       createdAt: now(),
       ...t,
     } as TenantExportRecord);
+  }
+  for (const ss of seed.supportSessions ?? []) {
+    supportSessions.set(ss.id, {
+      supportConsentGrantId: uuidFromCounter("c", 1),
+      state: "open",
+      startedAt: now(),
+      expiresAt: plusHours(now(), 8),
+      closedAt: null,
+      closeReason: null,
+      actionCount: 0,
+      lastActionAt: null,
+      ...ss,
+    });
+  }
+  for (const ev of seed.supportSessionEvents ?? []) {
+    supportEvents.push({
+      eventKind: "session.start",
+      occurredAt: now(),
+      detail: null,
+      ...ev,
+    });
   }
   for (const b of seed.baaRecords ?? []) {
     baa.set(b.id, {
@@ -389,12 +442,20 @@ export function createInMemoryTenantBackend(
       );
       return paginate(organizationId, rows, cursor, limit);
     },
-    async issueConsentGrant(organizationId, _actorMembershipId, args) {
-      // The assist scope and who may issue it are piece 7S's; until it lands the slice refuses it.
-      if (args.scope === "assist") throw notBuilt("the assist consent scope");
+    async issueConsentGrant(organizationId, actor, args) {
+      // The scope rule is the package's, shared with the Drizzle service: assist by org_admin / compliance_officer only, and an
+      // organization that is not active may issue nothing else.
+      assertGrantorMayIssueScope({
+        scope: args.scope,
+        grantorRoles: actor.roles,
+        organizationActive: seed.organizationActive ?? true,
+      });
       const id = uuidFromCounter("c", ++created);
-      // §4.2 — expires_at = NOW() + min(request, 72h platform-floor).
-      const hours = Math.min(args.expiresAtIsoOffsetHours, 72);
+      // §4.2 — expires_at = NOW() + min(request, 72h platform-floor); assist is whole hours 1..24.
+      const hours =
+        args.scope === "assist"
+          ? Math.min(24, Math.max(1, Math.floor(args.expiresAtIsoOffsetHours)))
+          : Math.min(args.expiresAtIsoOffsetHours, 72);
       const rec: GrantRecord = {
         id,
         organizationId,
@@ -410,18 +471,44 @@ export function createInMemoryTenantBackend(
       grants.set(id, rec);
       return strip(rec);
     },
-    async revokeConsentGrant(organizationId, grantId, _actorMembershipId, _reason) {
+    async revokeConsentGrant(organizationId, grantId, _actor, _reason) {
       const r = loadGrant(organizationId, grantId);
-      r.revokedAt = now();
+      if (r.revokedAt === null) r.revokedAt = now();
       r.active = false;
+      // The cascade: every session still open on the grant ends as `grant_revoked`.
+      for (const ss of supportSessions.values()) {
+        if (
+          ss.organizationId === organizationId &&
+          ss.supportConsentGrantId === grantId &&
+          ss.closedAt === null
+        ) {
+          ss.closedAt = now();
+          ss.closeReason = "grant_revoked";
+          ss.state = "closed";
+        }
+      }
       return strip(r);
     },
-    // --- support sessions on this organization: piece 7S builds the reads ---
-    async listSupportSessions() {
-      throw notBuilt("the tenant support-session list");
+    // --- support sessions on this organization: read-only, never an operator ---
+    async listSupportSessions(organizationId, cursor, limit) {
+      const rows = desc(
+        [...supportSessions.values()]
+          .filter((r) => r.organizationId === organizationId)
+          .map((r) => ({ ...strip(r), createdAt: r.startedAt })),
+      );
+      const page = paginate(organizationId, rows, cursor, limit);
+      return { ...page, items: page.items.map(({ createdAt: _c, ...v }) => v) };
     },
-    async listSupportSessionEvents() {
-      throw notBuilt("the tenant support-session ledger");
+    async listSupportSessionEvents(organizationId, sessionId, cursor, limit) {
+      const ss = supportSessions.get(sessionId);
+      if (!ss || ss.organizationId !== organizationId) throw new NotFoundError("support session");
+      const rows = desc(
+        supportEvents
+          .filter((e) => e.organizationId === organizationId && e.supportSessionId === sessionId)
+          .map(({ organizationId: _o, ...e }) => ({ ...e, createdAt: e.occurredAt })),
+      );
+      const page = paginate(organizationId, rows, cursor, limit);
+      return { ...page, items: page.items.map(({ createdAt: _c, ...v }) => v) };
     },
     // --- DSAR export jobs ---
     async requestDsarExport(organizationId, _actorMembershipId, args) {

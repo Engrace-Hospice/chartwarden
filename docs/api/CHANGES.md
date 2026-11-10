@@ -6,6 +6,37 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — Slice 7 (7S): the support session works end to end (support-session reads, the `assist` scope, revoke and close are real)
+
+No path or schema changes; these routes now do what the contract above said. Behaviour an integrator can see:
+
+**Reads.** `GET /api/v1/tenant/support-sessions` and `.../{id}/events` answer for real (RLS-scoped to the organization; a session of
+another organization is `404`). `GET /api/v1/platform/support-consent-grants` answers for real: the window, scope and state of a
+tenant's grants, never the grantor or the patients in scope.
+
+**Who may issue which scope.** `POST /api/v1/tenant/support-consent-grants` with `scope: "assist"` (non-PHI; 1-24 whole hours) is
+issued only by an actor holding the `org_admin` or `compliance_officer` role (`403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED` otherwise). The
+existing scopes keep their rule, with one new refusal: an organization that is not active (confined to onboarding) may issue only
+`assist` (`403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED`). `patient_scoped` without patient ids, and ids on any other scope, are now `422`
+rather than a database error. The `compliance_officer` role now holds the three `support_consent_grant` keys.
+
+**Revoke cascades.** `POST /api/v1/tenant/support-consent-grants/{id}/revoke` ends every support session open on the grant
+(`closeReason: "grant_revoked"`, a `session.close` ledger row, a critical audit, an outbox event), resolves a linked help request,
+and makes a later start `409 SUPPORT_GRANT_INACTIVE`. Repeating it answers the same grant. A grant's `active` is now unrevoked
+**and** unexpired.
+
+**Operator start, elevate, close.** A session is recorded in the organization of its consent grant (the tenant's), no longer the
+operator's own; the person-level distinct-actor rule (`403 SUPPORT_SESSION_ACTOR_NOT_DISTINCT`) also refuses the same person
+holding two seats. `POST .../{id}/elevate` on an `assist` grant is `403 SUPPORT_SESSION_NON_PHI`. `POST .../{id}/close` writes the
+ledger row, audit, outbox event (`closeReason` `manual_close`) and grantor alert it never wrote, and is repeatable. While an
+operator holds an open session on a tenant, each of their successful non-GET requests under `/api/v1/platform/tenants/{orgSlug}/`
+appends one `ops.write` ledger row (route template, method, status) the tenant can read.
+
+**Events.** New: `m34.support_consent_grant.issued` and `.revoked`; `m34.support_session.expired` gains `closeReason`
+`forced_terminated`.
+
+---
+
 ## 2026-11-09 — Slice 7 contract: help requests, support-session reads, the tenant's own skip (routes registered, services still being built)
 
 The wire contract of the tenant onboarding slice is frozen so clients can be built against real types. **Every route below

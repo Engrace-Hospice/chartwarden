@@ -330,10 +330,11 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       },
       lifecycleAlerts: alerts,
       supportSessionPorts: {
-        audit: { async emitCriticalAudit() {} },
-        outbox: { async publish() {} },
-        alerts: { async emitAlert() {} },
         now: () => new Date(),
+        // This suite never opens or closes a support session.
+        bind() {
+          throw new Error("support-session ports are not bound in this suite");
+        },
       },
       platformJobId: JOB_ID,
     });

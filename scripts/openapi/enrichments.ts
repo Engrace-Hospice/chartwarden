@@ -10858,7 +10858,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportConsentGrantViewSchema,
   },
   "POST /api/v1/tenant/support-consent-grants/:id/revoke": {
-    summary: "Revoke a grant (cascades to any open support_session)",
+    summary:
+      "Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more",
     body: M34RevokeConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
   },
@@ -10932,12 +10933,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/platform/support-sessions": {
     summary:
-      "Start a session against a consent grant (distinct-actor + passkey-5min step-up). 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
+      "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
     body: M34StartSessionRequest,
     response: M34StartSessionAckSchema,
   },
   "POST /api/v1/platform/support-sessions/:id/close": {
-    summary: "Close a session with reason='manual' (no step-up)",
+    summary:
+      "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
     body: M34CloseSessionRequest,
     response: M34CloseSessionAckSchema,
   },
