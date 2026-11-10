@@ -122,10 +122,22 @@ hook for a user); `.codex/config.toml` itself stays local and git-ignored, at an
 `**/.codex/*` and `**/.agents/*` (a nested `apps/x/.codex/` is local state too) and re-includes only the
 root's shared pieces, each AFTER the ignore line (git's last match wins). `arch:compliance` fails if
 `.codex/hooks.json` is missing or differs from the pinned command, matcher (`Bash|write_stdin|apply_patch|mcp__.*`), type
-or timeout (1 to 30 s), if one of the three Claude hook commands differs from its pinned form, if the
-`.claude/` and `.agents/` mirror reads as empty on either side or differs by a single byte (files are compared
-by SHA-256 of their bytes, not decoded text), or if `.gitignore` or CODEOWNERS stop covering any of this or
-`bunfig.toml`.
+or timeout (an integer of 9 to 30 s: strictly above the 8 s perl alarm it is pinned with, derived from the
+same constant, because a timeout at or under the alarm fires inside Codex first and the call runs), if one of
+the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
+5 to 30 s (the Stop gate's 300 is untouched), if `.claude/settings.json` sets `disableAllHooks`, a
+`bypassPermissions` default mode, or an `env` entry for `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,
+`CW_STOP_GATE`, `CLAUDE_PROJECT_DIR`, `CW_HARNESS_ROOT_FOR_TESTS` or `BUN_OPTIONS` (a `--preload` there runs
+before the guard), if the `.claude/` and `.agents/` mirror reads as empty on either side or differs by a
+single byte (files are compared by SHA-256 of their bytes, not decoded text), or if `.gitignore` or
+CODEOWNERS stop covering any of this or `bunfig.toml`. `.gitignore` is judged by git, not by its text: the
+gate writes it into a throwaway repository and runs `git check-ignore --no-index -v` over the shared pieces
+(`.agents/{rules,agents,skills}`, `.codex/hooks.json`, `.claude/{settings.json,rules,agents,skills}`, the env
+template: none may be ignored) and the local state (`.agents/{plans,prds}`, `.codex/config.toml` at any depth,
+`.claude/{audit,.cache,plans,settings.local.json}`, live env files: all must be), so a later
+`!**/.codex/config.toml`, `.agents/rules/*` or `.claude/*` line fails even though every line the text checks
+look for is still there. A CRLF `.gitignore` fails, and so does a git that cannot be run (the probe never
+passes by default).
 
 ## ECC settings applied by the project (`.claude/settings.json` → `env`)
 
