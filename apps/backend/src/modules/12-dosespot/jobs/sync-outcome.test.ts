@@ -169,5 +169,65 @@ describe("the text a failed row persists never carries a bound parameter", () =>
     it("a statement that fits is not cut", () => {
       expect(classifySyncFault(dbFailure(), REGISTERED).error).not.toContain(" ... ");
     });
+
+    // an astral character is two UTF-16 code units: a cut between them leaves a lone surrogate, which Postgres turns into U+FFFD
+    const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    it.each([0, 1])(
+      "a cut never splits a surrogate pair, at the head or at the tail (statement shifted by %i)",
+      (shift) => {
+        const emojiStatement = `${"x".repeat(shift)}${"😀".repeat(1500)}`;
+        const failure = new DrizzleQueryError(
+          emojiStatement,
+          [MARKER_DRUG],
+          Object.assign(new Error("duplicate key value violates unique constraint"), {
+            code: "23505",
+            severity: "ERROR",
+            table: "medication_history_record",
+            constraint: "medication_history_record_uq",
+          }),
+        );
+        const out = classifySyncFault(failure, REGISTERED);
+        expect(out.error.length).toBeLessThanOrEqual(2000);
+        expect(out.error).toContain(" ... ");
+        expect(LONE_SURROGATE.test(out.error)).toBe(false);
+        expect(
+          out.error.endsWith("[23505 medication_history_record_uq medication_history_record]"),
+        ).toBe(true);
+      },
+    );
+  });
+
+  describe("an error that is NOT a database error never has its tail or its parameters persisted", () => {
+    // a wrapper that flattens a Drizzle error into a plain message defeats the shape check, and its message still ends with `params: <values>`
+    const flattened = (statementPadding: number) =>
+      new Error(
+        `ingest failed: ${
+          new DrizzleQueryError(
+            `insert into "medication_history_record" ("drug_name") values ($1) ${"-- pad ".repeat(statementPadding)}`,
+            [MARKER_DRUG, MARKER_SIG],
+            new Error("boom"),
+          ).message
+        }`,
+      );
+
+    it.each([0, 600])(
+      "a flattened Drizzle message (statement padded by %i) is persisted without its params section",
+      (padding) => {
+        const out = classifySyncFault(flattened(padding), REGISTERED);
+        expect(out.kind).toBe("failed");
+        expect(out.error).not.toContain("MARKER");
+        expect(out.error).toContain("ingest failed: Failed query: insert into");
+        expect(out.error.length).toBeLessThanOrEqual(2000);
+      },
+    );
+
+    it("a long plain message is cut from the end (the head only): a value that sits in its last characters is not kept", () => {
+      const out = classifySyncFault(
+        new Error(`${"x".repeat(4000)} tail-${MARKER_DRUG}`),
+        REGISTERED,
+      );
+      expect(out.error).toHaveLength(2000);
+      expect(out.error).not.toContain("MARKER");
+    });
   });
 });
