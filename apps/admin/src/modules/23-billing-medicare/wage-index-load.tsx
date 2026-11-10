@@ -6,6 +6,7 @@ import {
   ReverifyLink,
   SelectField,
   StatGrid,
+  TableScroll,
   TextAreaField,
   TextField,
   focusFirstInvalid,
@@ -308,7 +309,7 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
           <span className="wx-row-sub">Upload or paste the CMS table to preview it here.</span>
         </div>
       ) : (
-        <div className="wx-list-table-wrap">
+        <TableScroll>
           <table className="wx-list-table wx-list-table-static">
             <caption className="wx-sr-only">Wage-index rows to load</caption>
             <thead>
@@ -334,7 +335,7 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </section>
   );

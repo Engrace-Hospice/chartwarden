@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
@@ -214,7 +215,7 @@ function RegisterTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Business associate agreements</caption>
         <thead>
@@ -258,7 +259,7 @@ function RegisterTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

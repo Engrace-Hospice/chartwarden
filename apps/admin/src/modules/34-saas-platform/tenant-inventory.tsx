@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
@@ -258,7 +259,7 @@ function TenantTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Tenants</caption>
         <thead>
@@ -300,7 +301,7 @@ function TenantTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

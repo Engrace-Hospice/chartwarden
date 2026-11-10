@@ -7,6 +7,7 @@ import {
   MaskedIdentifier,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
@@ -233,7 +234,7 @@ function DsarTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">DSAR export jobs</caption>
         <thead>
@@ -278,7 +279,7 @@ function DsarTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Button, StatGrid, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import { Button, StatGrid, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Revenue (`/admin/revenue`, revenue.admin.read). The
 // MRR/ARR dashboard: the live current estimate (GET /api/admin/revenue/current) as KPI tiles, plus the
@@ -136,7 +136,7 @@ const MONEY_COLUMNS = [
 
 function SnapshotsTable({ snapshots }: { snapshots: readonly Snapshot[] }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Trailing revenue snapshots</caption>
         <thead>
@@ -166,6 +166,6 @@ function SnapshotsTable({ snapshots }: { snapshots: readonly Snapshot[] }): JSX.
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

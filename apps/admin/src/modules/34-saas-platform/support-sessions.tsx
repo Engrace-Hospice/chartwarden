@@ -8,6 +8,7 @@ import {
   SelectField,
   StatusPill,
   type StatusTone,
+  TableScroll,
   UnstyledList,
   interactiveRowProps,
   useApiClient,
@@ -245,7 +246,7 @@ function SessionTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Support sessions</caption>
         <thead>
@@ -289,7 +290,7 @@ function SessionTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

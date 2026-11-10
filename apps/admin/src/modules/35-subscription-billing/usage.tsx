@@ -1,6 +1,7 @@
 import {
   Button,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   useApiClient,
@@ -126,7 +127,7 @@ export function Usage(): JSX.Element {
 
 function UsageTable({ meters }: { meters: UsageCurrent["meters"] }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Usage this period</caption>
         <thead>
@@ -171,6 +172,6 @@ function UsageTable({ meters }: { meters: UsageCurrent["meters"] }): JSX.Element
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

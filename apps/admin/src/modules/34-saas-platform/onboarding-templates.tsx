@@ -6,6 +6,7 @@ import {
   LoadingSpinner,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
@@ -192,7 +193,7 @@ function TemplateTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Onboarding templates</caption>
         <thead>
@@ -233,7 +234,7 @@ function TemplateTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

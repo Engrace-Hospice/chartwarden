@@ -6,6 +6,7 @@ import {
   SelectField,
   StatusPill,
   type StatusTone,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
@@ -251,7 +252,7 @@ function IntentTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Signup intents</caption>
         <thead>
@@ -288,7 +289,7 @@ function IntentTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

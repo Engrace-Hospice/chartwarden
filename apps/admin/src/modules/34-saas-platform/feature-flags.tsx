@@ -7,6 +7,7 @@ import {
   SelectField,
   StatGrid,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
@@ -353,7 +354,7 @@ function FlagsTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Feature flags</caption>
         <thead>
@@ -402,7 +403,7 @@ function FlagsTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

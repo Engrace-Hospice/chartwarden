@@ -7,6 +7,7 @@ import {
   ReverifyLink,
   StatusPill,
   type StatusTone,
+  TableScroll,
   TextAreaField,
   isStepUpRequired,
   useApiClient,
@@ -176,7 +177,7 @@ function EntitiesBody({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Provider entities and NPI verification</caption>
         <thead>
@@ -230,7 +231,7 @@ function EntitiesBody({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

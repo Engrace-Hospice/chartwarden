@@ -2,6 +2,7 @@ import {
   Button,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
@@ -196,7 +197,7 @@ function PlansTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Plans</caption>
         <thead>
@@ -244,7 +245,7 @@ function PlansTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

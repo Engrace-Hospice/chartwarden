@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   StatGrid,
   StatusPill,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useRequestGuard,
@@ -137,7 +138,7 @@ export function OutboxList(): JSX.Element {
             <span>No outbox events match this filter.</span>
           </div>
         ) : (
-          <div className="wx-list-table-wrap">
+          <TableScroll>
             <table className="wx-list-table">
               <caption className="wx-sr-only">Outbox events</caption>
               <thead>
@@ -180,7 +181,7 @@ export function OutboxList(): JSX.Element {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
       </div>
       {selectedId ? <OutboxEventDrawer key={selectedId} id={selectedId} onClose={close} /> : null}

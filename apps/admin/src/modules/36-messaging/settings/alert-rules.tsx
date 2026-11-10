@@ -5,7 +5,7 @@
 // platform default clones it server-side, so the row adopts the id the PATCH returns. Locked rules are read-only.
 // Rows carry a stable client `key` so adopting a new ruleId neither remounts the row (focus) nor mis-targets a
 // concurrent edit; every state change is a functional update touching only the edited row.
-import { SelectField, StatusPill, useApiClient } from "@chartwarden/ui";
+import { SelectField, StatusPill, TableScroll, useApiClient } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
@@ -123,7 +123,7 @@ function RulesTable({
   onPatch: (row: RuleRow, patch: RulePatch) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Alert rules</caption>
         <thead>
@@ -211,6 +211,6 @@ function RulesTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

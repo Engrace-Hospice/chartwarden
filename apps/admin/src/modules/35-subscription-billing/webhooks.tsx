@@ -1,4 +1,4 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import { Button, StatusPill, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Stripe webhooks (`/admin/webhooks/stripe`,
 // stripe.admin.read). Recent inbound webhook receipts over GET /api/admin/webhooks/stripe/recent, searchable
@@ -135,7 +135,7 @@ function ReceiptsTable({
   onReplay: (eventId: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Stripe webhook receipts</caption>
         <thead>
@@ -183,6 +183,6 @@ function ReceiptsTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

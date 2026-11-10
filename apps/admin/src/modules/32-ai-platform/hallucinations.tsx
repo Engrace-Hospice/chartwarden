@@ -6,6 +6,7 @@ import {
   SelectField,
   StatGrid,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
@@ -151,7 +152,7 @@ export function HallucinationQueue(): JSX.Element {
                 </div>
               ))}
             </StatGrid>
-            <div className="wx-list-table-wrap">
+            <TableScroll>
               <table className="wx-list-table">
                 <caption className="wx-sr-only">Hallucination reports</caption>
                 <thead>
@@ -201,7 +202,7 @@ export function HallucinationQueue(): JSX.Element {
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </>
         )}
       </div>

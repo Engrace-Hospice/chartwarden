@@ -3,6 +3,7 @@ import {
   Glyph,
   InlineAlert,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
@@ -136,7 +137,7 @@ export function InvocationSearch({
   );
 
   const table = (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">AI invocations</caption>
         <thead>
@@ -187,7 +188,7 @@ export function InvocationSearch({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 
   const body = (

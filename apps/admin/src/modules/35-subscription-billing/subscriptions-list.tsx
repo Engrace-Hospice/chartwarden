@@ -1,6 +1,7 @@
 import {
   Button,
   StatusPill,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
@@ -132,7 +133,7 @@ function SubscriptionsTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Subscriptions</caption>
         <thead>
@@ -175,7 +176,7 @@ function SubscriptionsTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

@@ -1,4 +1,11 @@
-import { Button, Glyph, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  Glyph,
+  StatusPill,
+  TableScroll,
+  useApiClient,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscription detail (`/admin/subscriptions/:id`,
 // subscription.admin.read). One tenant subscription over GET /api/admin/subscriptions/:id, with its current
@@ -161,7 +168,7 @@ export function SubscriptionDetail(): JSX.Element {
 
 function UsageTable({ meters }: { meters: readonly UsageMeter[] }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Usage this period</caption>
         <thead>
@@ -202,13 +209,13 @@ function UsageTable({ meters }: { meters: readonly UsageMeter[] }): JSX.Element 
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
 function RefundsTable({ refunds }: { refunds: readonly Refund[] }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Refund history</caption>
         <thead>
@@ -234,7 +241,7 @@ function RefundsTable({ refunds }: { refunds: readonly Refund[] }): JSX.Element 
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

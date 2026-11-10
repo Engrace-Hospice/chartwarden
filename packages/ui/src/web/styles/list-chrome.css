@@ -256,6 +256,11 @@
     border-radius: var(--radius-lg);
     background: var(--color-surface-lowest);
   }
+  /* TableScroll makes an overflowing frame with nothing focusable in it a tab stop; it needs a visible ring (inset: the frame clips). */
+  .wx-list-table-wrap:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
   .wx-list-table {
     display: table;
     width: 100%;

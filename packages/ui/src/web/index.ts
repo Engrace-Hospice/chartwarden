@@ -58,6 +58,7 @@ export { classifyRead, settleRead } from "./components/read-status";
 export type { NotFoundMeaning, ReadStatus } from "./components/read-status";
 export { LoadingSpinner } from "./components/loading-spinner";
 export type { LoadingSpinnerProps } from "./components/loading-spinner";
+export { TableScroll } from "./components/table-scroll";
 export { FormSection } from "./components/form-section";
 export type { FormSectionProps } from "./components/form-section";
 export { SelectField, TextAreaField, TextField } from "./components/fields";

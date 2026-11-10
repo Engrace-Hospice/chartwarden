@@ -4,6 +4,7 @@ import {
   SelectField,
   StatusPill,
   type StatusTone,
+  TableScroll,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -149,7 +150,7 @@ export function AlertDeliveries(): JSX.Element {
             <StateEmpty>No deliveries match this filter.</StateEmpty>
           ) : (
             <>
-              <div className="wx-list-table-wrap">
+              <TableScroll>
                 <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">Alert deliveries</caption>
                   <thead>
@@ -183,7 +184,7 @@ export function AlertDeliveries(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
               {moreError ? (
                 <InlineAlert tone="error">Could not load more deliveries.</InlineAlert>
               ) : null}

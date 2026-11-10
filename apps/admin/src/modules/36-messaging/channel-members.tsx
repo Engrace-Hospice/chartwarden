@@ -3,6 +3,7 @@ import {
   InlineAlert,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   useApiClient,
@@ -140,7 +141,7 @@ export function ChannelMembers(): JSX.Element {
           (members.length === 0 ? (
             <StateEmpty icon="users">This channel has no members.</StateEmpty>
           ) : (
-            <div className="wx-list-table-wrap">
+            <TableScroll>
               <table className="wx-list-table wx-list-table-static">
                 <caption className="wx-sr-only">Channel members</caption>
                 <thead>
@@ -191,7 +192,7 @@ export function ChannelMembers(): JSX.Element {
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           ))}
       </div>
     </div>

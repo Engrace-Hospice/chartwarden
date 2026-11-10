@@ -2,6 +2,7 @@ import {
   Button,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
@@ -233,7 +234,7 @@ function PromosTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Promo codes</caption>
         <thead>
@@ -274,7 +275,7 @@ function PromosTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

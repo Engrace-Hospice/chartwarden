@@ -5,6 +5,7 @@ import {
   ReasonDialog,
   StatusPill,
   type StatusTone,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
@@ -228,7 +229,7 @@ function PlansTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Price plans</caption>
         <thead>
@@ -271,7 +272,7 @@ function PlansTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

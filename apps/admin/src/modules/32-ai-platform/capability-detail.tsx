@@ -3,6 +3,7 @@ import {
   Modal,
   SelectField,
   StatusPill,
+  TableScroll,
   TextAreaField,
   TextField,
   focusFirstInvalid,
@@ -282,7 +283,7 @@ function LifecycleTab({ detail }: { detail: Detail }): JSX.Element {
           description="This capability has not moved yet."
         />
       ) : (
-        <div className="wx-list-table-wrap">
+        <TableScroll>
           <table className="wx-list-table wx-list-table-static">
             <caption className="wx-sr-only">Lifecycle transitions</caption>
             <thead>
@@ -314,7 +315,7 @@ function LifecycleTab({ detail }: { detail: Detail }): JSX.Element {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </section>
   );
@@ -351,7 +352,7 @@ function CalibrationTab({ detail }: { detail: Detail }): JSX.Element {
       {history.length === 0 ? null : (
         <>
           <SectionTitle>Calibration history</SectionTitle>
-          <div className="wx-list-table-wrap">
+          <TableScroll>
             <table className="wx-list-table wx-list-table-static">
               <caption className="wx-sr-only">Calibration history</caption>
               <thead>
@@ -375,7 +376,7 @@ function CalibrationTab({ detail }: { detail: Detail }): JSX.Element {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </>
       )}
     </section>

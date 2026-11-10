@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   SelectField,
   StatusPill,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
@@ -206,7 +207,7 @@ function ExportTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Tenant export jobs</caption>
         <thead>
@@ -252,7 +253,7 @@ function ExportTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

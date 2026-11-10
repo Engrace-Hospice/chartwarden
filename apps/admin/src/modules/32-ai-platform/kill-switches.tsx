@@ -6,6 +6,7 @@ import {
   Modal,
   SelectField,
   StatGrid,
+  TableScroll,
   TextAreaField,
   focusFirstInvalid,
   interactiveRowProps,
@@ -131,7 +132,7 @@ export function KillSwitches(): JSX.Element {
 
   function renderTable(list: KillSwitch[], withOrg: boolean, caption: string): JSX.Element {
     return (
-      <div className="wx-list-table-wrap">
+      <TableScroll>
         <table className="wx-list-table">
           <caption className="wx-sr-only">{caption}</caption>
           <thead>
@@ -169,7 +170,7 @@ export function KillSwitches(): JSX.Element {
             })}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     );
   }
 

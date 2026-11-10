@@ -1,4 +1,4 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import { Button, StatusPill, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Dunning (`/admin/dunning`, dunning.admin.read +
 // dunning.admin.override). Subscriptions currently in an OPEN dunning stage over GET /api/admin/dunning
@@ -152,7 +152,7 @@ function DunningTable({
   onOverride: (subscriptionId: string, action: "skip_stage" | "reset") => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Subscriptions in dunning</caption>
         <thead>
@@ -207,6 +207,6 @@ function DunningTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

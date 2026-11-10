@@ -1,6 +1,7 @@
 import {
   Button,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   parsePriceCents,
@@ -317,7 +318,7 @@ function MetersTable({
   currencyCode,
 }: { meters: readonly Meter[]; currencyCode: string }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Usage meters</caption>
         <thead>
@@ -346,7 +347,7 @@ function MetersTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

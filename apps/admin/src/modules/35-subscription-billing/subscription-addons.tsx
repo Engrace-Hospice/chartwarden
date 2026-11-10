@@ -2,6 +2,7 @@ import {
   Button,
   SelectField,
   StatusPill,
+  TableScroll,
   TextAreaField,
   TextField,
   stashStepUpMemoryDraft,
@@ -156,7 +157,7 @@ export function AddonsPanel({
       ) : rows.length === 0 ? (
         <StateEmpty icon="receipt">No add-ons on this subscription.</StateEmpty>
       ) : (
-        <div className="wx-list-table-wrap">
+        <TableScroll>
           <table className="wx-list-table wx-list-table-static">
             <caption className="wx-sr-only">Add-ons</caption>
             <thead>
@@ -200,7 +201,7 @@ export function AddonsPanel({
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
       {usage ? (
         <p className="wx-source-line wx-nums">

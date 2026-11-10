@@ -1,4 +1,11 @@
-import { Button, StatGrid, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatGrid,
+  StatusPill,
+  TableScroll,
+  useApiClient,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.6 token ledger + forecast
 // (`/admin/ai-platform/tokens`, `ai.tokens.read`).
@@ -127,7 +134,7 @@ export function TokenLedger(): JSX.Element {
                 description="No capability has accrued tokens yet."
               />
             ) : (
-              <div className="wx-list-table-wrap">
+              <TableScroll>
                 <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">Forecast by capability</caption>
                   <thead>
@@ -186,7 +193,7 @@ export function TokenLedger(): JSX.Element {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
             )}
             {forecasts.length > 0 && capped.length === 0 ? (
               // Worth saying out loud: every row will read "Within caps" forever when no cap is set.
@@ -203,7 +210,7 @@ export function TokenLedger(): JSX.Element {
                 description="No token accrual rows in this window."
               />
             ) : (
-              <div className="wx-list-table-wrap">
+              <TableScroll>
                 <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">Recent accruals</caption>
                   <thead>
@@ -233,7 +240,7 @@ export function TokenLedger(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
             )}
           </>
         )}
