@@ -16,7 +16,15 @@ import type { operations } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { cap, formatCents, formatDate, idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, StateEmpty, StateLoading, failureOutcome } from "./ui";
+import {
+  type Outcome,
+  OutcomeBanner,
+  StateEmpty,
+  StateLoading,
+  UNREACHABLE_OUTCOME,
+  failureOutcome,
+  settleWrite,
+} from "./ui";
 
 type SubscriptionAddon =
   operations["getApiAdminSubscriptionsByIdAddons"]["responses"][200]["content"]["application/json"][number];
@@ -75,21 +83,27 @@ export function AddonsPanel({
     if (reason.trim().length < 3 || (mode === "trial" && !trialEndsAt)) return;
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/subscriptions/{id}/addons", {
-      params: { path: { id: subscriptionId } },
-      body: {
-        addonSlug: CLAIMS_BILLING,
-        mode,
-        reason: reason.trim(),
-        ...(mode === "trial"
-          ? { trialEndsAt: new Date(`${trialEndsAt}T23:59:59Z`).toISOString() }
-          : {}),
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
+    const res = await settleWrite(
+      client.POST("/api/admin/subscriptions/{id}/addons", {
+        params: { path: { id: subscriptionId } },
+        body: {
+          addonSlug: CLAIMS_BILLING,
+          mode,
+          reason: reason.trim(),
+          ...(mode === "trial"
+            ? { trialEndsAt: new Date(`${trialEndsAt}T23:59:59Z`).toISOString() }
+            : {}),
+        },
+        headers: { "Idempotency-Key": idempotencyKey() },
+      }),
+    );
     setBusy(false);
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not add the claims-billing add-on."));
+    if (!res || res.error) {
+      setOutcome(
+        res
+          ? failureOutcome(res.error, "Could not add the claims-billing add-on.")
+          : UNREACHABLE_OUTCOME,
+      );
       return;
     }
     setOutcome({ ok: true, message: mode === "trial" ? "Trial started." : "Add-on granted." });
@@ -104,14 +118,18 @@ export function AddonsPanel({
       setBusy(true);
       setCancellingId(addonId);
       setOutcome(null);
-      const res = await client.POST("/api/admin/subscriptions/{id}/addons/{addonId}/cancel", {
-        params: { path: { id: subscriptionId, addonId } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
+      const res = await settleWrite(
+        client.POST("/api/admin/subscriptions/{id}/addons/{addonId}/cancel", {
+          params: { path: { id: subscriptionId, addonId } },
+          headers: { "Idempotency-Key": idempotencyKey() },
+        }),
+      );
       setBusy(false);
       setCancellingId(null);
-      if (res.error) {
-        setOutcome(failureOutcome(res.error, "Could not cancel the add-on."));
+      if (!res || res.error) {
+        setOutcome(
+          res ? failureOutcome(res.error, "Could not cancel the add-on.") : UNREACHABLE_OUTCOME,
+        );
         return;
       }
       setOutcome({

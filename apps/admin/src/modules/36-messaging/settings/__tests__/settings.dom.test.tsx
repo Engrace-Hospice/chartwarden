@@ -340,6 +340,50 @@ describe("DeliveryEndpoints", () => {
   });
 });
 
+/** An offline fetch: the request rejects with no response, which openapi-fetch rethrows. */
+const offline = (): never => {
+  throw new TypeError("Failed to fetch");
+};
+const UNREACHABLE = /Could not reach the server/;
+
+describe("a settings write whose request never gets an answer", () => {
+  it("delivery endpoints: releases the Add button and says the server was not reached", async () => {
+    mount(<DeliveryEndpoints />, offline);
+    fireEvent.change(screen.getByLabelText(/Address or device token/), {
+      target: { value: "me@example.org" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+    const add = screen.getByRole("button", { name: "Add endpoint" }) as HTMLButtonElement;
+    expect(add.disabled).toBe(false);
+    expect(add.getAttribute("aria-busy")).toBeNull();
+    expect((screen.getByLabelText(/Address or device token/) as HTMLInputElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it("notification preferences: releases the form and keeps the draft", async () => {
+    mount(<NotificationPreferences />, (c) => (c.method === "GET" ? json(PREFS) : offline()));
+    fireEvent.click(await screen.findByRole("button", { name: "Save preferences" }));
+    expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Save preferences" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("alert rules: undoes the optimistic change and clears the pending row", async () => {
+    mount(<AlertRules />, (c) => (c.method === "GET" ? json({ rules: [RULE] }) : offline()));
+    const box = (await screen.findByLabelText(/^Sfv due enabled/)) as HTMLInputElement;
+    fireEvent.click(box);
+    expect(
+      await screen.findByText(/Could not reach the server.*The change was undone/),
+    ).toBeTruthy();
+    const row = screen.getByLabelText(/^Sfv due enabled/).closest("tr");
+    expect(row?.getAttribute("aria-busy")).toBeNull();
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
 describe("BannerView", () => {
   it("keeps both wrappers mounted and announces each banner through exactly one live region", () => {
     const { rerender, container } = render(<BannerView banner={null} />);

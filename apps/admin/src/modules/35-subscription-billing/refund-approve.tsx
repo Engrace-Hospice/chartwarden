@@ -26,8 +26,10 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
+  UNREACHABLE_OUTCOME,
   failureOutcome,
   isNotFound,
+  settleWrite,
 } from "./ui";
 import { useSuccessRedirect } from "./use-success-redirect";
 
@@ -100,12 +102,14 @@ export function RefundApprove(): JSX.Element {
     captureFocus();
     setActing("approve");
     setOutcome(null);
-    const res = await client.POST("/api/admin/refunds/{id}/approve", {
-      params: { path: { id } },
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-    });
-    if (res.error) {
-      setOutcome(denial(res.error, "Could not approve the refund."));
+    const res = await settleWrite(
+      client.POST("/api/admin/refunds/{id}/approve", {
+        params: { path: { id } },
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      }),
+    );
+    if (!res || res.error) {
+      setOutcome(res ? denial(res.error, "Could not approve the refund.") : UNREACHABLE_OUTCOME);
       setActing(null);
       return;
     }
@@ -122,13 +126,15 @@ export function RefundApprove(): JSX.Element {
     captureFocus();
     setActing("deny");
     setOutcome(null);
-    const res = await client.POST("/api/admin/refunds/{id}/deny", {
-      params: { path: { id } },
-      body: { reason: denyReason.trim() },
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-    });
-    if (res.error) {
-      setOutcome(denial(res.error, "Could not deny the refund."));
+    const res = await settleWrite(
+      client.POST("/api/admin/refunds/{id}/deny", {
+        params: { path: { id } },
+        body: { reason: denyReason.trim() },
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      }),
+    );
+    if (!res || res.error) {
+      setOutcome(res ? denial(res.error, "Could not deny the refund.") : UNREACHABLE_OUTCOME);
       setActing(null);
       return;
     }

@@ -11,6 +11,10 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 
+/** What the operator is told when a request got no answer at all (offline, reset): openapi-fetch rethrows rather than resolving an error. */
+export const UNREACHABLE_MESSAGE =
+  "Could not reach the server. Check your connection and try again.";
+
 /** The outcome of one read: data, a 403 (no access), or any other failure (optionally with a server message). */
 export type ReadResult<T> =
   | { readonly kind: "ok"; readonly data: T }

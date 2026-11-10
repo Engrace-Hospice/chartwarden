@@ -8,7 +8,7 @@ import { useCallback, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { renderLoadFallback, useLoad } from "../ui";
 import { humanize } from "./alert-rules";
-import { asRead, toResult } from "./api";
+import { asRead, settleResult, toResult } from "./api";
 import { type QuietHours, QuietHoursEditor } from "./quiet-hours";
 import { type Banner, BannerView, PageHead } from "./ui";
 
@@ -98,21 +98,23 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
     captureFocus();
     setSaving(true);
     setBanner(null);
-    const res = await client.PUT("/api/v1/notifications/preferences", {
-      body: {
-        routingMap: draft.routingMap,
-        quietHours: draft.quietHours,
-        vacationForwardToUserId: draft.vacationForwardToUserId.trim() || null,
-        // An untouched date keeps the server's original timestamp.
-        vacationUntil:
-          draft.vacationUntil === ""
-            ? null
-            : draft.vacationUntil === dateOnly(initial.vacationUntil)
-              ? initial.vacationUntil
-              : draft.vacationUntil,
-      },
-    });
-    const result = toResult(res, "Could not save your preferences.");
+    const result = await settleResult(
+      client.PUT("/api/v1/notifications/preferences", {
+        body: {
+          routingMap: draft.routingMap,
+          quietHours: draft.quietHours,
+          vacationForwardToUserId: draft.vacationForwardToUserId.trim() || null,
+          // An untouched date keeps the server's original timestamp.
+          vacationUntil:
+            draft.vacationUntil === ""
+              ? null
+              : draft.vacationUntil === dateOnly(initial.vacationUntil)
+                ? initial.vacationUntil
+                : draft.vacationUntil,
+        },
+      }),
+      "Could not save your preferences.",
+    );
     setSaving(false);
     setBanner(
       result.ok

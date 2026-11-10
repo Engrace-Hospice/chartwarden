@@ -198,6 +198,25 @@ describe("Channel members", () => {
     expect(await screen.findByText(/do not have permission to add members/)).toBeTruthy();
     expect(screen.getByText("Dana Reyes")).toBeTruthy();
   });
+
+  it("releases the add form and names the problem when the request never gets an answer", async () => {
+    mount(
+      (req) => {
+        if (req.method === "POST") throw new TypeError("Failed to fetch");
+        return json(MEMBERS);
+      },
+      <ChannelMembers />,
+      `/m/${CH}`,
+    );
+    await screen.findByText("Dana Reyes");
+    fireEvent.change(screen.getByLabelText(/^User ID/), { target: { value: "u9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add member" }));
+    expect(await screen.findByText(/Could not reach the server/)).toBeTruthy();
+    const add = screen.getByRole("button", { name: "Add member" }) as HTMLButtonElement;
+    expect(add.disabled).toBe(false);
+    expect(add.getAttribute("aria-busy")).toBeNull();
+    expect(screen.getByText("Dana Reyes")).toBeTruthy();
+  });
 });
 
 describe("Integrity tile", () => {

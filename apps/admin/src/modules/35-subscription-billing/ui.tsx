@@ -32,6 +32,21 @@ export function failureOutcome(error: unknown, fallback: string): Outcome {
     : { ok: false, message: fallback };
 }
 
+/** What the operator sees when a write's request got no answer at all (offline, reset): the change may or may not have landed. */
+export const UNREACHABLE_OUTCOME: Outcome = {
+  ok: false,
+  message:
+    "Could not reach the server. Check your connection, and confirm the current state before trying again.",
+};
+
+/**
+ * Resolve a write to `null` when its request failed outright. openapi-fetch resolves an error response but RETHROWS a network
+ * failure, which would strand the caller's busy lock: callers clear the lock and show UNREACHABLE_OUTCOME for `null`.
+ */
+export function settleWrite<T>(request: Promise<T>): Promise<T | null> {
+  return request.catch(() => null);
+}
+
 /**
  * A first-class outcome banner (success/error) surfacing a server result to the operator. A step-up refusal
  * also carries a Re-verify link to the console's /step-up page, which returns here — never an automatic

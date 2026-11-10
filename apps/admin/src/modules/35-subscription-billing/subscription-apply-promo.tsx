@@ -14,7 +14,15 @@ import { useCallback, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
+import {
+  type Outcome,
+  OutcomeBanner,
+  StateError,
+  StateLoading,
+  UNREACHABLE_OUTCOME,
+  failureOutcome,
+  settleWrite,
+} from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
 import { useSuccessRedirect } from "./use-success-redirect";
 
@@ -44,14 +52,18 @@ export function SubscriptionApplyPromo(): JSX.Element {
     if (!id) return;
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/subscriptions/{id}/apply_promo", {
-      params: { path: { id } },
-      body: { promoCode },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
+    const res = await settleWrite(
+      client.POST("/api/admin/subscriptions/{id}/apply_promo", {
+        params: { path: { id } },
+        body: { promoCode },
+        headers: { "Idempotency-Key": idempotencyKey() },
+      }),
+    );
+    if (!res || res.error) {
       setOutcome(
-        failureOutcome(res.error, "That promo could not be applied to this subscription."),
+        res
+          ? failureOutcome(res.error, "That promo could not be applied to this subscription.")
+          : UNREACHABLE_OUTCOME,
       );
       setBusy(false);
       return;

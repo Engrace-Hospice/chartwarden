@@ -23,7 +23,13 @@ import {
   refundFormErrors,
 } from "./form-rules";
 import { idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
+import {
+  type Outcome,
+  OutcomeBanner,
+  UNREACHABLE_OUTCOME,
+  failureOutcome,
+  settleWrite,
+} from "./ui";
 import { useSuccessRedirect } from "./use-success-redirect";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
@@ -67,26 +73,30 @@ export function RefundNew(): JSX.Element {
     }
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/refunds", {
-      body: {
-        invoiceId: form.invoiceId.trim(),
-        amountCents,
-        kind: form.kind as "full" | "partial" | "credit_only",
-        reasonCode: form.reasonCode as
-          | "duplicate"
-          | "fraudulent"
-          | "requested_by_customer"
-          | "other",
-        reasonDetail: form.detail.trim(),
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
+    const res = await settleWrite(
+      client.POST("/api/admin/refunds", {
+        body: {
+          invoiceId: form.invoiceId.trim(),
+          amountCents,
+          kind: form.kind as "full" | "partial" | "credit_only",
+          reasonCode: form.reasonCode as
+            | "duplicate"
+            | "fraudulent"
+            | "requested_by_customer"
+            | "other",
+          reasonDetail: form.detail.trim(),
+        },
+        headers: { "Idempotency-Key": idempotencyKey() },
+      }),
+    );
+    if (!res || res.error) {
       setOutcome(
-        failureOutcome(
-          res.error,
-          "Could not create the refund request (check the invoice id + fields).",
-        ),
+        res
+          ? failureOutcome(
+              res.error,
+              "Could not create the refund request (check the invoice id + fields).",
+            )
+          : UNREACHABLE_OUTCOME,
       );
       setBusy(false);
       return;

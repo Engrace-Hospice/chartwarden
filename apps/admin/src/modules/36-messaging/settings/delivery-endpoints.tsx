@@ -18,7 +18,7 @@ import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { StateEmpty } from "../ui";
 import { humanize } from "./alert-rules";
-import { toResult } from "./api";
+import { settleResult } from "./api";
 import { type Banner, BannerView, PageHead } from "./ui";
 
 type EndpointView =
@@ -68,10 +68,12 @@ export function DeliveryEndpoints(): JSX.Element {
     captureFocus();
     setBusy("register");
     setBanner(null);
-    const res = await client.POST("/api/v1/notifications/endpoints", {
-      body: { channel, target: target.trim() },
-    });
-    const result = toResult(res, "Could not add the endpoint.");
+    const result = await settleResult(
+      client.POST("/api/v1/notifications/endpoints", {
+        body: { channel, target: target.trim() },
+      }),
+      "Could not add the endpoint.",
+    );
     setBusy(null);
     if (!result.ok) return fail(result.message, result.forbidden);
     setEndpoints((list) => [...list, { ...result.data, target: target.trim() }]);
@@ -89,11 +91,13 @@ export function DeliveryEndpoints(): JSX.Element {
     captureFocus();
     setBusy(endpoint.endpointId);
     setBanner(null);
-    const res = await client.POST("/api/v1/notifications/endpoints/{id}/verify", {
-      params: { path: { id: endpoint.endpointId } },
-      body: { token: (tokens[endpoint.endpointId] ?? "").trim() },
-    });
-    const result = toResult(res, "That code was not accepted.");
+    const result = await settleResult(
+      client.POST("/api/v1/notifications/endpoints/{id}/verify", {
+        params: { path: { id: endpoint.endpointId } },
+        body: { token: (tokens[endpoint.endpointId] ?? "").trim() },
+      }),
+      "That code was not accepted.",
+    );
     setBusy(null);
     if (!result.ok) return fail(result.message, result.forbidden);
     setEndpoints((list) =>
@@ -114,10 +118,12 @@ export function DeliveryEndpoints(): JSX.Element {
     captureFocus();
     setBusy(endpoint.endpointId);
     setBanner(null);
-    const res = await client.DELETE("/api/v1/notifications/endpoints/{id}", {
-      params: { path: { id: endpoint.endpointId } },
-    });
-    const result = toResult(res, "Could not remove the endpoint.");
+    const result = await settleResult(
+      client.DELETE("/api/v1/notifications/endpoints/{id}", {
+        params: { path: { id: endpoint.endpointId } },
+      }),
+      "Could not remove the endpoint.",
+    );
     setBusy(null);
     if (!result.ok) return fail(result.message, result.forbidden);
     setEndpoints((list) => list.filter((e) => e.endpointId !== endpoint.endpointId));

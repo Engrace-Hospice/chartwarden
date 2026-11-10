@@ -10,7 +10,7 @@ import type { operations } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { type ReadResult, StateEmpty, renderLoadFallback, useLoad } from "../ui";
-import { asRead, toResult } from "./api";
+import { asRead, settleResult, toResult } from "./api";
 import { type Banner, BannerView, PageHead } from "./ui";
 
 export type AlertRule =
@@ -61,11 +61,13 @@ export function AlertRules(): JSX.Element {
     put({ ...rule, ...patch });
     setPending((p) => new Set(p).add(key));
     if (pending.size === 0) setBanner(null);
-    const res = await client.PATCH("/api/v1/alert-rules/{id}", {
-      params: { path: { id: rule.ruleId } },
-      body: patch,
-    });
-    const result = toResult(res, "Could not update the rule.");
+    const result = await settleResult(
+      client.PATCH("/api/v1/alert-rules/{id}", {
+        params: { path: { id: rule.ruleId } },
+        body: patch,
+      }),
+      "Could not update the rule.",
+    );
     setPending((p) => {
       const next = new Set(p);
       next.delete(key);

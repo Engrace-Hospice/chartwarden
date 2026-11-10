@@ -13,7 +13,15 @@ import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
+import {
+  type Outcome,
+  OutcomeBanner,
+  StateError,
+  StateLoading,
+  UNREACHABLE_OUTCOME,
+  failureOutcome,
+  settleWrite,
+} from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
 import { useSuccessRedirect } from "./use-success-redirect";
 
@@ -36,13 +44,17 @@ export function SubscriptionPause(): JSX.Element {
     setBusy(true);
     setOutcome(null);
     const body = until ? { pausedUntil: new Date(until).toISOString() } : {};
-    const res = await client.POST("/api/admin/subscriptions/{id}/pause", {
-      params: { path: { id } },
-      body,
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not pause the subscription."));
+    const res = await settleWrite(
+      client.POST("/api/admin/subscriptions/{id}/pause", {
+        params: { path: { id } },
+        body,
+        headers: { "Idempotency-Key": idempotencyKey() },
+      }),
+    );
+    if (!res || res.error) {
+      setOutcome(
+        res ? failureOutcome(res.error, "Could not pause the subscription.") : UNREACHABLE_OUTCOME,
+      );
       setBusy(false);
       return;
     }
