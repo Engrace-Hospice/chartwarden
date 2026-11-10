@@ -96,6 +96,8 @@ const PLATFORM_READ_TABLES = [
   "onboarding_task",
   "onboarding_task_template",
   "tenant_go_live_attestation",
+  // Slice 7 (migration 1482): the operators' help inbox reads every tenant's requests; UPDATE is by column only (below).
+  "tenant_help_request",
   "support_consent_grant",
   "support_session",
   "support_session_event",
@@ -305,9 +307,11 @@ const DESTRUCTION_CERTIFICATE_PLATFORM_UPDATE_COLUMNS = [
   "certificate_pdf_ref",
 ] as const;
 
-/** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods). */
+/** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods, and the help requests its grant method removes first). */
 const PLATFORM_ERASE_TABLES = [
   "onboarding_task",
+  // Slice 7: the organization's help requests go before its grants (the grant FK restricts).
+  "tenant_help_request",
   "support_consent_grant",
   "support_session",
   "platform_tenant_baa_record",
@@ -433,6 +437,13 @@ async function main(): Promise<void> {
       await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
       await run(
         'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
+      );
+      // tenant_help_request (migration 1482): an operator's Resolve and the system sweep close a request. COLUMN-level UPDATE on the close
+      // columns only, so the consent link, the approver, the message and the requester can never be rewritten from the platform side.
+      // REVOKE first so a re-provision takes back an older table-wide or column grant.
+      await run('REVOKE UPDATE ON "tenant_help_request" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("status", "closed_by_actor_kind", "closed_by_user_id", "closed_at", "close_note", "updated_at") ON "tenant_help_request" TO chartwarden_platform;',
       );
       // Approval re-checks the attester against the membership as it is NOW (still active, still holds compliance_officer).
       // Role grants are not a platform-wide read: COLUMN grants on exactly the columns that question needs (membership
