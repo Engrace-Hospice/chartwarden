@@ -33,7 +33,9 @@ describe("backup image supply chain (#992/#993)", () => {
     expect(scheduled).toContain("github.event_name == 'schedule'");
     expect(scheduled).toContain("contents: read");
     expect(scheduled).toContain("packages: read");
-    expect(scheduled).toContain("uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0");
+    expect(scheduled).toContain(
+      "uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0",
+    );
     expect(scheduled).toContain("username: ${{ github.actor }}");
     expect(scheduled).toContain("password: ${{ secrets.GITHUB_TOKEN }}");
     expect(scheduled).not.toMatch(/packages: write|id-token: write|matrix:/);

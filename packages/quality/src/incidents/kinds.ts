@@ -11,10 +11,7 @@
 // / patientQuote / staffQuote are §3.6 audit-denylisted). The validation predicates below check only that
 // the per-kind STRUCTURAL required members are present and non-empty — clinical content is never inspected.
 import type { schema } from "@chartwarden/db";
-import {
-  M30_ABUSE_INCIDENT_KIND,
-  M30_SENTINEL_INCIDENT_SEVERITY,
-} from "@chartwarden/types";
+import { M30_ABUSE_INCIDENT_KIND, M30_SENTINEL_INCIDENT_SEVERITY } from "@chartwarden/types";
 import type { IncidentKind, IncidentSeverity } from "../contracts";
 
 /**
