@@ -40,6 +40,16 @@ export type DeathNotificationState = (typeof DEATH_NOTIFICATION_STATES)[number];
 /** Minutes an internal notice may stay unacknowledged before the stall sweep tells the supervisors (once). */
 export const DEATH_NOTIFICATION_STALL_MINUTES = 120;
 
+/** Minutes a funeral-home send may stay `sending` before the stall tick treats it as stranded (reconciles, revokes any orphan link, frees it for a re-send). */
+export const DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES = 15;
+
+/**
+ * Why a funeral-home send answered 200 without sending anything now: `in_flight` (another send holds the row, or a delivered link awaits
+ * recording) or `recipient_changed_not_sent` (the home was already notified at a different address; this one was NOT sent to).
+ */
+export const DEATH_NOTIFICATION_SEND_OUTCOMES = ["in_flight", "recipient_changed_not_sent"] as const;
+export type DeathNotificationSendOutcome = (typeof DEATH_NOTIFICATION_SEND_OUTCOMES)[number];
+
 export const DEATH_NOTIFICATION_EVENTS = {
   opened: "m36.death_board.opened",
   sent: "m36.death_notification.sent",

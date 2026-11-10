@@ -35,6 +35,10 @@ export interface DeathNotificationStore {
       recipientEmailHash?: string | undefined;
     },
   ): Promise<DeathNotificationRow | null>;
+  /** While `sending`: pin the minted link id on the row so a delivered-but-unrecorded send stays joinable. Null when the row is not `sending`. */
+  recordLink(tx: Tx, a: { orgId: string; id: string; linkId: string }): Promise<DeathNotificationRow | null>;
+  /** Funeral-home rows still `sending` after `olderThanMinutes` (the claim's updated_at), oldest first. */
+  staleSending(tx: Tx, orgId: string, olderThanMinutes: number, limit: number): Promise<DeathNotificationRow[]>;
   get(tx: Tx, orgId: string, id: string): Promise<DeathNotificationRow | null>;
   listForBoard(tx: Tx, orgId: string, boardId: string): Promise<DeathNotificationRow[]>;
   /** pending|failed|blocked_no_baa -> `state`. Never touches an acked row. Returns the row, or null when nothing changed. */
@@ -147,6 +151,31 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
         .where(and(eq(N.organizationId, a.orgId), eq(N.id, a.id), eq(N.state, "sending")))
         .returning();
       return row ?? null;
+    },
+
+    async recordLink(tx, a) {
+      const [row] = await tx
+        .update(N)
+        .set({ linkId: a.linkId })
+        .where(and(eq(N.organizationId, a.orgId), eq(N.id, a.id), eq(N.state, "sending")))
+        .returning();
+      return row ?? null;
+    },
+
+    staleSending(tx, orgId, olderThanMinutes, limit) {
+      return tx
+        .select()
+        .from(N)
+        .where(
+          and(
+            eq(N.organizationId, orgId),
+            eq(N.state, "sending"),
+            eq(N.recipientKind, "funeral_home"),
+            lt(N.updatedAt, sql`now() - make_interval(mins => ${olderThanMinutes})`),
+          ),
+        )
+        .orderBy(asc(N.updatedAt), asc(N.id))
+        .limit(limit);
     },
 
     async transition(tx, a) {

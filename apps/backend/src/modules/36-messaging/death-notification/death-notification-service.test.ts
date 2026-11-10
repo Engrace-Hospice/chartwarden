@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
-import { DEATH_NOTIFICATION_INTERNAL_KINDS } from "@chartwarden/types";
+import { DEATH_NOTIFICATION_INTERNAL_KINDS, DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES } from "@chartwarden/types";
 import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import type { DeathBoardActor } from "../death-board/death-board-service";
@@ -38,14 +39,26 @@ interface Opts {
   viewDenied?: boolean;
   unknownHome?: boolean;
   settleThrows?: boolean;
+  failedSettleThrows?: boolean;
+  hashThrows?: boolean;
+  revokeThrows?: boolean;
 }
 
 function build(o: Opts = {}) {
   let clock = NOW;
   const store = createMemoryDeathNotificationStore(() => clock);
+  const realSettle = store.settle.bind(store);
+  let settleDown = !!o.settleThrows;
   if (o.settleThrows) {
-    store.settle = async () => {
-      throw new Error("db down");
+    store.settle = async (tx, a) => {
+      if (settleDown) throw new Error("db down");
+      return realSettle(tx, a);
+    };
+  }
+  if (o.failedSettleThrows) {
+    store.settle = async (tx, a) => {
+      if (a.to === "failed") throw new Error("db down");
+      return realSettle(tx, a);
     };
   }
   const emit = vi.fn().mockResolvedValue({ alertId: "a", resolvedRecipientCount: o.resolved ?? 1 });
@@ -55,6 +68,10 @@ function build(o: Opts = {}) {
     return { linkId: LINK };
   });
   const refused = vi.fn().mockResolvedValue(undefined);
+  const revokeOrphans = vi.fn(async () => {
+    if (o.revokeThrows) throw new Error("db down");
+    return 1;
+  });
   const warn = vi.fn();
   const service = createDeathNotificationService({
     db: fakeDb,
@@ -74,12 +91,16 @@ function build(o: Opts = {}) {
       return o.baa ?? true;
     },
     isKnownFuneralHome: async () => !o.unknownHome,
-    ...(o.noLinks ? {} : { funeralLinks: { issue, refused } }),
+    recipientHash: async (_org, email) => {
+      if (o.hashThrows) throw new Error("no key");
+      return createHash("sha256").update(email).digest("hex");
+    },
+    ...(o.noLinks ? {} : { funeralLinks: { issue, refused, revokeOrphans } }),
     warn,
     isEnabled: async () => o.flag ?? true,
     now: () => clock,
   });
-  return { service, store, emit, publish, issue, refused, warn, advance: (ms: number) => (clock = new Date(clock.getTime() + ms)) };
+  return { heal: () => (settleDown = false), service, store, emit, publish, issue, refused, revokeOrphans, warn, advance: (ms: number) => (clock = new Date(clock.getTime() + ms)) };
 }
 const actor = (userId: string, supervisor = false): DeathBoardActor => ({ orgId: ORG, userId, supervisor });
 const code = async (p: Promise<unknown>) => {
@@ -218,8 +239,9 @@ describe("sendFuneralHome", () => {
 
   it("with a BAA on file sends the link once and is idempotent", async () => {
     const { service, issue, publish } = build({ baa: true });
-    const dto = await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    const { notification: dto, outcome } = await service.sendFuneralHome(actor(SUP, true), BOARD, input);
     expect(dto.state).toBe("sent");
+    expect(outcome).toBeUndefined();
     expect(issue).toHaveBeenCalledTimes(1);
     expect(issue).toHaveBeenCalledWith(expect.objectContaining({ patientId: PATIENT, recipientEmail: input.recipientEmail }));
     await service.sendFuneralHome(actor(SUP, true), BOARD, input);
@@ -229,7 +251,7 @@ describe("sendFuneralHome", () => {
 
   it("without a BAA records blocked_no_baa, alerts a supervisor and sends nothing", async () => {
     const { service, issue, emit, publish } = build({ baa: false });
-    const dto = await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    const { notification: dto } = await service.sendFuneralHome(actor(SUP, true), BOARD, input);
     expect(dto.state).toBe("blocked_no_baa");
     expect(issue).not.toHaveBeenCalled();
     expect(emit.mock.calls[0]![1].eventType).toBe("m36.death_notification.blocked_no_baa");
@@ -241,7 +263,7 @@ describe("sendFuneralHome", () => {
 
   it("fails closed when the BAA lookup throws", async () => {
     const { service, issue } = build({ baaThrows: true });
-    expect((await service.sendFuneralHome(actor(SUP, true), BOARD, input)).state).toBe("blocked_no_baa");
+    expect((await service.sendFuneralHome(actor(SUP, true), BOARD, input)).notification.state).toBe("blocked_no_baa");
     expect(issue).not.toHaveBeenCalled();
   });
 
@@ -272,7 +294,7 @@ describe("sendFuneralHome", () => {
       service.sendFuneralHome(actor(SUP, true), BOARD, input),
     ]);
     expect(issue).toHaveBeenCalledTimes(1);
-    expect([a.state, b.state]).toContain("sent");
+    expect([a.notification.state, b.notification.state]).toContain("sent");
   });
 
   it("persists the entity id, link id and a recipient hash (never the address) on the row", async () => {
@@ -292,8 +314,62 @@ describe("sendFuneralHome", () => {
     await service.sendFuneralHome(actor(SUP, true), BOARD, input);
     expect(issue).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalled();
+    // the delivered link id is pinned on the row so the disclosure stays joinable
+    expect([...store.rows.values()][0]?.linkId).toBe(LINK);
     expect(JSON.stringify(warn.mock.calls)).not.toContain("funeral.example");
     expect(JSON.stringify(warn.mock.calls)).not.toContain(PATIENT);
+  });
+
+  it("a send that finds the row sending answers 200 with outcome in_flight", async () => {
+    const { service } = build({ baa: true, settleThrows: true });
+    await code(service.sendFuneralHome(actor(SUP, true), BOARD, input));
+    const again = await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    expect(again.outcome).toBe("in_flight");
+    expect(again.notification.state).toBe("sending");
+  });
+
+  it("still throws the typed LINK_FAILED when settling the failure also throws, and logs ids only", async () => {
+    const { service, store, warn } = build({ linkThrows: true, failedSettleThrows: true });
+    expect(await code(service.sendFuneralHome(actor(SUP, true), BOARD, input))).toBe("503:DEATH_NOTIFICATION_LINK_FAILED");
+    expect([...store.rows.values()][0]?.state).toBe("sending");
+    expect(warn).toHaveBeenCalled();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("mail down");
+  });
+
+  it("an UPPERCASE funeral-home id is stored and sent lower-cased", async () => {
+    const { service, store, issue } = build({ baa: true });
+    await service.sendFuneralHome(actor(SUP, true), BOARD, { ...input, funeralHomeEntityId: FH.toUpperCase() });
+    const row = [...store.rows.values()][0]!;
+    expect(row.recipientRef).toBe(FH);
+    expect(row.funeralHomeEntityId).toBe(FH);
+    expect(issue).toHaveBeenCalledWith(expect.objectContaining({ funeralHomeEntityId: FH }));
+  });
+
+  it("a second send to another address after sent is not sent, says so and is audited", async () => {
+    const { service, issue, refused } = build({ baa: true });
+    await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    const again = await service.sendFuneralHome(actor(SUP, true), BOARD, { ...input, recipientEmail: "other@funeral.example" });
+    expect(again.outcome).toBe("recipient_changed_not_sent");
+    expect(again.notification.state).toBe("sent");
+    expect(issue).toHaveBeenCalledTimes(1);
+    expect(refused).toHaveBeenCalledWith(expect.objectContaining({ reason: "recipient_changed", funeralHomeEntityId: FH }));
+    // the same address, differently cased, is the same recipient: plain idempotent 200
+    const same = await service.sendFuneralHome(actor(SUP, true), BOARD, { ...input, recipientEmail: " Director@Funeral.example " });
+    expect(same.outcome).toBeUndefined();
+  });
+
+  it("refuses before minting anything when the recipient key is unavailable", async () => {
+    const { service, issue } = build({ baa: true, hashThrows: true });
+    expect(await code(service.sendFuneralHome(actor(SUP, true), BOARD, input))).toBe("503:DEATH_NOTIFICATION_LINK_UNAVAILABLE");
+    expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("audits a caseload refusal as a refused disclosure with the patient and funeral home ids", async () => {
+    const { service, refused } = build();
+    await service.auditCaseloadDenied(actor(SUP, true), { patientId: PATIENT, funeralHomeEntityId: FH.toUpperCase() });
+    expect(refused).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "caseload_denied", patientId: PATIENT, funeralHomeEntityId: FH }),
+    );
   });
 
   it("an unknown funeral home creates no row, is audited as refused and answers 404", async () => {
@@ -338,5 +414,53 @@ describe("flagUnackedForOrg", () => {
     const out = await service.flagUnackedForOrg(ORG);
     expect(out.examined).toBe(DEATH_NOTIFICATION_INTERNAL_KINDS.length - 1);
     expect(emit.mock.calls.every((c) => c[1].eventType === "m36.death_notification.unacked")).toBe(true);
+  });
+});
+
+describe("reconcileStrandedSendsForOrg", () => {
+  const input = { funeralHomeEntityId: FH, recipientEmail: "director@funeral.example" };
+  const strand = async (o: Opts = {}) => {
+    const ctx = build({ baa: true, settleThrows: true, ...o });
+    await code(ctx.service.sendFuneralHome(actor(SUP, true), BOARD, input));
+    return ctx;
+  };
+
+  it("leaves a fresh sending row alone", async () => {
+    const { service, store, revokeOrphans } = await strand();
+    expect((await service.reconcileStrandedSendsForOrg(ORG)).examined).toBe(0);
+    expect(revokeOrphans).not.toHaveBeenCalled();
+    expect([...store.rows.values()][0]?.state).toBe("sending");
+  });
+
+  it("past the timeout revokes the orphan link, moves the row to failed and alerts once", async () => {
+    const { service, store, revokeOrphans, emit, advance, heal } = await strand();
+    advance((DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES + 1) * 60_000);
+    emit.mockClear();
+    heal(); // the settle fault is over
+    const real = [...store.rows.values()][0]!;
+    expect(await service.reconcileStrandedSendsForOrg(ORG)).toEqual({ examined: 1, reconciled: 1 });
+    expect(revokeOrphans).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: ORG, patientId: PATIENT, funeralHomeEntityId: FH, linkId: LINK, since: real.createdAt }),
+    );
+    expect(emit.mock.calls[0]![1].eventType).toBe("m36.death_notification.send_stranded");
+    expect(JSON.stringify(emit.mock.calls)).not.toContain(PATIENT);
+    expect(JSON.stringify(emit.mock.calls)).not.toContain("funeral.example");
+  });
+
+  it("does not free the row when the revoke fails, and fails the tick", async () => {
+    const { service, store, advance } = await strand({ revokeThrows: true });
+    advance((DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES + 1) * 60_000);
+    await expect(service.reconcileStrandedSendsForOrg(ORG)).rejects.toThrow(/could not be reconciled/);
+    expect([...store.rows.values()][0]?.state).toBe("sending");
+  });
+
+  it("a freed row can be sent again", async () => {
+    const ctx = build({ baa: true, failedSettleThrows: false });
+    // strand by hand: claim without settling
+    const { row } = await ctx.store.ensure({} as never, { orgId: ORG, boardId: BOARD, patientId: PATIENT, kind: "funeral_home", ref: FH, funeralHomeEntityId: FH });
+    await ctx.store.claim({} as never, { orgId: ORG, id: row.id });
+    ctx.advance((DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES + 1) * 60_000);
+    await ctx.service.reconcileStrandedSendsForOrg(ORG);
+    expect((await ctx.service.sendFuneralHome(actor(SUP, true), BOARD, input)).notification.state).toBe("sent");
   });
 });

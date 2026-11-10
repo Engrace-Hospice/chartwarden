@@ -16,6 +16,7 @@ export const ORG_ADMIN_AUDIT_EVENTS = {
   stepUpOverrideRemoved: "m2.session.step_up_policy_override.removed",
   funeralInvited: "m2.funeral.invited",
   funeralInviteRefused: "m2.funeral.invite_refused",
+  funeralInviteRevoked: "m2.funeral.invite_revoked",
 } as const;
 
 type AdminEvent = (typeof ORG_ADMIN_AUDIT_EVENTS)[keyof typeof ORG_ADMIN_AUDIT_EVENTS];
@@ -154,6 +155,32 @@ export const auditFuneralInvited = (
  * A funeral-home disclosure that was REFUSED (unknown funeral home, or no executed BAA in force): nothing left the perimeter, but the
  * attempt is evidence for the accounting of disclosures. Ids and a reason code only.
  */
+/** Why a funeral-home disclosure was refused. `recipient_changed` / `caseload_denied` come from the M36 death-notification send. */
+export type FuneralRefusalReason =
+  | "unknown_funeral_home"
+  | "no_baa"
+  | "recipient_changed"
+  | "caseload_denied";
+
+/**
+ * A funeral link was minted (`m2.funeral.invited` = the disclosure was ATTEMPTED) but could not be delivered, so it was revoked: this entry says
+ * the disclosure did NOT complete. Ids only.
+ */
+export const auditFuneralInviteRevoked = (
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: { linkId: string; organizationId: string; patientId: string },
+) =>
+  record(
+    tx,
+    ctx,
+    ORG_ADMIN_AUDIT_EVENTS.funeralInviteRevoked,
+    "funeral_link",
+    input.linkId,
+    { organizationId: input.organizationId, patientId: input.patientId, reason: "delivery_failed" },
+    "denied",
+  );
+
 export const auditFuneralInviteRefused = (
   tx: AuditExecutor,
   ctx: AuditContext,
@@ -161,7 +188,7 @@ export const auditFuneralInviteRefused = (
     organizationId: string;
     patientId: string;
     funeralHomeId: string;
-    reason: "unknown_funeral_home" | "no_baa";
+    reason: FuneralRefusalReason;
   },
 ) =>
   record(

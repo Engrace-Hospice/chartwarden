@@ -10,12 +10,15 @@ import { QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE, emitWithRecipientFallback } from
 export const DEATH_NOTIFICATION_ALERT_PREFIX = "m36.death_notification" as const;
 export const DEATH_NOTIFICATION_BLOCKED_ALERT = "m36.death_notification.blocked_no_baa" as const;
 export const DEATH_NOTIFICATION_UNACKED_ALERT = "m36.death_notification.unacked" as const;
+export const DEATH_NOTIFICATION_STRANDED_ALERT = "m36.death_notification.send_stranded" as const;
 export const DEATH_NOTIFICATION_DEEP_LINK = "/messaging/death-board";
 
 export const DEATH_NOTIFICATION_TEXT = {
   notice: "A patient death has been recorded. Please open the checklist and acknowledge this notice.",
   blockedNoBaa:
     "A funeral home notice was not sent because no Business Associate Agreement is on file for it. Record the agreement or choose another funeral home.",
+  strandedSend:
+    "A funeral home notice did not complete and was cancelled; its link was revoked. Open the checklist and send it again.",
   unacked: "A death notice has not been acknowledged. A supervisor should follow up.",
 } as const;
 
@@ -118,4 +121,14 @@ export const emitUnackedAlert = (alerts: AlertEmitter, orgId: string, notificati
     DEATH_NOTIFICATION_UNACKED_ALERT,
     notificationId,
     DEATH_NOTIFICATION_TEXT.unacked,
+  );
+
+/** A funeral-home send that never completed was cancelled by the stall tick. Deduped per row; fixed text, no ids in it. */
+export const emitStrandedSendAlert = (alerts: AlertEmitter, orgId: string, notificationId: string) =>
+  emitSupervisorAlert(
+    alerts,
+    orgId,
+    DEATH_NOTIFICATION_STRANDED_ALERT,
+    notificationId,
+    DEATH_NOTIFICATION_TEXT.strandedSend,
   );

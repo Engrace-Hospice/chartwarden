@@ -736,6 +736,40 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     expect((await redeem(token)).statusCode).toBe(200); // BAA back in force: the same, unspent link redeems
   });
 
+  it("a funeral-home SESSION does not outlive the BAA: the case read answers 410 and is audited while the BAA is lapsed", async () => {
+    const patient = await seedPatient(ORG_A, "deceased", "Outlived");
+    const token = await issue(patient);
+    const session = await redeem(token);
+    expect(session.statusCode).toBe(200);
+    const read = () =>
+      app.inject({
+        method: "GET",
+        url: "/api/v1/funeral/case",
+        headers: { cookie: cookieOf(session) },
+      });
+    expect((await read()).statusCode).toBe(200);
+    await admin.query(
+      "UPDATE mdm_baa_record SET expires_on='2020-01-01' WHERE organization_id=$1 AND canonical_id=$2",
+      [ORG_A, FH],
+    );
+    try {
+      const lapsed = await read();
+      expect(lapsed.statusCode).toBe(410);
+      const row = await linkRow(token);
+      const refused = await admin.query(
+        "SELECT context->>'reason' r FROM audit_event WHERE event_type='m2.link.redemption_refused' AND resource_id=$1",
+        [row.id],
+      );
+      expect(refused.rows.map((r) => r.r)).toContain("not_eligible");
+    } finally {
+      await admin.query(
+        "UPDATE mdm_baa_record SET expires_on=NULL WHERE organization_id=$1 AND canonical_id=$2",
+        [ORG_A, FH],
+      );
+    }
+    expect((await read()).statusCode).toBe(200); // BAA back in force: the same session reads again
+  });
+
   it("a failed session mint hands the use back: the link is NOT burned and a retry succeeds", async () => {
     const token = await issue(deceasedA.id);
     failNextMint = true;

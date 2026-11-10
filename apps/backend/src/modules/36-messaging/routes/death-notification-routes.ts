@@ -20,6 +20,7 @@ import {
   DeathNotificationListResponseSchema,
   DeathNotificationParamsSchema,
   DeathNotificationResponseSchema,
+  FuneralHomeSendResponseSchema,
   SendFuneralHomeBodySchema,
 } from "./death-notification-typebox";
 import { parse } from "./messaging-typebox";
@@ -102,7 +103,7 @@ export function registerDeathNotificationRoutes(
         requireUuidParams("boardId"),
         ...limited,
       ],
-      schema: { response: { 200: DeathNotificationResponseSchema } },
+      schema: { response: { 200: FuneralHomeSendResponseSchema } },
     },
     async (request, reply) => {
       const { boardId } = parse(DeathNotificationBoardParamsSchema, request.params);
@@ -111,14 +112,26 @@ export function registerDeathNotificationRoutes(
       // The same caseload ABAC as M2's `POST /funeral/invite`: the actor must have the decedent on their caseload. The patient comes from the board
       // (never the body), after the board's own visibility check.
       const patientId = await service.patientOf(actor, boardId);
-      await requireAbac("funeral.invite", "caseload_membership", { getTarget: () => ({ patientId }) })(request);
-      return noStore(reply).send({
-        notification: await service.sendFuneralHome(actor, boardId, {
-          funeralHomeEntityId: body.funeral_home_entity_id,
+      const funeralHomeEntityId = body.funeral_home_entity_id.toLowerCase();
+      try {
+        await requireAbac("funeral.invite", "caseload_membership", { getTarget: () => ({ patientId }) })(request);
+      } catch (err) {
+        // A caseload refusal is a refused disclosure attempt (patient + funeral home ids only); it is audited, then re-thrown unchanged.
+        await service.auditCaseloadDenied(actor, {
+          patientId,
+          funeralHomeEntityId,
+          correlationId: request.context?.correlationId,
+        });
+        throw err;
+      }
+      // `outcome` appears only when nothing was sent now (in_flight, recipient_changed_not_sent); otherwise the body is exactly as before.
+      return noStore(reply).send(
+        await service.sendFuneralHome(actor, boardId, {
+          funeralHomeEntityId,
           recipientEmail: body.recipient_email,
           correlationId: request.context?.correlationId,
         }),
-      });
+      );
     },
   );
 }

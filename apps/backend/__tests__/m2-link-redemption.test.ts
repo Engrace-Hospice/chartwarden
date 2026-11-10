@@ -173,6 +173,7 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
         create: async () => ({ linkId: "l", expiresAt: "x" }),
         consume: over.consume,
         release: async ({ linkId }: { linkId: string }) => void released.push(linkId),
+        revoke: async () => undefined,
       },
       sessions: { revokeAllForUser: async () => 0 },
       deceasedPatients: { isDeceased: async () => over.stillDeceased ?? true },

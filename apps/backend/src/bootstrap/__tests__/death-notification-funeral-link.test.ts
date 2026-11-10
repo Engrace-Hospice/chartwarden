@@ -24,6 +24,9 @@ function build(o: { deliverThrows?: boolean; recordThrows?: boolean; deceased?: 
     if (o.recordThrows) throw new Error("audit down");
   });
   const refused = vi.fn(async () => undefined);
+  const inviteRevoked = vi.fn(async () => {
+    order.push("invite_revoked");
+  });
   const port = buildFuneralLinkPort({
     db: {} as DbClient,
     collaborators: { create, revoke },
@@ -31,9 +34,9 @@ function build(o: { deliverThrows?: boolean; recordThrows?: boolean; deceased?: 
     isDeceased: async () => o.deceased ?? true,
     sessionTtlSec: 100,
     activeMembershipId: async () => "membership-1",
-    recorder: { invited, refused },
+    recorder: { invited, refused, inviteRevoked },
   });
-  return { port: port!, create, revoke, deliver, invited, refused, order };
+  return { port: port!, create, revoke, deliver, invited, refused, inviteRevoked, order };
 }
 
 describe("buildFuneralLinkPort", () => {
@@ -53,10 +56,12 @@ describe("buildFuneralLinkPort", () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  it("revokes the link when delivery fails", async () => {
-    const { port, revoke } = build({ deliverThrows: true });
-    await expect(port.issue(ARGS)).rejects.toThrow();
+  it("revokes the link and audits the revocation when delivery fails (the trail never shows an undelivered invite as completed)", async () => {
+    const { port, revoke, inviteRevoked, order } = build({ deliverThrows: true });
+    await expect(port.issue(ARGS)).rejects.toThrow("mail down");
     expect(revoke).toHaveBeenCalledTimes(1);
+    expect(inviteRevoked).toHaveBeenCalledWith(expect.objectContaining({ orgId: ORG, patientId: PATIENT, linkId: LINK, actorUserId: USER }));
+    expect(order).toEqual(["invited", "deliver", "revoke", "invite_revoked"]);
   });
 
   it("mints nothing for a patient who is not deceased", async () => {

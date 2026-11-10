@@ -6,7 +6,7 @@
 // `POST /funeral/invite` are recorded BEFORE delivery (an unrecorded disclosure is revoked, not sent); refused/blocked disclosures are audited too.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, isNull } from "drizzle-orm";
 
 type FuneralLinkCreated = { linkId: string; token?: string | undefined; expiresAt: string };
 
@@ -19,7 +19,7 @@ export interface FuneralLinkStorePort {
     sessionTtlSec: number;
     funeralHomeEntityId: string;
   }): Promise<FuneralLinkCreated> | FuneralLinkCreated;
-  revoke?(scope: { organizationId: string; linkId: string }): Promise<void>;
+  revoke(scope: { organizationId: string; linkId: string }): Promise<void>;
 }
 
 export interface FuneralLinkDeliveryPort {
@@ -46,7 +46,18 @@ export interface FuneralDisclosureRecorderPort {
     actorUserId: string;
     patientId: string;
     funeralHomeEntityId: string;
-    reason: "unknown_funeral_home" | "no_baa";
+    reason: "unknown_funeral_home" | "no_baa" | "recipient_changed" | "caseload_denied";
+    correlationId?: string | undefined;
+  }): Promise<void>;
+  /**
+   * The link was minted (and `invited` recorded) but could not be delivered, so it was revoked: `m2.funeral.invited` records an ATTEMPTED
+   * disclosure, this entry records that it did NOT complete. Ids only.
+   */
+  inviteRevoked(a: {
+    orgId: string;
+    actorUserId: string;
+    patientId: string;
+    linkId: string;
     correlationId?: string | undefined;
   }): Promise<void>;
 }
@@ -82,12 +93,41 @@ async function activeMembershipId(
   return rows[0]?.id ?? null;
 }
 
+const LINKS = schema.collaboratorLinks;
+
+/** Revoke the still-live funeral links of (org, patient, funeral home) minted at or after `since`, plus `linkId` when known. */
+async function revokeOrphanLinks(
+  input: FuneralLinkPortInput,
+  a: { orgId: string; patientId: string; funeralHomeEntityId: string; linkId: string | null; since: Date },
+): Promise<number> {
+  const rows = await withOrgContext(input.db, { organizationId: a.orgId, userId: SYSTEM_USER_ID }, (tx) =>
+    tx
+      .select({ id: LINKS.id })
+      .from(LINKS)
+      .where(
+        and(
+          eq(LINKS.organizationId, a.orgId),
+          eq(LINKS.patientId, a.patientId),
+          eq(LINKS.kind, "funeral_home"),
+          eq(LINKS.funeralHomeEntityId, a.funeralHomeEntityId),
+          isNull(LINKS.revokedAt),
+          gte(LINKS.createdAt, a.since),
+        ),
+      ),
+  );
+  const ids = new Set(rows.map((r) => r.id));
+  if (a.linkId) ids.add(a.linkId); // revoke is idempotent and org-scoped
+  for (const linkId of ids) await input.collaborators.revoke({ organizationId: a.orgId, linkId });
+  return ids.size;
+}
+
 /** Undefined when the delivery channel (the bound transactional email provider) is absent: the notice route then answers 503 and sends nothing. */
 export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
   const { delivery } = input;
   if (!delivery) return undefined;
   return {
     refused: (a: Parameters<FuneralDisclosureRecorderPort["refused"]>[0]) => input.recorder.refused(a),
+    revokeOrphans: (a: Parameters<typeof revokeOrphanLinks>[1]) => revokeOrphanLinks(input, a),
     async issue(a: {
       orgId: string;
       patientId: string;
@@ -129,7 +169,17 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
           expiresAt: new Date(link.expiresAt),
         });
       } catch (err) {
-        await input.collaborators.revoke?.({ organizationId: a.orgId, linkId: link.linkId });
+        await input.collaborators.revoke({ organizationId: a.orgId, linkId: link.linkId });
+        // The trail must not show an undelivered invite as completed: record that the minted link was revoked (best effort; the send already failed).
+        await input
+          .recorder.inviteRevoked({
+            orgId: a.orgId,
+            actorUserId: a.actorUserId,
+            patientId: a.patientId,
+            linkId: link.linkId,
+            correlationId: a.correlationId,
+          })
+          .catch(() => undefined);
         throw err;
       }
       return { linkId: link.linkId };

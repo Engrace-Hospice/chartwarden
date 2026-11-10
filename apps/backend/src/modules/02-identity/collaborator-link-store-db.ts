@@ -274,6 +274,24 @@ export function createDbCollaboratorLinkStore(
       );
     },
 
+    async funeralLinkForPrincipal({ organizationId, principalUserId }) {
+      const rows = await withOrgContext(db, { organizationId, userId: NO_USER }, (tx) =>
+        tx
+          .select({ id: LINKS.id, home: LINKS.funeralHomeEntityId })
+          .from(LINKS)
+          .where(
+            and(
+              eq(LINKS.organizationId, organizationId),
+              eq(LINKS.principalUserId, principalUserId),
+              eq(LINKS.kind, "funeral_home"),
+            ),
+          )
+          .limit(1),
+      );
+      const row = rows[0];
+      return row ? { linkId: row.id, funeralHomeEntityId: row.home } : null;
+    },
+
     async revokeForPatient({ organizationId, patientId }) {
       const rows = await withOrgContext(db, { organizationId, userId: NO_USER }, (tx) =>
         tx

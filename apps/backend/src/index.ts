@@ -1588,6 +1588,7 @@ import {
 } from "./modules/36-messaging/export/export-worker";
 import { createNameExclusions } from "./modules/36-messaging/global-search/name-exclusion";
 import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
+import { ringRecipientHasher } from "./modules/36-messaging/death-notification/recipient-hash";
 import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
   M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
@@ -4750,6 +4751,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // The funeral-home registry is M40's BAA register: a funeral home exists for the tenant when it has a record there (any status).
           isKnownFuneralHome: async (orgId, entityId) =>
             (await createDbBaaStore(dbHandle.db).baaRecords(orgId, "funeral_home", entityId)).length > 0,
+          // HMAC under the tenant ring key: no key, no funeral-home send (fail closed, before a link is minted).
+          recipientHash: ringRecipientHasher(m36SearchKeys),
           funeralLinks: buildFuneralLinkPort({
             recorder: createFuneralDisclosureRecorder(dbHandle.db, m2OutboxPublisher),
             db: dbHandle.db,
@@ -10395,12 +10398,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         connection: queueConnection,
         // The same hourly tick also escalates unacknowledged death notices (flag-gated inside). Both run; a failure of either fails the tick.
         flagStalledForOrg: async (orgId) => {
-          const [board, notices] = await Promise.allSettled([
+          const [board, notices, stranded] = await Promise.allSettled([
             m36DeathBoard.service.flagStalledForOrg(orgId),
             m36DeathNotifications?.service.flagUnackedForOrg(orgId) ?? Promise.resolve(undefined),
+            // Funeral-home sends stuck in `sending` past the timeout: revoke any orphan link, free the row for a re-send, alert the supervisors.
+            m36DeathNotifications?.service.reconcileStrandedSendsForOrg(orgId) ?? Promise.resolve(undefined),
           ]);
           if (board.status === "rejected") throw board.reason;
           if (notices.status === "rejected") throw notices.reason;
+          if (stranded.status === "rejected") throw stranded.reason;
           return board.value;
         },
         activeOrgs: buildActiveOrgEnumerator({

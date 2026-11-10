@@ -366,6 +366,16 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.death_notification.send_stranded",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don", "compliance_officer"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.death_notification.unacked",
     category: "clinical_routine",
     severityFloor: "warn",

@@ -48,3 +48,10 @@ export const DeathNotificationListResponseSchema = Type.Object({
 export const DeathNotificationResponseSchema = Type.Object({
   notification: DeathNotificationSchema,
 });
+/** The funeral-home send: the same `notification`, plus `outcome` ONLY when nothing was sent now (absent = the existing shape). */
+export const FuneralHomeSendResponseSchema = Type.Object({
+  notification: DeathNotificationSchema,
+  outcome: Type.Optional(
+    Type.Union([Type.Literal("in_flight"), Type.Literal("recipient_changed_not_sent")]),
+  ),
+});

@@ -470,7 +470,15 @@ export interface CollaboratorLinkStore {
    */
   release?(scope: { organizationId: string; linkId: string }): Promise<void>;
   /** Revoke ONE link (durable store only), e.g. when its token could not be delivered. Idempotent and org-scoped. */
-  revoke?(scope: { organizationId: string; linkId: string }): Promise<void>;
+  revoke(scope: { organizationId: string; linkId: string }): Promise<void>;
+  /**
+   * The funeral link a redeemed session belongs to (durable store only): its id and the funeral home whose BAA was checked at mint (null on a
+   * link minted before migration 1306). Null when no such link. Lets a funeral-home session read re-check the BAA.
+   */
+  funeralLinkForPrincipal?(scope: {
+    organizationId: string;
+    principalUserId: string;
+  }): Promise<{ linkId: string; funeralHomeEntityId: string | null } | null>;
   /** Revoke every live link for a patient (durable store only) - e.g. the patient is no longer deceased. */
   revokeForPatient?(scope: { organizationId: string; patientId: string }): Promise<number>;
 }
@@ -1075,10 +1083,14 @@ export function createInMemoryCollaboratorLinkStore(): {
         organizationId,
         patientId,
         kind: kind ?? "external_collaborator",
+        linkId,
         expiresAtMs: Date.now() + ttlMs,
         consumed: false,
       });
       return { linkId, expiresAt: new Date(Date.now() + ttlMs).toISOString(), token };
+    },
+    async revoke({ linkId }) {
+      for (const link of links.values()) if (link.linkId === linkId) link.consumed = true; // a spent link cannot be redeemed
     },
     consume(token) {
       const link = links.get(token);

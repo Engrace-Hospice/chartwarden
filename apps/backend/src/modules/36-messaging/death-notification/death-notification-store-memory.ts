@@ -78,6 +78,23 @@ export function createMemoryDeathNotificationStore(now: () => Date): MemoryDeath
         ...(a.recipientEmailHash ? { recipientEmailHash: a.recipientEmailHash } : {}),
       });
     },
+    async recordLink(_tx, a) {
+      const r = rows.get(a.id);
+      if (!r || r.organizationId !== a.orgId || r.state !== "sending") return null;
+      return patch(r, { linkId: a.linkId });
+    },
+    async staleSending(_tx, orgId, olderThanMinutes, limit) {
+      const cutoff = now().getTime() - olderThanMinutes * 60_000;
+      return [...rows.values()]
+        .filter(
+          (r) =>
+            r.organizationId === orgId &&
+            r.state === "sending" &&
+            r.recipientKind === "funeral_home" &&
+            r.updatedAt.getTime() < cutoff,
+        )
+        .slice(0, limit);
+    },
     async transition(_tx, a) {
       const r = rows.get(a.id);
       if (!r || r.organizationId !== a.orgId) return null;

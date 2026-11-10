@@ -4,7 +4,9 @@
 import { randomUUID } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { createOrgScopedAuditExecutor, createOrgScopedIdentityOutbox } from "../identity-ports";
-import { auditFuneralInviteRefused, auditFuneralInvited } from "./org-admin-audit";
+import { auditFuneralInviteRefused, auditFuneralInviteRevoked, auditFuneralInvited } from "./org-admin-audit";
+
+import type { FuneralRefusalReason } from "./org-admin-audit";
 
 type Publisher = Parameters<typeof createOrgScopedIdentityOutbox>[1];
 
@@ -21,7 +23,15 @@ export interface FuneralDisclosureRecorder {
     actorUserId: string;
     patientId: string;
     funeralHomeEntityId: string;
-    reason: "unknown_funeral_home" | "no_baa";
+    reason: FuneralRefusalReason;
+    correlationId?: string | undefined;
+  }): Promise<void>;
+  /** The minted link could not be delivered and was revoked: the counterpart of `invited` (attempted) saying the disclosure did NOT complete. */
+  inviteRevoked(a: {
+    orgId: string;
+    actorUserId: string;
+    patientId: string;
+    linkId: string;
     correlationId?: string | undefined;
   }): Promise<void>;
 }
@@ -51,6 +61,13 @@ export function createFuneralDisclosureRecorder(
         organizationId: a.orgId,
         aggregateKind: "funeral_link",
         aggregateId: a.linkId,
+      });
+    },
+    async inviteRevoked(a) {
+      await auditFuneralInviteRevoked(audit, ctx(a), {
+        linkId: a.linkId,
+        organizationId: a.orgId,
+        patientId: a.patientId,
       });
     },
     async refused(a) {

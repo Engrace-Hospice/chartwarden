@@ -6,7 +6,6 @@
 //                    that entity (fail closed). Without one the row is blocked_no_baa, a supervisor is told, and the board item stays open.
 //   flagUnackedForOrg the stall sweep: an internal notice unacknowledged past the threshold tells the supervisors (deduped, once per notice).
 // HARD RULE: nothing here puts clinical content, an order or PHI in any message. Medication and equipment instructions never travel by message.
-import { createHash } from "node:crypto";
 import { type DbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
@@ -14,10 +13,12 @@ import {
   ChartWardenError,
   DEATH_NOTIFICATION_EVENTS,
   DEATH_NOTIFICATION_INTERNAL_KINDS,
+  DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES,
   DEATH_NOTIFICATION_STALL_MINUTES,
   type DeathNotificationDto,
   type DeathNotificationInternalKind,
   type DeathNotificationKind,
+  type DeathNotificationSendOutcome,
   NotFoundError,
 } from "@chartwarden/types";
 import type { DeathBoardActor } from "../death-board/death-board-service";
@@ -28,6 +29,7 @@ import {
   type DeathNotificationWarn,
   emitBlockedNoBaaAlert,
   emitInternalNotice,
+  emitStrandedSendAlert,
   emitUnackedAlert,
 } from "./death-notification-alerts";
 import type { DeathNotificationRow, DeathNotificationStore } from "./death-notification-store";
@@ -37,7 +39,13 @@ const AGGREGATE_KIND = "death_notification";
 /** The ref of an internal kind that is not tied to one user (role-resolved, or no attending assigned). */
 const UNASSIGNED_REF = "unassigned";
 
-export type FuneralRefusalReason = "unknown_funeral_home" | "no_baa";
+export type FuneralRefusalReason =
+  | "unknown_funeral_home"
+  | "no_baa"
+  /** The home was already notified at a different address; this address was NOT sent to. */
+  | "recipient_changed"
+  /** The actor is not on the decedent's caseload (the route's ABAC refused before any send). */
+  | "caseload_denied";
 
 export interface FuneralLinkPort {
   /**
@@ -61,6 +69,17 @@ export interface FuneralLinkPort {
     reason: FuneralRefusalReason;
     correlationId?: string | undefined;
   }): Promise<void>;
+  /**
+   * Stale-`sending` reconcile: revoke every still-live funeral link minted for (org, patient, funeral home) at or after `since` (plus `linkId`
+   * when the row recorded it), so a delivered-but-unrecorded send leaves no live credential. Returns how many were revoked. Throws on failure.
+   */
+  revokeOrphans(a: {
+    orgId: string;
+    patientId: string;
+    funeralHomeEntityId: string;
+    linkId: string | null;
+    since: Date;
+  }): Promise<number>;
 }
 
 export interface DeathNotificationDeps {
@@ -82,6 +101,11 @@ export interface DeathNotificationDeps {
   /** True when the MDM register holds a funeral_home record (any BAA status) for this id in this org. A throw reads as unknown. */
   readonly isKnownFuneralHome: (orgId: string, entityId: string) => Promise<boolean>;
   readonly funeralLinks?: FuneralLinkPort | undefined;
+  /**
+   * Keyed digest (HMAC-SHA256 under a server-side per-tenant key) of the NORMALISED recipient address, hex. The address itself is never stored.
+   * A throw refuses the send BEFORE any link is minted.
+   */
+  readonly recipientHash: (orgId: string, normalizedEmail: string) => Promise<string>;
   /** The `messaging.death_notifications` tenant flag. A throw reads as off. */
   readonly isEnabled: (orgId: string) => Promise<boolean>;
   readonly warn?: DeathNotificationWarn | undefined;
@@ -101,8 +125,21 @@ export interface DeathNotificationService {
     actor: DeathBoardActor,
     boardId: string,
     input: { funeralHomeEntityId: string; recipientEmail: string; correlationId?: string | undefined },
-  ): Promise<DeathNotificationDto>;
+  ): Promise<FuneralHomeSendResult>;
+  /** Audit a caseload refusal of a funeral-home send (the route's ABAC denied; nothing was sent). Never throws. */
+  auditCaseloadDenied(
+    actor: DeathBoardActor,
+    a: { patientId: string; funeralHomeEntityId: string; correlationId?: string | undefined },
+  ): Promise<void>;
   flagUnackedForOrg(orgId: string): Promise<{ examined: number; alerted: number }>;
+  /** The stall tick's second half: reconcile funeral-home sends stranded in `sending`, free them for a re-send and tell the supervisors. */
+  reconcileStrandedSendsForOrg(orgId: string): Promise<{ examined: number; reconciled: number }>;
+}
+
+/** `outcome` is present ONLY when nothing was sent now; absent keeps the original response shape. */
+export interface FuneralHomeSendResult {
+  readonly notification: DeathNotificationDto;
+  readonly outcome?: DeathNotificationSendOutcome;
 }
 
 const notFound = (): NotFoundError => new NotFoundError("death_notification");
@@ -136,9 +173,11 @@ const sendUnconfirmed = (): ChartWardenError =>
     503,
   );
 
-/** Salted per organization so the stored value cannot be matched across tenants; the address itself is never stored. */
-const hashRecipient = (orgId: string, email: string): string =>
-  createHash("sha256").update(`${orgId}:${email.trim().toLowerCase()}`).digest("hex");
+/**
+ * Trim and lowercase, nothing more. A `+tag` is NOT stripped: on many providers `a+x@` and `a@` are the same mailbox, but on others they are
+ * different people, and a missed "recipient changed" (the unsafe direction) is worse than a spurious one.
+ */
+export const normalizeRecipientEmail = (email: string): string => email.trim().toLowerCase();
 
 const isInternal = (kind: string): kind is DeathNotificationInternalKind =>
   (DEATH_NOTIFICATION_INTERNAL_KINDS as readonly string[]).includes(kind);
@@ -285,7 +324,8 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
       const board = await deps.viewBoard(actor, boardId);
       const links = deps.funeralLinks;
       if (!links) throw linkUnavailable();
-      const entityId = input.funeralHomeEntityId;
+      // Lower-cased once: the DB insert guard compares funeral_home_entity_id::text (always lowercase) with recipient_ref, so an uppercase id would 500.
+      const entityId = input.funeralHomeEntityId.toLowerCase();
       const disclosure = {
         orgId: actor.orgId,
         actorUserId: actor.userId,
@@ -307,6 +347,8 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
         await auditRefusal("unknown_funeral_home");
         throw unknownFuneralHome();
       }
+      const recipientHash = await deps.recipientHash(actor.orgId, normalizeRecipientEmail(input.recipientEmail)).catch(() => null);
+      if (!recipientHash) throw linkUnavailable(); // no key, no send: nothing is minted without a joinable recipient digest
       const { row } = await asUser(actor, (tx) =>
         store.ensure(tx, {
           orgId: actor.orgId,
@@ -317,8 +359,16 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
           funeralHomeEntityId: entityId,
         }),
       );
-      // idempotent: never a second disclosure (a `sending` row is in flight, or sent-but-unrecorded and awaits an operator)
-      if (row.state === "sent" || row.state === "acked" || row.state === "sending") return toDto(row, false);
+      // idempotent: never a second disclosure. A `sending` row is in flight (or delivered-but-unrecorded; the stall tick frees it).
+      if (row.state === "sending") return { notification: toDto(row, false), outcome: "in_flight" };
+      if (row.state === "sent" || row.state === "acked") {
+        if (row.recipientEmailHash && row.recipientEmailHash !== recipientHash) {
+          // Already notified at ANOTHER address: say so instead of answering as if this address were notified; the attempt is audited.
+          await auditRefusal("recipient_changed");
+          return { notification: toDto(row, false), outcome: "recipient_changed_not_sent" };
+        }
+        return { notification: toDto(row, false) };
+      }
       const baa = await deps.isBaaActive(actor.orgId, "funeral_home", entityId, clock()).catch(() => false);
       if (!baa) {
         const blocked = await asUser(actor, async (tx) => {
@@ -331,20 +381,29 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
         });
         await auditRefusal("no_baa");
         await emitBlockedNoBaaAlert(deps.alerts, actor.orgId, boardId).catch(() => 0);
-        return toDto(blocked, false);
+        return { notification: toDto(blocked, false) };
       }
 
       // The atomic claim: of any number of concurrent sends exactly one wins and may mint a link.
       const claimed = await asUser(actor, (tx) => store.claim(tx, { orgId: actor.orgId, id: row.id }));
       if (!claimed) {
         const current = await asUser(actor, (tx) => store.get(tx, actor.orgId, row.id));
-        return toDto(current ?? row, false);
+        const lost = current ?? row;
+        return { notification: toDto(lost, false), ...(lost.state === "sending" ? { outcome: "in_flight" as const } : {}) };
       }
       let linkId: string;
       try {
         ({ linkId } = await links.issue({ ...disclosure, recipientEmail: input.recipientEmail }));
       } catch {
-        await asUser(actor, (tx) => store.settle(tx, { orgId: actor.orgId, id: row.id, to: "failed" }));
+        // A failed settle must not mask the typed refusal: the row then stays `sending` and the stall tick reconciles it.
+        await asUser(actor, (tx) => store.settle(tx, { orgId: actor.orgId, id: row.id, to: "failed" })).catch((settleErr: unknown) => {
+          deps.warn?.("death notification: a failed send could not be settled; the stall tick will reconcile it", {
+            org_id: actor.orgId,
+            board_id: boardId,
+            notification_id: row.id,
+            error: settleErr instanceof Error ? settleErr.name : "unknown",
+          });
+        });
         throw linkFailed();
       }
       try {
@@ -354,15 +413,17 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
             id: row.id,
             to: "sent",
             linkId,
-            recipientEmailHash: hashRecipient(actor.orgId, input.recipientEmail),
+            recipientEmailHash: recipientHash,
           });
           if (!moved) throw new Error("the sending row was not settled");
           await publish(tx, DEATH_NOTIFICATION_EVENTS.sent, moved);
           return moved;
         });
-        return toDto(sent, false);
+        return { notification: toDto(sent, false) };
       } catch (err) {
-        // The link is minted and delivered. The row stays `sending` (never re-claimable), so a retry cannot mint a second link.
+        // The link is minted and delivered. The row stays `sending` (never re-claimable), so a retry cannot mint a second link. Pin the link id
+        // on the row (best effort) so the disclosure stays joinable; the stall tick later revokes the link and frees the row for a re-send.
+        await asUser(actor, (tx) => store.recordLink(tx, { orgId: actor.orgId, id: row.id, linkId })).catch(() => null);
         deps.warn?.("death notification: a funeral-home link was delivered but its sent state was not recorded", {
           org_id: actor.orgId,
           board_id: boardId,
@@ -372,6 +433,56 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
         });
         throw sendUnconfirmed();
       }
+    },
+
+    async auditCaseloadDenied(actor, a) {
+      await deps.funeralLinks
+        ?.refused({
+          orgId: actor.orgId,
+          actorUserId: actor.userId,
+          patientId: a.patientId,
+          funeralHomeEntityId: a.funeralHomeEntityId.toLowerCase(),
+          reason: "caseload_denied",
+          correlationId: a.correlationId,
+        })
+        .catch(() => {
+          deps.warn?.("death notification: a caseload refusal could not be audited", { org_id: actor.orgId });
+        });
+    },
+
+    async reconcileStrandedSendsForOrg(orgId) {
+      const links = deps.funeralLinks;
+      if (!links || !(await deps.isEnabled(orgId).catch(() => false))) return { examined: 0, reconciled: 0 };
+      const stale = await asSystem(orgId, (tx) =>
+        store.staleSending(tx, orgId, DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES, STALL_FLAG_MAX),
+      );
+      let reconciled = 0;
+      const failures: unknown[] = [];
+      for (const row of stale) {
+        try {
+          // Revoke FIRST: only a row whose live credential is gone may be freed for a re-send. A revoke failure leaves it `sending` for the next tick.
+          await links.revokeOrphans({
+            orgId,
+            patientId: row.patientId,
+            funeralHomeEntityId: row.funeralHomeEntityId ?? row.recipientRef,
+            linkId: row.linkId,
+            since: row.createdAt,
+          });
+          const failed = await asSystem(orgId, (tx) => store.settle(tx, { orgId, id: row.id, to: "failed" }));
+          if (!failed) continue; // settled meanwhile
+          reconciled += 1;
+          await emitStrandedSendAlert(deps.alerts, orgId, row.id).catch(() => 0); // deduped per row; PHI-free fixed text
+        } catch (err) {
+          failures.push(err);
+          deps.warn?.("death notification: a stranded send could not be reconciled", {
+            org_id: orgId,
+            notification_id: row.id,
+            error: err instanceof Error ? err.name : "unknown",
+          });
+        }
+      }
+      if (failures.length > 0) throw new Error(`death notification: ${failures.length} stranded send(s) could not be reconciled; retrying`);
+      return { examined: stale.length, reconciled };
     },
 
     async flagUnackedForOrg(orgId) {
