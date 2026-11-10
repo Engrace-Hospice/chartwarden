@@ -392,3 +392,57 @@ describe("related — `--` after a wrapper, `builtin cd`, and process substituti
     expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });
+
+describe("LOW — the harness-switch rule reads an assignment, not the variable name in text", () => {
+  it.each([
+    "CLAUDE_PROJECT_DIR=/tmp bun x.ts",
+    "export CODEX_HOME=/tmp/h",
+    "env CW_HARNESS_FAIL_OPEN=1 cmd",
+    "CW_STOP_GATE=off claude",
+    "FOO=1 CODEX_HOME=/tmp/h codex",
+    '"CODEX_HOME=/tmp/h" codex',
+    "sudo CW_AGENT_LEDGER=off cmd",
+    "/usr/bin/env CODEX_HOME=/tmp/h codex",
+    "env -i CODEX_HOME=/tmp/h codex",
+    "env -- CODEX_HOME=/tmp/h codex",
+    "env -S 'CODEX_HOME=/tmp/h codex'",
+    "command env CW_STOP_GATE=off cmd",
+    "declare -x CODEX_HOME=/tmp/h",
+    "export FOO=1 CLAUDE_CONFIG_DIR=/tmp/c",
+    "ECC_DISABLED_HOOKS=pre:bash:gateguard-fact-force cmd",
+    "cd apps && CLAUDE_PROJECT_DIR=/tmp bun y.ts",
+    "if true; then CW_STOP_GATE=off cmd; fi",
+    "{ CODEX_HOME=/tmp/h codex; }",
+    'bash -c "export CODEX_HOME=/tmp/h; codex"',
+    'eval "CLAUDE_CONFIG_DIR=/tmp codex"',
+    "echo $(CODEX_HOME=/tmp/h codex)",
+    "cat <(CODEX_HOME=/tmp/h codex)",
+    "CODEX_HOME=/tmp/h",
+  ])("asks before %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision).toBe("ask");
+    expect(verdict.reason).toMatch(/harness/i);
+  });
+
+  it.each([
+    "rg CLAUDE_PROJECT_DIR= scripts",
+    "grep -rn 'CODEX_HOME=' docs",
+    "grep -n CW_HARNESS_FAIL_OPEN= docs/compliance/AGENT_HARNESS.md",
+    "git log -S'CLAUDE_PROJECT_DIR=' --oneline",
+    'git commit -m "docs: say what CODEX_HOME=... does"',
+    'echo "set CODEX_HOME=/x to move it"',
+    "echo CW_STOP_GATE=off",
+    "cat scripts/harness/pre-tool-guard.ts | rg 'CLAUDE_PROJECT_DIR='",
+    "export CODEX_HOME",
+    "export FOO=1",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+
+  it("still denies a skipped gate wherever the text sits", () => {
+    const skip = `SKIP_${"FITNESS"}=1`;
+    expect(d(`${skip} git push`)).toBe("deny");
+    expect(d(`rg ${skip} docs`)).toBe("deny");
+  });
+});

@@ -1044,7 +1044,19 @@ const ask = (reason: string): BashVerdict => ({ decision: "ask", reason: scrub(r
 
 /** Variables that disable or redirect an agent guard, its ledger, or the tree whose controls it judges. */
 const HARNESS_SWITCH =
-  /\b(CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR)=/;
+  /^(CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR)=/;
+/** Programs whose own arguments assign variables (`export NAME=value`, `env NAME=value cmd`). */
+const VARIABLE_SETTER = /^(export|declare|typeset|readonly|local|env)$/;
+
+/**
+ * Does this command ASSIGN a harness variable: as a `NAME=value` prefix (also behind `sudo`, `env`, `time`…), or
+ * as an argument of `export`/`declare`/`env`? The name inside an argument or a quoted pattern
+ * (`rg CODEX_HOME= docs`) only mentions the variable and sets nothing.
+ */
+const switchesHarness = (p: Parsed): boolean =>
+  [...p.assigns, ...(VARIABLE_SETTER.test(p.prog) ? p.args : [])].some((w) =>
+    HARNESS_SWITCH.test(w),
+  );
 
 const MAX_NESTING = 4;
 
@@ -1080,6 +1092,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashV
     );
   }
   const { parts, sequential } = splitSegments(c);
+  const parsedParts = parts.map((part) => parseSegment(part.text));
 
   // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
   if (/\b(SKIP_FITNESS=(1|true|yes)|CW_SKIP_PHI_SCAN=(1|true|yes))\b/.test(c)) {
@@ -1088,7 +1101,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashV
   // --- Switching the harness itself off is the human's call, however it is spelled. `CODEX_HOME` and
   // `CLAUDE_CONFIG_DIR` re-point an agent at a config directory that has no hooks; `CLAUDE_PROJECT_DIR` and
   // `CW_HARNESS_ROOT_FOR_TESTS` re-point the guard at another tree, so protected-path matching runs there.
-  if (HARNESS_SWITCH.test(c)) {
+  if (parsedParts.some(switchesHarness)) {
     return ask(
       "That variable switches off or re-points part of the agent harness (Stop gate, ledger, guard fail-closed, its project root, an ECC hook, or the hook configuration an agent loads). A human decides.",
     );
@@ -1102,7 +1115,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashV
   let anywhere = start.any; // everywhere any later command could run
   let scriptOnStdin = false;
   parts.forEach((part, index) => {
-    const parsed = parseSegment(part.text);
+    const parsed = parsedParts[index] as Parsed;
     // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
     const here = sequential && part.joiner === "&&" ? after : anywhere;
     const v = classifySegment(part.text, parsed, ctx, seq, here);
