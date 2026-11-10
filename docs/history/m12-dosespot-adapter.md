@@ -261,3 +261,19 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   old one; the dedupe itself stays unverified. UNCERTAIN (b): the admission trigger enqueues a MedHx fetch only, never a patient sync, so a fetch for a patient with no
   vendor id already ended failed ("prior patient-sync has not succeeded yet") before the reset existed; after a reset it now says the patient is not registered at the
   current clinic. Deferring instead would re-claim the row every two minutes for as long as no patient sync runs, for no gain; auto-registering patients was refused.
+- Re-review of the registration-target fences (MEDIUM x1, LOW x5, on 8504577fa): (M1) a call that had BEGUN kept the old clinic's created id and key through the clear
+  (the clear skips a stamped row) and a worker that then requeued its own order (an outage, or a failure that was not permanent) carried both into the next
+  attempt, which sent the old clinic's id under the new one (refused for good, `transmission_failed`) and reused the old key. The settle now asks, FIRST in its
+  transaction (the shared registration lock before any row lock: the reset takes it exclusively and then updates transmission rows, so asking after the row locks
+  could deadlock), whether the registration still names the clinic the call began under; if not, an outage or ANY failure (a permanent one too: a send refused
+  under the new clinic is the move's doing) drops the id, replaces the key and requeues with no retry spent; a call held for a person keeps both (`transmit-settle.ts`,
+  `jobs/transmit-ownership.ts`). While reading the stamp again as a hostile reviewer, the payload's own vendor ids turned out to have the same window (read, then a move,
+  then the stamp): the payload now carries the target read BEFORE its ids and the stamp refuses to start the call if the registration names another clinic (the stamp rolls
+  back). (L1) `last_error` kept the head of a long statement and lost the SQLSTATE, constraint and table that `safeErrorMessage` puts at the END: a text over the cap now keeps
+  its head and its tail. (L2) the patient-sync key `patient:<id>:<updatedAt>` is the same for an unchanged patient after a move, so `addPatient` at the new clinic could be
+  answered with the old clinic's id: it now carries a digest of the target. A patient upsert that FAILS after a move waits instead of ending the row, like one that succeeded.
+  (L3) the call used the claim's copy of the created id and key, which in a batch can be a whole batch old and which the reset now rewrites for a claimed, unstamped
+  order: the stamp returns the row's values and the call uses those. (L4) CW-AC-21's wording now says what the code does (see the row). (L5) the queued-order age
+  alert still fires for a waiting order the claim skips (tested). The move-time behaviour of a begun call is proved against real Postgres in
+  `m12-crons-transmit.live.test.ts` (a begun call that ends as a retryable failure, a permanent rejection, an open circuit or a registration no longer live, a settle that
+  starts while the reset holds its lock, a stamp that races a move, an unconfirmed send that is held with its id).
