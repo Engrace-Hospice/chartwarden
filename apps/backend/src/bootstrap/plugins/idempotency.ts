@@ -27,6 +27,19 @@
 // release itself fails (a database outage that caused the 5xx usually breaks it too) the key stays `pending` and a retry
 // answers 409 in flight until the record's 24h TTL ends. What the tracker cannot see (an outbound call, a queue or object-store
 // write made directly in a route) is not counted: those belong behind the outbox, after the commit.
+//
+// A claim that is never completed or released (the process died after it, the store failed on `complete` and on `release`, or a
+// route hijacks its reply so `onSend` never runs: the M33 CSV export streams) stays `pending`. A duplicate is told IN_FLIGHT for
+// IDEMPOTENCY_PENDING_MAX_AGE_MS and STUCK after it (`@chartwarden/shared` idempotency.ts); the row is never reclaimed or re-run.
+//
+// TWO RESIDUALS of the fail-closed rule, stated plainly. (1) It holds only at its two checkpoints, the claim (below) and `onSend`:
+// it does not see an async context that is lost INSIDE the handler, so a write made after that point reaches no tracker, and a
+// failure that then reaches `onSend` with the context intact is released although a write committed. (2) A route that answers a
+// 5xx/503 while its handler keeps running (a Promise.race deadline, a timeout wrapper) and has not yet issued its first write can be
+// released and still commit afterwards: the tracker has seen nothing to count at `onSend`. The routes in apps/backend/src that
+// answer before their work ends were reviewed (M32 AI invocation, M23 DDE provider send: each writes its ledger or in-doubt row,
+// which is tracked, before it answers; the others only abandon outbound calls or reads); a new one must write before it answers or
+// be kept off this path.
 import {
   createCommitTracker,
   currentCommitTracker,
