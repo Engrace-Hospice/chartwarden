@@ -2,6 +2,8 @@
 // is a typed 500 (PERSIST_FAILED), never a bare Error the error envelope would not recognise.
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
+import type { DbClient } from "@chartwarden/db";
+import { buildContractService } from "../pricing/contract-service";
 import { buildPricingPlanService } from "../pricing/plan-service";
 import { type PlatformAuditRow, buildPlatformAuditPort } from "../pricing/ports";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
@@ -146,4 +148,97 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
     ));
   it("archive (the update)", () =>
     expectPersistFailed(() => service([[published]]).archive(actor, "p1", reason)));
+});
+
+/** A Postgres unique violation as Drizzle surfaces it: the pg error, wrapped, with the constraint on it. */
+const uniqueViolation = (constraint: string): Error =>
+  new Error("Failed query: insert ...", {
+    cause: Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+      constraint,
+    }),
+  });
+
+describe("a select-then-insert race surfaces as a 409, not a raw unique violation (a 500)", () => {
+  const actor = {
+    organizationId: "o",
+    userId: "u",
+    roles: [],
+    membershipId: "m",
+    stepUpRecent: true,
+  };
+  const reason = "a reason long enough";
+  const raceOn =
+    (constraint: string): PlatformRunner =>
+    async () => {
+      throw uniqueViolation(constraint);
+    };
+  const plans = (constraint: string) =>
+    buildPricingPlanService({
+      platformRunner: raceOn(constraint),
+      audit: { record: async () => undefined },
+    });
+  const input = {
+    familySlug: "fam",
+    name: "Plan",
+    perUserPriceCents: 1000,
+    bands: [{ minAdc: 0, monthlyFeeCents: 100 }],
+    billingSoftwareBps: 100,
+    managedBillingBps: 400,
+    contractTermMonths: 12,
+    implementationFeeCents: 0,
+    minimumMonthlyCents: null,
+  };
+
+  it("create: two operators creating the same family collide on plan_slug_uq -> ConflictError 409", async () => {
+    const error = await plans("plan_slug_uq")
+      .create(actor, input, reason)
+      .catch((e) => e);
+    expect(error).toMatchObject({ statusCode: 409 });
+    expect(error.message).toMatch(/created at the same time/);
+  });
+
+  it("newVersion: two operators versioning the same family collide on plan_slug_uq -> ConflictError 409", async () => {
+    const error = await plans("plan_slug_uq")
+      .newVersion(actor, "p1", reason)
+      .catch((e) => e);
+    expect(error).toMatchObject({ statusCode: 409 });
+    expect(error.message).toMatch(/another version/);
+  });
+
+  it("any other failure is left exactly as it was", async () => {
+    const other = uniqueViolation("some_other_uq");
+    const runner: PlatformRunner = async () => {
+      throw other;
+    };
+    const service = buildPricingPlanService({
+      platformRunner: runner,
+      audit: { record: async () => undefined },
+    });
+    await expect(service.create(actor, input, reason)).rejects.toBe(other);
+  });
+
+  it("createForTenant: a subscription written by another path first -> SUBSCRIPTION_EXISTS 409", async () => {
+    const contracts = buildContractService({
+      db: {} as DbClient,
+      platformRunner: raceOn("subscription_org_active_uq"),
+      audit: { record: async () => undefined },
+      outbox: { publish: async () => undefined } as never,
+      onboarding: {
+        enter: async () => null,
+        planContractStep: async () => ({ taskId: null, status: "pending", lockedBy: null }),
+        attestPlanContract: async () => undefined,
+      },
+    });
+    const error = await contracts
+      .createForTenant(actor, "acme", {
+        planSlug: "fam-v1",
+        billingServiceMode: "billing_software",
+        reason,
+        orderFormRef: null,
+      })
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(ChartWardenError);
+    expect(error).toMatchObject({ code: "SUBSCRIPTION_EXISTS", statusCode: 409 });
+  });
 });
