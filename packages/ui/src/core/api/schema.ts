@@ -7343,7 +7343,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up; Idempotency-Key required (§4.1 #36) */
+        /** Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36) */
         post: operations["postApiV1BillingMaccredentialsByProviderEntityIdTest"];
         delete?: never;
         options?: never;
@@ -52821,6 +52821,7 @@ export interface operations {
                             hasSecret: boolean;
                             baaRecordRef: string | null;
                             credentialExpiresAt: string | null;
+                            /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                             lastSandboxTestAt: string | null;
                             version: number;
                             createdAt: string;
@@ -52857,6 +52858,7 @@ export interface operations {
                     tradingPartnerId: string;
                     clientId: string;
                     clientSecret: string;
+                    /** @description Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error. */
                     baaRecordRef?: string;
                     /** Format: date-time */
                     credentialExpiresAt?: string;
@@ -52881,6 +52883,7 @@ export interface operations {
                         hasSecret: boolean;
                         baaRecordRef: string | null;
                         credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         lastSandboxTestAt: string | null;
                         version: number;
                         createdAt: string;
@@ -52920,6 +52923,7 @@ export interface operations {
                         hasSecret: boolean;
                         baaRecordRef: string | null;
                         credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         lastSandboxTestAt: string | null;
                         version: number;
                         createdAt: string;
@@ -52954,11 +52958,17 @@ export interface operations {
                     "application/json": {
                         providerEntityId: string;
                         macJurisdiction: string;
+                        /** @description True when the MAC portal for the credential's jurisdiction answered. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         ok: boolean;
-                        /** @constant */
+                        /**
+                         * @description Always portal_health_probe: the check calls the jurisdiction's MAC portal health endpoint. It does not submit a test claim and does not use the stored credential.
+                         * @constant
+                         */
                         method: "portal_health_probe";
+                        /** @description What the check saw (the portal answered or did not). It is never about the credential itself. */
                         detail: string;
                         checkedAt: string;
+                        /** @description The time the credential now records for this check: set when the portal answered, null when it did not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         lastSandboxTestAt: string | null;
                     };
                 };
@@ -98166,6 +98176,7 @@ export interface operations {
                             hasSecret: boolean;
                             baaRecordRef: string | null;
                             credentialExpiresAt: string | null;
+                            /** @description When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                             lastSandboxTestAt: string | null;
                             version: number;
                             /** Format: date-time */
@@ -98206,6 +98217,7 @@ export interface operations {
                     clientId: string;
                     /** @description Write-only: sealed under the tenant's own key and never returned. */
                     clientSecret: string;
+                    /** @description Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error. */
                     baaRecordRef?: string;
                     /** Format: date-time */
                     credentialExpiresAt?: string;
@@ -98233,6 +98245,7 @@ export interface operations {
                         hasSecret: boolean;
                         baaRecordRef: string | null;
                         credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         lastSandboxTestAt: string | null;
                         version: number;
                         /** Format: date-time */
