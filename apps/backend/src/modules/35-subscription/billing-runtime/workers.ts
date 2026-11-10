@@ -142,6 +142,28 @@ export async function reconcileOutsideModes(
   }
 }
 
+/** One hourly pricing tick: repair every current contract before generating any statements. */
+export async function runPricingStatementTick(
+  jobs: M35JobDeps,
+  pricing: NonNullable<M35WorkerDeps["pricing"]>,
+): Promise<void> {
+  // Reconcile the current-contract population first. This deliberately includes onboarding and paused organizations: neither is
+  // guaranteed to reach statement generation, but both may hold a contract whose mode must be none while billing outside.
+  const current = await listContractedOrgIds(jobs.platformRunner, "current", nowOf(jobs));
+  await reconcileOutsideModes(pricing.reconcileOutsideMode, jobs.log, current);
+  // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
+  // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
+  await runStatementSweep({
+    platformRunner: jobs.platformRunner,
+    keyProvider: pricing.keyProvider,
+    netCollections: pricing.netCollections,
+    goLive: pricing.goLive,
+    ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
+    ...(jobs.now ? { now: jobs.now } : {}),
+    ...(jobs.log ? { log: jobs.log } : {}),
+  });
+}
+
 /** One Worker per bound queue. */
 export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
   const { connection, jobs } = deps;
@@ -237,27 +259,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
   }
   if (deps.pricing) {
     const pricing = deps.pricing;
-    workers.push(
-      worker(M35_QUEUES.pricingStatement, async () => {
-        // Reconcile the current-contract population first. This deliberately includes onboarding and paused organizations: neither is
-        // guaranteed to reach statement generation, but both may hold a contract whose mode must be none while billing outside.
-        const current = await listContractedOrgIds(jobs.platformRunner, "current", nowOf(jobs));
-        await reconcileOutsideModes(pricing.reconcileOutsideMode, jobs.log, current);
-        // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
-        // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
-        await runStatementSweep(
-          {
-            platformRunner: jobs.platformRunner,
-            keyProvider: pricing.keyProvider,
-            netCollections: pricing.netCollections,
-            goLive: pricing.goLive,
-            ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
-            ...(jobs.now ? { now: jobs.now } : {}),
-            ...(jobs.log ? { log: jobs.log } : {}),
-          },
-        );
-      }),
-    );
+    workers.push(worker(M35_QUEUES.pricingStatement, () => runPricingStatementTick(jobs, pricing)));
   }
   return workers;
 }

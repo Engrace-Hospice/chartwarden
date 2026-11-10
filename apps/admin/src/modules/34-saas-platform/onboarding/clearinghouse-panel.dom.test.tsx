@@ -764,7 +764,9 @@ describe("ClearinghousePanel: verifying the vendor BAA (pinned to the record rea
     fireEvent.change(screen.getByRole("textbox", { name: /Operator ticket/ }), {
       target: { value: "sec-42" },
     });
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Revoke BAA" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Revoke BAA" }),
+    );
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
     const [path, init] = lastCall(client.POST.mock.calls);
     expect(path).toBe(BAA_REVOKE);

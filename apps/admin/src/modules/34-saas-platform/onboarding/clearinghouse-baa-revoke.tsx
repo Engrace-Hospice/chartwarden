@@ -45,8 +45,12 @@ export function RevokeBaa({
   }
 
   useEffect(() => {
-    if (open && baa === null) close();
-  }, [open, baa === null]);
+    if (!open || baa !== null) return;
+    write.clear();
+    setOpen(false);
+    setReasonCode("vendor_terminated");
+    setTicketRef("");
+  }, [baa, open, write]);
 
   async function revoke(): Promise<void> {
     if (!baa || !TICKET.test(ticketRef)) return;
@@ -61,6 +65,8 @@ export function RevokeBaa({
       close();
       await reload();
     } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
+      // Never let a second click retarget this destructive decision to the replacement BAA.
+      close();
       await reload();
     }
   }
@@ -83,13 +89,29 @@ export function RevokeBaa({
       >
         Revoke vendor BAA
       </Button>
-      <Modal open={open && baa !== null} onClose={write.busy ? undefined : close} ariaLabel="Revoke vendor BAA" width="34rem">
+      <Modal
+        open={open && baa !== null}
+        onClose={write.busy ? undefined : close}
+        ariaLabel="Revoke vendor BAA"
+        ariaDescribedBy="baa-revoke-warning"
+        role="alertdialog"
+        width="34rem"
+      >
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Revoke vendor BAA</h2>
-          <InlineAlert tone="warning">
-            This immediately holds new clearinghouse traffic and takes an active configuration out of service. It does not delete the
-            credential or retrieve responses already owed by the vendor.
-          </InlineAlert>
+          <div id="baa-revoke-warning">
+            <InlineAlert tone="warning">
+              This immediately holds new clearinghouse traffic and takes an active configuration out
+              of service. It does not delete the credential or retrieve responses already owed by
+              the vendor.
+            </InlineAlert>
+          </div>
+          <dl className="wx-kv">
+            <dt>Document</dt>
+            <dd>{baa?.documentRef}</dd>
+            <dt>Recorded</dt>
+            <dd>{baa ? new Date(baa.recordedAt).toLocaleString() : ""}</dd>
+          </dl>
           <SelectField
             label="Closed reason"
             value={reasonCode}
@@ -105,8 +127,14 @@ export function RevokeBaa({
           />
           {write.failure ? <FailureNotice failure={write.failure} orgSlug={orgSlug} /> : null}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-            <Button tone="secondary" onClick={close} disabled={write.busy}>Cancel</Button>
-            <Button tone="danger" onClick={() => void revoke()} disabled={write.busy || !TICKET.test(ticketRef)}>
+            <Button tone="secondary" onClick={close} disabled={write.busy}>
+              Cancel
+            </Button>
+            <Button
+              tone="danger"
+              onClick={() => void revoke()}
+              disabled={write.busy || !TICKET.test(ticketRef)}
+            >
               {write.busy ? "Revoking…" : "Revoke BAA"}
             </Button>
           </div>

@@ -113,7 +113,8 @@ export function VerifyBaa({
                   }}
                 />
                 <span>
-                  I reviewed the previous revocation and knowingly verify this record even though it points to the same document.
+                  I reviewed the previous revocation and knowingly verify this record even though it
+                  points to the same document.
                   {ackError ? (
                     <span role="alert" style={{ display: "block" }}>
                       This acknowledgement is required.
