@@ -6,8 +6,8 @@
 //
 // Every free-text field the wizard stores goes through `cleanText`: NUL is refused as a typed 422 (Postgres text and
 // jsonb cannot hold it, so it would otherwise surface as a 500), every other control character except tab and newline
-// is stripped, and text that looks like a patient identifier (an SSN or MBI) is refused with a friendly 422 that never
-// echoes the value.
+// is stripped, so are the zero-width and bidi format characters an approver could be misled by (see STRIPPED_FORMAT), and
+// text that looks like a patient identifier (an SSN or MBI) is refused with a friendly 422 that never echoes the value.
 import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { ChartWardenError } from "@chartwarden/types";
 
@@ -33,6 +33,12 @@ const refuse = (code: string, field: string, message: string): ChartWardenError 
 
 /** Every control character (\p{Cc}) except tab and newline. */
 const STRIPPED_CONTROL = /[^\P{Cc}\t\n]/gu;
+/**
+ * The invisible and reordering format characters (\p{Cf}) that make what an approver reads differ from what is stored: U+200B
+ * zero-width space, U+200E/F direction marks, U+202A-E embeddings and overrides, U+2060-4 word joiner and invisible operators,
+ * U+2066-9 isolates and U+FEFF. U+200C and U+200D stay: they are part of the spelling of some scripts (and of emoji sequences).
+ */
+const STRIPPED_FORMAT = /[\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/gu;
 
 /**
  * The shared text hygiene: refuse NUL, strip the other control characters, trim, and refuse a patient identifier.
@@ -42,7 +48,11 @@ function cleanText(field: string, raw: string): string {
   if (raw.includes("\u0000")) {
     throw refuse("ONBOARDING_TEXT_INVALID", field, `${field} must not contain NUL characters`);
   }
-  const text = raw.replace(STRIPPED_CONTROL, "").trim();
+  // Screened as typed (a control character between digits is a separator to the screen: stripped first it would join them into an
+  // unbroken run, which the screen lets through on purpose) and again as stored (a run of control or format characters longer than
+  // the screen's separator window hides nothing once it is stripped).
+  assertNoPatientIdentifier(field, raw);
+  const text = raw.replace(STRIPPED_CONTROL, "").replace(STRIPPED_FORMAT, "").trim();
   assertNoPatientIdentifier(field, text);
   return text;
 }

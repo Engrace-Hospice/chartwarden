@@ -494,6 +494,24 @@ describe("reason normalisation", () => {
     await app.close();
   });
 
+  it("screens the reason as typed, before the control strip: a control character between digits is a separator, not padding", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    // Synthetic area-900 digits. Stripped first, "900123456\u00017" is an unbroken ten-digit run, which the screen lets through
+    // on purpose (NPIs, phone numbers); as typed it is nine digits and a stray one.
+    const res = await post(app, "verified with patient 900123456\u00017 by phone");
+    expect(res.statusCode, res.body).toBe(422);
+    expect(res.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(res.body).not.toContain("900123456");
+    expect(calls).toEqual([]); // refused before the service
+    // and a run of control characters longer than the screen's separator window hides nothing once it is stripped
+    const padded = `verified patient 900${"\u0001".repeat(12)}12${"\u0001".repeat(12)}3456 by phone`;
+    expect((await post(app, padded)).json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    // a plain ten-digit ticket number is still a plain number
+    expect((await post(app, "ticket 9001234567 opened by phone")).statusCode).toBe(201);
+    await app.close();
+  });
+
   it("applies the 8-500 bounds to the NORMALISED reason", async () => {
     const calls: Call[] = [];
     const app = makeServer(calls);

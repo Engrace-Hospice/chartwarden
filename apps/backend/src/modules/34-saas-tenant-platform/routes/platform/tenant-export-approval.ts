@@ -19,6 +19,7 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { screenFreeText } from "../free-text";
 import {
   ApproveOversizedExportRequest,
   TenantExportJobListQuerySchema,
@@ -85,6 +86,7 @@ export function registerTenantExportApprovalRoutes(
     async (request) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(ApproveOversizedExportRequest, request.body);
+      screenFreeText({ approvalReason: body.approvalReason });
       return service.approveOversizedExport(jobIdOf(request), membershipId, {
         approvalReason: body.approvalReason,
       });

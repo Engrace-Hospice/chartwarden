@@ -27,6 +27,7 @@ import { ChartWardenError, RateLimitedError } from "@chartwarden/types";
 // persisted (value-capture-denylisted in the audit projection, §3.10).
 import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { screenNames } from "../free-text";
 import {
   AcceptInvitationRequest,
   PublicSignupIntentRequest,
@@ -157,6 +158,7 @@ export function registerPublicSignupRoutes(
     { preHandler: [requireSignupEnabled, requireUnderRateLimit] },
     async (request, reply) => {
       const body = parse(PublicSignupIntentRequest, request.body);
+      screenNames({ legalBusinessName: body.legalBusinessName });
       const created = await service.createIntent({
         contactEmail: body.contactEmail,
         legalBusinessName: body.legalBusinessName,

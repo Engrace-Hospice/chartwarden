@@ -14,6 +14,7 @@
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@chartwarden/db";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import {
   PaymentMethodRejectedError,
@@ -404,6 +405,18 @@ function pageOf<T extends { readonly id: string }>(
     nextCursor: hasMore && last ? encodeCursor(scope, { a: keyOf(last), id: last.id }) : null,
     hasMore,
   };
+}
+
+/** A plan's name and description are typed by platform ops, stored and shown to tenants: the shared identifier screen, name-style text for the name. */
+function screenPlanText(args: { readonly name?: string; readonly description?: string }): void {
+  if (args.name !== undefined) {
+    assertNoPatientIdentifier(
+      "name",
+      args.name,
+      "name must not contain a patient identifier number (a Social Security or Medicare number); a name is a name, not a record.",
+    );
+  }
+  if (args.description !== undefined) assertNoPatientIdentifier("description", args.description);
 }
 
 /**
@@ -1199,6 +1212,7 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminCreatePlan(_actor, args: CreatePlanArgs) {
+      screenPlanText(args); // the catalog entry is stored and tenant-readable: no place for a patient (422, no transaction opened)
       return platform(async (tx) => {
         const [plan] = await tx
           .insert(PL)
@@ -1219,6 +1233,7 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminUpdatePlan(_actor, planId, args: UpdatePlanArgs) {
+      screenPlanText(args);
       return platform(async (tx) => {
         const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!plan) throw new NotFoundError("plan not found");
@@ -1599,6 +1614,8 @@ export function buildDrizzleM35RouteService(
 
     // ── platform-ops: refunds ──────────────────────────────────────────────────────────────────────
     async requestRefund(actor, args: RequestRefundArgs): Promise<RefundView> {
+      // Typed by an operator and stored on the refund row: the shared identifier screen (422, no transaction opened).
+      assertNoPatientIdentifier("reasonDetail", args.reasonDetail);
       return platform(async (tx) => {
         // GAP-061 — lock the invoice row so two concurrent requests serialize on the cumulative cap.
         const [inv] = await tx
@@ -1690,6 +1707,7 @@ export function buildDrizzleM35RouteService(
     },
 
     async denyRefund(actor, refundId, reason): Promise<RefundView> {
+      assertNoPatientIdentifier("reason", reason); // stored as `denied_reason`
       return platform(async (tx) => {
         const [ref] = await tx.select().from(REF).where(eq(REF.id, refundId)).limit(1);
         if (!ref) throw new NotFoundError("refund not found");

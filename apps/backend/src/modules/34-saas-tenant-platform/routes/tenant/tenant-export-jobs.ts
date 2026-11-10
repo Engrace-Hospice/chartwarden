@@ -12,6 +12,7 @@
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
+import { screenFreeText } from "../free-text";
 import type { TenantRouteService } from "./service";
 import {
   TenantExportJobParamsSchema,
@@ -57,6 +58,7 @@ export function registerTenantExportRoutes(
     async (request, reply) => {
       const { organizationId, membershipId } = writeActorOf(request);
       const body = parse(TenantExportRequest, request.body);
+      screenFreeText({ justification: body.justification }); // stored on the job's receipt (SEC-052)
       const res = await service.requestTenantExport(organizationId, membershipId, {
         requestedPurpose: body.requestedPurpose,
         justification: body.justification,

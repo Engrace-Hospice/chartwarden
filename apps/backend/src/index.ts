@@ -1121,6 +1121,7 @@ import {
   buildClaimMdReceiptStore,
 } from "./modules/23-billing-medicare/claimmd-webhook/receipt-store";
 import { registerClaimMdWebhookRoutes } from "./modules/23-billing-medicare/claimmd-webhook/routes";
+import { createRecentFailedAlerter } from "./modules/23-billing-medicare/claimmd-webhook/sweep";
 import {
   registerClaimMdWebhookSweepWorker,
   scheduleClaimMdWebhookSweep,
@@ -9931,6 +9932,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         },
         outbox: m23OutboxPublisher,
         log: (event, detail) => app.log.info({ claimmd: detail }, event),
+        // Counts and timestamps only: receipts still waiting under a key id other than this process's (a rotation with
+        // unsettled rows), visible every sweep before the key-fault grace runs out.
+        warn: (event, detail) => app.log.warn({ claimmd: detail }, event),
         // A receipt that went terminal `failed` is lost (Claim.MD already got 200): the ops alert sink, error level.
         onFailed: ({ usage, eventId, attempts, errorClass }) =>
           dlqPromotionSink({
@@ -9940,6 +9944,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             error: errorClass,
             occurredAt: new Date().toISOString(),
           }),
+        // The backstop for an `onFailed` alert lost to a crash between the commit and the alert: ONE summary through the same sink the
+        // first sweep that sees terminal `failed` receipts from the last 24 hours (a restarted process included), and again only after
+        // the count has returned to zero. The sink has no throttle, so the latch lives in the alerter, not in a per-minute call. The
+        // `claimmd.webhook.recent_failed_receipts` warn line above keeps logging every sweep. Counts and a time only, no ids.
+        onRecentFailedCount: createRecentFailedAlerter(
+          ({ count, oldestProcessedAt, windowHours }) =>
+            dlqPromotionSink({
+              source: "m23:claimmd-webhook-recent-failed",
+              error: `${count} Claim.MD receipt(s) went terminal failed in the last ${windowHours} h (oldest at ${oldestProcessedAt}); a per-receipt alert may have been lost, check claimmd_webhook_event`,
+              occurredAt: new Date().toISOString(),
+            }),
+        ),
         // A payload key fault leaves every receipt pending (no attempt spent): one alert per sweep, same sink.
         onUndecryptable: ({ count, errorClass }) =>
           dlqPromotionSink({

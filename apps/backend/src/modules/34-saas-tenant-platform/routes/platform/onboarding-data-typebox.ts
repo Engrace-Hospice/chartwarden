@@ -30,13 +30,16 @@ export const ONBOARDING_REASON_MAX = 500;
  * trimmed. Whitespace is folded BEFORE the strip so "line one\nline two" never fuses into one word.
  */
 export function normalizeReason(raw: string): string {
+  // The reason is copied into the tenant-visible audit trail: it is no place for a patient, so it goes through the same
+  // identifier screen as every other wizard free text, AS TYPED first (a control character between digits is a separator to the
+  // screen; stripped first it would join them into an unbroken run, which the screen lets through on purpose) ...
+  assertNoPatientIdentifier("reason", raw);
   const reason = raw
     .replace(/\s+/gu, " ")
     .replace(/\p{C}+/gu, "")
     .replace(/ {2,}/gu, " ")
     .trim();
-  // The reason is copied into the tenant-visible audit trail: it is no place for a patient, so it goes through the same
-  // identifier screen as every other wizard free text (judged AFTER the strip, so zero-width padding cannot split a value).
+  // ... and again AS STORED (a run of control characters longer than the screen's separator window hides nothing once stripped).
   assertNoPatientIdentifier("reason", reason);
   return reason;
 }
