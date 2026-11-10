@@ -788,6 +788,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
     const PAUSED_AT = "2026-11-10T09:00:00Z";
     const pauseRow = (iso: string, until: string | null = UNTIL): Transition => ({
       ...t("active", "paused", iso),
+      reasonCode: "platform_ops_pause",
       detail: until ? `paused_until=${until}` : null,
     });
 
@@ -841,6 +842,58 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
         at("2026-12-21T00:00:00Z"),
       );
       expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at("2026-11-20T09:00:00Z") }]);
+    });
+
+    it("a date that is exactly `at` has passed: the pause is over at the date (the boundary is inclusive)", () => {
+      const life = lifetimeAt(
+        [pauseRow(PAUSED_AT)],
+        sub("paused", PAUSED_AT, null, UNTIL),
+        at(UNTIL),
+      );
+      expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at(UNTIL) }]);
+      // one millisecond earlier it has not
+      const before = lifetimeAt(
+        [pauseRow(PAUSED_AT)],
+        sub("paused", PAUSED_AT, null, UNTIL),
+        new Date(at(UNTIL).getTime() - 1),
+      );
+      expect(before.pauses).toEqual([{ from: at(PAUSED_AT), to: null }]);
+    });
+
+    it("only an operator's pause is read for an end date: a suspension reason that looks like one is free text, not a date", () => {
+      const suspended = (
+        detail: string,
+        reasonCode = "org_suspended_by_platform_admin",
+      ): Transition => ({
+        ...t("active", "paused", PAUSED_AT),
+        reasonCode,
+        detail,
+      });
+      const lookalike = `paused_until=${UNTIL}`;
+      // the M2 suspension writes its free-text reason into the same column: never an end date, whatever it says
+      expect(
+        lifetimeAt(
+          [suspended(lookalike), t("paused", "active", "2026-12-20T09:00:00Z")],
+          sub("active", "2026-12-20T09:00:00Z"),
+          at("2026-12-21T00:00:00Z"),
+        ).pauses,
+      ).toEqual([{ from: at(PAUSED_AT), to: at("2026-12-20T09:00:00Z") }]);
+      // and from an operator's pause the format is exact: trailing text, a different spelling of the instant or an offset all read as none
+      for (const detail of [
+        `${lookalike} (customer request)`,
+        "paused_until=2026-12-15",
+        "paused_until=2026-12-15T00:00:00Z",
+        "paused_until=2026-12-15T01:00:00.000+01:00",
+      ]) {
+        expect(
+          lifetimeAt(
+            [suspended(detail, "platform_ops_pause")],
+            sub("paused", PAUSED_AT),
+            at("2026-12-20T00:00:00Z"),
+          ).pauses,
+          detail,
+        ).toEqual([{ from: at(PAUSED_AT), to: null }]);
+      }
     });
 
     it("a date at or before the pause itself, or one that is not an instant, is ignored", () => {

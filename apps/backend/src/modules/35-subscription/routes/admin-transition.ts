@@ -12,27 +12,61 @@ export type AdminTransition = "pause" | "resume" | "cancel";
 const conflict = (code: string, message: string): ChartWardenError =>
   new ChartWardenError(code, message, 409);
 
+/** The `reason_code` of the ledger row an operator's pause writes (the only row whose `reason_detail` is read back as a pause end date). */
+export const PLATFORM_PAUSE_REASON_CODE = "platform_ops_pause";
+
 /**
  * How an admin pause with an end date writes that date into its ledger row's `reason_detail`. The subscription row's own `paused_until`
  * is cleared on resume, so the ledger keeps the date for the statement's pause windows (pricing/statement-inputs.ts reads it back).
+ * The format is exact (`paused_until=` and `toISOString()`), and it is read back only from a row with PLATFORM_PAUSE_REASON_CODE: other
+ * writers store free text in `reason_detail` (the M2 suspension reason), and that text must never be taken for an end date.
  */
-export const PAUSED_UNTIL_PREFIX = "paused_until=";
+const PAUSED_UNTIL_DETAIL = /^paused_until=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/;
+
+export const pausedUntilDetail = (until: Date): string => `paused_until=${until.toISOString()}`;
+
+/** The pause end date a ledger row records, or null: the row is not an operator pause, or its detail is not exactly {@link pausedUntilDetail}. */
+export function pausedUntilOfLedgerRow(row: {
+  readonly reasonCode?: string | null;
+  readonly detail?: string | null;
+}): Date | null {
+  if (row.reasonCode !== PLATFORM_PAUSE_REASON_CODE) return null;
+  const match = row.detail ? PAUSED_UNTIL_DETAIL.exec(row.detail) : null;
+  const until = match?.[1] ? new Date(match[1]) : null;
+  return until && !Number.isNaN(until.getTime()) ? until : null;
+}
+
+/** An ISO 8601 instant WITH an explicit offset (`Z` or `+hh:mm`): the only spelling whose meaning does not depend on the server's zone. */
+const ISO_INSTANT_WITH_OFFSET =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 /**
- * The end date of an admin pause: null for an open-ended pause, else the instant. Nothing resumes a subscription when its date arrives
- * (billing just stops counting the pause), so a date that is not strictly in the future would make the pause meaningless: a typed 422.
+ * The end date of an admin pause as an instant: null for an open-ended pause. The route's `date-time` format accepts a string with no
+ * offset (`2026-11-28T10:00`), which `new Date` reads in the SERVER's zone, so the same request would end the pause at different
+ * instants on differently configured hosts: an instant with no explicit offset (or one that is not an instant at all) is a typed 422.
+ * Judged before the runner is opened; whether it is still in the future is judged later, against the clock read under the row lock.
  */
-export function pauseEndOf(pausedUntil: string | null, at: Date): Date | null {
+export function parsePauseEnd(pausedUntil: string | null): Date | null {
   if (!pausedUntil) return null;
   const until = new Date(pausedUntil);
-  if (Number.isNaN(until.getTime()) || until.getTime() <= at.getTime()) {
+  if (!ISO_INSTANT_WITH_OFFSET.test(pausedUntil) || Number.isNaN(until.getTime())) {
     throw new ChartWardenError(
-      "PAUSE_UNTIL_NOT_FUTURE",
-      "pausedUntil must be a valid instant in the future",
+      "PAUSE_UNTIL_INVALID",
+      "pausedUntil must be an ISO 8601 instant with an explicit offset, for example 2026-12-15T00:00:00Z",
       422,
     );
   }
   return until;
+}
+
+/**
+ * Nothing resumes a subscription when its end date arrives (billing just stops counting the pause), so a date that is not strictly
+ * after `at` would make the pause meaningless: a typed 422. `at` is the instant the pause is written, read AFTER the row lock.
+ */
+export function refuseUnlessFuture(until: Date | null, at: Date): void {
+  if (until && until.getTime() <= at.getTime()) {
+    throw new ChartWardenError("PAUSE_UNTIL_NOT_FUTURE", "pausedUntil must be in the future", 422);
+  }
 }
 
 /**

@@ -41,10 +41,12 @@ import {
 // The two handles live in pricing/ports (the leaf both files read); re-exported so existing importers keep this path.
 export type { PlatformRunner, WriteTx };
 import {
-  PAUSED_UNTIL_PREFIX,
+  PLATFORM_PAUSE_REASON_CODE,
   lockSubscription,
-  pauseEndOf,
+  parsePauseEnd,
+  pausedUntilDetail,
   refuseAdminTransition,
+  refuseUnlessFuture,
 } from "./admin-transition";
 import { redeemPromoInTx } from "./promo-redemption";
 import type {
@@ -1469,12 +1471,15 @@ export function buildDrizzleM35RouteService(
     async adminPauseSubscription(actor, subscriptionId, pausedUntil) {
       // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
       const audit = requireAuditPort(deps.audit);
-      // a date that is not a future instant is refused before the runner is opened
-      const at = now();
-      const until = pauseEndOf(pausedUntil, at);
+      // a date that is not an instant with an explicit offset is refused before the runner is opened
+      const until = parsePauseEnd(pausedUntil);
       return platform(async (tx) => {
         const sub = await lockSubscription(tx, subscriptionId);
         refuseAdminTransition(sub, "pause");
+        // The instant of the pause is read AFTER the lock, like resume and cancel: an operator that waited on the lock behind a resume must
+        // not stamp a time before it, or the ledger reads pause, resume while the row is `paused` and a paused tenant bills as live.
+        const at = now();
+        refuseUnlessFuture(until, at);
         await tx
           .update(S)
           .set({ status: "paused", pausedAt: at, pausedUntil: until, updatedAt: at })
@@ -1487,9 +1492,9 @@ export function buildDrizzleM35RouteService(
           transitionedAt: at,
           // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
           actorMembershipId: null,
-          reasonCode: "platform_ops_pause",
+          reasonCode: PLATFORM_PAUSE_REASON_CODE,
           // the end date, so the statement still knows it after a resume clears the row's own (an instant, not PHI)
-          reasonDetail: until ? `${PAUSED_UNTIL_PREFIX}${until.toISOString()}` : null,
+          reasonDetail: until ? pausedUntilDetail(until) : null,
         });
         await auditOperatorAction(
           audit,
@@ -1497,7 +1502,7 @@ export function buildDrizzleM35RouteService(
           actor,
           sub,
           "m35.subscription.platform_paused",
-          "platform_ops_pause",
+          PLATFORM_PAUSE_REASON_CODE,
         );
         await emit(
           tx,
