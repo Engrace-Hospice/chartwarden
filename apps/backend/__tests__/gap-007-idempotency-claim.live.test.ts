@@ -243,7 +243,9 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       | "writer-fn-autocommit-then-500"
       | "writer-fn-in-tx-then-500"
       | "open-write-then-500"
-      | "refused-commit" = "commit-then-500";
+      | "refused-commit"
+      | "blocked" = "commit-then-500";
+    let releaseBlocked: () => void = () => undefined;
     // M3: a sibling transaction that has written but not committed when the response is built.
     let openTransaction: Promise<unknown> = Promise.resolve();
     let commitOpenTransaction: () => void = () => undefined;
@@ -289,6 +291,12 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
             (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(sql`SELECT 1`),
           ); // a guard-style read transaction: it COMMITs, but writes nothing
           return reply.code(503).send({ error: { code: "DEGRADED" } });
+        }
+        if (mode === "blocked") {
+          await new Promise<void>((resolve) => {
+            releaseBlocked = resolve;
+          });
+          return reply.code(201).send({ saved: true });
         }
         if (mode === "open-write-then-500") {
           const gate = new Promise<void>((resolve) => {
@@ -449,6 +457,29 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       expect(retry.statusCode).toBe(201);
       expect(runs).toBe(2);
       expect(await childRows()).toBe(1);
+    });
+
+    it("a claim left pending past the bound answers IDEMPOTENCY_KEY_STUCK, and the row is never reclaimed or re-run", async () => {
+      mode = "blocked";
+      runs = 0;
+      const first = post("live-stuck"); // claims the key and never answers (its process is as good as dead)
+      for (let i = 0; i < 200 && (await rowFor(ORG_A, "live-stuck")).length === 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(await rowFor(ORG_A, "live-stuck")).toMatchObject([{ state: "pending" }]);
+      // young: still just in flight
+      expect((await post("live-stuck")).json().error.code).toBe("IDEMPOTENCY_IN_FLIGHT");
+      // aged past the bound (created_at is what the store reads the age from)
+      await admin.query(
+        "UPDATE idempotency_key SET created_at = now() - interval '20 minutes' WHERE key = 'live-stuck'",
+      );
+      const stuck = await post("live-stuck");
+      expect(stuck.statusCode).toBe(409);
+      expect(stuck.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+      expect(runs).toBe(1); // the second and third requests never ran the handler
+      expect(await rowFor(ORG_A, "live-stuck")).toMatchObject([{ state: "pending" }]); // never reclaimed
+      releaseBlocked();
+      expect((await first).statusCode).toBe(201);
     });
 
     it("a read-only transaction (a guard's) followed by a 503: released, it never counted as a commit", async () => {

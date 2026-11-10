@@ -32,21 +32,26 @@ Some fields were screened and some were not.
   that long ids and UUIDs can also trip the check. If a legitimate note is refused, cite the document by its title.
 - Not screened, on purpose: an unbroken run of ten to twelve digits (NPIs, phone numbers, ticket numbers).
 
-## 2026-11-09 — New error code `IDEMPOTENCY_IN_FLIGHT`: your first request with this key is still running
+## 2026-11-09 — New error codes `IDEMPOTENCY_IN_FLIGHT` and `IDEMPOTENCY_KEY_STUCK`
 
 **Why.** A duplicate that arrived while the first request with the same `Idempotency-Key` was still running was answered as a
 plain `409` with code `CONFLICT`, the same code a business-rule refusal carries. A client that reads any 409 as "this key is
-spent, mint a new one" would then start a second write while the first was still in progress.
+spent, mint a new one" would then start a second write while the first was still in progress. And if the first request never
+finished (its process died after claiming the key), the same answer repeated for 24 hours.
 
-- That answer now has its own code, `IDEMPOTENCY_IN_FLIGHT`. The status is still `409`, the body is the standard error envelope
+- `IDEMPOTENCY_IN_FLIGHT` replaces `CONFLICT` for that answer. The status is still `409`, the body is the standard error envelope
   (`{ "error": { "code", "message", "correlationId", "documentationUrl" } }`) and the message is unchanged ("Idempotency-Key
   request is still being processed"). Only the `code` value changed, from `CONFLICT`.
-- **How to handle it.** Treat it as "your first request is still running": keep the SAME `Idempotency-Key`, wait, and retry
-  with the same key and body. Do not mint a new key. Once the first request finishes the retry replays its stored response (or,
-  if that request failed before committing anything, runs again).
+- **How to handle it.** Treat it as "your first request is still running": keep the SAME `Idempotency-Key`, wait, and retry with
+  the same key and body. Do not mint a new key. Once the first request finishes the retry replays its stored response (or, if
+  that request failed before committing anything, runs again). Do this for at most 15 minutes.
+- `IDEMPOTENCY_KEY_STUCK` (new, `409`, same envelope) is what a duplicate gets once the first request has been pending for more
+  than 15 minutes. Its outcome is UNKNOWN: it may have been applied. **Do not retry with this key, and do not assume it failed.**
+  Read the resource to see whether the change is there; use a new key only if it is not. The server never reclaims or re-runs
+  the stuck row.
 - The other idempotency 409 is unchanged: `IDEMPOTENCY_CONFLICT` is the same key sent with a different body (a client bug; do
   not retry). A business-rule `409 CONFLICT` still means the request itself was refused.
-- Clients that matched on `409` + `CONFLICT` for this situation must match `IDEMPOTENCY_IN_FLIGHT` instead.
+- Clients that matched on `409` + `CONFLICT` for the in-flight situation must match `IDEMPOTENCY_IN_FLIGHT` instead.
 
 ## 2026-11-09 — `Idempotency-Key`: a failed request frees its key only when it committed nothing
 
@@ -64,7 +69,8 @@ so a same-key retry never ran the write.
   retrying." The code and the status are unchanged. A request can run several transactions; only the one the database aborted is
   known not to have applied, so check the resource before you retry.
 - While the idempotency store is unreachable (the usual companion of a database outage) the key cannot be freed; it stays
-  `pending`, and a retry answers `409` "still being processed" until the key's 24-hour record expires.
+  `pending`: a retry answers `409 IDEMPOTENCY_IN_FLIGHT` for up to 15 minutes and `409 IDEMPOTENCY_KEY_STUCK` after that (read the
+  resource; do not retry with the key), until the key's 24-hour record expires.
 - Not tracked: an effect outside Postgres made directly in a route (an outbound call, a queue or object-store write). Those
   belong behind the outbox (after the commit) by the platform's convention; a route that makes one directly is not covered.
 

@@ -26,7 +26,12 @@ export interface IdempotentResponse {
 
 /** A stored idempotency record: in-flight (`pending`) or finished (`complete`). */
 export type IdempotencyRecord =
-  | { readonly state: "pending"; readonly requestHash: string }
+  | {
+      readonly state: "pending";
+      readonly requestHash: string;
+      /** How long the claim has been pending, by the store's own clock; absent when the store cannot say (treated as young). */
+      readonly pendingForMs?: number;
+    }
   | {
       readonly state: "complete";
       readonly requestHash: string;
@@ -74,18 +79,46 @@ export class IdempotencyInFlightError extends ChartWardenError {
   }
 }
 
-/** Replay a stored record: its response when complete; a conflict on a different body; in flight otherwise. */
+/**
+ * How long a claim may stay `pending` before a duplicate is told the key is STUCK rather than in flight: the longest a request
+ * handler is meant to run plus a wide margin. Nothing in the platform runs a handler for more than a minute or two (database
+ * statements, outbound calls and the proxy all time out well inside that; report and export builds run as queued jobs), so a
+ * claim still pending after fifteen minutes belongs to a process that died after claiming it, or to a request whose outcome
+ * could not be recorded. Far under the 24 hour record TTL, which is how long a client would otherwise loop on IN_FLIGHT.
+ */
+export const IDEMPOTENCY_PENDING_MAX_AGE_MS = 15 * 60 * 1000;
+
+/**
+ * Thrown when a duplicate finds the first request still `pending` after IDEMPOTENCY_PENDING_MAX_AGE_MS — 409
+ * IDEMPOTENCY_KEY_STUCK. The first request's outcome is unknown (it may have been applied), so the client is told not to retry
+ * with this key and to read the resource to find out. The row is never reclaimed, released or re-run by this path.
+ */
+export class IdempotencyKeyStuckError extends ChartWardenError {
+  constructor(readonly key: string) {
+    super(
+      "IDEMPOTENCY_KEY_STUCK",
+      "The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this key: read the resource to see whether the change was applied, and use a new key only if it was not.",
+      ERROR_CODES.IDEMPOTENCY_KEY_STUCK,
+    );
+    this.name = "IdempotencyKeyStuckError";
+  }
+}
+
+/** Replay a stored record: its response when complete; a conflict on a different body; stuck or in flight otherwise. */
 function replay(record: IdempotencyRecord, key: string, requestHash: string): IdempotentResponse {
   if (record.requestHash !== requestHash) throw new IdempotencyConflictError();
   if (record.state === "complete") return record.response;
+  if ((record.pendingForMs ?? 0) > IDEMPOTENCY_PENDING_MAX_AGE_MS)
+    throw new IdempotencyKeyStuckError(key);
   throw new IdempotencyInFlightError(key);
 }
 
 /**
  * Claim `(organizationId, key)` for a request fingerprinted `requestHash`. Resolves `null` when THIS caller
  * now owns the key and must run the handler (then `store.complete` it); otherwise resolves the cached
- * response to replay. Throws {@link IdempotencyConflictError} for a different body and
- * {@link IdempotencyInFlightError} while the first request is still pending. The claim (`putPending`) is the
+ * response to replay. Throws {@link IdempotencyConflictError} for a different body,
+ * {@link IdempotencyInFlightError} while the first request is still pending, and {@link IdempotencyKeyStuckError} once it has been
+ * pending for longer than IDEMPOTENCY_PENDING_MAX_AGE_MS. The claim (`putPending`) is the
  * serialization point (GAP-007): a caller that loses it never runs the handler — it reloads the winner's
  * record, and a record that vanished in between is reported in flight so the client retries.
  */
