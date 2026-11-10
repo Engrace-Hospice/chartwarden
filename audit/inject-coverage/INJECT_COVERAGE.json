@@ -4,7 +4,7 @@
     "covered": 40,
     "routes": 2031,
     "coveredRoutes": 2031,
-    "directRoutesReferenced": 1847
+    "directRoutesReferenced": 1850
   },
   "modules": [
     {
@@ -390,6 +390,7 @@
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m34-baa-document-upload.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
+        "apps/backend/__tests__/m34-onboarding-wizard.live.test.ts",
         "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
@@ -415,6 +416,7 @@
         "apps/backend/__tests__/m23-dde-queue.live.test.ts",
         "apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",
         "apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
+        "apps/backend/__tests__/m23-mac-credential-screening.test.ts",
         "apps/backend/__tests__/m23-notice-external-filing-routes.test.ts",
         "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
@@ -433,10 +435,12 @@
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
+        "apps/backend/__tests__/m34-onboarding-wizard.live.test.ts",
         "apps/backend/__tests__/m41-enrollment-reports.live.test.ts",
-        "apps/backend/__tests__/m6-readmission.live.test.ts"
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/onboarding-org-gate-inject.test.ts"
       ],
-      "directRoutesReferenced": 76
+      "directRoutesReferenced": 79
     },
     {
       "module": "24-billing-medicaid",
@@ -576,8 +580,10 @@
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
+        "apps/backend/__tests__/m34-onboarding-wizard.live.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
         "apps/backend/__tests__/m34-slice7-contract-routes.test.ts",
+        "apps/backend/__tests__/onboarding-org-gate-inject.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
@@ -592,6 +598,7 @@
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m35-pricing-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
+        "apps/backend/__tests__/onboarding-org-gate-inject.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
