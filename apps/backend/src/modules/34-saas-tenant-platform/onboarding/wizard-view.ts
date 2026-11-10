@@ -71,8 +71,9 @@ export interface WizardStepView {
   readonly skippedByLabel: string | null;
   /**
    * The tenant's own org_admin may skip this step now: it is one of the three (MAC credentials, payer enrollment, DoseSpot kickoff), it
-   * is not settled yet and the viewer is an org_admin (the platform surface, which has no tenant viewer, reports the step alone);
-   * else the skip is refused 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.
+   * is not settled yet, no earlier gating step still locks it (`locked` is false) and the viewer is an org_admin (the platform surface,
+   * which has no tenant viewer, reports the step alone); else the skip is refused (409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for another
+   * step, 409 ONBOARDING_STEP_OUT_OF_ORDER for a locked one).
    */
   readonly tenantSkippable: boolean;
   readonly createdAt: string | null;
@@ -162,7 +163,7 @@ export function toWizardStepView(
     skippedBy,
     skippedByLabel: null,
     skippable: isSkippableStep(template),
-    tenantSkippable: isTenantSkippableStep(template) && !isSettled(status),
+    tenantSkippable: isTenantSkippableStep(template) && !isSettled(status) && lockedBy === null,
     createdAt: iso(task?.createdAt ?? null),
     templateKey: template.key,
     isCanonical: template.canonical,

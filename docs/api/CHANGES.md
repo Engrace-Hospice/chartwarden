@@ -12,15 +12,16 @@ its full description there. Newest first.
 `Idempotency-Key`, no AI actor) settles MAC credentials, payer enrollment or DoseSpot kickoff with a `skipRationale` of 8-2000
 characters, screened for patient identifiers (`422 EVIDENCE_LOOKS_LIKE_PHI`). Any other step, sample data, go-live and a step an operator
 added included, is `409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE`; the order, already-settled and owner rules are the operator skip's
-(`409 ONBOARDING_STEP_OUT_OF_ORDER`, `409 ONBOARDING_STEP_ALREADY_SETTLED`, `403 ONBOARDING_STEP_OWNER_MISMATCH`). A skip is onboarding
-data, so it revokes a pending go-live attestation. The route is on the not-yet-live organization's allowlist. Re-open of the tenant's
+(`409 ONBOARDING_STEP_OUT_OF_ORDER`, `409 ONBOARDING_STEP_ALREADY_SETTLED`, `403 ONBOARDING_STEP_OWNER_MISMATCH`). The tenant's skip is
+onboarding data the officer did not see, so it revokes a pending go-live attestation; an operator's skip and the system's do not. The
+route is on the not-yet-live organization's allowlist. Re-open of the tenant's
 own skip is unchanged (`409 GO_LIVE_PENDING` while an attestation is pending).
 
 The step view reads who skipped from what the skip recorded: `skippedBy` is `tenant`, `platform_ops` or `system` (a skip recorded before
 the kind existed reads as `platform_ops`, or `system` for the clearinghouse sync's); `systemSkipped` is unchanged. New `skippedByLabel`
 on the tenant surface: `Your organization` for the tenant's own skip, `ChartWarden operations` for an operator's, never a person or a
 membership (null on the platform surface and for a system skip). `tenantSkippable` is now true only for the three steps while they are
-not done or skipped and, on the tenant surface, only for an org_admin viewer. The platform view lists a tenant's skip with its rationale
+not done or skipped, no earlier step still locks them (`locked` is false) and, on the tenant surface, only for an org_admin viewer. The platform view lists a tenant's skip with its rationale
 (`skippedBy: "tenant"`, `skipRationale`), which the go-live approver reads; the approval guards are unchanged.
 
 ---

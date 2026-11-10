@@ -3614,16 +3614,13 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       });
     });
 
-    it("the view offers the skip to the org_admin alone, on exactly the three steps, while they are open", async () => {
+    it("the view offers the skip to the org_admin alone, on the one of the three steps the order has reached", async () => {
       const offered = async (roles: string[]) =>
         (await wizard(false).getTenant(ORG_K, { roles })).steps
           .filter((s) => s.tenantSkippable)
           .map((s) => s.key);
-      expect(await offered(["org_admin"])).toEqual([
-        "mac_configured",
-        "payer_enrollment",
-        "dosespot_kickoff_initiated",
-      ]);
+      // payer enrollment and DoseSpot kickoff are locked by MAC credentials, so the skip is not offered there
+      expect(await offered(["org_admin"])).toEqual(["mac_configured"]);
       expect(await offered(["administrator"])).toEqual([]);
       expect(await offered(["compliance_officer"])).toEqual([]);
     });
@@ -3750,7 +3747,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       });
       const bag = await completionEvidence("mac_configured");
       expect(bag.skip).toBeUndefined();
-      expect(bag.reopened).toMatchObject([{ previous: { status: "skipped" } }]);
+      expect(bag.reopened).toMatchObject([
+        { previous: { status: "skipped", skippedByActorKind: "tenant" } },
+      ]);
       // and it can be skipped again, as many times as it is true
       const again = await wizard(false).tenantSkip(adminK, ORG_K, macId, MAC_RATIONALE);
       expect(again).toMatchObject({ status: "skipped", skippedBy: "tenant" });
@@ -3797,6 +3796,151 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       );
       expect(reopened.status).toBe("in_progress");
     });
+  });
+
+  describe("slice 7 (7K) review round: an operator's skip does not void, and a skip waits for go-live approval's lock", () => {
+    const ORG_N = "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c01";
+    const T_N = "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c02";
+    const LOCK_TENANTS = [
+      {
+        who: "tenant",
+        org: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c11",
+        tenant: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c12",
+        slug: "wiz-n1",
+      },
+      {
+        who: "operator",
+        org: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c21",
+        tenant: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c22",
+        slug: "wiz-n2",
+      },
+    ] as const;
+    const RATIONALE = "We bill our payers through our own clearinghouse";
+    let officerN: TenantActor;
+    const admins: Record<string, TenantActor> = {};
+
+    /** A `created` organization mid-onboarding: every step settled except `open`, an executed BAA, an assigned officer. */
+    async function seed(org: string, tenant: string, slug: string, open: string[]) {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+        [org, slug],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding',$3,'b@x.test','p@x.test')",
+        [tenant, org, slug],
+      );
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status)
+         SELECT $1, $2, key, CASE WHEN key = ANY($3::text[]) THEN 'pending' ELSE 'done' END::onboarding_task_status
+           FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [org, tenant, open],
+      );
+      await admin.query(
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [org, tenant, await fileDocument(org)],
+      );
+    }
+
+    beforeAll(async () => {
+      await seed(ORG_N, T_N, "wiz-n", ["sample_data_loaded", "go_live_checklist_complete"]);
+      officerN = await person(ORG_N, "officer-n", ["compliance_officer"]);
+      await admin.query(
+        "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
+        [T_N, officerN.membershipId],
+      );
+      for (const { who, org, tenant, slug } of LOCK_TENANTS) {
+        await seed(org, tenant, slug, [
+          "mac_configured",
+          "payer_enrollment",
+          "dosespot_kickoff_initiated",
+          "sample_data_loaded",
+          "go_live_checklist_complete",
+        ]);
+        admins[who] = await person(org, `admin-${slug}`, ["org_admin"]);
+      }
+    }, 60_000);
+
+    it("an operator's skip of the optional sample-data step leaves the officer's pending attestation pending, as the real platform carrier", async () => {
+      const attested = await wizard(false).attestGoLive(officerN, ORG_N, "all reviewed");
+      expect(attested.goLive.state).toBe("awaiting_approval");
+      const sampleId = await taskId(T_N, "sample_data_loaded");
+      await wizard(false).skipPlatform("wiz-n", sampleId, OPS, "the customer asked us to");
+      expect(await statusOf(T_N, "sample_data_loaded")).toBe("skipped");
+      const rows = (
+        await admin.query(
+          "SELECT status FROM tenant_go_live_attestation WHERE tenant_account_id=$1",
+          [T_N],
+        )
+      ).rows;
+      expect(rows.map((r) => r.status)).toEqual(["pending"]);
+      expect(await statusOf(T_N, "go_live_checklist_complete")).toBe("in_progress");
+      // the tenant's own skip of a step is refused here (sample data is the operator's), so nothing else could have voided it
+      expect(
+        (await refusal(wizard(false).tenantSkip(officerN, ORG_N, sampleId, RATIONALE))).code,
+      ).toBe("ONBOARDING_STEP_NOT_TENANT_SKIPPABLE");
+    });
+
+    /** Holds go-live approval's EXCLUSIVE onboarding lock on its own connection, the way `goLiveApprove` does as its first statement. */
+    async function holdApprovalLock(org: string) {
+      const holder = new Client({ connectionString: DB_URL });
+      await holder.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))", [
+        `tenant-onboarding:${org}`,
+      ]);
+      return holder;
+    }
+    const waitingOnTheLock = async (): Promise<boolean> => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const { rows } = await admin.query(
+          "SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted",
+        );
+        if (rows[0].n > 0) return true;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return false;
+    };
+
+    it.each(LOCK_TENANTS)(
+      "the $who's skip waits behind go-live approval's exclusive lock, then finds the tenant live and answers 409 TENANT_NOT_ONBOARDING",
+      async ({ who, org, tenant, slug }) => {
+        const macId = await taskId(tenant, "mac_configured");
+        const holder = await holdApprovalLock(org);
+        try {
+          let finished = false;
+          const skipping = (
+            who === "tenant"
+              ? wizard(false).tenantSkip(admins[who] as TenantActor, org, macId, RATIONALE)
+              : wizard(false).skipPlatform(slug, macId, OPS, RATIONALE)
+          )
+            .then(
+              () => null,
+              (error: unknown) => error,
+            )
+            .finally(() => {
+              finished = true;
+            });
+          expect(await waitingOnTheLock(), "the skip must be waiting for the lock").toBe(true);
+          expect(finished).toBe(false);
+          expect(await statusOf(tenant, "mac_configured")).toBe("pending");
+          // the approval commits: the tenant is live when the skip finally reads it
+          await holder.query("UPDATE tenant_account SET status='active' WHERE id=$1", [tenant]);
+          await holder.query("COMMIT");
+          const error = await skipping;
+          expect(error).toBeInstanceOf(ChartWardenError);
+          expect([
+            (error as ChartWardenError).code,
+            (error as ChartWardenError).statusCode,
+          ]).toEqual(["TENANT_NOT_ONBOARDING", 409]);
+          expect(await statusOf(tenant, "mac_configured")).toBe("pending");
+        } finally {
+          await holder.query("ROLLBACK").catch(() => undefined);
+          await holder.end();
+        }
+      },
+      30_000,
+    );
   });
 
   describe("the onboarding-template catalog cannot overwrite a canonical template", () => {

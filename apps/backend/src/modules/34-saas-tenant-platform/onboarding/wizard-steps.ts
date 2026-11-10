@@ -95,8 +95,11 @@ export function createStepOperations(now: () => Date) {
    * Settles a step that does not apply, with a recorded rationale and the kind of actor who said so. A platform operator may skip any
    * step `isSkippableStep` names; the tenant's own org_admin only those `isTenantSkippableStep` names (409
    * ONBOARDING_STEP_NOT_TENANT_SKIPPABLE otherwise, before the owner rule and the sequence: that answer is final whatever is open).
-   * A skip is onboarding data: a pending go-live attestation (which a skippable gating step being open would normally rule out) is
-   * voided in the same transaction, so no change of onboarding data keeps an approval that rested on the old state.
+   * A TENANT's skip is onboarding data the officer's attestation did not see, so it voids a pending go-live attestation in the same
+   * transaction (the three steps it may skip are gating, so an open one already rules a pending attestation out and the void is a
+   * guarantee, not a path a normal wizard walks). An operator's skip does not void, as an operator's attestation of the same step does
+   * not (the officer attests with an optional step such as sample data still open, and an operator settling it must not undo that);
+   * the system's clearinghouse skip never does either.
    */
   async function skip(
     ctx: Loaded,
@@ -153,8 +156,7 @@ export function createStepOperations(now: () => Date) {
       },
     });
     if (!updated) throw conflict();
-    // The system acts for no user, so it has no attestation to void and nobody to name; a person's skip names them.
-    if (kind !== "system") {
+    if (kind === "tenant") {
       await ctx.store.voidPendingGoLiveForDataChange({
         organizationId: ctx.tenant.organizationId,
         revokedByUserId: actor.userId,
@@ -215,7 +217,9 @@ export function createStepOperations(now: () => Date) {
               evidenceRef: task.evidenceRef,
               attestedByMembershipId: task.attestedByMembershipId,
               attestedAt: task.attestedAt?.toISOString() ?? null,
-              ...(task.skipRationale ? { skipRationale: task.skipRationale } : {}),
+              ...(task.skipRationale
+                ? { skipRationale: task.skipRationale, skippedByActorKind: task.skippedByActorKind }
+                : {}),
             },
           },
         ],

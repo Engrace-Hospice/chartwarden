@@ -239,6 +239,35 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     deps.runner.inTenant(actor, organizationId, async (store) =>
       fn(await load(store, { organizationId })),
     );
+  // A skip changes onboarding data, so it holds the SHARED onboarding lock from before it reads the tenant's status, as the org-profile
+  // write does: go-live approval takes the same lock exclusive as its first statement, so a skip either commits before the approval
+  // judges the tenant or finds it live and answers 409 TENANT_NOT_ONBOARDING. The order is that lock, then the task row, then the
+  // attestation row (the void), then the go-live task row; the approval takes the lock first and the rows after, so the two cannot cycle.
+  const platformLocked = <T>(
+    reason: string,
+    orgSlug: string,
+    fn: (ctx: Loaded) => Promise<T>,
+    actor: PlatformActor,
+  ): Promise<T> =>
+    deps.runner.inPlatform(
+      reason,
+      async (store) => {
+        // The slug only names the lock; the tenant is read again once it is held.
+        const { organizationId } = await loadTenant(store, { orgSlug });
+        await store.lockOnboardingShared(organizationId);
+        return fn(await load(store, { organizationId }));
+      },
+      actor.userId,
+    );
+  const tenantTxLocked = <T>(
+    actor: TenantActor,
+    organizationId: string,
+    fn: (ctx: Loaded) => Promise<T>,
+  ): Promise<T> =>
+    deps.runner.inTenant(actor, organizationId, async (store) => {
+      await store.lockOnboardingShared(organizationId);
+      return fn(await load(store, { organizationId }));
+    });
 
   /** Run a step change, then let the sweep settle anything it unlocked. */
   async function changed<T extends { tenant: TenantRef }>(result: T): Promise<T> {
@@ -306,7 +335,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     skipPlatform: async (orgSlug, taskId, actor, rationale) =>
       (
         await changed(
-          await platform(
+          await platformLocked(
             "platform-ops onboarding skip",
             orgSlug,
             async (ctx) => stepResult(ctx, await skip(ctx, actor, taskId, rationale)),
@@ -439,7 +468,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     tenantSkip: async (actor, organizationId, taskId, rationale) =>
       (
         await changed(
-          await tenantTx(actor, organizationId, async (ctx) =>
+          await tenantTxLocked(actor, organizationId, async (ctx) =>
             tenantStepResult(ctx, await skip(ctx, actor, taskId, rationale), actor),
           ),
         )

@@ -38,6 +38,13 @@ export const OWNER_LABEL: Record<WizardOwner, string> = {
   either: "Tenant admin or operator",
 };
 
+/** Who skipped a step, in words: the server's `skippedBy` (what the skip recorded), never the rationale's wording. */
+export const SKIPPED_BY_LABEL: Record<NonNullable<WizardStep["skippedBy"]>, string> = {
+  tenant: "Skipped by the organization",
+  platform_ops: "Skipped by ChartWarden operations",
+  system: "Skipped by the system",
+};
+
 const isSettled = (s: WizardStep): boolean => s.status === "done" || s.status === "skipped";
 const isGating = (s: WizardStep): boolean => s.isCanonical && !s.optional;
 

@@ -44,6 +44,12 @@ describe("tenantSkippable", () => {
     },
   );
 
+  it("is false while an earlier gating step still locks the step (a skip there is refused 409 ONBOARDING_STEP_OUT_OF_ORDER)", () => {
+    const locked = toWizardStepView(template("mac_configured"), task(), "ccn_registered");
+    expect(locked).toMatchObject({ locked: true, tenantSkippable: false, skippable: true });
+    expect(toWizardStepView(template("mac_configured"), task(), null).tenantSkippable).toBe(true);
+  });
+
   it("is false once the step is done or skipped", () => {
     for (const status of ["done", "skipped"] as const) {
       expect(
