@@ -11,7 +11,8 @@
 // unauthenticated routes (no org scope to key on). A first request records a `pending`
 // lock then captures its response on the way out (onSend) and marks it `complete`. A replay
 // with the SAME body returns the cached response; a DIFFERENT body is a 409
-// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 CONFLICT.
+// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 IDEMPOTENCY_IN_FLIGHT (its own code, so a client keeps its
+// key and retries instead of renewing it while the first request is still writing).
 //
 // RETRYABLE FAILURES (a 5xx, or the deadlock/serialization 409 CONCURRENT_UPDATE) are released instead of cached, but ONLY when
 // the request provably committed nothing. A response that says "retry" is true only if no write of this request is durable: a
@@ -135,7 +136,7 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
     ]);
     const requestHash = computeIdempotencyHash(scope, key, request.body ?? null);
     // The shared claim (`@chartwarden/shared` claimIdempotencyKey, the core of runIdempotent) decides: a cached
-    // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a duplicate still in flight is 409 CONFLICT.
+    // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a duplicate still in flight is 409 IDEMPOTENCY_IN_FLIGHT.
     const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
     if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
     // Only what commits AFTER the claim is the write the key guards (authentication may touch a session row before it).

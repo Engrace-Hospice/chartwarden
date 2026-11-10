@@ -50,6 +50,13 @@ export const ERROR_CODES = {
    */
   STEP_UP_REQUIRED: 403,
   IDEMPOTENCY_CONFLICT: 409,
+  /**
+   * A duplicate arrived while the FIRST request with the same `Idempotency-Key` is still running. 409 like CONFLICT, but a
+   * different code because the remedy is the opposite: a business CONFLICT means this request is refused, while
+   * IDEMPOTENCY_IN_FLIGHT means "your first request is still running, retry with the SAME key". A client that renews its key
+   * on a plain 409 would start a second write while the first is still in progress.
+   */
+  IDEMPOTENCY_IN_FLIGHT: 409,
   DEGRADED: 503,
   INTERNAL_ERROR: 500,
 } as const;
