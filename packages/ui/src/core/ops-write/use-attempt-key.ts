@@ -85,6 +85,9 @@ export function createAttemptKey(
     if (intent === undefined) {
       intent = { keeper: createIdempotencyKeeper(newKey, now), active: 0 };
       held.set(key, intent);
+    } else {
+      held.delete(key);
+      held.set(key, intent); // reused means recent: idle eviction is true LRU, not original creation order
     }
     intent.active += 1;
     last = key;

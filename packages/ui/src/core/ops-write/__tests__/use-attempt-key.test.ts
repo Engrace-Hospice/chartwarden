@@ -200,6 +200,23 @@ describe("createAttemptKey: intents", () => {
     expect(attempt.keyFor(`intent-${MAX_TRACKED_INTENTS}`)).toBe(keys[MAX_TRACKED_INTENTS]);
   });
 
+  it("keeps a recently retried old intent when it and a new concurrent request lose their replies", () => {
+    const attempt = createAttemptKey(counter(), () => T0);
+    const keys = Array.from({ length: MAX_TRACKED_INTENTS }, (_, n) => {
+      const key = attempt.keyFor(`intent-${n}`);
+      attempt.settle(NO_ANSWER, undefined, `intent-${n}`);
+      return key;
+    });
+
+    expect(attempt.keyFor("intent-0")).toBe(keys[0]); // retry the oldest intent: it is now recent and active
+    attempt.keyFor(`intent-${MAX_TRACKED_INTENTS}`); // one new concurrent request
+    attempt.settle(NO_ANSWER, undefined, `intent-${MAX_TRACKED_INTENTS}`);
+    attempt.settle(NO_ANSWER, undefined, "intent-0");
+
+    expect(attempt.keyFor("intent-0")).toBe(keys[0]);
+    expect(attempt.keyFor("intent-1")).not.toBe(keys[1]);
+  });
+
   it("clear() forgets every intent", () => {
     const attempt = createAttemptKey(counter(), () => T0);
     const first = attempt.keyFor("a");
