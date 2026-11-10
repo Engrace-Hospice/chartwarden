@@ -128,6 +128,17 @@ export async function reconcilePlatformStaff(
   return total;
 }
 
+/**
+ * Only holders of `platform_ops` are sourced, ON PURPOSE (see the header: the binding is the alert audience of the platform-ops
+ * operators, and reconcile expires the binding of anyone who no longer holds `platform_ops`). The key list is the caller's, and
+ * it is the only thing that has ever selected holders here: `m34_platform_role_holders` (0740, 1097) ANDed a `platform_%` key
+ * prefix onto `key = ANY(p_role_keys)`, so naming only `platform_ops` returned `platform_ops` holders both before and after
+ * migration 1333, which dropped that prefix floor in favour of "platform-owned (organization_id IS NULL) AND named by the
+ * caller". 1333's header says the prefix was applied "on top of" the caller's keys; it was an AND, so dropping it widened what a
+ * caller MAY name (`ai_safety_owner` has no prefix), never what this caller gets. The callers that mean "any platform staff"
+ * (wizard-store-drizzle, bind-compliance-officer-role) pass PLATFORM_GRANTABLE_ROLE_KEYS, and a test pins that list to every
+ * platform-owned role template.
+ */
 async function readOperators(db: DbClient): Promise<readonly Operator[]> {
   const holders = await db.execute<{ user_id: string; expires_at: Date | string | null }>(
     sql`SELECT user_id, expires_at FROM m34_platform_role_holders(ARRAY[${PLATFORM_OPS_ROLE_KEY}]::text[])`,
