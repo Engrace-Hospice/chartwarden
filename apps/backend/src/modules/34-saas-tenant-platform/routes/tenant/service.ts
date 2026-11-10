@@ -1,4 +1,9 @@
-import { assertGrantorMayIssueScope } from "@chartwarden/saas-tenant-platform";
+import {
+  ASSIST_GRANT_MAX_HOURS,
+  ASSIST_GRANT_MIN_HOURS,
+  SUPPORT_GRANT_MAX_HOURS,
+  assertGrantorMayIssueScope,
+} from "@chartwarden/saas-tenant-platform";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/service.ts — M34 the TenantRouteService
 // + an in-memory slice (§4.1 "Tenant-scoped routes").
 //
@@ -454,8 +459,11 @@ export function createInMemoryTenantBackend(
       // §4.2 — expires_at = NOW() + min(request, 72h platform-floor); assist is whole hours 1..24.
       const hours =
         args.scope === "assist"
-          ? Math.min(24, Math.max(1, Math.floor(args.expiresAtIsoOffsetHours)))
-          : Math.min(args.expiresAtIsoOffsetHours, 72);
+          ? Math.min(
+              ASSIST_GRANT_MAX_HOURS,
+              Math.max(ASSIST_GRANT_MIN_HOURS, Math.floor(args.expiresAtIsoOffsetHours)),
+            )
+          : Math.min(args.expiresAtIsoOffsetHours, SUPPORT_GRANT_MAX_HOURS);
       const rec: GrantRecord = {
         id,
         organizationId,

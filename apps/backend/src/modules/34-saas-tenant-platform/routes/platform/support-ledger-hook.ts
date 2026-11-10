@@ -14,6 +14,9 @@
 // succeeded) is answered from the cache by an earlier `preHandler` hook, before any handler runs, and must not count again. A
 // `preHandler` hook registered after that one marks the requests that got past it, and only those are recorded.
 //
+// Each append is a platform-context entry, so it leaves the usual `platform.bypass_invoked` audit row beside the ledger row (the
+// cost of reading a tenant's session from the platform credential; the ledger is the tenant's, written where the tenant role may not).
+//
 // Best effort, after the response: the write has already committed, so a failure to append the row is logged (ids and an error
 // class, never a message) and never turns a success into an error. The ceiling: a process crash between the commit and this hook
 // loses the ledger row; the write's own audit rows remain.

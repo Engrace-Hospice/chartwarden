@@ -1054,6 +1054,18 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       expect(event).toMatchObject({ organization_id: TENANT_ORG });
       expect(event?.payload.closeReason).toBe("manual_close");
       expect(alerts.map((a) => a.eventType)).toEqual(["m34.support_session.expired"]);
+      // the help screens' summary of the grant now reads closed, by hand, with the two actions it saw
+      const summary = await withOrgContext(
+        app.db,
+        { organizationId: TENANT_ORG, userId: ADMIN.user },
+        (tx) => ops.sessionSummaryForGrant(tx as unknown as DbClient, grantId),
+      );
+      expect(summary).toMatchObject({
+        sessionId,
+        state: "closed",
+        closeReason: "manual",
+        actionCount: 2,
+      });
       // repeating it writes nothing more
       const again = await send(
         "POST",
