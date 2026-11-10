@@ -607,7 +607,7 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
     if (recentFailed.count > 0) {
       // Every sweep for CLAIMMD_RECENT_FAILED_WINDOW_HOURS after a receipt goes terminal `failed`: visible even if its alert was lost.
       notify(deps, "warn", () =>
-        (deps.warn ?? deps.log)?.("claimmd.webhook.recent_failed_receipts", detail),
+        (deps.warn ?? deps.log)?.("claimmd.webhook.recent_failed_receipts", { ...detail }),
       );
     }
     notify(deps, "onRecentFailedCount", () => deps.onRecentFailedCount?.(detail));
