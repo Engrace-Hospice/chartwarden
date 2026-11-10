@@ -44,6 +44,7 @@ import {
 } from "../src/modules/35-subscription/pricing/contract-select";
 import {
   type ContractService,
+  type PlatformContractView,
   buildContractService,
   readBillingServiceMode,
 } from "../src/modules/35-subscription/pricing/contract-service";
@@ -175,6 +176,22 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       return await fn(carrier);
     } finally {
       await carrier.end();
+    }
+  }
+
+  /** Poll until `count` platform sessions are queued on M35's transaction advisory lock. */
+  async function waitForPricingLockWaiters(count: number, timeoutMs = 15_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const rows = await q<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND pid <> pg_backend_pid()
+            AND wait_event_type = 'Lock' AND query ILIKE '%pg_advisory_xact_lock%'`,
+      );
+      if ((rows[0]?.n ?? 0) >= count) return;
+      if (Date.now() > deadline)
+        throw new Error(`no ${count} sessions waiting on the pricing lock`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
   }
 
@@ -1262,6 +1279,58 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       );
     });
 
+    it("serializes two platform-carrier mode changes: the second lock winner reloads the first commit and remains the final decision", async () => {
+      await asCarrier(async (holder) => {
+        const queued: Promise<PlatformContractView>[] = [];
+        await holder.query("BEGIN");
+        try {
+          await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 35))", [ORG_A]);
+          const first = contractsAt("2026-10-22T10:00:00Z").setBillingServiceMode(
+            operator,
+            "pricing-a",
+            "managed_billing",
+            "first queued operator decision",
+          );
+          queued.push(first);
+          await waitForPricingLockWaiters(1);
+          const second = contractsAt("2026-10-22T09:00:00Z").setBillingServiceMode(
+            operator,
+            "pricing-a",
+            "none",
+            "second queued operator decision",
+          );
+          queued.push(second);
+          await waitForPricingLockWaiters(2);
+          await holder.query("COMMIT");
+
+          const [firstView, secondView] = await Promise.all([first, second]);
+          expect(firstView.billingServiceMode).toBe("managed_billing");
+          expect(secondView.billingServiceMode).toBe("none");
+          expect(
+            await readBillingServiceMode(app.db, ORG_A, new Date("2026-10-22T12:00:00Z")),
+          ).toBe("none");
+
+          const rows = await q<{ billing_service_mode: string; created_at: Date }>(
+            `SELECT billing_service_mode, created_at FROM subscription_contract_mode
+              WHERE organization_id=$1 AND effective_from='2026-10-22'
+              ORDER BY created_at, id`,
+            [ORG_A],
+          );
+          expect(rows.map((row) => row.billing_service_mode)).toEqual(["managed_billing", "none"]);
+          expect(rows[1]?.created_at.getTime()).toBeGreaterThan(rows[0]?.created_at.getTime() ?? 0);
+        } finally {
+          await holder.query("ROLLBACK");
+          await Promise.allSettled(queued);
+        }
+      });
+      await contractsAt("2026-10-22T11:00:00Z").setBillingServiceMode(
+        operator,
+        "pricing-a",
+        "billing_software",
+        "restore the fixture's billing mode",
+      );
+    });
+
     it("exposes the mode to another module: the BillingServiceModeReader body reads the tenant's own contract", async () => {
       const onNov5 = new Date("2026-11-05T12:00:00Z");
       expect(await readBillingServiceMode(app.db, ORG_A, onNov5)).toBe("billing_software");
@@ -1915,6 +1984,28 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           constraint: "subscription_statement_ownership_guard",
         });
       });
+    });
+
+    it("migration 1466: the composite ownership FK blocks changing a subscription plan underneath its statement", async () => {
+      const tenantClient = new Client({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      await tenantClient.connect();
+      try {
+        await tenant(tenantClient, ORG_A, async () => {
+          await expect(
+            tenantClient.query("UPDATE subscription SET plan_id=$1 WHERE organization_id=$2", [
+              planV2Id,
+              ORG_A,
+            ]),
+          ).rejects.toMatchObject({
+            code: "23503",
+            constraint: "subscription_statement_ownership_fk",
+          });
+        });
+      } finally {
+        await tenantClient.end();
+      }
     });
 
     it("F-6 (migration 1464): a final statement's Stripe push record is written ONCE: from NULL it may be set, but never cleared or rewritten, so a posted statement cannot go back into the unposted set", async () => {
