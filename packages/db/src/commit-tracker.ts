@@ -6,22 +6,32 @@
 // transaction that deadlocks) has written already, and re-running it on a same-key retry writes twice. Such an outcome is cached
 // and replayed, as every other response is.
 //
-// WHAT IS TRACKED, AND WHERE. `createDbClient` is the ONE place a pg pool is constructed, and every query the application issues
-// travels through a pooled client, so the tracking lives at the pool, not in each transaction helper: it sees withOrgContext,
-// withPlatformContext, withUserContext, a bare `db.transaction`, and a bare autocommit `db.insert`/`db.update` alike. It records
-// per request (an AsyncLocalStorage tracker the idempotency middleware opens) that a write COMMITTED, or MAY have:
+// WHAT IS TRACKED, AND WHERE. `createDbClient` is the ONE place a pg pool is constructed (a test asserts it), and every query the
+// application issues travels through a pooled client, so the tracking lives at the pool, not in each transaction helper: it sees
+// withOrgContext, withPlatformContext, withUserContext, a bare `db.transaction`, and a bare autocommit `db.insert`/`db.update`
+// alike. It records per request (an AsyncLocalStorage tracker the idempotency middleware opens) that a write COMMITTED, or MAY
+// have, or is STILL OPEN:
 //   * a `COMMIT` of a transaction that ran a write statement (a read-only transaction commits nothing: the permission guards and
 //     most reads open one, and they must not count);
 //   * a write statement outside any transaction block (autocommit), noted when it is ISSUED;
+//   * a write transaction that is still open, noted when its first write is issued and cleared by its COMMIT / ROLLBACK. A
+//     response built while another transaction of the same request (one half of a Promise.all, a request that answered 503 at a
+//     deadline over a transaction still running) has written but not yet issued COMMIT cannot be called uncommitted: that COMMIT
+//     would land under a freed key. A transaction that never ends (a lost connection) stays counted: the safe direction;
+//   * a COMMIT or autocommit write is counted from the moment it is issued until the server answers: an error answer that
+//     provably means "not applied" (a 5-character SQLSTATE with severity ERROR: 40001, 40P01, a constraint, ...) clears it, any
+//     other outcome (success, a lost connection, a FATAL, an answer that cannot be read) leaves it counted;
 //   * any statement it cannot classify, or whose text it cannot read, is a write (conservative: cache, never release);
 //   * a SELECT / WITH / VALUES / TABLE / EXPLAIN is a write when it carries DML or CALLS anything but a short allowlist of
 //     read-only builtins (READ_ONLY_CALLS). The repo writes platform tables through SECURITY DEFINER functions called as
 //     `SELECT writer_fn(...)`, which no part of the SELECT's text distinguishes from a reader, so every unlisted call, user-defined
-//     readers included, counts as a write. Detection reads the whole text, comments and string literals too, so a word hidden
-//     there can only add a false write, never hide one.
+//     readers included, counts as a write. Detection reads the whole text, string literals and `--` comments too, so a word hidden
+//     there can only add a false write, never hide one. A text with a block comment (`/*`, which nests in Postgres), or with both a
+//     `;` and a `--` (a `;` inside a comment would move the statement boundaries), is judged a write without further reading. A
+//     compound text (`a; b`) is a read only when every statement in it is a SET/SHOW-style statement or a SELECT-style read.
 //     The authoritative alternative, asking Postgres (`pg_current_xact_id_if_assigned()`) before COMMIT, is NOT used: it costs one
 //     extra round trip on every transaction, read-only ones included, which is the hot path.
-//   * a COMMIT that fails is noted too (an error from COMMIT does not prove the transaction rolled back).
+//   * a COMMIT that fails with anything but a server error is noted too (such an error does not prove the transaction rolled back).
 // A ROLLBACK discards the transaction's writes.
 //
 // WHAT IS NOT TRACKED (the residual, stated rather than hidden): effects that are not a Postgres commit: an outbound HTTP call,
@@ -40,17 +50,27 @@ import type { EventEmitter } from "node:events";
 export interface CommitTracker {
   /** True once a write COMMITTED (or may have) since the tracker was last {@link resetCommitTracker reset}. */
   committed: boolean;
+  /** Write transactions still open, plus COMMITs and autocommit writes the server has not answered yet. */
+  unsettled: number;
 }
 
 const store = new AsyncLocalStorage<CommitTracker>();
 
 export function createCommitTracker(): CommitTracker {
-  return { committed: false };
+  return { committed: false, unsettled: 0 };
 }
 
-/** Clears the record (the idempotency claim does this: only what happens AFTER the claim is the guarded write). */
+/**
+ * Clears the record of what already committed (the idempotency claim does this: only what happens AFTER the claim is the
+ * guarded write). What is still open or unanswered stays counted: it will commit after the claim.
+ */
 export function resetCommitTracker(tracker: CommitTracker): void {
   tracker.committed = false;
+}
+
+/** True when a write of this request committed, may have, or is still open: the key cannot be proven free to run again. */
+export function mayHaveCommitted(tracker: CommitTracker): boolean {
+  return tracker.committed || tracker.unsettled > 0;
 }
 
 /** Runs `fn` with `tracker` as the ambient tracker for its whole async subtree. */
@@ -73,12 +93,11 @@ export function createConnectionTxState(): ConnectionTxState {
   return { inTx: false, wrote: false };
 }
 
-// Leading whitespace and comments only: enough to read the FIRST word. Detection of what a statement DOES runs on the whole,
-// unstripped text, so a DML word or a call inside a comment or a string literal (e.g. `select '--' ... delete from t`) can only
-// ever produce a false "write", which is the safe direction (the outcome is cached, never released).
-const LEADING_NOISE = /^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*/;
+// Leading whitespace and `--` comments, enough to read the FIRST word (a line comment ends at `\n` or `\r`, as in Postgres). Block
+// comments never reach this: a text containing `/*` is judged a write before any reading.
+const LEADING_NOISE = /^(?:\s+|--[^\r\n]*(?:\r|\n|$))*/;
 const FIRST_WORD = /^([a-z]+)/;
-// First keywords that never write by themselves.
+// First keywords that never write by themselves. DECLARE (it carries a query) and FETCH (it runs one) are not here.
 const NON_WRITE_FIRST: ReadonlySet<string> = new Set([
   "set",
   "reset",
@@ -87,16 +106,12 @@ const NON_WRITE_FIRST: ReadonlySet<string> = new Set([
   "release",
   "discard",
   "deallocate",
-  "declare",
-  "fetch",
   "close",
 ]);
 // Row-producing statements: a write only if they carry DML or a call that is not provably read-only (see below).
 const ROW_FIRST: ReadonlySet<string> = new Set(["select", "with", "values", "table", "explain"]);
 const FOR_UPDATE = /\bfor\s+(?:no\s+key\s+)?update\b/g;
 const DML = /\b(?:insert|delete|merge|truncate|into)\b|\bupdate\b/;
-const MULTI_STATEMENT = /;\s*\S/;
-const TX_CONTROL = /\b(?:commit|end|begin)\b|\bstart\s+transaction\b/;
 
 // A function call is a possible write: this repo writes platform tables through SECURITY DEFINER functions invoked as
 // `SELECT writer_fn(...)` (audit_writer_*, report_writer_*, mdm_canonical_writer_*, terminology_loader_*, ...), and nothing in
@@ -200,51 +215,103 @@ const NOT_A_CALL: ReadonlySet<string> = new Set([
   ...["ilike", "is", "distinct", "for", "lateral", "returning", "set", "at", "rows", "range"],
   ...["partition", "order", "group", "unique", "primary", "references", "check", "default"],
 ]);
-// `ident(` or `schema.ident(`, each part bare or "quoted". The last part is the function name.
-const CALL =
-  /((?:(?:"(?:[^"]|"")+"|[a-z_][a-z0-9_$]*)\s*\.\s*)*)("(?:[^"]|"")+"|[a-z_][a-z0-9_$]*)\s*\(/g;
+// One left-to-right pass over the text, no backtracking: a quoted identifier, a bare word, a `--` comment, whitespace, or any
+// other single character. A bare word may contain non-ASCII characters (Postgres treats every high-bit byte as a letter).
+const TOKEN = /"(?:[^"]|"")*"|[a-z_\u0080-\uffff][a-z0-9_$\u0080-\uffff]*|--[^\r\n]*|\s+|[\s\S]/gi;
 
-/** True when `sql` (lowercased, full text) calls anything that is not a known read-only builtin. */
-function hasUnknownCall(sql: string): boolean {
-  for (const m of sql.matchAll(CALL)) {
-    const qualifier = (m[1] ?? "").replace(/[\s."]/g, "");
-    const name = (m[2] ?? "").replace(/^"|"$/g, "");
-    if (NOT_A_CALL.has(name)) continue;
-    // A schema-qualified name is the builtin only when it says so; `public.count(` is somebody's function.
-    if (qualifier !== "" && qualifier !== "pg_catalog") return true;
-    if (!READ_ONLY_CALLS.has(name)) return true;
+interface NamePart {
+  /** As Postgres compares it: a bare word folded to lower case, a quoted one exactly as written. */
+  readonly name: string;
+  readonly bare: boolean;
+}
+
+/** `name(`, `schema.name(`: is this call something other than a known read-only builtin? */
+function isUnknownCall(parts: readonly NamePart[]): boolean {
+  const last = parts[parts.length - 1] as NamePart;
+  if (parts.length === 1) {
+    // A bare keyword before a parenthesis is not a call; a quoted one (`"in"(x)`) is a function that happens to be named so.
+    if (last.bare && NOT_A_CALL.has(last.name)) return false;
+    return !READ_ONLY_CALLS.has(last.name);
+  }
+  // A schema-qualified name is the builtin only when it says so; `public.count(` is somebody's function, whatever it is called.
+  return !(parts.length === 2 && parts[0]?.name === "pg_catalog" && READ_ONLY_CALLS.has(last.name));
+}
+
+/** True when `text` (original case) calls anything that is not a known read-only builtin. Comments may sit inside a name. */
+function hasUnknownCall(text: string): boolean {
+  const parts: NamePart[] = []; // the name read so far (`a.b` is two parts); local to this pass, so it is filled in place
+  let dot = false; // a `.` follows the last part: the next word continues the same name
+  const addPart = (part: NamePart): void => {
+    if (!dot) parts.length = 0;
+    parts.push(part);
+    dot = false;
+  };
+  for (const [token] of text.matchAll(TOKEN)) {
+    const first = token.charAt(0);
+    if (/\s/.test(first) || token.startsWith("--")) continue;
+    if (first === '"' && token.length > 1 && token.endsWith('"')) {
+      addPart({ name: token.slice(1, -1), bare: false });
+    } else if (/[a-z_\u0080-\uffff]/i.test(first)) {
+      addPart({ name: token.toLowerCase(), bare: true });
+    } else if (first === ".") {
+      dot = parts.length > 0;
+    } else {
+      if (first === "(" && parts.length > 0 && !dot && isUnknownCall(parts)) return true;
+      parts.length = 0;
+      dot = false;
+    }
   }
   return false;
 }
 
 /** DML, or a call that may write, anywhere in the text (comments and string literals included: false positives are safe). */
-function mayWrite(sql: string): boolean {
-  return DML.test(sql.replace(FOR_UPDATE, " ")) || hasUnknownCall(sql);
+function mayWrite(text: string): boolean {
+  return DML.test(text.toLowerCase().replace(FOR_UPDATE, " ")) || hasUnknownCall(text);
 }
 
 type Kind = "begin" | "commit" | "rollback" | "rollback-to" | "write" | "other";
 
+const firstWordOf = (statement: string): string | undefined => FIRST_WORD.exec(statement)?.[1];
+
+/** A compound text is a read only if every statement is a SET/SHOW-style one or a SELECT-style read that writes nothing. */
+function compoundIsRead(text: string, statements: readonly string[]): boolean {
+  let hasRowStatement = false;
+  for (const statement of statements) {
+    const first = firstWordOf(statement);
+    if (first === undefined) return false;
+    if (ROW_FIRST.has(first)) hasRowStatement = true;
+    else if (!NON_WRITE_FIRST.has(first)) return false;
+  }
+  return !hasRowStatement || !mayWrite(text);
+}
+
 /** What one statement is, as far as the commit rule cares. Anything it cannot classify is a write (conservative). */
 export function classifyStatement(text: string | undefined): Kind {
-  if (text === undefined) return "write";
+  // Block comments nest in Postgres and cannot be skipped reliably; a `;` next to a `--` may sit inside the comment. Neither
+  // occurs in the statements the application issues, so both are simply writes.
+  if (text === undefined || text.includes("/*")) return "write";
   const sql = text.toLowerCase();
-  const first = FIRST_WORD.exec(sql.replace(LEADING_NOISE, ""))?.[1];
+  const parts = sql.split(";");
+  if (parts.length > 1 && sql.includes("--")) return "write";
+  const statements = parts
+    .map((part) => part.replace(LEADING_NOISE, ""))
+    .filter((part) => part !== "");
+  const [statement] = statements;
+  if (statement === undefined) return "write";
+  if (statements.length > 1) return compoundIsRead(text, statements) ? "other" : "write";
+  const first = firstWordOf(statement);
   if (first === undefined) return "write";
-  if (MULTI_STATEMENT.test(sql.trim().replace(/;$/, ""))) {
-    // A compound text may hold its own BEGIN/COMMIT: judge it as a whole, never as its first word.
-    return mayWrite(sql) || TX_CONTROL.test(sql) ? "write" : "other";
-  }
   if (first === "begin" || first === "start") return "begin";
   if (first === "commit" || first === "end") return "commit";
   if (first === "rollback" || first === "abort") {
-    return /^\s*(?:rollback|abort)\s+(?:work\s+|transaction\s+)?(?:and\s+no\s+chain\s+)?to\b/.test(
-      sql.replace(LEADING_NOISE, ""),
+    return /^(?:rollback|abort)\s+(?:work\s+|transaction\s+)?(?:and\s+no\s+chain\s+)?to\b/.test(
+      statement,
     )
       ? "rollback-to"
       : "rollback";
   }
   if (NON_WRITE_FIRST.has(first)) return "other";
-  if (ROW_FIRST.has(first)) return mayWrite(sql) ? "write" : "other";
+  if (ROW_FIRST.has(first)) return mayWrite(text) ? "write" : "other";
   return "write";
 }
 
@@ -254,42 +321,79 @@ function textOf(arg: unknown): string | undefined {
   return typeof text === "string" ? text : undefined;
 }
 
+/** Called with the server's answer to a COMMIT or autocommit write: `false` only when it provably did NOT apply. At most once. */
+export type SettleWrite = (maybeApplied: boolean) => void;
+
+function settleOnce(tracker: CommitTracker): SettleWrite {
+  let settled = false;
+  return (maybeApplied) => {
+    if (settled) return;
+    settled = true;
+    tracker.unsettled -= 1;
+    if (maybeApplied) tracker.committed = true;
+  };
+}
+
 /**
- * Applies one statement to the connection's transaction state and, when it commits (or may commit) a write, marks `tracker`.
- * Pure over its arguments apart from those two mutations.
+ * Applies one statement to the connection's transaction state and the tracker. A write transaction counts as open from its first
+ * write until COMMIT / ROLLBACK; a COMMIT or an autocommit write counts from the moment it is issued until the server answers, so
+ * the caller hands the answer to the returned {@link SettleWrite} (a result it cannot read is `true`, which commits). No return
+ * value means there is nothing to settle. Pure over its arguments apart from the state and tracker mutations.
  */
 export function observeStatement(
   state: ConnectionTxState,
   tracker: CommitTracker | undefined,
   arg: unknown,
-): void {
-  if (!tracker) return;
+): SettleWrite | undefined {
+  if (!tracker) return undefined;
   switch (classifyStatement(textOf(arg))) {
     case "begin":
       // A BEGIN inside a transaction is a no-op in Postgres: what was written so far still commits.
       if (!state.inTx) state.wrote = false;
       state.inTx = true;
-      return;
-    case "commit":
-      // Marked when COMMIT is ISSUED: a COMMIT that errors may still have committed.
-      if (state.wrote) tracker.committed = true;
+      return undefined;
+    case "commit": {
+      // The transaction's own slot in `unsettled` is released by the answer: a COMMIT that errors may still have committed.
+      const settle = state.wrote ? settleOnce(tracker) : undefined;
       state.inTx = false;
       state.wrote = false;
-      return;
+      return settle;
+    }
     case "rollback":
+      if (state.wrote) tracker.unsettled -= 1;
       state.inTx = false;
       state.wrote = false;
-      return;
+      return undefined;
     case "rollback-to":
       // Back to a savepoint: the transaction stays open. Writes before it may remain, so `wrote` is left as it is.
-      return;
+      return undefined;
     case "write":
-      if (state.inTx) state.wrote = true;
-      else tracker.committed = true; // autocommit: durable as soon as it succeeds
-      return;
+      if (state.inTx) {
+        if (!state.wrote) tracker.unsettled += 1;
+        state.wrote = true;
+        return undefined;
+      }
+      tracker.unsettled += 1; // autocommit: durable as soon as the server accepts it
+      return settleOnce(tracker);
     default:
-      return;
+      return undefined;
   }
+}
+
+// A SQLSTATE is five characters; severity ERROR (not FATAL or PANIC) means the server rejected THIS statement and carried on. Classes
+// 08 (connection), 58 (system) and XX (internal) can still leave a commit's outcome unknown, so they are not trusted.
+const SQLSTATE = /^[0-9A-Z]{5}$/;
+const UNCERTAIN_SQLSTATE_CLASS = /^(?:08|58|XX)/;
+
+/** True only for an error the SERVER raised for this statement, which means the statement did not apply. */
+export function isServerRefusal(error: unknown): boolean {
+  const { code, severity } = (error ?? {}) as { code?: unknown; severity?: unknown };
+  return (
+    severity === "ERROR" &&
+    typeof code === "string" &&
+    SQLSTATE.test(code) &&
+    !UNCERTAIN_SQLSTATE_CLASS.test(code)
+  );
 }
 
 const TRACKER = Symbol("chartwarden.commitTracker");
@@ -306,6 +410,48 @@ interface PoolLike extends EventEmitter {
 }
 
 /**
+ * Hands the answer of a query to `settle`. pg answers in one of three ways: a promise (a bare `client.query(text)`), a callback
+ * as the last argument (`pool.query` and pg-pool's own checkout use this form even when the caller awaits), or neither (a
+ * submittable such as a cursor): the last has no answer to read, so it counts as applied.
+ */
+function trackAnswer(
+  args: unknown[],
+  run: (args: unknown[]) => unknown,
+  settle: SettleWrite,
+): unknown {
+  const callback = args[args.length - 1];
+  if (typeof callback === "function") {
+    const wrapped = (error: unknown, ...rest: unknown[]) => {
+      settle(!isServerRefusal(error));
+      (callback as (...a: unknown[]) => void)(error, ...rest);
+    };
+    return run([...args.slice(0, -1), wrapped]);
+  }
+  let result: unknown;
+  try {
+    result = run(args);
+  } catch (error) {
+    settle(!isServerRefusal(error));
+    throw error;
+  }
+  if (typeof (result as { then?: unknown } | null | undefined)?.then !== "function") {
+    settle(true);
+    return result;
+  }
+  // Return the derived promise, not the original: a caller that drops it must still see an unhandled rejection, as before.
+  return (result as Promise<unknown>).then(
+    (value) => {
+      settle(true);
+      return value;
+    },
+    (error: unknown) => {
+      settle(!isServerRefusal(error));
+      throw error;
+    },
+  );
+}
+
+/**
  * Wraps a pg pool so every statement its clients run feeds the ambient {@link CommitTracker}. Called once, by `createDbClient`.
  * A checkout made outside a tracked request carries no tracker and each of its queries costs one property read.
  */
@@ -315,8 +461,8 @@ export function instrumentPoolForCommits(pool: PoolLike): void {
     client.query = ((...args: unknown[]) => {
       const tracker = client[TRACKER];
       const state = client[TX_STATE]; // both set at every checkout, before any query of it
-      if (tracker && state) observeStatement(state, tracker, args[0]);
-      return original(...args);
+      const settle = tracker && state ? observeStatement(state, tracker, args[0]) : undefined;
+      return settle ? trackAnswer(args, (a) => original(...a), settle) : original(...args);
     }) as never;
   });
 

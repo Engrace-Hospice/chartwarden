@@ -1,10 +1,13 @@
 // The commit tracker's statement rule: what counts as a write, and when a transaction COMMITS one. Conservative by design: any
 // statement it cannot classify is a write.
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   classifyStatement,
   createCommitTracker,
   createConnectionTxState,
+  mayHaveCommitted,
   observeStatement,
 } from "../src/commit-tracker";
 
@@ -44,7 +47,63 @@ describe("classifyStatement", () => {
 
   it("judges a compound text as a whole, so a hidden COMMIT or write is never missed", () => {
     expect(classifyStatement("begin; insert into t values (1); commit")).toBe("write");
+    expect(classifyStatement("begin; select 1; commit")).toBe("write");
     expect(classifyStatement("select 1; select 2")).toBe("other");
+    expect(classifyStatement("select 1;")).toBe("other");
+    expect(classifyStatement("commit;")).toBe("commit");
+    expect(classifyStatement("set local a = 1; set local b = 2")).toBe("other");
+    expect(classifyStatement("set local a = 1; select 1")).toBe("other");
+  });
+
+  // M2: only DML words and calls used to be read, so a statement that writes without either went unseen in a compound text.
+  it.each([
+    "select 1; drop table t",
+    "select 1; create table x as select 1",
+    "select 1; alter table t add column c int",
+    "select 1; lock table t",
+    "select 1; notify chan",
+    "select 1; copy t from stdin",
+    "select 1; vacuum",
+    "select 1; refresh materialized view v",
+    "select 1; create index i on t (c)",
+    "set local x = 1; drop table t",
+    "set local x = 1; select 1; drop table t",
+    "drop table t; select 1",
+    "select 1; ; drop table t",
+    // a `;` inside a comment or a string only ever adds a false write, never hides one
+    "-- a; select 1\n drop table t",
+    "select 1; -- trailing note",
+    "select ';' as s",
+    "select 'x; set', writer_fn(1)",
+    "select writer_fn('a; set')",
+  ])("a compound text with a statement that is not a read is a write: %s", (text) => {
+    expect(classifyStatement(text)).toBe("write");
+  });
+
+  // M1: Postgres allows a comment between a function name and its parenthesis, and block comments nest.
+  it.each([
+    "select writer_fn/**/(1)",
+    "select writer_fn /* c */ (1)",
+    "select writer_fn -- c.\n(1)",
+    "select * from writer_fn /*x*/ ($1)",
+    "select * from writer_fn -- note\n ($1)",
+    "/* /* */ begin */ insert into t values (1)",
+    "/* /* */ commit */ select 1",
+    "select 1 /* a */",
+    // a line comment ends at a bare carriage return too
+    "-- c\r drop table t\n select 1",
+    "-- c\r delete from t",
+    "select writer_fn\r\n(1)",
+    // a name that continues with a non-ASCII letter is a different name
+    "select \u00e9abs(1)",
+  ])("a comment cannot hide a call or a statement: %s", (text) => {
+    expect(classifyStatement(text)).toBe("write");
+  });
+
+  it("a comment between a read-only builtin and its parenthesis is still a read", () => {
+    expect(classifyStatement("select count -- c\n (*) from t")).toBe("other");
+    expect(classifyStatement("-- leading\nselect count(*) from t")).toBe("other");
+    expect(classifyStatement("select count(*) from t -- trailing")).toBe("other");
   });
 
   it("an unreadable statement (no text) is a write", () => {
@@ -57,7 +116,7 @@ describe("observeStatement", () => {
     const tracker = createCommitTracker();
     const state = createConnectionTxState();
     for (const s of statements) observeStatement(state, tracker, s);
-    return tracker.committed;
+    return mayHaveCommitted(tracker);
   };
 
   it("a transaction that wrote and committed marks the tracker", () => {
@@ -173,7 +232,8 @@ describe("a function call is a write unless it is a known read-only builtin", ()
     expect(classifyStatement("with a as (select '--' as s) delete from t")).toBe("write");
     expect(classifyStatement("select '/*' as s, writer_fn($1) /* c */")).toBe("write");
     expect(classifyStatement("-- note\nselect writer_fn($1)")).toBe("write");
-    expect(classifyStatement("/* a */ select count(*) from t")).toBe("other");
+    // a block comment is not read at all (it nests in Postgres): the whole text is a write
+    expect(classifyStatement("/* a */ select count(*) from t")).toBe("write");
   });
 
   it("a name qualified with another schema is not the builtin", () => {
@@ -187,7 +247,7 @@ describe("observeStatement with writer functions", () => {
     const tracker = createCommitTracker();
     const state = createConnectionTxState();
     for (const s of statements) observeStatement(state, tracker, s);
-    return tracker.committed;
+    return mayHaveCommitted(tracker);
   };
 
   it("begin; select writer_fn(); commit marks the tracker", () => {
@@ -231,5 +291,170 @@ describe("observeStatement with writer functions", () => {
 
   it("DML hidden behind a string literal that looks like a comment still counts", () => {
     expect(run(["begin", "with a as (select '--' as s) delete from t", "commit"])).toBe(true);
+  });
+});
+
+describe("the call rule reads names the way Postgres does", () => {
+  // L1: a schema-qualified name is never a keyword, whatever the last part is called.
+  it.each([
+    "select public.range($1)",
+    "select audit.filter($1)",
+    'select public."check"($1)',
+    "select public.in($1)",
+    "select app . default($1)",
+    "select a.b.count(*) from t",
+    // L3: a quoted name is case-sensitive; only an already-lowercase one can be the builtin
+    'select "Now"()',
+    'select "COUNT"(x) from t',
+    'select "in"($1)',
+    'select "PG_CATALOG".count(*) from t',
+    'select "pg_catalog"."Count"(*) from t',
+    "select public.now()",
+  ])("%s -> write", (text) => {
+    expect(classifyStatement(text)).toBe("write");
+  });
+
+  it.each([
+    'select "now"()',
+    'select "count"(*) from t',
+    "select PG_CATALOG.count(*) from t",
+    'select "pg_catalog".count(*) from t',
+    "select pg_catalog . now ()",
+    'select max("n") from "t" where "id" in ($1)',
+  ])("%s -> other", (text) => {
+    expect(classifyStatement(text)).toBe("other");
+  });
+
+  // L2: DECLARE ... CURSOR FOR carries the query; FETCH runs it.
+  it.each([
+    "declare c cursor for select writer_fn(1)",
+    "declare c cursor for delete from t returning *",
+    "fetch next from c",
+  ])("%s -> write", (text) => {
+    expect(classifyStatement(text)).toBe("write");
+  });
+
+  it("CLOSE, SET, SHOW, RESET, SAVEPOINT and RELEASE stay non-writes", () => {
+    for (const text of ["close c", "reset all", "show all", "savepoint a", "release a"]) {
+      expect(classifyStatement(text)).toBe("other");
+    }
+  });
+});
+
+describe("classification time is linear in the length of the text", () => {
+  // L4: the call finder used to restart at every character of an identifier run (17 s for 100k characters).
+  const LENGTH = 200_000;
+  const BUDGET_MS = 1_000;
+  const cases: Array<[string, string]> = [
+    ["identifier run", `select ${"a".repeat(LENGTH)}`],
+    ["quote run", `select ${'"'.repeat(LENGTH)}`],
+    ["dotted chain", `select ${"a.".repeat(LENGTH / 2)}`],
+    ["quoted dotted chain", `select ${'"a".'.repeat(LENGTH / 4)}`],
+    ["whitespace run", `select a${" ".repeat(LENGTH)}x`],
+    ["parenthesis run", `select ${"(".repeat(LENGTH)}`],
+    ["line comment run", `select 1\n${"--\n".repeat(LENGTH / 3)}`],
+    ["semicolon run", `select 1${";".repeat(LENGTH)}`],
+    ["statement run", "select 1;".repeat(LENGTH / 9)],
+    ["for run", `select ${"for ".repeat(LENGTH / 4)}`],
+    ["unterminated quote", `select "${"a ".repeat(LENGTH / 2)}`],
+    ["non-ASCII run", `select ${"\u00e9".repeat(LENGTH)}`],
+  ];
+  it.each(cases)("%s classifies in well under a second", (_name, text) => {
+    const started = performance.now();
+    classifyStatement(text);
+    expect(performance.now() - started).toBeLessThan(BUDGET_MS);
+  });
+});
+
+describe("writes still open when the response is built (M3)", () => {
+  const track = () => ({ tracker: createCommitTracker(), state: createConnectionTxState() });
+
+  it("a write inside a transaction that has not issued COMMIT yet already counts", () => {
+    const { tracker, state } = track();
+    observeStatement(state, tracker, "begin");
+    expect(mayHaveCommitted(tracker)).toBe(false);
+    observeStatement(state, tracker, "insert into t values (1)");
+    expect(tracker.committed).toBe(false); // nothing committed yet ...
+    expect(mayHaveCommitted(tracker)).toBe(true); // ... but one is open, so a release is not provable
+  });
+
+  it("two transactions: one rolled back, one still open", () => {
+    const a = track();
+    const tracker = a.tracker;
+    const b = { tracker, state: createConnectionTxState() };
+    for (const t of [a, b]) observeStatement(t.state, tracker, "begin");
+    observeStatement(a.state, tracker, "insert into t values (1)");
+    observeStatement(b.state, tracker, "insert into t values (2)");
+    observeStatement(a.state, tracker, "rollback");
+    expect(mayHaveCommitted(tracker)).toBe(true); // b is still open
+    observeStatement(b.state, tracker, "rollback");
+    expect(mayHaveCommitted(tracker)).toBe(false);
+  });
+
+  it("COMMIT stays counted until the answer is known; a refused COMMIT clears it, an applied one commits", () => {
+    const refused = track();
+    observeStatement(refused.state, refused.tracker, "begin");
+    observeStatement(refused.state, refused.tracker, "insert into t values (1)");
+    const settleRefused = observeStatement(refused.state, refused.tracker, "commit");
+    expect(mayHaveCommitted(refused.tracker)).toBe(true); // issued, unanswered
+    settleRefused?.(false);
+    expect(mayHaveCommitted(refused.tracker)).toBe(false);
+
+    const applied = track();
+    observeStatement(applied.state, applied.tracker, "begin");
+    observeStatement(applied.state, applied.tracker, "insert into t values (1)");
+    observeStatement(applied.state, applied.tracker, "commit")?.(true);
+    expect(applied.tracker.committed).toBe(true);
+    expect(mayHaveCommitted(applied.tracker)).toBe(true);
+  });
+
+  it("an autocommit write stays counted until answered; a refused one clears, and a late answer is ignored", () => {
+    const { tracker, state } = track();
+    const settle = observeStatement(state, tracker, "update t set n = 1");
+    expect(mayHaveCommitted(tracker)).toBe(true);
+    settle?.(false);
+    expect(mayHaveCommitted(tracker)).toBe(false);
+    settle?.(true); // settling twice never double-counts
+    expect(mayHaveCommitted(tracker)).toBe(false);
+  });
+
+  it("a refused write never clears ANOTHER write's mark", () => {
+    const { tracker, state } = track();
+    const first = observeStatement(state, tracker, "update t set n = 1");
+    observeStatement(state, tracker, "update t set n = 2")?.(true);
+    first?.(false);
+    expect(tracker.committed).toBe(true);
+  });
+});
+
+describe("createDbClient is the only place a pg pool is built", () => {
+  // The tracker sees only pools it instruments. A second pool (a platform pool built by hand) would make its writes invisible,
+  // and a request that committed through it would release its key after a 5xx.
+  const ROOT = join(__dirname, "..", "..", "..");
+  const SKIP = new Set(["node_modules", "dist", "__tests__", ".git"]);
+  const walk = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      if (SKIP.has(name)) return [];
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return walk(path);
+      return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : [];
+    });
+  const sources = ["apps", "packages"].flatMap((top) =>
+    readdirSync(join(ROOT, top)).flatMap((pkg) => {
+      const src = join(ROOT, top, pkg, "src");
+      return statSync(join(ROOT, top, pkg)).isDirectory() && existsSync(src) ? walk(src) : [];
+    }),
+  );
+
+  it("no runtime source outside packages/db/src/client.ts constructs a pg Pool or Client", () => {
+    const offenders = sources
+      .filter((file) => !file.endsWith(join("packages", "db", "src", "client.ts")))
+      .filter((file) =>
+        /new\s+(?:pg\.)?(?:Pool|Client)\s*\(|from\s+["']pg(?:-pool)?["']/.test(
+          readFileSync(file, "utf8"),
+        ),
+      )
+      .map((file) => file.slice(ROOT.length + 1));
+    expect(offenders).toEqual([]);
   });
 });
