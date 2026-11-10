@@ -5,8 +5,11 @@ import { randomUUID } from "node:crypto";
 import type { ConfigPatch, ConfigRow, ConfigStore, NewConfigRow } from "./config-store";
 
 export interface InMemoryConfigStore extends ConfigStore {
-  /** Test control: pretend the org has (or no longer has) a production submission in flight. */
-  setProductionAttempts(organizationId: string, present: boolean): void;
+  /**
+   * Test control: pretend the org has (or no longer has) a production submission, reserved at `reservedAt` (default: now). It counts
+   * as recent while `reservedAt` is on or after the window's start (`hasRecentProductionAttempts`).
+   */
+  setProductionAttempts(organizationId: string, present: boolean, reservedAt?: Date): void;
   rows(): readonly ConfigRow[];
   /** Test view: the fingerprints the org holds unreleased. */
   heldFingerprints(organizationId: string): readonly string[];
@@ -26,7 +29,8 @@ const uniqueViolation = (constraint?: string): Error =>
 
 export function createInMemoryConfigStore(now: () => Date = () => new Date()): InMemoryConfigStore {
   const byOrg = new Map<string, ConfigRow>();
-  const withAttempts = new Set<string>();
+  /** Per org, when its latest production submission was reserved. */
+  const withAttempts = new Map<string, Date>();
   /** Mirrors migration 1435: one unreleased reservation per fingerprint across ALL organizations. */
   const reservations: Reservation[] = [];
   /** Mirrors migration 1434's partial unique index: one non-null fingerprint across ALL organizations. */
@@ -91,11 +95,9 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
       byOrg.set(organizationId, next);
       return next;
     },
-    async hasProductionAttempts(organizationId) {
-      return withAttempts.has(organizationId);
-    },
-    async hasRecentProductionAttempts(organizationId) {
-      return withAttempts.has(organizationId);
+    async hasRecentProductionAttempts(organizationId, since) {
+      const reservedAt = withAttempts.get(organizationId);
+      return reservedAt !== undefined && reservedAt.getTime() >= since.getTime();
     },
     async holdsCredential(organizationId, fingerprint) {
       return reservations.some(
@@ -121,8 +123,8 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
       });
       return released;
     },
-    setProductionAttempts(organizationId, present) {
-      if (present) withAttempts.add(organizationId);
+    setProductionAttempts(organizationId, present, reservedAt = now()) {
+      if (present) withAttempts.set(organizationId, reservedAt);
       else withAttempts.delete(organizationId);
     },
     rows: () => [...byOrg.values()],
