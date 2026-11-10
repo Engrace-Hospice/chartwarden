@@ -64,7 +64,7 @@ const M35_SCHEDULES = {
   // the daily census sweep: the statement's expectation of how many days a month's census holds is derived from this interval
   patientCensus: `0 */${CENSUS_SWEEP_INTERVAL_HOURS} * * *`,
   pricingStatement: "30 * * * *",
-  // hourly, between the dunning tick (:00) and the usage aggregator (:15), so a lapsed pause is back to `active` at most an hour late
+  // hourly, between the dunning tick (:00) and the usage aggregator (:15), so a lapsed pause is normally back to `active` within the hour (later if the worker is late or skips the row)
   pauseResume: "5 * * * *",
 } as const;
 

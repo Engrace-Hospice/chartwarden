@@ -2,7 +2,7 @@
 // tenant's subscription does before it writes: read the row under a lock, then refuse a transition its status does not allow.
 import { schema } from "@chartwarden/db";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { WriteTx } from "../pricing/ports";
 
 type SubRow = typeof schema.subscriptionRow.$inferSelect;
@@ -94,6 +94,26 @@ export async function lockSubscription(tx: WriteTx, subscriptionId: string): Pro
   const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).for("update").limit(1);
   if (!sub) throw new NotFoundError("subscription", subscriptionId);
   return sub;
+}
+
+/**
+ * The organization's NEWEST subscription (`ORDER BY started_at DESC LIMIT 1`), read `FOR UPDATE` in the caller's org-scoped transaction, or
+ * null. It is the row every M35 lifecycle path acts on (the org-lifecycle consumer, the tenant resume, the hourly pause-resume sweep): an
+ * older, superseded subscription is never a candidate, and a path that reads this row under the lock finishes before another judges it.
+ */
+export async function lockNewestSubscription(
+  tx: WriteTx,
+  organizationId: string,
+): Promise<SubRow | null> {
+  const S = schema.subscriptionRow;
+  const [sub] = await tx
+    .select()
+    .from(S)
+    .where(eq(S.organizationId, organizationId))
+    .orderBy(desc(S.startedAt))
+    .limit(1)
+    .for("update");
+  return sub ?? null;
 }
 
 /**

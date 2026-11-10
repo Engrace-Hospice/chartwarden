@@ -19,16 +19,21 @@
 // which never matches the lapse predicate either; this covers the other way round, an operator's dated pause that was running when the
 // suspension arrived.)
 //
-// SAFE UNDER A RACE. The lapsed rows are read `FOR UPDATE` and written with a guard (`id`, still `paused`, still lapsed): an operator's
-// resume or cancel, or the org-lifecycle consumer's suspension, that got there first leaves zero rows to update and the sweep leaves the row
-// alone, writing no ledger row and no event. The consumer reads the org's row under the same lock, so whichever of the two takes it first
+// WHICH SUBSCRIPTION: the org's NEWEST one only (`ORDER BY started_at DESC LIMIT 1`, lockNewestSubscription), the row every other M35
+// lifecycle path reads (the org-lifecycle consumer, the tenant routes). It is resumed only when that row is lapsed-paused. An older,
+// superseded subscription is never a candidate: resuming it would put a row nobody reads back into billing behind the newest one, or under
+// a newer subscription that was canceled.
+//
+// SAFE UNDER A RACE. That row is read `FOR UPDATE` and written with a guard (`id`, still `paused`, still lapsed): an operator's resume or
+// cancel, or the org-lifecycle consumer's suspension, that got there first leaves zero rows to update and the sweep leaves the row alone,
+// writing no ledger row and no event. The consumer and the tenant resume read the same row under the same lock, so whichever takes it first
 // completes before the other judges the state it left: a sweep that ran first makes the consumer's suspension a plain one (no second lapse
 // row); a consumer that ran first leaves an open-ended pause the sweep does not match.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne, notInArray } from "drizzle-orm";
-import { pauseLapsed } from "../pricing/contract-select";
-import { PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
+import { isPauseLapsed, pauseLapsed } from "../pricing/contract-select";
+import { PAUSE_LAPSED_REASON_CODE, lockNewestSubscription } from "../routes/admin-transition";
 import { resumedColumns, resumedEventIntent, resumedLedgerRow } from "../routes/resume-transition";
 import { type M35JobDeps, runM35Fanout } from "./jobs";
 
@@ -41,9 +46,9 @@ type SubRow = typeof S.$inferSelect;
 const lapsedPause = (now: Date) => and(eq(S.status, "paused"), pauseLapsed(now));
 
 /**
- * Whether the org already has ANOTHER subscription that counts as live (`subscription_org_active_uq`: one per org that is neither canceled
- * nor paused; a tenant can start a new one while an old non-contracted one is paused). Resuming this one then would violate that index and
- * fail the org's whole transaction every hour; the superseded pause is left as it is.
+ * Whether the org has an OLDER subscription that is live (`subscription_org_active_uq`: one per org that is neither canceled nor paused; the
+ * newest can be paused beside an older live one when an operator resumed the older one). Resuming the newest then would violate that index
+ * and fail the org's whole transaction every hour, so the pause is left as it is (and reported once).
  */
 async function hasOtherLiveSubscription(tx: DbClient, sub: SubRow): Promise<boolean> {
   const [other] = await tx
@@ -60,9 +65,15 @@ async function hasOtherLiveSubscription(tx: DbClient, sub: SubRow): Promise<bool
   return other !== undefined;
 }
 
+/** Subscriptions whose blocked resume has been logged by this process: once per row, not every hour (a restart logs it again). */
+const reportedBlocked = new Set<string>();
+
 /**
- * Resume every lapsed operator pause of one org, in ONE org-scoped transaction (a failure rolls all of it back and the next hour retries:
- * a transition never lacks its ledger row or its event). Returns how many it resumed. Idempotent: a second run finds nothing.
+ * Resume the org's lapsed operator pause, if its newest subscription is one, in ONE org-scoped transaction (a failure rolls all of it back
+ * and the next hour retries: a transition never lacks its ledger row or its event). Returns how many it resumed (0 or 1). Idempotent: a
+ * second run finds nothing. It acts on the org's NEWEST subscription only (lockNewestSubscription: the row every other M35 lifecycle path
+ * reads), so an older, superseded pause is never a candidate: it cannot be resurrected behind the newest one, nor under a newer
+ * subscription that was canceled.
  */
 export async function runPauseResumeForOrg(
   deps: M35JobDeps,
@@ -71,37 +82,36 @@ export async function runPauseResumeForOrg(
   const now = (deps.now ?? (() => new Date()))();
   return withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
     const tx = scoped as unknown as DbClient;
-    const lapsed = await tx
-      .select()
-      .from(S)
-      .where(and(eq(S.organizationId, organizationId), lapsedPause(now)))
-      .for("update");
-    let resumed = 0;
-    for (const sub of lapsed) {
-      const endedAt = sub.pausedUntil;
-      if (!endedAt) continue; // the predicate selects only rows with a date; this narrows the type
-      if (await hasOtherLiveSubscription(tx, sub)) {
-        deps.log?.("m35 lapsed pause not resumed: the organization has another live subscription", {
-          organizationId,
-          subscriptionId: sub.id,
-        });
-        continue;
-      }
-      const done = await tx
-        .update(S)
-        .set(resumedColumns(now))
-        .where(and(eq(S.id, sub.id), lapsedPause(now)))
-        .returning({ id: S.id });
-      if (done.length === 0) continue; // another writer moved it first: leave it exactly where they left it
-      await tx
-        .insert(SH)
-        .values(
-          resumedLedgerRow(sub, { transitionedAt: endedAt, reasonCode: PAUSE_LAPSED_REASON_CODE }),
+    const sub = await lockNewestSubscription(tx, organizationId);
+    if (!sub || !isPauseLapsed(sub, now)) return 0;
+    const endedAt = sub.pausedUntil;
+    if (!endedAt) return 0; // isPauseLapsed implies a date; this narrows the type
+    if (await hasOtherLiveSubscription(tx, sub)) {
+      if (!reportedBlocked.has(sub.id)) {
+        reportedBlocked.add(sub.id);
+        deps.log?.(
+          "m35 lapsed pause not resumed: an older subscription of the organization is live",
+          {
+            organizationId,
+            subscriptionId: sub.id,
+          },
         );
-      await deps.outbox.publish(tx, resumedEventIntent(sub, endedAt));
-      resumed += 1;
+      }
+      return 0;
     }
-    return resumed;
+    const done = await tx
+      .update(S)
+      .set(resumedColumns(now))
+      .where(and(eq(S.id, sub.id), lapsedPause(now)))
+      .returning({ id: S.id });
+    if (done.length === 0) return 0; // another writer moved it first: leave it exactly where they left it
+    await tx
+      .insert(SH)
+      .values(
+        resumedLedgerRow(sub, { transitionedAt: endedAt, reasonCode: PAUSE_LAPSED_REASON_CODE }),
+      );
+    await deps.outbox.publish(tx, resumedEventIntent(sub, endedAt));
+    return 1;
   });
 }
 

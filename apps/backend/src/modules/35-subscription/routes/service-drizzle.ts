@@ -42,6 +42,7 @@ import {
 export type { PlatformRunner, WriteTx };
 import {
   PLATFORM_PAUSE_REASON_CODE,
+  lockNewestSubscription,
   lockSubscription,
   parsePauseEnd,
   pausedUntilDetail,
@@ -1014,12 +1015,9 @@ export function buildDrizzleM35RouteService(
 
     async resumeSubscription(actor): Promise<SubscriptionView> {
       return withOrgContext(db, ctxWrite(actor), async (tx) => {
-        const [sub] = await tx
-          .select()
-          .from(S)
-          .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
-          .limit(1);
+        // Read under the row lock the hourly pause-resume sweep and the org-lifecycle consumer read it under: a resume racing either judges
+        // the status THEY left, so a pause resumed by the sweep is not announced a second time.
+        const sub = await lockNewestSubscription(tx, actor.organizationId);
         if (!sub) throw new NotFoundError("no subscription for org");
         // A contracted subscription is paused by ChartWarden operations (an org suspension) and resumed by them: a tenant that could resume
         // it would close the pause without a history row, and the pause (days not billed) would never end.
@@ -1027,6 +1025,9 @@ export function buildDrizzleM35RouteService(
           await loadPlan(tx, sub.planId),
           "a tenant cannot resume a contracted subscription",
         );
+        // Neither paused nor scheduled to cancel: there is nothing to resume, and nothing is written or announced (the operator's resume
+        // refuses the same way). A subscription scheduled to cancel at period end is "resumed" by clearing the schedule.
+        if (sub.status !== "paused" && !sub.cancelAtPeriodEnd) refuseAdminTransition(sub, "resume");
         const at = now();
         const toStatus = sub.status === "paused" ? "active" : sub.status;
         await tx
@@ -1039,14 +1040,18 @@ export function buildDrizzleM35RouteService(
             updatedAt: at,
           })
           .where(eq(S.id, sub.id));
-        await emit(
-          tx,
-          "m35.subscription.resumed",
-          { subscriptionId: sub.id, organizationId: actor.organizationId, resumedAt: isoReq(at) },
-          actor.organizationId,
-          "subscription",
-          sub.id,
-        );
+        // `resumed` is "a subscription resumed from paused": clearing a cancel schedule on an active subscription announces nothing
+        if (sub.status === "paused") {
+          const resumed = resumedEventIntent(sub, at);
+          await emit(
+            tx,
+            resumed.eventName,
+            resumed.payload,
+            resumed.organizationId,
+            resumed.aggregateKind,
+            resumed.aggregateId,
+          );
+        }
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
         return subscriptionView(

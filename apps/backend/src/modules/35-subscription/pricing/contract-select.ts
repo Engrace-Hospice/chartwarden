@@ -67,6 +67,12 @@ export interface ContractRecord {
 export const pauseLapsed = (at: Date): SQL | undefined =>
   and(isNotNull(SUB.pausedUntil), lte(SUB.pausedUntil, at));
 
+/** The TypeScript twin of {@link pauseLapsed} for a row already read: `paused`, with an end date that has passed at `at`. */
+export const isPauseLapsed = (
+  sub: Pick<typeof SUB.$inferSelect, "status" | "pausedUntil">,
+  at: Date,
+): boolean => sub.status === "paused" && sub.pausedUntil !== null && sub.pausedUntil <= at;
+
 function scopeFilter(scope: ContractScope, at: Date): SQL | undefined {
   if (scope === "live") {
     return and(ne(SUB.status, "canceled"), or(ne(SUB.status, "paused"), pauseLapsed(at)));
