@@ -8,6 +8,7 @@ import { useIdempotencyKeeper } from "./idempotency";
 // ANY answer: the server caches whatever it answered under the key, refusals included, so a retry on the same key after re-verifying
 // would be handed the cached 403.
 import { type OpsErrorCopy, type OpsFailure, describeOpsError } from "./ops-error";
+import { sendWrite } from "./send-write";
 
 export type OpsWriteOutcome<T> =
   | { readonly ok: true; readonly data: T }
@@ -53,13 +54,6 @@ async function boundedFollowUp(followUp: Promise<unknown>, ms: number): Promise<
   }
 }
 
-/** A gateway error page: a 5xx whose body is not the API's error envelope never got to the app. */
-function reachedNoOne(result: FetchResult<unknown>): boolean {
-  if (result.error === undefined || (result.response?.status ?? 0) < 500) return false;
-  const code = (result.error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
-  return typeof code !== "string";
-}
-
 /** No screen copy: the server's sentence (a module constant, so `run` stays stable across renders). */
 const NO_COPY: OpsErrorCopy = {};
 
@@ -79,23 +73,17 @@ export function useOpsWrite(copy: OpsErrorCopy = NO_COPY): OpsWrite {
       fingerprint: string,
       call: (idempotencyKey: string) => Promise<FetchResult<T>>,
     ): Promise<OpsWriteOutcome<T>> => {
-      try {
-        const result = await call(keeper.keyFor(fingerprint));
-        // The server answered, and its answer is cached under the key: the next attempt starts on a new one. A 5xx WITHOUT the standard
-        // error envelope is a gateway (502/504) that never reached the app: nothing was cached, so a retry keeps the key.
-        if (!reachedNoOne(result)) keeper.settled();
-        if (result.error !== undefined) {
-          const refused = describeOpsError(result.error, result.response ?? null, copy);
-          setFailure(refused);
-          return { ok: false, failure: refused };
-        }
-        return { ok: true, data: result.data as T };
-      } catch {
-        // No answer at all: keep the key so a retry replays.
-        const unreachable = describeOpsError(undefined, null, copy);
-        setFailure(unreachable);
-        return { ok: false, failure: unreachable };
-      }
+      // The server answered, and its answer is cached under the key: the next attempt starts on a new one. A 5xx WITHOUT the standard
+      // error envelope is a gateway (502/504) that never reached the app: nothing was cached, so a retry keeps the key. No answer at all
+      // keeps it too, so a retry replays. A non-ok status with an empty body is a refusal, not a success (see send-write.ts).
+      const sent = await sendWrite(keeper, fingerprint, call);
+      if (sent.status === "ok") return { ok: true, data: sent.res.data as T };
+      const failed =
+        sent.status === "unreachable"
+          ? describeOpsError(undefined, null, copy)
+          : describeOpsError(sent.res.error, sent.res.response ?? null, copy);
+      setFailure(failed);
+      return { ok: false, failure: failed };
     },
     [keeper, copy],
   );
