@@ -13,12 +13,13 @@
 // that takes over from the env binding is a different target, matching the clear's conservative rule. A move A -> B -> A inside one round trip
 // reads as "unchanged" (ABA); the ids a trip under A wrote are valid under A, so nothing stale is written.
 import { type DbClient, schema } from "@chartwarden/db";
+import { DOSESPOT_ENV_BOUND_TARGET } from "@chartwarden/dosespot";
 import { type SQLWrapper, eq, sql } from "drizzle-orm";
 
 const R = schema.dosespotClinicRegistrations;
 
 /** The target of an organization with no registration row (the env binding, or nothing, serves it). */
-export const ENV_BOUND_TARGET = "env";
+export const ENV_BOUND_TARGET = DOSESPOT_ENV_BOUND_TARGET;
 
 /** The clinic a registration row names; {@link ENV_BOUND_TARGET} for no row. */
 export function targetOfRegistration(

@@ -10,6 +10,7 @@ import {
   type DoseSpotFetch,
   type DoseSpotTenantConfig,
   type DoseSpotTenantConfigResolver,
+  NEWRX_PROGRESS_MAX_ENTRIES,
   NotEnabledError,
   UnconfirmedOutcomeError,
   createEnvTenantConfigResolver,
@@ -385,6 +386,42 @@ describe("a database-backed resolver (slice 4)", () => {
       expect(out.dosespotPrescriptionId).toBe("9002");
     });
 
+    it("the per-process memory is bounded: past the cap the OLDEST entry is dropped (its order, rekeyed or abandoned, is never served from it) and the newest still is", async () => {
+      const w = swappable(cfg(1));
+      let sendOk = false;
+      const routes: Record<string, Responder> = {
+        "POST /connect/token": TOKEN_OK,
+        "POST /api/patients/501/prescriptions/coded": (_req, n) => ({
+          status: 200,
+          body: { Id: 9000 + n },
+        }),
+        // a permanent refusal keeps the created id in memory and does not count against the circuit breaker
+        "POST /api/patients/501/prescriptions/send": (req) =>
+          sendOk
+            ? {
+                status: 200,
+                body: [
+                  {
+                    Id: (JSON.parse(req.body ?? "{}") as { prescriptionIds: number[] })
+                      .prescriptionIds[0],
+                  },
+                ],
+              }
+            : { status: 422 },
+      };
+      const { c, calls } = clientOver(w.r, routes);
+      for (let i = 0; i <= NEWRX_PROGRESS_MAX_ENTRIES; i += 1) {
+        await c.transmitNewRx(ORG, NEWRX, `idem-cap-${i}`).catch(() => undefined);
+      }
+      const created = codedCount(calls);
+      expect(created).toBe(NEWRX_PROGRESS_MAX_ENTRIES + 1);
+      sendOk = true;
+      await c.transmitNewRx(ORG, NEWRX, `idem-cap-${NEWRX_PROGRESS_MAX_ENTRIES}`); // the newest: served from memory
+      expect(codedCount(calls)).toBe(created);
+      await c.transmitNewRx(ORG, NEWRX, "idem-cap-0"); // the oldest: dropped, so the create runs again
+      expect(codedCount(calls)).toBe(created + 1);
+    });
+
     it("a key rotation that keeps the clinic still resumes with the created id: only the send is re-run", async () => {
       const w = swappable(cfg(1));
       const { c, calls } = clientOver(w.r, routesFailingFirstSend());
@@ -394,6 +431,127 @@ describe("a database-backed resolver (slice 4)", () => {
       expect(codedCount(calls)).toBe(1); // not created twice
       expect(sends(calls)).toEqual([9001, 9001]);
       expect(out.dosespotPrescriptionId).toBe("9001");
+    });
+  });
+
+  // The worker names the registration target it began under (`expectedTarget`); the adapter re-resolves the config for EVERY request of an operation,
+  // so it compares each resolution with it and refuses a request that would go out under another clinic's credentials (ADR-0111 D6).
+  describe("a request that would go out under another clinic than the caller began under is refused before it is sent", () => {
+    const CLINIC_1 = "sandbox:clinic-1";
+    const CLINIC_2 = "sandbox:clinic-2";
+    const live1 = () => cfg(1, { registrationTarget: CLINIC_1 });
+    const live2 = () => cfg(2, { clinicId: "clinic-2", registrationTarget: CLINIC_2 });
+    const sendRoutes = (): Record<string, Responder> => ({
+      "POST /connect/token": TOKEN_OK,
+      "POST /api/patients/501/prescriptions/coded": () => ({ status: 200, body: { Id: 9001 } }),
+      "POST /api/patients/501/prescriptions/send": () => ({ status: 200, body: [{ Id: 9001 }] }),
+      "POST /api/patients": () => ({ status: 200, body: { Id: 601 } }),
+    });
+    const requestsTo = (calls: { url: string }[], suffix: string) =>
+      calls.filter((x) => x.url.endsWith(suffix)).length;
+    const PATIENT = {
+      chartwardenPatientId: "p-1",
+      firstName: "Test",
+      lastName: "Patient",
+      dateOfBirth: "1950-01-01",
+      gender: "F",
+      address: { line1: "1 Analytical Way", city: "London", state: "CA", postalCode: "90210" },
+      active: true,
+    };
+
+    it("control: the target the caller began under is the config's: the operation runs", async () => {
+      const { c } = clientOver(swappable(live1()).r, sendRoutes());
+      const out = await c.transmitNewRx(ORG, NEWRX, "idem-t1", { expectedTarget: CLINIC_1 });
+      expect(out.dosespotPrescriptionId).toBe("9001");
+    });
+
+    it("the config moves to another clinic BETWEEN the create and the send: the send is never issued", async () => {
+      const w = swappable(live1());
+      const routes = sendRoutes();
+      routes["POST /api/patients/501/prescriptions/coded"] = () => {
+        w.set(live2()); // the move commits while the create's answer is on its way
+        return { status: 200, body: { Id: 9001 } };
+      };
+      const { c, calls } = clientOver(w.r, routes);
+      const err = await c
+        .transmitNewRx(ORG, NEWRX, "idem-t2", { expectedTarget: CLINIC_1 })
+        .catch((e) => e);
+      expect(isNotEnabledError(err)).toBe(true);
+      expect(requestsTo(calls, "/prescriptions/coded")).toBe(1);
+      expect(requestsTo(calls, "/prescriptions/send")).toBe(0);
+    });
+
+    it("the config is already another clinic's when the operation begins (a move after the caller's stamp): nothing is sent at all, no token minted", async () => {
+      const { c, calls } = clientOver(swappable(live2()).r, sendRoutes());
+      const err = await c
+        .transmitNewRx(ORG, NEWRX, "idem-t3", { expectedTarget: CLINIC_1 })
+        .catch((e) => e);
+      expect(isNotEnabledError(err)).toBe(true);
+      expect(calls).toEqual([]);
+    });
+
+    it("the config moves between the operation's first resolution and its create: the create is not issued", async () => {
+      let resolutions = 0;
+      const r: DoseSpotTenantConfigResolver = {
+        ...swappable(live1()).r,
+        configFor: async () => {
+          resolutions += 1;
+          return resolutions === 1 ? live1() : live2();
+        },
+      };
+      const { c, calls } = clientOver(r, sendRoutes());
+      const err = await c
+        .transmitNewRx(ORG, NEWRX, "idem-t4", { expectedTarget: CLINIC_1 })
+        .catch((e) => e);
+      expect(isNotEnabledError(err)).toBe(true);
+      expect(calls).toEqual([]);
+    });
+
+    it("a persisted created id that goes straight to the send is checked too", async () => {
+      const { c, calls } = clientOver(swappable(live2()).r, sendRoutes());
+      const err = await c
+        .transmitNewRx(ORG, NEWRX, "idem-t5", {
+          createdPrescriptionId: "9001",
+          expectedTarget: CLINIC_1,
+        })
+        .catch((e) => e);
+      expect(isNotEnabledError(err)).toBe(true);
+      expect(requestsTo(calls, "/prescriptions/send")).toBe(0);
+    });
+
+    it("a patient upsert is refused the same way, before any request carries the demographics", async () => {
+      const { c, calls } = clientOver(swappable(live2()).r, sendRoutes());
+      const err = await c
+        .upsertPatient(ORG, PATIENT, "patient-key", { expectedTarget: CLINIC_1 })
+        .catch((e) => e);
+      expect(isNotEnabledError(err)).toBe(true);
+      expect(calls).toEqual([]);
+      const ok = clientOver(swappable(live1()).r, sendRoutes());
+      const out = await ok.c.upsertPatient(ORG, PATIENT, "patient-key", {
+        expectedTarget: CLINIC_1,
+      });
+      expect(out.dosespotPatientId).toBe("601");
+    });
+
+    it("an env-bound config (no registration target) is the target `env`; a caller that names no target is not checked", async () => {
+      const envBound = cfg(1); // no registrationTarget: served by the env binding
+      const { c } = clientOver(swappable(envBound).r, sendRoutes());
+      expect(
+        (await c.transmitNewRx(ORG, NEWRX, "idem-t6", { expectedTarget: "env" }))
+          .dosespotPrescriptionId,
+      ).toBe("9001");
+      const wrong = clientOver(swappable(envBound).r, sendRoutes());
+      expect(
+        isNotEnabledError(
+          await wrong.c
+            .transmitNewRx(ORG, NEWRX, "idem-t7", { expectedTarget: CLINIC_1 })
+            .catch((e) => e),
+        ),
+      ).toBe(true);
+      const unchecked = clientOver(swappable(live2()).r, sendRoutes());
+      expect((await unchecked.c.transmitNewRx(ORG, NEWRX, "idem-t8")).dosespotPrescriptionId).toBe(
+        "9001",
+      );
     });
   });
 

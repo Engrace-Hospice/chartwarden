@@ -392,6 +392,9 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
         ...(start.createdPrescriptionId
           ? { createdPrescriptionId: start.createdPrescriptionId }
           : {}),
+        // every request of the call is refused if the registration names another clinic than the one the stamp read (the adapter resolves the config again
+        // for each request: transmit-ownership.ts guards the DB writes, this guards the requests)
+        expectedTarget: target,
         onCreated: (id) => rememberCreated(deps, organizationId, c, token, id, target),
         beforeSend: () => requireOwnership(deps, organizationId, c, token, target),
       },

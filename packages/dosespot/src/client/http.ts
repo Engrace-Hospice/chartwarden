@@ -60,10 +60,11 @@ import {
   toPatientBody,
 } from "./mappers";
 import { DOSESPOT_RETRY_CONFIG, classifyRetryableStatus, computeBackoffDelays } from "./retry";
-import type {
-  DoseSpotConfigPurpose,
-  DoseSpotTenantConfig,
-  DoseSpotTenantConfigResolver,
+import {
+  type DoseSpotConfigPurpose,
+  type DoseSpotTenantConfig,
+  type DoseSpotTenantConfigResolver,
+  targetOfConfig,
 } from "./tenant-config";
 import {
   createExpirySweeper,
@@ -149,6 +150,13 @@ interface CachedToken {
   readonly expiresAtMs: number;
 }
 
+/**
+ * How many created-but-unsent prescription ids one process remembers. The memory serves a retry on the SAME worker; the persisted id on the transmission
+ * row is the durable one, so an entry is only an optimisation. It is bounded because an entry is never removed when its order is rekeyed (a registration
+ * move gives the order a new key: the old key's entry is never served again) or abandoned: the oldest entry is dropped past the cap.
+ */
+export const NEWRX_PROGRESS_MAX_ENTRIES = 1000;
+
 interface NewRxProgress {
   readonly prescriptionId: string;
   /** The clinic (host and clinic id) the prescription was CREATED under: an id is only ever sent under that same clinic. */
@@ -218,6 +226,26 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       );
     }
     return cfg;
+  }
+
+  /**
+   * A caller that began under one registration (`expectedTarget`) must not be served another clinic's credentials: each resolution of the config is compared
+   * with it right after it is read, before anything is sent. A mismatch is a denial like a deactivated registration (the caller's worker waits and runs
+   * again under the new one). What this cannot stop is a move that lands after the config was read while that request is already on the wire.
+   */
+  function assertExpectedTarget(
+    op: DoseSpotOperation,
+    cfg: DoseSpotTenantConfig,
+    expectedTarget: string | undefined,
+    correlationId: string,
+  ): void {
+    if (expectedTarget === undefined || targetOfConfig(cfg) === expectedTarget) return;
+    throw new NotEnabledError(
+      "dosespot",
+      op,
+      "The DoseSpot registration moved to another clinic while this request was being prepared; it will run again under the new registration.",
+      correlationId,
+    );
   }
 
   /** One raw HTTP exchange → status + body text. Network failures and timeouts become RetryableError. */
@@ -449,12 +477,15 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     purpose: DoseSpotConfigPurpose = "operate",
     /** false for a step whose success is not yet the call's (a NewRx create: only the send's outcome says DoseSpot is healthy). */
     countSuccess = true,
+    /** The registration target the caller began under (see {@link assertExpectedTarget}). */
+    expectedTarget?: string,
   ): Promise<unknown> {
     const correlationId = newCorrelationId();
     const endpoint: DoseSpotEndpoint = DOSESPOT_ENDPOINTS[name];
     if (endpoint.verification === "none")
       throw degraded(op, false, UNSUPPORTED_MESSAGE, correlationId);
     const cfg = await configOrDeny(op, orgId, correlationId, purpose);
+    assertExpectedTarget(op, cfg, expectedTarget, correlationId);
     const gate = evaluateBreaker(
       breakers.get(orgId) ?? INITIAL_BREAKER_SNAPSHOT,
       now().toISOString(),
@@ -527,8 +558,16 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
   };
 
   return {
-    async upsertPatient(orgId, payload, idempotencyKey): Promise<DoseSpotPatientResponse> {
-      await configOrDeny("upsertPatient", orgId, newCorrelationId()); // fail closed BEFORE touching the payload
+    async upsertPatient(orgId, payload, idempotencyKey, options): Promise<DoseSpotPatientResponse> {
+      const correlationId = newCorrelationId();
+      const expectedTarget = options?.expectedTarget;
+      // fail closed BEFORE touching the payload
+      assertExpectedTarget(
+        "upsertPatient",
+        await configOrDeny("upsertPatient", orgId, correlationId),
+        expectedTarget,
+        correlationId,
+      );
       const body = toPatientBody(payload);
       const existing = payload.existingDosespotPatientId;
       const out =
@@ -541,8 +580,22 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
               { patientId: existing },
               body,
               idempotencyKey,
+              "operate",
+              true,
+              expectedTarget,
             )
-          : await call("upsertPatient", orgId, undefined, "addPatient", {}, body, idempotencyKey);
+          : await call(
+              "upsertPatient",
+              orgId,
+              undefined,
+              "addPatient",
+              {},
+              body,
+              idempotencyKey,
+              "operate",
+              true,
+              expectedTarget,
+            );
       const id = existing ?? identifierOf(out);
       if (id === undefined) {
         throw degraded(
@@ -590,6 +643,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     async transmitNewRx(orgId, payload, idempotencyKey, resume): Promise<DoseSpotNewRxResponse> {
       const correlationId = newCorrelationId();
       const cfg = await configOrDeny("transmitNewRx", orgId, correlationId);
+      const expectedTarget = resume?.expectedTarget;
+      assertExpectedTarget("transmitNewRx", cfg, expectedTarget, correlationId);
       if (payload.deaSchedule !== undefined && !cfg.epcsCertified) {
         // 21 CFR 1311: a controlled substance never leaves through a non-certified tenant (D18).
         throw degraded(
@@ -621,6 +676,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           "operate",
           // a create's success must not reset the breaker: an outage that fails only the send would otherwise never open it
           false,
+          expectedTarget,
         );
         prescriptionId = identifierOf(created);
         if (prescriptionId === undefined) {
@@ -634,6 +690,10 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           );
         }
         newRxProgress.set(progressKey, { prescriptionId, target });
+        for (const oldest of newRxProgress.keys()) {
+          if (newRxProgress.size <= NEWRX_PROGRESS_MAX_ENTRIES) break;
+          newRxProgress.delete(oldest);
+        }
         // remember it OUTSIDE this process before the send: a retry elsewhere then re-runs only the send
         await resume?.onCreated?.(prescriptionId);
       }
@@ -647,6 +707,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         { patientId: payload.dosespotPatientId },
         { prescriptionIds: [Number(prescriptionId)] },
         idempotencyKey,
+        "operate",
+        true,
+        expectedTarget,
       );
       // The send response is an array of IdentifierResponse; our id must be among them. A 2xx that does not echo it (an empty body included)
       // is NOT proof it left, but DoseSpot ACCEPTED the send, so it may have: an UNCONFIRMED outcome (the worker holds the order for a

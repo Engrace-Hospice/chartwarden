@@ -26,6 +26,7 @@ import { ChartWardenError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { ConfigRow } from "./config-store";
 import { registrationIsLive } from "./liveness";
+import { targetOfRegistration } from "./registration-target";
 import type { ClinicSecretCipher } from "./secret-cipher";
 
 const R = schema.dosespotClinicRegistrations;
@@ -132,6 +133,8 @@ export function createDrizzleTenantConfigSource(
       serviceClinicianId: row.serviceClinicianId,
       epcsCertified: false, // EPCS stays under the D18 certification gate: no registration can switch it on
       version: row.version,
+      // which clinic of which environment this config serves: the adapter refuses a request whose caller began under another (ADR-0111 D6)
+      registrationTarget: targetOfRegistration(row),
     };
     built.set(row.organizationId, { version: row.version, config, at: now() });
     armSweep();

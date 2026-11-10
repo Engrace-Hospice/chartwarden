@@ -43,6 +43,7 @@ export type {
   DoseSpotMedHistoryResponse,
   DoseSpotNewRxPayload,
   DoseSpotNewRxResponse,
+  DoseSpotCallOptions,
   DoseSpotNewRxResume,
   DoseSpotPatientPayload,
   DoseSpotPatientResponse,
@@ -65,7 +66,9 @@ export {
   type EndpointVerification,
 } from "./endpoints";
 export {
+  DOSESPOT_ENV_BOUND_TARGET,
   DOSESPOT_TENANT_CONFIGS_ENV,
+  targetOfConfig,
   createEnvTenantConfigResolver,
   createLayeredTenantConfigResolver,
   createUnboundTenantConfigResolver,
@@ -96,6 +99,7 @@ export {
 export { WIRE_FIELD_MAPPING_VERIFIED, phaseOfStatus, sigDirections } from "./mappers";
 export {
   DOSESPOT_REQUEST_TIMEOUT_MS,
+  NEWRX_PROGRESS_MAX_ENTRIES,
   createHttpDoseSpotClient,
   type DoseSpotFetch,
   type HttpDoseSpotClientDeps,

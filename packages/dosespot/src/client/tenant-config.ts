@@ -17,6 +17,13 @@ import type { DoseSpotCredentials } from "./contract";
 
 export const DOSESPOT_TENANT_CONFIGS_ENV = "DOSESPOT_TENANT_CONFIGS";
 
+/** The registration target of a tenant with no registration row (served by the env binding, or by nothing). */
+export const DOSESPOT_ENV_BOUND_TARGET = "env";
+
+/** The registration target a resolved config names: its own, or {@link DOSESPOT_ENV_BOUND_TARGET} for an env entry. */
+export const targetOfConfig = (config: { readonly registrationTarget?: string }): string =>
+  config.registrationTarget ?? DOSESPOT_ENV_BOUND_TARGET;
+
 /** One tenant's complete adapter configuration. Extends the §2.5 credential shape with the v2 API's two extra
  * inputs: the `Subscription-Key` header value and the clinician the service token is minted for. */
 export interface DoseSpotTenantConfig extends Omit<DoseSpotCredentials, "webhookSecret"> {
@@ -26,6 +33,12 @@ export interface DoseSpotTenantConfig extends Omit<DoseSpotCredentials, "webhook
    * rotated credential never reuses a token minted under the old key.
    */
   readonly version?: number;
+  /**
+   * Which registration this config was built from: `<environment>:<clinic id>` (the target a registration change moves). Absent for an env entry, which
+   * is the target {@link DOSESPOT_ENV_BOUND_TARGET}. A caller that began a vendor round trip under one registration names it (`expectedTarget`), and the
+   * adapter refuses a request whose freshly resolved config names another (ADR-0111 D6).
+   */
+  readonly registrationTarget?: string;
   /** The DoseSpot clinician id service calls (patient sync, history, status polling) authenticate as. */
   readonly serviceClinicianId: string;
   /** Present only when the tenant also uses the webhook; the route resolves its secret separately. */

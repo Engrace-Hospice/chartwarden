@@ -186,11 +186,13 @@ async function processRow(
         // scoped to the clinic this round trip began under: the patient's `updated_at` does not move with the registration, so the bare key would
         // be the one the OLD clinic already answered (plan.ts says why; only a digest of the target is in it)
         const idempotencyKey = patientSyncIdempotencyKey(row.patientId, snapshot.updatedAt, target);
-        // Reached (past this point) only once the vendor client is real — today it always throws here.
+        // The unbound deny-stub (the default when no client is injected) rejects here; the HTTP adapter sends the upsert. It is told the clinic this
+        // round trip began under and refuses to send under another (its config is resolved again for the request: packages/dosespot, http.ts).
         const response = await doseSpotClient.upsertPatient(
           row.organizationId,
           payload,
           idempotencyKey,
+          { expectedTarget: target },
         );
         const outboxPort = deps.outbox;
         // §2.6 "on success": record the vendor-returned id (the ONLY writer of `dosespot_patient_sync`'s

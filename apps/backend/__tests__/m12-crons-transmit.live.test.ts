@@ -1331,6 +1331,86 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(first.orderId).toBe(sent[0]?.order);
       });
 
+      // The adapter resolves the tenant's config again for EVERY request, so the DB guards (which only cover the writes) are not enough: a move that
+      // lands after the guard before `beforeSend` returns and before the send's config is read must stop the send itself (the real source, the real client).
+      it("the real adapter refuses the SEND when the registration moved to another clinic after the last DB guard: nothing goes out under the new clinic's credentials", async () => {
+        const platformEnv = {
+          DOSESPOT_SANDBOX_ENABLED: "true",
+          DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "platform-sandbox-sub-key",
+        };
+        const cipher: ClinicSecretCipher = {
+          encrypt: async () => ({ cipher: "sealed", dekRef: "dek-1" }),
+          decrypt: async () => ({ clinicKey: "clinic-key-plaintext-GUARD-9a1" }),
+        };
+        const requests: string[] = [];
+        const fetchImpl: DoseSpotFetch = async (url) => {
+          requests.push(url);
+          if (url.endsWith("/connect/token"))
+            return {
+              status: 200,
+              text: async () => JSON.stringify({ access_token: "tok", expires_in: 3600 }),
+            };
+          if (url.endsWith("/prescriptions/send"))
+            return { status: 200, text: async () => JSON.stringify({ Items: [{ Id: 9001 }] }) };
+          return { status: 200, text: async () => JSON.stringify({ Id: 9001 }) };
+        };
+        const real = createHttpDoseSpotClient({
+          resolver: createLayeredTenantConfigResolver({
+            source: createDrizzleTenantConfigSource({ db: h.handle.db, cipher, platformEnv }),
+            fallback: createEnvTenantConfigResolver({}),
+          }),
+          fetch: fetchImpl,
+          sleep: async () => undefined,
+        });
+        const moveToClinicB = async () => {
+          await inOrg(h.handle.db, ORG_A, (tx) =>
+            clinicService.put(
+              createDrizzleConfigStore(tx),
+              actor(),
+              { environment: "sandbox", clinicId: "clinic-b" },
+              1,
+            ),
+          );
+          // the new registration is tested and activated, with its own sealed key
+          await h.admin.query(
+            `UPDATE dosespot_clinic_registration SET status='active', secret_cipher='sealed', secret_dek_ref='dek-1', service_clinician_id='900',
+               verified_at=now(), verified_by_membership_id=$2, activated_at=now(), activated_by_membership_id=$2 WHERE organization_id=$1`,
+            [ORG_A, h.memberOf[ORG_A]],
+          );
+        };
+        const racingClient = new Proxy(real, {
+          get(target, prop, receiver) {
+            if (prop !== "transmitNewRx") return Reflect.get(target, prop, receiver);
+            return (
+              org: string,
+              payload: Parameters<typeof real.transmitNewRx>[1],
+              key: string,
+              resume?: Parameters<typeof real.transmitNewRx>[3],
+            ) =>
+              real.transmitNewRx(org, payload, key, {
+                ...resume,
+                beforeSend: async () => {
+                  await resume?.beforeSend?.(); // the DB guard: still the old clinic
+                  await moveToClinicB(); // ...and the move lands before the send reads its config
+                },
+              });
+          },
+        });
+        const { orderId, transmissionId, idempotencyKey } = await queued();
+        const r = await runTransmitNewRxForOrg(
+          { ...depsWithWarn(new FakeDoseSpotVendor()), client: racingClient },
+          ORG_A,
+        );
+        expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, transmitted: 0, failed: 0 });
+        expect(requests.filter((u) => u.endsWith("/prescriptions/coded"))).toHaveLength(1); // the create went out under the old clinic
+        expect(requests.filter((u) => u.endsWith("/prescriptions/send"))).toHaveLength(0); // the send did not
+        const t = await txRow(transmissionId as string);
+        expect(t.dosespot_prescription_id).toBeNull(); // the create's id (persisted before the move) was dropped by the settle
+        expect(t.idempotency_key).not.toBe(idempotencyKey);
+        expect(t.retry_count).toBe(0);
+        expect((await orderRow(orderId)).s).toBe("queued");
+      });
+
       it("a move that commits between the payload's vendor ids and the stamp starts NO call: the payload may hold the old clinic's ids, so the order waits and is built again", async () => {
         const { orderId, transmissionId } = await queued();
         let transactions = 0;

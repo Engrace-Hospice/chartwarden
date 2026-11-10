@@ -104,6 +104,8 @@ describe("DoseSpot tenant config source", () => {
       serviceClinicianId: "900",
       epcsCertified: false,
       version: 3,
+      // which registration it serves: the adapter refuses a request whose caller began under another clinic
+      registrationTarget: "sandbox:clinic-1",
     });
   });
 

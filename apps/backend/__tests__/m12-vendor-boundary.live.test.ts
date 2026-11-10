@@ -1140,13 +1140,17 @@ describe.skipIf(!DB_URL)(
         await registerClinic(ORG_A, "active");
         /** The idempotency key of every upsert, in order (the Fake does not keep it). */
         const upsertKeys: Array<string | undefined> = [];
+        /** The registration target the worker said it began each upsert under (the adapter refuses a request that would go out under another). */
+        const upsertTargets: Array<string | undefined> = [];
         class MovingVendor extends FakeDoseSpotVendor {
           override async upsertPatient(
             orgId: string,
             payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
             idempotencyKey?: string,
+            options?: { expectedTarget?: string },
           ) {
             upsertKeys.push(idempotencyKey);
+            upsertTargets.push(options?.expectedTarget);
             const out = await super.upsertPatient(orgId, payload);
             if (this.calls.filter((c) => c.method === "upsertPatient").length === 1) await move();
             return out;
@@ -1157,8 +1161,10 @@ describe.skipIf(!DB_URL)(
             orgId: string,
             payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
             idempotencyKey?: string,
+            options?: { expectedTarget?: string },
           ) {
             upsertKeys.push(idempotencyKey);
+            upsertTargets.push(options?.expectedTarget);
             return super.upsertPatient(orgId, payload);
           }
         }
@@ -1188,6 +1194,8 @@ describe.skipIf(!DB_URL)(
         expect(upsertKeys[1]).toMatch(/^patient:[0-9a-f-]+:.+:[0-9a-f]{16}$/);
         expect(upsertKeys[1]).not.toBe(upsertKeys[0]);
         expect(upsertKeys.join(" ")).not.toContain("clinic-");
+        // and each upsert named the clinic it began under, so the adapter can refuse a request that would go out under another
+        expect(upsertTargets).toEqual(["sandbox:clinic-1", "production:clinic-new"]);
         expect(
           await q(
             "SELECT last_dosespot_patient_id id FROM dosespot_patient_sync WHERE patient_id=$1",
