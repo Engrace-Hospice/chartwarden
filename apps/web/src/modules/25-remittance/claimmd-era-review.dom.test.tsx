@@ -612,15 +612,15 @@ describe("M25 Claim.MD ERA nonposting review", () => {
     expect(await screen.findByText("Approved")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Execute approved posting" }));
     expect(await screen.findByText(/M25 remittance record created/)).toBeTruthy();
-    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/posting-plan"))).toBe(
+    expect(
+      calls.some((call) => call.method === "POST" && call.path.endsWith("/posting-plan")),
+    ).toBe(true);
+    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/approval"))).toBe(
       true,
     );
-    expect(
-      calls.some((call) => call.method === "POST" && call.path.endsWith("/approval")),
-    ).toBe(true);
-    expect(
-      calls.some((call) => call.method === "POST" && call.path.endsWith("/execution")),
-    ).toBe(true);
+    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/execution"))).toBe(
+      true,
+    );
     confirm.mockRestore();
   });
 

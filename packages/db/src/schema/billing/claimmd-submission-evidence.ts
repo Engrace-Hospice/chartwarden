@@ -1,8 +1,8 @@
 import {
   bigint,
   foreignKey,
-  integer,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -67,7 +67,9 @@ export const claimmdSubmissionLineEvidence = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     evidenceId: uuid("evidence_id").notNull(),
-    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
     providerEntityId: uuid("provider_entity_id").notNull(),
     claimId: uuid("claim_id").notNull(),
     submissionId: uuid("submission_id").notNull(),
@@ -88,13 +90,25 @@ export const claimmdSubmissionLineEvidence = pgTable(
   },
   (t) => [
     uniqueIndex("claimmd_submission_line_evidence_pos_uq").on(t.evidenceId, t.linePosition),
-    uniqueIndex("claimmd_submission_line_evidence_ref_uq").on(t.evidenceId, t.lineItemControlNumber),
+    uniqueIndex("claimmd_submission_line_evidence_ref_uq").on(
+      t.evidenceId,
+      t.lineItemControlNumber,
+    ),
     foreignKey({
       columns: [t.evidenceId, t.organizationId, t.accountReference, t.usage],
-      foreignColumns: [claimmdSubmissionEvidence.id, claimmdSubmissionEvidence.organizationId, claimmdSubmissionEvidence.accountReference, claimmdSubmissionEvidence.usage],
+      foreignColumns: [
+        claimmdSubmissionEvidence.id,
+        claimmdSubmissionEvidence.organizationId,
+        claimmdSubmissionEvidence.accountReference,
+        claimmdSubmissionEvidence.usage,
+      ],
       name: "claimmd_submission_line_evidence_scope_fk",
     }).onDelete("restrict"),
-    index("claimmd_submission_line_evidence_claim_ix").on(t.organizationId, t.claimId, t.submissionId),
+    index("claimmd_submission_line_evidence_claim_ix").on(
+      t.organizationId,
+      t.claimId,
+      t.submissionId,
+    ),
   ],
 );
 
