@@ -7,7 +7,7 @@
 import { schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { asc, eq, inArray } from "drizzle-orm";
-import { PAUSED_UNTIL_PREFIX } from "../routes/admin-transition";
+import { pausedUntilOfLedgerRow } from "../routes/admin-transition";
 import type { WriteTx } from "../routes/service-drizzle";
 import { type ContractRecord, loadModeHistory, selectContracts } from "./contract-select";
 import { loadBands } from "./plan-service";
@@ -24,19 +24,15 @@ export interface Transition {
   readonly from: Sub["status"] | null;
   readonly to: Sub["status"];
   readonly at: Date;
-  /** The ledger row's `reason_detail`: an admin pause with an end date records it as `paused_until=<ISO instant>` (PAUSED_UNTIL_PREFIX). */
+  /** The ledger row's `reason_code`: only an operator's pause (`platform_ops_pause`) is read for an end date. */
+  readonly reasonCode?: string | null;
+  /** The ledger row's `reason_detail`: an operator's pause with an end date records it as `paused_until=<ISO instant>` (pausedUntilDetail). */
   readonly detail?: string | null;
 }
 
 export interface Lifetime {
   readonly endedAt: Date | null;
   readonly pauses: { readonly from: Date; readonly to: Date | null }[];
-}
-
-function pausedUntilOf(t: Transition): Date | null {
-  if (!t.detail?.startsWith(PAUSED_UNTIL_PREFIX)) return null;
-  const until = new Date(t.detail.slice(PAUSED_UNTIL_PREFIX.length));
-  return Number.isNaN(until.getTime()) ? null : until;
 }
 
 /**
@@ -65,7 +61,7 @@ export function lifetimeFromTransitions(
     const keepsPaused = t.from === "paused" && t.to === "paused";
     if (open && open.to === null && !keepsPaused) open.to = t.at;
     if (t.to === "paused" && t.from !== "paused")
-      pauses.push({ from: t.at, to: null, until: pausedUntilOf(t) });
+      pauses.push({ from: t.at, to: null, until: pausedUntilOfLedgerRow(t) });
   }
   const last = pauses[pauses.length - 1];
   if (last && last.to === null && sub.status !== "paused") last.to = sub.updatedAt;
@@ -86,6 +82,7 @@ async function lifetimeOf(tx: WriteTx, sub: Sub, at: Date): Promise<Lifetime> {
       from: SH.fromStatus,
       to: SH.toStatus,
       at: SH.transitionedAt,
+      reasonCode: SH.reasonCode,
       detail: SH.reasonDetail,
     })
     .from(SH)

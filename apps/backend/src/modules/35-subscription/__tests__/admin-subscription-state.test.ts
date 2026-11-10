@@ -22,9 +22,14 @@ const operator: M35WriteActor = {
 };
 
 /** A transaction whose every select returns the one subscription row, and which records the writes and the lock modes it was asked for. */
-function recordingTx(status: string, extra: Record<string, unknown> = {}) {
+function recordingTx(
+  status: string,
+  extra: Record<string, unknown> = {},
+  onLock: () => void = () => undefined,
+) {
   const writes: string[] = [];
   const inserted: Record<string, unknown>[] = [];
+  const updated: Record<string, unknown>[] = [];
   const locks: unknown[][] = [];
   const row = { id: SUBSCRIPTION_ID, organizationId: ORG_ID, status, ...extra };
   const chain = (rows: unknown[]): unknown => {
@@ -34,6 +39,7 @@ function recordingTx(status: string, extra: Record<string, unknown> = {}) {
         if (prop === "for")
           return (...args: unknown[]) => {
             locks.push(args);
+            onLock(); // the lock is where a second operator WAITS: whatever the clock does meanwhile happens here
             return proxy;
           };
         return () => proxy;
@@ -56,14 +62,20 @@ function recordingTx(status: string, extra: Record<string, unknown> = {}) {
     },
     update: () => {
       writes.push("update");
-      return chain([]);
+      const rows = chain([]) as { set: (v: Record<string, unknown>) => unknown };
+      return {
+        set: (v: Record<string, unknown>) => {
+          updated.push(v);
+          return rows;
+        },
+      };
     },
     delete: () => {
       writes.push("delete");
       return chain([]);
     },
   } as unknown as WriteTx;
-  return { tx, writes, inserted, locks };
+  return { tx, writes, inserted, updated, locks };
 }
 
 function serviceOver(
@@ -71,8 +83,9 @@ function serviceOver(
   withAudit = true,
   now?: () => Date,
   rowExtra: Record<string, unknown> = {},
+  onLock: () => void = () => undefined,
 ) {
-  const recorded = recordingTx(status, rowExtra);
+  const recorded = recordingTx(status, rowExtra, onLock);
   const audited: PlatformAuditEntry[] = [];
   let runnerCalls = 0;
   const platformRunner: PlatformRunner = async (fn) => {
@@ -151,9 +164,8 @@ describe("admin pause with an end date: the date must be a future instant, and t
   it.each([
     ["in the past", "2026-11-30T23:59:59Z"],
     ["exactly now", "2026-12-01T00:00:00Z"],
-    ["not an instant", "next tuesday"],
   ])(
-    "a pausedUntil %s -> 422 PAUSE_UNTIL_NOT_FUTURE, before the runner is opened and with no write",
+    "a pausedUntil %s -> 422 PAUSE_UNTIL_NOT_FUTURE, judged against the clock read under the lock, with no write",
     async (_label, value) => {
       const t = serviceOver("active", true, () => NOW);
       const failure = await t.service.adminPauseSubscription(operator, SUBSCRIPTION_ID, value).then(
@@ -162,11 +174,82 @@ describe("admin pause with an end date: the date must be a future instant, and t
       );
       expect(failure).toBeInstanceOf(ChartWardenError);
       expect(failure).toMatchObject({ code: "PAUSE_UNTIL_NOT_FUTURE", statusCode: 422 });
-      expect(t.runnerCalls()).toBe(0);
       expect(t.writes).toEqual([]);
       expect(t.audited).toEqual([]);
     },
   );
+
+  it.each([
+    ["words", "next tuesday"],
+    [
+      "no offset: read in the SERVER's zone, so a different instant on a differently configured host",
+      "2026-12-15T10:00",
+    ],
+    ["no offset, with seconds", "2026-12-15T10:00:00"],
+    ["a bare date", "2026-12-15"],
+    ["an offset without a colon", "2026-12-15T10:00:00+0100"],
+    ["trailing text", "2026-12-15T10:00:00Z please"],
+  ])(
+    "a pausedUntil that is %s -> 422 PAUSE_UNTIL_INVALID, before the runner is opened",
+    async (_label, value) => {
+      const t = serviceOver("active", true, () => NOW);
+      const failure = await t.service.adminPauseSubscription(operator, SUBSCRIPTION_ID, value).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(failure).toMatchObject({ code: "PAUSE_UNTIL_INVALID", statusCode: 422 });
+      expect(t.runnerCalls()).toBe(0);
+      expect(t.writes).toEqual([]);
+    },
+  );
+
+  it("an explicit offset is the same instant whatever the server's zone: +01:00 is stored as UTC", async () => {
+    const t = serviceOver("active", true, () => NOW);
+    await t.service
+      .adminPauseSubscription(operator, SUBSCRIPTION_ID, "2026-12-15T10:00:00+01:00")
+      .catch(() => undefined);
+    const ledger = t.inserted.find((row) => row.reasonCode === "platform_ops_pause");
+    expect(ledger).toMatchObject({ reasonDetail: "paused_until=2026-12-15T09:00:00.000Z" });
+  });
+
+  describe("the instant of the pause is read AFTER the row lock (an operator that waited behind a resume must not stamp a time before it)", () => {
+    const T0 = Date.parse("2026-12-01T00:00:00Z");
+    const T1 = Date.parse("2026-12-01T02:00:00Z"); // the other operator's resume committed; this one's lock returns
+
+    function clockThatAdvancesAtTheLock() {
+      let nowMs = T0;
+      return {
+        now: () => new Date(nowMs),
+        advance: () => {
+          nowMs = T1;
+        },
+      };
+    }
+
+    it("the ledger row and the subscription row carry the post-lock instant, not the one before the wait", async () => {
+      const clock = clockThatAdvancesAtTheLock();
+      const t = serviceOver("active", true, clock.now, {}, clock.advance);
+      await t.service
+        .adminPauseSubscription(operator, SUBSCRIPTION_ID, null)
+        .catch(() => undefined);
+      const ledger = t.inserted.find((row) => row.reasonCode === "platform_ops_pause");
+      expect(ledger?.transitionedAt).toEqual(new Date(T1));
+      expect(t.updated[0]).toMatchObject({ pausedAt: new Date(T1), updatedAt: new Date(T1) });
+    });
+
+    it("an end date that was in the future before the wait and is past after it is refused", async () => {
+      const clock = clockThatAdvancesAtTheLock();
+      const t = serviceOver("active", true, clock.now, {}, clock.advance);
+      const failure = await t.service
+        .adminPauseSubscription(operator, SUBSCRIPTION_ID, new Date(T0 + 3_600_000).toISOString())
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+      expect(failure).toMatchObject({ code: "PAUSE_UNTIL_NOT_FUTURE", statusCode: 422 });
+      expect(t.writes).toEqual([]);
+    });
+  });
 
   it("a future pausedUntil is stored on the row's history entry as paused_until=<ISO instant>", async () => {
     const t = serviceOver("active", true, () => NOW);
