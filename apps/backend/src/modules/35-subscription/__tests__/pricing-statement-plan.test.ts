@@ -921,6 +921,26 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
       expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at("2026-11-20T09:00:00Z") }]);
     });
 
+    it("a suspension after a lapsed operator pause is a NEW pause: the ledger the consumer writes (pause, lapse at the date, suspension) reads as two", () => {
+      const life = lifetimeAt(
+        [
+          pauseRow(PAUSED_AT),
+          { ...t("paused", "active", UNTIL), reasonCode: "platform_ops_pause_lapsed" },
+          {
+            ...t("active", "paused", "2026-12-20T00:00:00Z"),
+            reasonCode: "org_suspended_by_platform_admin",
+            detail: "compliance_hold",
+          },
+        ],
+        sub("paused", "2026-12-20T00:00:00Z"),
+        at("2026-12-21T00:00:00Z"),
+      );
+      expect(life.pauses).toEqual([
+        { from: at(PAUSED_AT), to: at(UNTIL) },
+        { from: at("2026-12-20T00:00:00Z"), to: null },
+      ]);
+    });
+
     it("a date that is exactly `at` has passed: the pause is over at the date (the boundary is inclusive)", () => {
       const life = lifetimeAt(
         [pauseRow(PAUSED_AT)],

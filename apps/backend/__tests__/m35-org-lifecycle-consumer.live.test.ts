@@ -29,6 +29,7 @@ describe.skipIf(!DB_URL)(
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
     let consumer: ReturnType<typeof buildM35OrgLifecycleConsumer>;
+    let publisher: Parameters<typeof buildM35OrgLifecycleConsumer>[0]["outbox"];
     let planId: string;
 
     async function resetSchema() {
@@ -133,22 +134,20 @@ describe.skipIf(!DB_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       const catalog = new Map<string, unknown>(M35_OUTBOX_EVENTS.map((e) => [e.eventName, e]));
-      consumer = buildM35OrgLifecycleConsumer({
-        db: handle.db,
-        outbox: {
-          async publish(tx, input) {
-            if (!catalog.has(input.eventName)) {
-              throw new Error(`m35 test publisher: undeclared event ${input.eventName}`);
-            }
-            await (tx as typeof handle.db).execute(sql`
+      publisher = {
+        async publish(tx, input) {
+          if (!catalog.has(input.eventName)) {
+            throw new Error(`m35 test publisher: undeclared event ${input.eventName}`);
+          }
+          await (tx as typeof handle.db).execute(sql`
               INSERT INTO outbox_event
                 (organization_id, event_type, aggregate_kind, aggregate_id, payload)
               VALUES (${input.organizationId}, ${input.eventName}, ${input.aggregateKind},
                       ${input.aggregateId}, ${JSON.stringify(input.payload)}::jsonb)
             `);
-          },
         },
-      });
+      };
+      consumer = buildM35OrgLifecycleConsumer({ db: handle.db, outbox: publisher });
     }, 120_000);
 
     afterAll(async () => {
@@ -191,6 +190,89 @@ describe.skipIf(!DB_URL)(
       const emissions = await outboxRows(ORG_A, "m35.subscription.paused");
       expect(emissions).toHaveLength(1);
       expect(emissions[0].payload.subscriptionId).toBe(subId);
+    });
+
+    it("suspended: an operator's pause whose end date has PASSED is over for billing, so a suspension now is a new pause: the ledger ends the old one at its date, then starts the new one", async () => {
+      const orgId = await newOrg();
+      const subId = "aaaaaaaa-0000-4000-8000-0000000000f1";
+      await seedSubscription({
+        id: subId,
+        organizationId: orgId,
+        status: "paused",
+        startedAt: "2026-10-01T00:00:00Z",
+      });
+      // the operator's pause (the only row whose detail is an end date) of Dec 1 .. Dec 15, which nothing resumed
+      await admin.query(
+        `UPDATE subscription SET paused_at='2026-12-01T00:00:00Z', paused_until='2026-12-15T00:00:00Z' WHERE id=$1`,
+        [subId],
+      );
+      await admin.query(
+        `INSERT INTO subscription_state_history
+           (subscription_id, organization_id, from_status, to_status, transitioned_at, reason_code, reason_detail)
+         VALUES ($1,$2,'active','paused','2026-12-01T00:00:00Z','platform_ops_pause','paused_until=2026-12-15T00:00:00.000Z')`,
+        [subId, orgId],
+      );
+      const late = buildM35OrgLifecycleConsumer({
+        db: handle.db,
+        outbox: publisher,
+        now: () => new Date("2026-12-20T00:00:00Z"),
+      });
+      const suspend = (organizationId: string) =>
+        late.handle({
+          eventType: "m2.organization.suspended",
+          organizationId,
+          payload: { organizationId, reason: "compliance_hold" },
+        });
+
+      await suspend(orgId);
+
+      expect(
+        (
+          await admin.query(
+            `SELECT from_status, to_status, reason_code, transitioned_at FROM subscription_state_history
+              WHERE subscription_id=$1 ORDER BY transitioned_at`,
+            [subId],
+          )
+        ).rows.map((r) => [
+          r.from_status,
+          r.to_status,
+          r.reason_code,
+          r.transitioned_at.toISOString(),
+        ]),
+      ).toEqual([
+        ["active", "paused", "platform_ops_pause", "2026-12-01T00:00:00.000Z"],
+        ["paused", "active", "platform_ops_pause_lapsed", "2026-12-15T00:00:00.000Z"],
+        ["active", "paused", "org_suspended_by_platform_admin", "2026-12-20T00:00:00.000Z"],
+      ]);
+      const row = await subscriptionRow(subId);
+      expect(row.status).toBe("paused");
+      expect(row.paused_until).toBeNull();
+      expect(row.paused_at.toISOString()).toBe("2026-12-20T00:00:00.000Z");
+      // a redelivery finds a pause that is running (open-ended now) and changes nothing
+      await suspend(orgId);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM subscription_state_history WHERE subscription_id=$1",
+            [subId],
+          )
+        ).rows[0].n,
+      ).toBe(3);
+
+      // while an operator's pause that is still RUNNING (its date ahead) already covers the suspension: no new row
+      const orgRunning = await newOrg();
+      const runningId = "aaaaaaaa-0000-4000-8000-0000000000f2";
+      await seedSubscription({
+        id: runningId,
+        organizationId: orgRunning,
+        status: "paused",
+        startedAt: "2026-10-01T00:00:00Z",
+      });
+      await admin.query(`UPDATE subscription SET paused_until='2027-01-15T00:00:00Z' WHERE id=$1`, [
+        runningId,
+      ]);
+      await suspend(orgRunning);
+      expect(await historyRows(runningId)).toHaveLength(0);
     });
 
     it("suspended: is a true no-op on an already-paused subscription (redelivery-safe)", async () => {
