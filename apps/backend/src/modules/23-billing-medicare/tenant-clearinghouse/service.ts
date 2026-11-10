@@ -410,10 +410,10 @@ export function createTenantClearinghouseService(
     patch: ConfigPatch = {},
   ): Date => {
     const candidate = now();
-    const patchFloor = Object.values(patch).reduce(
-      (latest, value) => (value instanceof Date ? Math.max(latest, value.getTime()) : latest),
-      0,
-    );
+    let patchFloor = 0;
+    for (const value of Object.values(patch)) {
+      if (value instanceof Date) patchFloor = Math.max(patchFloor, value.getTime());
+    }
     const floor = Math.max(row.baaRecordedAt?.getTime() ?? 0, row.updatedAt.getTime(), patchFloor);
     return candidate.getTime() <= floor ? new Date(floor + 1) : candidate;
   };
