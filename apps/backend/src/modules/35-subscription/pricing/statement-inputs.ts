@@ -1,14 +1,15 @@
 // apps/backend/src/modules/35-subscription/pricing/statement-inputs.ts — READS the facts a statement run is computed from (slice 2).
 // One platform transaction's worth of reads, no writes: the org's contracts (through the ONE shared selector), each contract's plan
 // prices and bands, its billing service mode history, the statements already stored, and the subscription's lifetime (go-live, pauses,
-// cancel) turned into the windows `daysLiveInMonth` counts. The statement service calls this twice: once to know what money to ask M25
-// for, and once more inside the write transaction (under the per-org lock) so what is written is judged on the freshest state.
+// cancel) turned into the windows `daysLiveInMonth` counts. The sweep reads every org's facts in ONE platform transaction (to know which
+// orgs have a month to compute and what money to ask M25 for); the write path reads its org once more inside the write transaction
+// (under the per-org lock) so what is written is judged on the freshest state.
 import { schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { asc, eq, inArray } from "drizzle-orm";
 import { PAUSED_UNTIL_PREFIX } from "../routes/admin-transition";
 import type { WriteTx } from "../routes/service-drizzle";
-import { loadModeHistory, selectContracts } from "./contract-select";
+import { type ContractRecord, loadModeHistory, selectContracts } from "./contract-select";
 import { loadBands } from "./plan-service";
 import type { GoLiveReader } from "./ports";
 import { liveWindowsOf } from "./statement-period";
@@ -127,14 +128,14 @@ export const toExisting = (row: typeof SS.$inferSelect): ExistingStatement => ({
   figures: figuresOf(row),
 });
 
-/** Every contract of the org that can still need a statement, with everything its months are computed from. [] when the org is not live. */
-export async function loadContractFacts(
+/** The facts of one org's contracts, from the records the shared selector returned for it. [] when the org is not live. */
+async function factsOfRecords(
   tx: WriteTx,
   goLive: GoLiveReader,
   organizationId: string,
+  records: readonly ContractRecord[],
   at: Date,
 ): Promise<ContractFacts[]> {
-  const records = await selectContracts(tx, "statements", at, organizationId);
   if (records.length === 0) return [];
   const goLiveAt = await goLive.goLiveAt(tx, organizationId);
   if (!goLiveAt) return [];
@@ -175,6 +176,47 @@ export async function loadContractFacts(
       windows: liveWindowsOf({ liveFrom, ...lifetime }),
       statements: stored.filter((s) => s.subscriptionId === sub.id).map(toExisting),
     });
+  }
+  return facts;
+}
+
+/** Every contract of the org that can still need a statement, with everything its months are computed from. [] when the org is not live. */
+export async function loadContractFacts(
+  tx: WriteTx,
+  goLive: GoLiveReader,
+  organizationId: string,
+  at: Date,
+): Promise<ContractFacts[]> {
+  const records = await selectContracts(tx, "statements", at, organizationId);
+  return factsOfRecords(tx, goLive, organizationId, records, at);
+}
+
+/**
+ * The same for EVERY org that has a contract in scope, in the one transaction the caller already holds: the sweep's single platform
+ * read (every platform runner call is an audited cross-tenant bypass, so the hourly sweep asks once, not twice per org). An org that is
+ * not live is left out. An org whose own data is refused (a contract on a plan with no prices) maps to null instead of failing every
+ * other org's read: the per-org path reads it again and raises the real error where the sweep logs it. Reads only; the per-org write
+ * path re-reads under its own lock.
+ */
+export async function loadContractFactsByOrg(
+  tx: WriteTx,
+  goLive: GoLiveReader,
+  at: Date,
+): Promise<Map<string, ContractFacts[] | null>> {
+  const byOrg = new Map<string, ContractRecord[]>();
+  for (const record of await selectContracts(tx, "statements", at)) {
+    const orgId = record.contract.organizationId;
+    byOrg.set(orgId, [...(byOrg.get(orgId) ?? []), record]);
+  }
+  const facts = new Map<string, ContractFacts[] | null>();
+  for (const [organizationId, records] of byOrg) {
+    try {
+      const orgFacts = await factsOfRecords(tx, goLive, organizationId, records, at);
+      if (orgFacts.length > 0) facts.set(organizationId, orgFacts);
+    } catch (error) {
+      if (!(error instanceof ChartWardenError)) throw error; // a database error aborted the transaction: nothing after it can be read
+      facts.set(organizationId, null);
+    }
   }
   return facts;
 }

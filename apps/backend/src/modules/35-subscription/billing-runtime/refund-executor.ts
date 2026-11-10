@@ -325,7 +325,7 @@ export async function runRefundExecutionSweep(
         refundId: refund.id,
         attemptIndex,
         maxAttempts: STRIPE_MAX_ATTEMPTS,
-        error: err instanceof Error ? err.message : String(err),
+        err, // the logger's PHI-safe serializer redacts a database error's bound values; `err.message` would not
       });
     }
   }

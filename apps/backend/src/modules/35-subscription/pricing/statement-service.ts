@@ -13,22 +13,29 @@
 // after that is billed on the next open statement as a prior-period line (never lost, never re-billing the closed month).
 //
 // WHO IS SWEPT. Statements do NOT depend on the active-organisation sweep: the worker asks the ONE shared contract selector which orgs can
-// still need a statement, so the last month of a suspended or closed organisation, and a canceled subscription's final month, still
-// finalize. A month is decided from the subscription's own lifetime (go-live, pauses, cancel), not from its status today: a closed month
+// still need a statement (`runStatementSweep`), so the last month of a suspended or closed organisation, and a canceled subscription's
+// final month, still finalize. A month is decided from the subscription's own lifetime (go-live, pauses, cancel), not from its status today: a closed month
 // finalizes whatever the subscription has become since, the month it was canceled in is billed for the days used, and months after that
 // are not billed at all. The one-time implementation fee rides the first statement the subscription ever has.
 //
 // Writes run on the platform runner only, under a per-organisation advisory lock (two runs for one org are serialized, so a month is
 // never written twice and the one-time fee and the prior-period lines are judged on the state the first run left). A tenant holds SELECT.
+//
+// PLATFORM TRANSACTIONS ARE AUDITED BYPASSES. Every `platformRunner` call writes a CRITICAL `platform.bypass_invoked` audit row, so the
+// hourly sweep spends them deliberately: ONE call reads every contracted org's facts, and an org gets a second (its write transaction)
+// only when it has something to compute: an org whose every month is a settlement month with no late money to carry costs none.
+// ponytail: a live org's open month is still one write transaction per org per hour; if that audit volume matters, run the writes of
+// all orgs in one transaction with a savepoint per org.
 import { schema } from "@chartwarden/db";
 import type { PseudonymKeyProvider } from "@chartwarden/subscription-billing";
 import type { NetCollections, NetCollectionsReader, OrgId } from "@chartwarden/types";
 import { eq, sql } from "drizzle-orm";
+import { runM35Fanout } from "../billing-runtime/jobs";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
 import { readDailyCensus } from "./census-daily";
 import type { GoLiveReader } from "./ports";
 import { type StaffCount, countActiveStaffForMonth } from "./staff-meter";
-import { loadContractFacts, toExisting } from "./statement-inputs";
+import { loadContractFacts, loadContractFactsByOrg, toExisting } from "./statement-inputs";
 import { type MonthPeriod, calendarMonthOf } from "./statement-period";
 import {
   type ContractFacts,
@@ -265,10 +272,8 @@ async function pushToStripe(
         .where(eq(SS.id, row.id)),
     );
   } catch (error) {
-    deps.log?.("m35 statement stripe push failed", {
-      statementId: row.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    // under `err`, not a hand-built message: the logger's err serializer redacts a database error's bound values, a message string would not
+    deps.log?.("m35 statement stripe push failed", { statementId: row.id, err: error });
   }
 }
 
@@ -278,20 +283,50 @@ const periodOf = (o: StatementOutcome): string =>
   o.outcome === "written" ? o.statement.periodYearMonth : o.periodYearMonth;
 
 /**
+ * What a run for this org would do when every month of every contract is a settlement month (the subscription ended or is paused, so
+ * the month has no live day) with no stored draft and no late money to carry: nothing, and no write transaction is worth opening. The
+ * skipped outcomes it reports are the ones the write path reports for the same months. null when any month could write: a regular
+ * month (its meters are read inside the write transaction) or a settlement month with money to carry or a draft to finalize.
+ */
+function settlementOnlyOutcomes(
+  contracts: readonly ContractFacts[],
+  net: NetByMonth,
+  at: Date,
+): StatementOutcome[] | null {
+  const outcomes: StatementOutcome[] = [];
+  for (const contract of contracts) {
+    for (const work of planMonths(contract, at)) {
+      const key = work.period.key;
+      const carriesNothing =
+        priorPeriodLinesFor(work.period, contract.statements, net).length === 0 &&
+        !contract.statements.some((s) => s.periodYearMonth === key);
+      if (!work.settlement || !carriesNothing) return null;
+      outcomes.push({ outcome: "skipped", periodYearMonth: key, reason: "no_prior_period" });
+    }
+  }
+  return outcomes.sort(byPeriod);
+}
+
+/**
  * Compute the org's statements: every month since go-live that is not final yet (finalized once its grace has passed, draft while it is
  * open), plus a settlement statement when a closed month's late-posted money has no open month to ride. Idempotent: a rerun replaces a
  * draft only when a figure moved and leaves a final statement alone. Empty when the org has no contract that can still bill, or is not live.
+ * `preloaded` is the org's facts as the sweep's one read already loaded them (without it the org's facts are read here, on a platform
+ * transaction of their own); the write transaction always re-reads under the lock.
  */
 export async function runStatementsForOrg(
   deps: StatementDeps,
   organizationId: string,
+  preloaded?: readonly ContractFacts[] | null,
 ): Promise<StatementOutcome[]> {
   const at = clockOf(deps);
-  const planned = await deps.platformRunner((tx) =>
-    loadContractFacts(tx, deps.goLive, organizationId, at),
-  );
+  const planned =
+    preloaded ??
+    (await deps.platformRunner((tx) => loadContractFacts(tx, deps.goLive, organizationId, at)));
   if (planned.length === 0) return [];
   const net = await readCollectionsByMonth(deps, organizationId, planned, at);
+  const nothingToDo = settlementOnlyOutcomes(planned, net, at);
+  if (nothingToDo) return nothingToDo;
 
   const done = await deps.platformRunner(async (tx) => {
     await lockOrgStatements(tx, organizationId);
@@ -309,4 +344,24 @@ export async function runStatementsForOrg(
     if (result.written) await pushToStripe(deps, result.written, currency);
   }
   return done.map((d) => d.result.outcome).sort(byPeriod);
+}
+
+/**
+ * The hourly sweep: every org that can still need a statement, each isolated from the others (one org's failure is logged with its id
+ * and reported at the end, never stops the rest). ONE platform call reads every org's facts; an org with nothing to compute opens no
+ * further platform transaction (see the file header).
+ */
+export async function runStatementSweep(deps: StatementDeps): Promise<void> {
+  const at = clockOf(deps);
+  const byOrg = await deps.platformRunner((tx) => loadContractFactsByOrg(tx, deps.goLive, at));
+  await runM35Fanout(
+    {
+      listOrgs: async () => [...byOrg.keys()].map((organizationId) => ({ organizationId })),
+      ...(deps.log ? { log: deps.log } : {}),
+    },
+    async (organizationId) => {
+      await runStatementsForOrg(deps, organizationId, byOrg.get(organizationId));
+    },
+    "pricing_statement",
+  );
 }
