@@ -9,13 +9,13 @@
 //    request may have landed and only the reply been lost, so the server must be able to recognise the retry), and any ANSWER renews it.
 import type { IdempotencyKeeper } from "./idempotency";
 
-export interface WriteResult {
+export interface WriteResponse {
   readonly error?: unknown;
   readonly response?: { readonly ok?: boolean; readonly status: number };
 }
 
 /** True when the server did not accept the write: an error body, or a non-ok status even with an empty body. */
-export function writeRefused(result: WriteResult): boolean {
+export function writeRefused(result: WriteResponse): boolean {
   if (result.error !== undefined && result.error !== null) return true;
   const response = result.response;
   if (response === undefined) return false;
@@ -23,13 +23,13 @@ export function writeRefused(result: WriteResult): boolean {
 }
 
 /** A gateway error page: a 5xx whose body is not the API's error envelope never reached the app, so nothing was cached under the key. */
-export function reachedNoOne(result: WriteResult): boolean {
+export function reachedNoOne(result: WriteResponse): boolean {
   if (!writeRefused(result) || (result.response?.status ?? 0) < 500) return false;
   const code = (result.error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
   return typeof code !== "string";
 }
 
-export type SettledWrite<R extends WriteResult> =
+export type SettledWrite<R extends WriteResponse> =
   | { readonly status: "ok"; readonly res: R }
   /** The server answered and did not accept it: `res.error` / `res.response` say why (`error` is undefined for an empty body). */
   | { readonly status: "refused"; readonly res: R }
@@ -37,7 +37,7 @@ export type SettledWrite<R extends WriteResult> =
   | { readonly status: "unreachable" };
 
 /** Await a write and classify it; a rejected request is `unreachable`, not an exception. */
-export async function settleWrite<R extends WriteResult>(
+export async function settleWrite<R extends WriteResponse>(
   request: Promise<R>,
 ): Promise<SettledWrite<R>> {
   let res: R;
@@ -53,7 +53,7 @@ export async function settleWrite<R extends WriteResult>(
  * Send a write under the keeper's key for `fingerprint` (the body, or any stable text for the intent) and classify it. The key is kept
  * when the request got no answer (and when a gateway answered for the app), renewed by every real answer, success or refusal.
  */
-export async function sendWrite<R extends WriteResult>(
+export async function sendWrite<R extends WriteResponse>(
   keeper: IdempotencyKeeper,
   fingerprint: string,
   call: (idempotencyKey: string) => Promise<R>,

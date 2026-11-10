@@ -9,7 +9,7 @@ import {
   LoadingSpinner,
   ReverifyLink,
   type SettledWrite,
-  type WriteResult,
+  type WriteResponse,
   isStepUpRequired,
 } from "@chartwarden/ui";
 import { type JSX, type ReactNode, useEffect, useState } from "react";
@@ -47,7 +47,7 @@ export const UNREACHABLE_OUTCOME: Outcome = {
  * which read success as "no error AND response.ok" (an empty-body non-ok response is a refusal) and turn a rejected request (offline:
  * openapi-fetch rethrows, which would strand the caller's busy lock) into `unreachable`.
  */
-export function writeFailure(sent: SettledWrite<WriteResult>, fallback: string): Outcome | null {
+export function writeFailure(sent: SettledWrite<WriteResponse>, fallback: string): Outcome | null {
   if (sent.status === "ok") return null;
   return sent.status === "unreachable"
     ? UNREACHABLE_OUTCOME

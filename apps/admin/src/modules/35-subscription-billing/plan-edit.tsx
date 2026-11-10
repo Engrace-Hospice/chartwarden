@@ -4,7 +4,7 @@ import {
   StatusPill,
   TableScroll,
   TextField,
-  type WriteResult,
+  type WriteResponse,
   focusFirstInvalid,
   parsePriceCents,
   parseWholeNumber,
@@ -140,7 +140,7 @@ function PlanEditBody(): JSX.Element {
   const run = useCallback(
     async (
       fingerprint: string,
-      call: (idempotencyKey: string) => Promise<WriteResult>,
+      call: (idempotencyKey: string) => Promise<WriteResponse>,
       okMsg: string,
       failMsg: string,
     ): Promise<boolean> => {
