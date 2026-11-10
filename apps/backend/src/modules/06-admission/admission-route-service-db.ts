@@ -18,6 +18,7 @@ import {
   decodeOffsetCursor,
   encodeOffsetCursor,
   mapUniqueViolation,
+  offsetCursorScope,
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
@@ -34,7 +35,6 @@ import {
 } from "@chartwarden/types";
 import type { LevelOfCare, LocalDate } from "@chartwarden/types";
 import {
-  type AnyColumn,
   type SQL,
   and,
   desc,
@@ -183,7 +183,6 @@ import type {
   AdmissionRouteService,
   ComplianceWindowRow,
   MutationResult,
-  Page,
   PatientAdmissionSummary,
   PatientElectionCertificationView,
   SummaryRow,
@@ -1721,7 +1720,6 @@ export function createDbAdmissionRouteService(
       return { id: r.id, state: r.status, version: Number(r.version) };
     });
   }
-  /** Page a status-bearing table on the signed offset cursor, newest-first. */
   const complianceWindowColumns = {
     id: CW.id,
     state: CW.status,
@@ -1748,30 +1746,6 @@ export function createDbAdmissionRouteService(
       severity: r.severity,
       dueAt: r.mustCompleteBy.toISOString(),
     };
-  }
-
-  async function pageByStatus(
-    organizationId: string,
-    table: typeof REF | typeof ADM | typeof CW,
-    orderCol: AnyColumn,
-    query: { state?: string; cursor?: string; limit?: number },
-  ): Promise<Page<SummaryRow>> {
-    const limit = clampLimit(query.limit);
-    const offset = decodeOffsetCursor(organizationId, query.cursor);
-    return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-      const where = query.state ? eq(table.status as never, query.state as never) : undefined;
-      const rows = (await tx
-        .select({ id: table.id, state: table.status, version: table.version })
-        .from(table)
-        .where(where)
-        .orderBy(desc(orderCol as never), desc(table.id))
-        .limit(limit + 1)
-        .offset(offset)) as { id: string; state: string; version: number }[];
-      const items = rows.slice(0, limit).map(toSummary);
-      const nextCursor =
-        rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null;
-      return { items, nextCursor };
-    });
   }
 
   /** Does an admission exist for this org? (RLS-scoped) — reads return `null` → 404 when it does not. */
@@ -2013,9 +1987,18 @@ export function createDbAdmissionRouteService(
   return {
     // ── Referral reads ───────────────────────────────────────────────────────────────────────────
     async listReferrals(organizationId, query, actorUserId, scope) {
+      const limit = clampLimit(query.limit);
+      const cursorScope = offsetCursorScope("m6.referrals", {
+        assigned: query.assigned ?? null,
+        includeConverted: query.includeConverted ?? false,
+        patientResolutionStatus: query.patientResolutionStatus ?? null,
+        priority: query.priority ?? null,
+        q: query.q?.trim().toLowerCase() ?? null,
+        source: query.source ?? null,
+        status: query.status ?? query.state ?? null,
+      });
+      const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const limit = clampLimit(query.limit);
-        const offset = decodeOffsetCursor(organizationId, query.cursor);
         const filters: SQL[] = [];
         // GAP-182 — mirror `referral.scope`: no location (org-level) OR one of the caller's locations.
         if (scope) {
@@ -2084,7 +2067,9 @@ export function createDbAdmissionRouteService(
         return {
           items,
           nextCursor:
-            rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
+            rows.length > limit
+              ? encodeOffsetCursor(organizationId, offset + limit, cursorScope)
+              : null,
         };
       });
     },
@@ -2120,7 +2105,11 @@ export function createDbAdmissionRouteService(
     // ── Admission reads ──────────────────────────────────────────────────────────────────────────
     async listAdmissions(organizationId, query, scope) {
       const limit = clampLimit(query.limit);
-      const offset = decodeOffsetCursor(organizationId, query.cursor);
+      const cursorScope = offsetCursorScope("m6.admissions", {
+        patientId: query.patientId ?? null,
+        state: query.state ?? null,
+      });
+      const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
       // GAP-020 — narrow to the caller's caseload in SQL; an empty caseload reads nothing (no query).
       const scopedIds = scope?.patientIds ?? null;
       if (scopedIds !== null && scopedIds.length === 0) return { items: [], nextCursor: null };
@@ -2204,7 +2193,9 @@ export function createDbAdmissionRouteService(
           releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
         }));
         const nextCursor =
-          rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null;
+          rows.length > limit
+            ? encodeOffsetCursor(organizationId, offset + limit, cursorScope)
+            : null;
         return { items, nextCursor };
       });
     },
@@ -2792,7 +2783,10 @@ export function createDbAdmissionRouteService(
       // FY2027 — its own read (not `pageByStatus`) so each row says what the window is and when it is due:
       // the dashboard could not tell an election-addendum window from any other kind.
       const limit = clampLimit(query.limit);
-      const offset = decodeOffsetCursor(organizationId, query.cursor);
+      const cursorScope = offsetCursorScope("m6.compliance-windows", {
+        state: query.state ?? null,
+      });
+      const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
       // Mirror `compliance.scope`: narrow to the caller's caseload in SQL (a window has no patient of its
       // own — it is the admission's); an empty caseload reads nothing (no query).
       const scopedIds = scope?.patientIds ?? null;
@@ -2812,7 +2806,9 @@ export function createDbAdmissionRouteService(
         return {
           items: rows.slice(0, limit).map(toComplianceWindowRow),
           nextCursor:
-            rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
+            rows.length > limit
+              ? encodeOffsetCursor(organizationId, offset + limit, cursorScope)
+              : null,
         };
       });
     },

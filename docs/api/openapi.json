@@ -153595,6 +153595,7 @@
                     "type": "string"
                   },
                   "authorDiscipline": {
+                    "description": "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
                     "anyOf": [
                       {
                         "const": "RN",
@@ -154304,7 +154305,8 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "reason"
+                  "reason",
+                  "authorDiscipline"
                 ],
                 "properties": {
                   "reason": {
@@ -154315,6 +154317,31 @@
                   "ifVersion": {
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "authorDiscipline": {
+                    "description": "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
+                    "anyOf": [
+                      {
+                        "const": "RN",
+                        "type": "string"
+                      },
+                      {
+                        "const": "NP",
+                        "type": "string"
+                      },
+                      {
+                        "const": "MD",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LPN",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LVN",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -252382,6 +252409,155 @@
                   "effectiveFrom": {
                     "minLength": 1,
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/payers/{payerRowId}/void": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdPayersByPayerRowIdVoid",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Void an unclaimed mistaken payer row as an audited empty window (step-up required)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "payerRowId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "payerId",
+                    "rank",
+                    "coverageKind",
+                    "subscriberId",
+                    "groupNumber",
+                    "binPcn",
+                    "current",
+                    "effectiveFrom",
+                    "effectiveTo"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "type": "string"
+                    },
+                    "rank": {
+                      "type": "integer"
+                    },
+                    "coverageKind": {
+                      "type": "string"
+                    },
+                    "subscriberId": {
+                      "type": "string"
+                    },
+                    "groupNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "binPcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "current": {
+                      "type": "boolean"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "wrong_payer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wrong_coverage_kind",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wrong_subscriber_id",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wrong_effective_date",
+                        "type": "string"
+                      },
+                      {
+                        "const": "duplicate_entry",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }

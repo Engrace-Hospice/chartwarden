@@ -3,6 +3,7 @@
 // validation, pre-authorization, coordination of benefits and audited overrides (#722). Submission, eligibility and
 // remittance matching land with their own issues.
 export { M41_OUTBOX_EVENTS } from "./events-by-m41";
+export { hasNonVoidCommercialClaimForPatientPayer } from "./seams/patient-payer-claim-reference";
 export { buildCommercialAuthorizationService } from "./services/authorization-service";
 export type {
   AuthorizationView,

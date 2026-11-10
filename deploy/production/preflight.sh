@@ -26,6 +26,19 @@ has_key() { [ -n "$(resolve "$1")" ]; }
 
 docker info >/dev/null 2>&1 </dev/null || fail "docker is not reachable (docker info failed); cannot verify the host"
 
+# The backup overlay is enabled by its scoped SeaweedFS reader key. Once enabled, it must consume the
+# repository-owned published image by an immutable tag@digest, never a local build or mutable tag (#993).
+if has_key BACKUP_SOURCE_MINIO_ACCESS_KEY; then
+  backup_image=$(resolve CHARTWARDEN_BACKUP_IMAGE)
+  case "$backup_image" in
+    ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-*@sha256:*) ;;
+    *) fail "backup is enabled but CHARTWARDEN_BACKUP_IMAGE is not the published tag@sha256 digest" ;;
+  esac
+  backup_digest=${backup_image##*@sha256:}
+  case "$backup_digest" in *[!a-f0-9]*|'') fail "CHARTWARDEN_BACKUP_IMAGE has an invalid sha256 digest" ;; esac
+  [ "${#backup_digest}" -eq 64 ] || fail "CHARTWARDEN_BACKUP_IMAGE sha256 digest must have 64 hex characters"
+fi
+
 # 1. Layout. Supported: the real directory is /opt/chartwarden (optionally with a /opt/wardenx symlink to it).
 #    The reverse (real /opt/wardenx, /opt/chartwarden a symlink or fresh) and a live /opt/wardenx elsewhere are refused.
 legacy_dir=/opt/wardenx

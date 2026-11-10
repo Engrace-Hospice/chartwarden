@@ -6,7 +6,11 @@
 // the injected `now()` so version/date math is deterministic in tests.
 
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
-import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
+import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  offsetCursorScope,
+} from "@chartwarden/shared/route-kit";
 import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
 import type { ActorSite } from "../actor-site";
@@ -1748,14 +1752,18 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     organizationId: string,
     rows: T[],
     query: { cursor?: string; limit?: number },
+    cursorScope: string,
   ): Page<T> => {
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-    const offset = decodeOffsetCursor(organizationId, query.cursor);
+    const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
     const slice = rows.slice(offset, offset + limit);
     const nextOffset = offset + slice.length;
     return {
       items: slice,
-      nextCursor: nextOffset < rows.length ? encodeOffsetCursor(organizationId, nextOffset) : null,
+      nextCursor:
+        nextOffset < rows.length
+          ? encodeOffsetCursor(organizationId, nextOffset, cursorScope)
+          : null,
     };
   };
   const listOfKind = (organizationId: string, kind: string): Rec[] =>
@@ -1959,7 +1967,20 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             .some((v) => String(v).toLowerCase().includes(q)),
         );
       }
-      return page(organizationId, rows.map(referralView), query);
+      return page(
+        organizationId,
+        rows.map(referralView),
+        query,
+        offsetCursorScope("m6.referrals", {
+          assigned: query.assigned ?? null,
+          includeConverted: query.includeConverted ?? false,
+          patientResolutionStatus: query.patientResolutionStatus ?? null,
+          priority: query.priority ?? null,
+          q: query.q?.trim().toLowerCase() ?? null,
+          source: query.source ?? null,
+          status: query.status ?? query.state ?? null,
+        }),
+      );
     },
     async getReferral(organizationId, id) {
       const rec = get(organizationId, id, "referral");
@@ -2233,6 +2254,10 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
           releasedAt: null,
         })),
         query,
+        offsetCursorScope("m6.admissions", {
+          patientId: query.patientId ?? null,
+          state: query.state ?? null,
+        }),
       );
     },
     async getAdmission(organizationId, id) {
@@ -3288,7 +3313,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const ids = scope?.patientIds ?? null;
       if (ids !== null) rows = rows.filter((r) => !!r.patientId && ids.includes(r.patientId));
       if (query.state) rows = rows.filter((r) => r.state === query.state);
-      return page(organizationId, rows.map(summary), query);
+      return page(
+        organizationId,
+        rows.map(summary),
+        query,
+        offsetCursorScope("m6.compliance-windows", { state: query.state ?? null }),
+      );
     },
     async closeComplianceWindow(organizationId, id, ifVersion) {
       const rec = get(organizationId, id, "compliance_window") ?? notFound(id);

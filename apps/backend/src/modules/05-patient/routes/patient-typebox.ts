@@ -10,6 +10,7 @@ import type {
   AdmitResult as ServiceAdmitResult,
   AmendmentView as ServiceAmendmentView,
 } from "./service";
+import { PATIENT_PAYER_VOID_REASONS } from "./service";
 
 const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
 const PAYER_COVERAGE_KINDS = [
@@ -35,6 +36,10 @@ export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) 
 // The slice service uses non-uuid synthetic ids (pat_1); routes accept a loose id param.
 export const LooseIdParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
+});
+export const PatientPayerParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  payerRowId: Type.String({ format: "uuid" }),
 });
 
 // POST /api/v1/patients (§4.2 capture contract)
@@ -292,6 +297,12 @@ export const AddPatientPayerBodySchema = Type.Object({
 });
 
 export const AddPatientPayerResponseSchema = PatientPayerSchema;
+
+export const VoidPatientPayerBodySchema = Type.Object({
+  reason: Type.Union(PATIENT_PAYER_VOID_REASONS.map((reason) => Type.Literal(reason))),
+});
+
+export const VoidPatientPayerResponseSchema = PatientPayerSchema;
 
 // GET /api/v1/patients/:id/care-team (§3.4/§3.5) — assignment roster + caregivers + emergency contacts.
 // `clinicianUserId` names an M2 user; `displayName` is resolved server-side (in-org membership join); `current` rows render above closed ones.

@@ -8,6 +8,7 @@
 
 // §4.11 — the M24 outbox-event catalog (the dispatcher validates each `m24.*` publish against it).
 export { M24_OUTBOX_EVENTS } from "./events-by-m24";
+export { hasNonVoidMedicaidClaimForPatientPayer } from "./seams/patient-payer-claim-reference";
 // §8.7 trading-partner secret envelope crypto (per-tenant HKDF DEK + AES-256-GCM). The composition root
 // binds the port into the WRITE service; `isUsableCipher` backs the read surface's presence flags.
 export {

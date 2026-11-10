@@ -260,7 +260,14 @@ describe("the Drizzle worklist's signed offset cursor", () => {
     "refuses the unsigned cursor %j with 422 INVALID_CURSOR instead of paging from the start",
     async (cursor) => {
       const worklist = createDbDischargeWorklistService({} as DbClient);
-      for (const bucket of ["ready", "recently_discharged"] as const) {
+      for (const bucket of [
+        "ready",
+        "needs_details",
+        "awaiting_cosign",
+        "recently_discharged",
+        "qio_review_open",
+        "nomnc_no_deadline",
+      ] as const) {
         await expect(
           worklist.list(ORG, { bucket, cursor }, { patientIds: null }),
         ).rejects.toMatchObject({ code: "INVALID_CURSOR", statusCode: 422 });

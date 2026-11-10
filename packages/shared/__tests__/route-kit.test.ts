@@ -16,6 +16,7 @@ import {
   isUniqueViolation,
   membershipActorOf,
   membershipIdOf,
+  offsetCursorScope,
   optionalIfMatchVersionOf,
   pageQuery,
   parse,
@@ -241,46 +242,76 @@ describe("route-kit signed cursor", () => {
 });
 
 describe("route-kit signed offset cursor", () => {
+  const admissions = offsetCursorScope("m6.admissions", { patientId: null, state: "active" });
+
   it("round-trips for the org that minted it", () => {
     configureCursorSigningKey("k".repeat(32));
-    expect(decodeOffsetCursor(ORG_A, encodeOffsetCursor(ORG_A, 50))).toBe(50);
-    expect(decodeOffsetCursor(ORG_A, encodeOffsetCursor(ORG_A, 0))).toBe(0);
+    expect(decodeOffsetCursor(ORG_A, encodeOffsetCursor(ORG_A, 50, admissions), admissions)).toBe(
+      50,
+    );
+    expect(decodeOffsetCursor(ORG_A, encodeOffsetCursor(ORG_A, 0, admissions), admissions)).toBe(0);
   });
 
   it.each([undefined, null, ""])("treats an absent cursor (%j) as offset 0", (raw) => {
-    expect(decodeOffsetCursor(ORG_A, raw)).toBe(0);
+    expect(decodeOffsetCursor(ORG_A, raw, admissions)).toBe(0);
   });
 
   it("refuses a cursor minted for another org", () => {
     configureCursorSigningKey("k".repeat(32));
-    expect(() => decodeOffsetCursor(ORG_B, encodeOffsetCursor(ORG_A, 50))).toThrow(
-      InvalidCursorError,
+    expect(() =>
+      decodeOffsetCursor(ORG_B, encodeOffsetCursor(ORG_A, 50, admissions), admissions),
+    ).toThrow(InvalidCursorError);
+  });
+
+  it("binds a cursor to the list and normalized filters without storing those filters in the payload", () => {
+    configureCursorSigningKey("k".repeat(32));
+    const same = offsetCursorScope("m6.admissions", { state: "active", patientId: null });
+    const otherFilter = offsetCursorScope("m6.admissions", { state: "pending", patientId: null });
+    const otherList = offsetCursorScope("m6.referrals", { state: "active", patientId: null });
+    const cursor = encodeOffsetCursor(ORG_A, 50, admissions);
+    expect(decodeOffsetCursor(ORG_A, cursor, same)).toBe(50);
+    expect(() => decodeOffsetCursor(ORG_A, cursor, otherFilter)).toThrow(InvalidCursorError);
+    expect(() => decodeOffsetCursor(ORG_A, cursor, otherList)).toThrow(InvalidCursorError);
+    expect(Buffer.from(cursor.split(".")[0] as string, "base64url").toString("utf8")).not.toContain(
+      "active",
     );
   });
 
   it.each(["garbage", "50", "1", ".", "a.b", "-1"])("refuses the unsigned cursor %j", (raw) => {
-    expect(() => decodeOffsetCursor(ORG_A, raw)).toThrow(
+    expect(() => decodeOffsetCursor(ORG_A, raw, admissions)).toThrow(
       expect.objectContaining({ code: "INVALID_CURSOR", statusCode: 422 }),
     );
   });
 
+  it("refuses an oversized cursor before decoding it", () => {
+    expect(() => decodeOffsetCursor(ORG_A, "a".repeat(513), admissions)).toThrow(
+      InvalidCursorError,
+    );
+  });
+
   it.each([["a", "b"], 5, {}])("refuses a non-string cursor %j (a repeated ?cursor=)", (raw) => {
-    expect(() => decodeOffsetCursor(ORG_A, raw)).toThrow(InvalidCursorError);
+    expect(() => decodeOffsetCursor(ORG_A, raw, admissions)).toThrow(InvalidCursorError);
   });
 
   it("refuses a tampered cursor (edited body or signature)", () => {
     configureCursorSigningKey("k".repeat(32));
-    const [body, sig] = encodeOffsetCursor(ORG_A, 50).split(".") as [string, string];
-    const forgedBody = Buffer.from(JSON.stringify({ o: 5000 })).toString("base64url");
-    expect(() => decodeOffsetCursor(ORG_A, `${forgedBody}.${sig}`)).toThrow(InvalidCursorError);
-    expect(() => decodeOffsetCursor(ORG_A, `${body}.${sig.slice(1)}A`)).toThrow(InvalidCursorError);
+    const [body, sig] = encodeOffsetCursor(ORG_A, 50, admissions).split(".") as [string, string];
+    const forgedBody = Buffer.from(JSON.stringify({ o: 5000, c: "x".repeat(43) })).toString(
+      "base64url",
+    );
+    expect(() => decodeOffsetCursor(ORG_A, `${forgedBody}.${sig}`, admissions)).toThrow(
+      InvalidCursorError,
+    );
+    expect(() => decodeOffsetCursor(ORG_A, `${body}.${sig.slice(1)}A`, admissions)).toThrow(
+      InvalidCursorError,
+    );
   });
 
   it.each([{ o: -1 }, { o: 1.5 }, { o: "5" }, { o: Number.MAX_SAFE_INTEGER + 1 }, {}, [], null])(
     "refuses a validly signed payload that is not a non-negative safe integer offset: %j",
     (payload) => {
       configureCursorSigningKey("k".repeat(32));
-      expect(() => decodeOffsetCursor(ORG_A, encodeCursor(ORG_A, payload))).toThrow(
+      expect(() => decodeOffsetCursor(ORG_A, encodeCursor(ORG_A, payload), admissions)).toThrow(
         InvalidCursorError,
       );
     },
@@ -288,9 +319,9 @@ describe("route-kit signed offset cursor", () => {
 
   it("refuses a keyset cursor replayed on an offset list", () => {
     configureCursorSigningKey("k".repeat(32));
-    expect(() => decodeOffsetCursor(ORG_A, encodeCursor(ORG_A, { a: "x", id: UUID }))).toThrow(
-      InvalidCursorError,
-    );
+    expect(() =>
+      decodeOffsetCursor(ORG_A, encodeCursor(ORG_A, { a: "x", id: UUID }), admissions),
+    ).toThrow(InvalidCursorError);
   });
 });
 

@@ -36,6 +36,16 @@ jobs:
           for f in deploy/production/deploy.sh deploy/production/smoke.sh deploy/production/bootstrap-vps.sh deploy/production/reseed-demo.sh; do
             bash -n "$f"
           done
+      # #867: syntax-only parsing misses quoting, portability and trap mistakes in the scripts that touch production.
+      # Use the scripts' own shebangs (three POSIX sh, one bash) and pin the scanner image by digest.
+      - name: ShellCheck production deploy scripts
+        run: |
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
+            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
+            deploy/production/deploy.sh \
+            deploy/production/smoke.sh \
+            deploy/production/bootstrap-vps.sh \
+            deploy/production/reseed-demo.sh
       # `compose.yml` reads `.env.production` (env_file) and interpolates the template's variables; the
       # example file is the contract for what a real one must define, so `config` fails here when a
       # service needs a variable the template does not list (the class of break the env-template test

@@ -125,6 +125,15 @@ export interface CoverageResolverPort {
      */
     throughDate?: string;
   }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
+  activeMedicaidCoverageInTransaction(
+    transaction: unknown,
+    input: {
+      organizationId: string;
+      patientId: string;
+      onDate: string;
+      throughDate: string;
+    },
+  ): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
 }
 
 /**
@@ -133,7 +142,10 @@ export interface CoverageResolverPort {
  * Medicaid row on top on EVERY day of the window, else nothing; a single date (eligibility) stays a point read.
  */
 export function buildM24MedicaidCoverageResolver(
-  reader: () => Pick<PatientCoverageReader, "activeCoverageOfKind" | "coverageForRange">,
+  reader: () => Pick<
+    PatientCoverageReader,
+    "activeCoverageOfKind" | "coverageForRange" | "coverageSnapshotForRangeInTransaction"
+  >,
 ): CoverageResolverPort {
   return {
     async activeMedicaidCoverage(q) {
@@ -155,6 +167,19 @@ export function buildM24MedicaidCoverageResolver(
                 coverageKind: "medicaid",
               })
               .then((res) => (res.status === "uniform" ? res.coverage : null));
+      return found
+        ? { id: found.id, payerId: found.payerId, subscriberId: found.subscriberId }
+        : null;
+    },
+    async activeMedicaidCoverageInTransaction(transaction, q) {
+      const { resolution } = await reader().coverageSnapshotForRangeInTransaction(transaction, {
+        organizationId: q.organizationId,
+        patientId: q.patientId,
+        from: q.onDate,
+        to: q.throughDate,
+        coverageKind: "medicaid",
+      });
+      const found = resolution.status === "uniform" ? resolution.coverage : null;
       return found
         ? { id: found.id, payerId: found.payerId, subscriberId: found.subscriberId }
         : null;
@@ -442,6 +467,21 @@ export function buildDrizzleM24WriteService(
         );
       }
       return withOrgContext(db, actor, async (tx) => {
+        // #877 — re-resolve under a row lock in the claim-write transaction. Coverage replacement
+        // now waits until this claim commits, and a change already committed after the optimistic
+        // preflight is refused before anything is inserted.
+        const lockedCoverage = await coverage.activeMedicaidCoverageInTransaction(tx, {
+          organizationId: actor.organizationId,
+          patientId: input.patientId,
+          onDate: input.serviceFrom,
+          throughDate: input.serviceTo,
+        });
+        if (!lockedCoverage || lockedCoverage.id !== resolved.id) {
+          throw new ConflictError(
+            "MEDICAID_COVERAGE_CHANGED",
+            "Medicaid coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+          );
+        }
         const creds = await tx
           .select({ serviceState: TP.serviceState, activeTo: TP.activeTo })
           .from(TP)
@@ -511,7 +551,7 @@ export function buildDrizzleM24WriteService(
             organizationId: actor.organizationId,
             providerEntityId: input.providerEntityId,
             patientId: input.patientId,
-            patientPayerId: resolved.id,
+            patientPayerId: lockedCoverage.id,
             admissionId: input.admissionId,
             serviceState,
             kind: input.kind,

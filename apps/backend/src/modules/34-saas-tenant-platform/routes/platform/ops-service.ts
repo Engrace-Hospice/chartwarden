@@ -103,6 +103,30 @@ function currentOnboardingStep(
 /** The statuses a platform-ops skip may act on (a settled task is refused, never silently rewritten). */
 const SKIPPABLE_TASK_STATUSES = ["pending", "in_progress", "blocked"] as const;
 
+/**
+ * The only onboarding tasks platform ops may waive. Contract/tenant creation and go-live controls must
+ * be completed, not bypassed through the generic skip route. `payer_enrollment` belongs to the newer
+ * commercial onboarding checklist rather than the eleven-step canonical floor, but uses this same service.
+ */
+const SKIPPABLE_ONBOARDING_TASK_KEYS: ReadonlySet<string> = new Set([
+  "mac_configured",
+  "payer_enrollment",
+  "dosespot_kickoff_initiated",
+  "sample_data_loaded",
+]);
+
+function assertTaskMayBeSkipped(task: {
+  readonly templateKey: string;
+  readonly status: string;
+}): void {
+  if (!(SKIPPABLE_TASK_STATUSES as readonly string[]).includes(task.status)) {
+    throw new ConflictError(`a ${task.status} task cannot be skipped`);
+  }
+  if (!SKIPPABLE_ONBOARDING_TASK_KEYS.has(task.templateKey)) {
+    throw new ConflictError(`onboarding task ${task.templateKey} cannot be skipped`);
+  }
+}
+
 // ── in-memory twin ───────────────────────────────────────────────────────────────────────────────────
 
 export interface InMemoryPlatformOpsSeed {
@@ -142,9 +166,7 @@ export function createInMemoryPlatformOpsService(
         const o = onboarding.get(orgSlug);
         const task = o?.tasks.find((t) => t.id === taskId);
         if (!o || !task) throw new NotFoundError("onboarding_task", taskId);
-        if (!(SKIPPABLE_TASK_STATUSES as readonly string[]).includes(task.status)) {
-          throw new ConflictError(`a ${task.status} task cannot be skipped`);
-        }
+        assertTaskMayBeSkipped(task);
         const skipped: PlatformOnboardingTaskView = {
           ...task,
           status: "skipped",
@@ -298,9 +320,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
           .where(and(eq(T.id, taskId), eq(T.tenantAccountId, account.id)))
           .limit(1);
         if (!task) throw new NotFoundError("onboarding_task", taskId);
-        if (!(SKIPPABLE_TASK_STATUSES as readonly string[]).includes(task.status)) {
-          throw new ConflictError(`a ${task.status} task cannot be skipped`);
-        }
+        assertTaskMayBeSkipped(task);
         const evidence = {
           ...((task.completionEvidence as Record<string, unknown>) ?? {}),
           skip: {
