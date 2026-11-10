@@ -48,7 +48,8 @@ from Codex's hook protocol:
   from the session directory with symlinks followed, and match case-insensitively (macOS and Windows resolve
   `.Claude/` to `.claude/`). A path with a control or exotic-space character is refused (Codex's Rust trim
   drops U+0085 where JS's does not, so `hooks.json<U+0085>` would otherwise read as another file), as is a
-  patch the parser cannot read or one over 256 KB (the scan must finish inside Codex's timeout). Through
+  patch the parser cannot read or one over 256 KB (the scan must finish inside Codex's timeout; a patch sent
+through the shell is also bound by the 64 KB command cap below, so a larger one must use the `apply_patch` tool). Through
   the shell only exactly one `apply_patch <<'EOF' … EOF` is accepted, run in the session directory or the
   call's `workdir`; `cd`, a pipe, a redirect or a second command is refused, because `apply_patch` is on
   PATH and each of those applies a patch the guard cannot place. Codex has no Read/Grep/Glob tools; its reads
@@ -86,7 +87,9 @@ from Codex's hook protocol:
   allowed. An empty override leaves no `paths` to apply, wherever the session directory is (checked against
   a root, a nested and an extended config); the hostile-fixture test in
   `scripts/__tests__/harness-guard-review3.test.ts` runs the real pinned commands against such a config.
-  The flag changes the pinned Codex command, so each developer re-trusts it with `/hooks`.
+  The flag changes the pinned Codex command, so each developer re-trusts it with `/hooks`. `--no-env-file` is
+  a silent no-op on bun 1.3.0 to 1.3.2 (verified against each release; 1.3.3 and later honour it), so
+  `engines.bun` in `package.json` is `>=1.3.3` (CI and the images pin 1.3.5).
   `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs
   the call when a hook times out (10 s here) and when `exec` fails perl would exit 0, an allow. `|| exit 2`:
   exit 2 with a message blocks in Codex, so a guard that cannot start, crashes or times out blocks the call.
@@ -215,11 +218,13 @@ command is a delete, move, or tree-merge (`rm -r`, `mv`, `cp -R`, `rsync`, `tar 
 `chmod`/`chown`/`rm`, or a `find … -delete` or `-exec` that is not narrowed by `-name`/`-path`/`-regex`,
 over the whole repo root asks as well. The writers it understands are redirections, `tee`, `dd of=`,
 `sed -i` (including the GNU long-option abbreviations), `perl -i`, `find -delete/-exec`, `cp/mv/ln/install`,
-`chmod/chown -R`, `patch`, `curl -o`, `wget -O`, `sort -o`, `openssl -out`, `base64 -o`, in-place
+`chmod/chown -R`, `patch`, `curl -o`, `wget -O`, `sort -o`, `openssl -out`, `base64 -o` (a long output option is
+matched by any prefix its tool accepts: `sort --out`, `wget --output-d`; a prefix two options share is ambiguous and
+writes nothing), in-place
 compressors, and `git apply/am/checkout/restore/rm/mv/clean`. It judges the commands inside `$( )`,
 backticks and `<( )`/`>( )` as command lines, and sees through `sudo`, `env`, `builtin` and `--`. It reads
 inline interpreter code and heredoc or stdin script bodies as text, with quotes and `+` removed. It cannot
-read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinks, a `$VAR` path
+read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
 prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
 current directory), or a recursive delete of an ANCESTOR of the repo root. Whole-tree reads that bypass
 `.gitignore` (`grep -r`, `rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built
@@ -229,7 +234,8 @@ ASSIGNED (`VAR=… cmd`, `export`, `env`, `declare`), not when its name appears 
 never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
 call through in Claude Code: a command over 64 KB is REFUSED before it is parsed (an ask would let padding
 turn a denied command into a prompt; put large file content in a file with the Write tool, and a heredoc patch
-that size through the `apply_patch` tool), glob matching is linear (no backtracking), brace alternatives
+that size through the `apply_patch` tool), glob matching is a two-pointer matcher with star backtracking, O(name length x wildcard tokens) over the short
+sample names and with no regular expression (so no exponential backtracking), brace alternatives
 (4,096) and path resolutions (16,384) are budgeted per command, and substitutions (32 per level) and judged
 command lines (300 per call) are capped; over any of those caps the answer is ask, and a deny found before
 the cap was hit still stands. Reading a protected file does not ask; only a command that writes one does.
