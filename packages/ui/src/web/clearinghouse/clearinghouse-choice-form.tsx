@@ -138,6 +138,16 @@ export function consequenceOf(
   return "The credential is sealed under the tenant's own key and is never shown again.";
 }
 
+/** What a lane words differently: the operator's wording is the default, the tenant wizard passes its own. All optional. */
+export interface ChoiceFormCopy {
+  /** Shown under the form for any vendor; absent, the operator-worded `consequenceOf` is shown for `outside` only. */
+  readonly consequence?: string;
+  /** The credential field's hint when a credential is needed / when the one on file is kept. */
+  readonly secretNeededHint?: string;
+  readonly secretKeptHint?: string;
+  readonly submitLabel?: string;
+}
+
 export function ChoiceFormCard({
   view,
   form,
@@ -151,6 +161,8 @@ export function ChoiceFormCard({
   vendors = VENDORS,
   title,
   headingRef,
+  copy,
+  busy = false,
 }: {
   view: ClearinghouseView;
   form: ChoiceForm;
@@ -160,6 +172,9 @@ export function ChoiceFormCard({
   /** The vendors offered (all three by default; a switch OUT of outside offers only the two that transmit). */
   vendors?: readonly { value: ClearinghouseVendor; label: string }[];
   title?: string;
+  copy?: ChoiceFormCopy;
+  /** A write is in flight: the submit button waits. */
+  busy?: boolean;
   /** The caller's editor-focus ref: focus lands on the heading when the card opens. */
   headingRef?: Ref<HTMLHeadingElement>;
   onChange: (next: ChoiceForm) => void;
@@ -219,8 +234,10 @@ export function ChoiceFormCard({
               label="Vendor credential"
               hint={
                 secretNeeded
-                  ? "Write-only. Sealed under the tenant's key and never shown again."
-                  : "Write-only. Leave blank to keep the credential on file."
+                  ? (copy?.secretNeededHint ??
+                    "Write-only. Sealed under the tenant's key and never shown again.")
+                  : (copy?.secretKeptHint ??
+                    "Write-only. Leave blank to keep the credential on file.")
               }
               type="password"
               autoComplete="new-password"
@@ -231,12 +248,18 @@ export function ChoiceFormCard({
           </>
         )}
       </div>
-      {outside ? <InlineAlert tone="info">{consequenceOf(view, form, context)}</InlineAlert> : null}
+      {copy?.consequence ? (
+        <InlineAlert tone="info">{copy.consequence}</InlineAlert>
+      ) : outside ? (
+        <InlineAlert tone="info">{consequenceOf(view, form, context)}</InlineAlert>
+      ) : null}
       <div className="wx-drawer-actions">
         <Button tone="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">Continue</Button>
+        <Button type="submit" disabled={busy}>
+          {copy?.submitLabel ?? "Continue"}
+        </Button>
       </div>
     </form>
   );

@@ -154,6 +154,7 @@ export type {
   ChoiceContext,
   ChoiceErrors,
   ChoiceForm,
+  ChoiceFormCopy,
 } from "./clearinghouse/clearinghouse-choice-form";
 export { ReasonDialog } from "./components/reason-dialog";
 export type { ReasonDialogProps, ReasonDialogRecordLine } from "./components/reason-dialog";
