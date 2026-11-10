@@ -292,3 +292,55 @@ describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", ()
     expect(r.stdout).toBe("");
   });
 });
+
+// A hook that outlives its 10 s timeout is killed and Claude Code then runs the call, so slow input is a bypass.
+// The guard judges a shell command twice when the root or cwd is a symlink (as written, and with real paths).
+describe("a command built to make the classifier slow is answered quickly even when it is judged twice", () => {
+  const root = repo();
+  const holder = scratch("cw-review4-link-");
+  const alias = join(holder, "alias");
+  symlinkSync(root, alias);
+  const FAST_MS = 2000;
+  const cds = `${Array.from({ length: 15 }, (_, i) => `cd /tmp/d${i};`).join(" ")} `;
+  const words = (count: number, braces: string): string =>
+    Array.from({ length: count }, (_, i) => `w${i}${braces}`).join(" ");
+  const hostile = [
+    ["rm -f", "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}", 1300],
+    ["touch", "{,}{,}{,}{,}{,}{,}{,}{,}", 1900],
+    ["mv", "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}", 1300],
+  ] as const;
+  const timed = (call: () => Out) => {
+    const started = performance.now();
+    const result = call();
+    return { result, ms: performance.now() - started };
+  };
+
+  it.each(hostile)(
+    "Claude asks about `%s` over %s x %i words in under 2 s, from a symlinked root",
+    (prog, braces, count) => {
+      const command = `${cds}${prog} ${words(count, braces)} /tmp/dest`;
+      const { result, ms } = timed(() =>
+        claude(alias, { tool_name: "Bash", tool_input: { command }, cwd: alias }),
+      );
+      expect(decision(result)).toBe("ask");
+      expect(reason(result)).toMatch(/too many/i);
+      expect(ms).toBeLessThan(FAST_MS);
+    },
+    60_000,
+  );
+
+  it("Codex refuses the same command in under 2 s", () => {
+    const command = `${cds}rm -f ${words(1300, hostile[0][1])}`;
+    const { result, ms } = timed(() =>
+      codex(alias, { tool_name: "Bash", tool_input: { command }, cwd: alias }),
+    );
+    expect(decision(result)).toBe("deny");
+    expect(ms).toBeLessThan(FAST_MS);
+  }, 60_000);
+
+  it("keeps a modest brace command from a symlinked root allowed", () => {
+    const command = "cd /tmp/a; cd /tmp/b; rm -f dist/x{1,2,3}.js dist/y{,.orig}";
+    const r = claude(alias, { tool_name: "Bash", tool_input: { command }, cwd: alias });
+    expect(decision(r)).toBeUndefined();
+  });
+});

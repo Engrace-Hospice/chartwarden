@@ -743,6 +743,31 @@ function parseSegment(seg: string): Parsed {
 
 const MAX_BRACE_ALTERNATIVES = 256;
 const MAX_BRACE_GROUPS = 16;
+
+/**
+ * What ONE command may spend. The 64 KB cap bounds the text, not the work: 1,300 words that each expand to 256
+ * brace alternatives, judged against 16 candidate directories, are five million path resolutions (12 s), and
+ * the hook is killed at 10 s and the call then runs. So brace alternatives and path resolutions draw on a
+ * budget that `classifyBash` refills for each command and that every nested `$( )` and `bash -c` shares. Past
+ * it nothing more is expanded or resolved (a resolution answers "unknown directory"), and the command asks.
+ */
+const MAX_COMMAND_BRACE_ALTERNATIVES = 4096;
+const MAX_COMMAND_PATH_RESOLUTIONS = 16_384;
+const WORK_BUDGET_REASON =
+  "This command has too many brace alternatives or path targets for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in). Split it into smaller commands, or let a human run it.";
+let work = {
+  braces: MAX_COMMAND_BRACE_ALTERNATIVES,
+  resolutions: MAX_COMMAND_PATH_RESOLUTIONS,
+  spent: false,
+};
+const refillWork = (): void => {
+  work = {
+    braces: MAX_COMMAND_BRACE_ALTERNATIVES,
+    resolutions: MAX_COMMAND_PATH_RESOLUTIONS,
+    spent: false,
+  };
+};
+
 /**
  * The first `{a,b}` group in `word` that has no brace inside it, split into the text before, its body and
  * the text after; null when there is none. One pass: a regex for this backtracks quadratically on `{,,,,`.
@@ -775,12 +800,15 @@ function expandBraces(word: string): string[] {
     let changed = false;
     for (const w of out) {
       const group = next.length >= MAX_BRACE_ALTERNATIVES ? null : firstBraceGroup(w);
-      if (!group) {
+      if (group && work.braces <= 0) work.spent = true; // a group is left unexpanded
+      if (!group || work.braces <= 0) {
         next.push(w);
         continue;
       }
       changed = true;
-      for (const alt of group.body.split(",")) next.push(`${group.pre}${alt}${group.post}`);
+      const alternatives = group.body.split(",");
+      work.braces -= alternatives.length;
+      for (const alt of alternatives) next.push(`${group.pre}${alt}${group.post}`);
     }
     out = next;
     if (!changed) break;
@@ -1079,9 +1107,14 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
       `This command is longer than ${MAX_COMMAND_CHARS / 1024} KB, too large for the guard to check in time. Run it in smaller pieces, or let a human run it.`,
     );
   }
-  if (depth === 0) judgeBudget = MAX_JUDGED_COMMAND_LINES;
+  if (depth === 0) {
+    judgeBudget = MAX_JUDGED_COMMAND_LINES;
+    refillWork();
+  }
   const start = startingDir(ctx);
-  return judge(cmd, ctx, depth, { seq: start, any: [start] });
+  const verdict = judge(cmd, ctx, depth, { seq: start, any: [start] });
+  // A deny found before the budget ran out stands; anything else is no better than "too big to check".
+  return work.spent && verdict.decision !== "deny" ? ask(WORK_BUDGET_REASON) : verdict;
 }
 
 function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashVerdict {
@@ -1345,9 +1378,14 @@ const REPO_ROOT = /^\$\(git rev-parse --show-toplevel\)(?=\/|$)/;
  * The path a word names, normalised: repo-relative (`""` is the root), `~/…` or absolute. Expands `~`,
  * `$HOME`, `${HOME}`, `$CODEX_HOME`, `$PWD` and `$(pwd)`. Returns null when the word is relative to a
  * directory we do not know (a `cd` we could not follow); with `strict`, also when it holds any other
- * expansion or wildcard (used for `cd`, where a wrong guess would hide everything after it).
+ * expansion or wildcard (used for `cd`, where a wrong guess would hide everything after it). Past the
+ * command's resolution budget it returns null too, and marks the budget spent.
  */
 function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): string | null {
+  if (--work.resolutions < 0) {
+    work.spent = true;
+    return null;
+  }
   let t = unescapeWord(raw)
     .replace(/^\$\{?CODEX_HOME\}?(?=\/|$)/, "~/.codex")
     .replace(/^\$\{?HOME\}?(?=\/|$)/, "~");
@@ -1712,6 +1750,7 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
   ];
   let unknownDir = false;
   for (const t of targets) {
+    if (work.spent) return { path: null };
     for (const dir of dirs) {
       const rel = resolvePath(t.raw, dir, ctx);
       if (rel === null) unknownDir = true;
