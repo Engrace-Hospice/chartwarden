@@ -4,6 +4,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, count, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { UNCONFIRMED_OUTCOME_CLASS } from "../jobs/hold";
+import { lockVendorBindingsForClear } from "./registration-target";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
@@ -46,9 +47,12 @@ export interface ConfigStore {
   /**
    * Forget every id DoseSpot issued under the clinic the registration used to name (ADR-0111 D6): the roster's vendor prescriber ids,
    * enrolment markers and NPIs, the patient-sync vendor patient ids, and the created-prescription id of every transmission still
-   * waiting. Those ids are scoped to ONE clinic of ONE environment; sent under another, DoseSpot refuses them for good. Called in the
-   * SAME transaction as the registration change that moved the target. A transmission that finished, and one HELD for a person (whose
-   * prescription may exist at the old clinic, where the administrator has to look), keeps its id.
+   * waiting, which also gets a FRESH idempotency key so the new clinic never sees the old one. Those ids are scoped to ONE clinic of ONE
+   * environment; sent under another, DoseSpot refuses them for good. Called in the SAME transaction as the registration change that moved the
+   * target; it first takes the exclusive binding lock (registration-target.ts), so a vendor round trip that began under the old clinic can
+   * neither be writing its id as this runs nor write it after. A transmission that finished, one whose vendor call has BEGUN (stamped, and so
+   * possibly in flight or about to be held) and one HELD for a person (whose prescription may exist at the old clinic, where the administrator
+   * has to look) keep their ids and their key.
    */
   clearVendorBindings(organizationId: string, at: Date): Promise<VendorBindingsCleared>;
 }
@@ -113,6 +117,7 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
       return row?.n ?? 0;
     },
     async clearVendorBindings(organizationId, at) {
+      await lockVendorBindingsForClear(tx, organizationId);
       const prescribers = await tx
         .update(P)
         .set({
@@ -143,12 +148,20 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
         .returning({ id: SYNC.id });
       const transmissions = await tx
         .update(MOT)
-        .set({ dosespotPrescriptionId: null })
+        .set({
+          dosespotPrescriptionId: null,
+          // the key names the order at the OLD clinic (it rides as the Idempotency-Key of the create and the send): if DoseSpot dedupes by key
+          // across clinics, the new clinic would answer with the old prescription. A fresh one is derived from the old, so it is unique and
+          // never repeats; nothing reads it back (the sign-time enqueue only runs for an order not yet queued).
+          idempotencyKey: sql`encode(sha256(convert_to(${MOT.idempotencyKey} || ':retargeted:' || gen_random_uuid()::text, 'UTF8')), 'hex')`,
+        })
         .where(
           and(
             eq(MOT.organizationId, organizationId),
-            isNotNull(MOT.dosespotPrescriptionId),
             isNull(MOT.transmissionSucceededAt),
+            // a call that has BEGUN may be in flight (its worker alive) or about to be held (its worker dead): the created id is what the
+            // administrator looks for at the old clinic, so it stays; a worker that is alive clears its own when it sees the move
+            isNull(MOT.transmissionStartedAt),
             // a held order's prescription may exist at the old clinic: its id is what the administrator looks for
             sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
             // only a transmission still waiting to go out: a finished or failed order is history

@@ -35,6 +35,7 @@ import {
   isUnconfirmedOutcomeError,
 } from "@chartwarden/dosespot";
 import { and, asc, eq, exists, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
+import { readRegistrationTarget } from "../tenant-config/registration-target";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
 import { UNCONFIRMED_OUTCOME_CLASS } from "./hold";
@@ -114,6 +115,22 @@ async function claim(
                 ),
               ),
           ),
+          // An order whose prescriber is on the roster, not revoked, and has no vendor id yet is WAITING for the re-enrolment that follows a
+          // registration move (ADR-0111 D6): it is not claimed at all, so it costs no write per tick and cannot fill the batch ahead of an order
+          // that can go. It becomes claimable the moment the prescriber is linked. A revoked prescriber is not parked: the order still fails.
+          notExists(
+            tx
+              .select({ one: sql`1` })
+              .from(DP)
+              .where(
+                and(
+                  eq(DP.organizationId, organizationId),
+                  eq(DP.membershipId, MO.prescriberMembershipId),
+                  isNull(DP.revokedAt),
+                  isNull(DP.dosespotPrescriberId),
+                ),
+              ),
+          ),
         ),
       )
       .orderBy(asc(MO.createdAt))
@@ -151,7 +168,8 @@ type Built =
   | { readonly kind: "patient_not_synced" }
   /**
    * The prescriber is on the roster and not revoked but holds no DoseSpot id: the registration moved to another clinic since the order was
-   * signed and the roster's ids were cleared (ADR-0111 D6). The order WAITS for the re-enrolment: nothing is sent, no retry is spent.
+   * signed and the roster's ids were cleared (ADR-0111 D6). The claim already leaves such an order alone, so this is only the race where the
+   * clear landed after the claim: the order WAITS for the re-enrolment (nothing is sent, no retry is spent).
    */
   | { readonly kind: "prescriber_enrolment_pending" }
   | { readonly kind: "permanent"; readonly errorClass: string };
@@ -234,7 +252,7 @@ async function markCallStarted(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
-): Promise<string | null> {
+): Promise<{ readonly token: string; readonly target: string } | null> {
   const now = nowOf(deps);
   const token = randomUUID();
   return inOrg(deps.db, organizationId, async (tx) => {
@@ -257,7 +275,8 @@ async function markCallStarted(
       .where(eq(MOT.id, c.transmission.id))
       .returning({ id: MOT.id });
     if (stamped.length !== 1) throw new Error("transmission row vanished before the vendor call");
-    return token;
+    // the clinic the registration names as the call begins: the writes that follow (the created id, the send) are refused if it moves
+    return { token, target: await readRegistrationTarget(tx, organizationId) };
   });
 }
 
@@ -287,11 +306,12 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
     });
   }
   let token: string;
+  let target: string;
   try {
     // the fence: null = this worker no longer owns the claim (it was drained and taken over): make no call and touch nothing
     const fenced = await markCallStarted(deps, organizationId, c);
     if (fenced === null) return beforeFence({ kind: "superseded" });
-    token = fenced;
+    ({ token, target } = fenced);
   } catch (fault) {
     // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
     deps.warn?.(
@@ -315,8 +335,8 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
         ...(c.transmission.dosespotPrescriptionId
           ? { createdPrescriptionId: c.transmission.dosespotPrescriptionId }
           : {}),
-        onCreated: (id) => rememberCreated(deps, organizationId, c, token, id),
-        beforeSend: () => requireOwnership(deps, organizationId, c, token),
+        onCreated: (id) => rememberCreated(deps, organizationId, c, token, id, target),
+        beforeSend: () => requireOwnership(deps, organizationId, c, token, target),
       },
     );
     return owned({

@@ -4,7 +4,13 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { type RosterRow, type RosterStore, linkConfirmedBy } from "./prescriber-enrollment";
+import {
+  REGISTRATION_MOVED_CODE,
+  type RosterRow,
+  type RosterStore,
+  linkConfirmedBy,
+} from "./prescriber-enrollment";
+import { vendorWriteIsCurrent } from "./registration-target";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
@@ -35,7 +41,7 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
   return {
     async registration(organizationId) {
       const [row] = await tx
-        .select({ status: R.status, environment: R.environment })
+        .select({ status: R.status, environment: R.environment, clinicId: R.clinicId })
         .from(R)
         .where(eq(R.organizationId, organizationId))
         .limit(1);
@@ -142,6 +148,14 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
     },
 
     async recordVendorId(organizationId, membershipId, input) {
+      // FIRST, before any row lock of this transaction's own: the registration may have moved to another clinic while the vendor call ran
+      if (!(await vendorWriteIsCurrent(tx, organizationId, input.expectedTarget))) {
+        throw new ChartWardenError(
+          REGISTRATION_MOVED_CODE,
+          "the DoseSpot registration moved to another clinic while this enrollment was in flight; nothing was linked, enroll the prescriber again",
+          409,
+        );
+      }
       const mdmMatches =
         input.expectedPhysicianMdmId === null
           ? isNull(P.externalPhysicianMdmId)

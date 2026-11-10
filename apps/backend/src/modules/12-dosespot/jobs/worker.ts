@@ -65,8 +65,10 @@ import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { ingestMedicationHistoryPull } from "../history/ingest";
+import { readRegistrationTarget, vendorWriteIsCurrent } from "../tenant-config/registration-target";
 import {
   createDrizzleDosespotPatientIdResolver,
+  patientSyncWasRetargeted,
   recordPatientSyncFailure,
   recordPatientSyncSuccess,
 } from "./patient-sync-store";
@@ -82,6 +84,14 @@ import {
 } from "./vendor-boundary";
 
 type DosespotSyncQueueRow = schema.DosespotSyncQueueRow;
+
+const PATIENT_NOT_SYNCED_TEXT =
+  "no DoseSpot-side patient id is recorded for this patient — the prior patient-sync has not succeeded yet";
+/** A fetch for a patient whose vendor id a registration move cleared: the patient is not registered at the clinic the registration names now. */
+export const PATIENT_NOT_AT_CURRENT_CLINIC_TEXT =
+  "this patient is not registered at the DoseSpot clinic the registration now names (it moved to another clinic); the medication history was not pulled. A patient sync registers the patient and the next admission or recertification pulls it";
+const REGISTRATION_MOVED_SYNC_TEXT =
+  "the DoseSpot registration moved to another clinic while the patient was being synced; the patient syncs again under the new registration";
 
 export const M12_DOSESPOT_SYNC_QUEUE = "dosespot.sync_queue_drain";
 /** Every 2 minutes — this queue is patient-facing (DoseSpot demographic sync + MedHx availability for
@@ -154,6 +164,13 @@ async function processRow(
         // Genuinely no such patient under this org any more — nothing to sync, not a failure.
         outcome = { kind: "completed" };
       } else {
+        // The clinic the registration names as this round trip begins: the id the vendor answers with is only recorded while it still does
+        // (a move clears every patient's vendor id; an old-clinic id written after the clear would stand, and nothing clears it again).
+        const target = await withOrgContext(
+          deps.db,
+          { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
+          (tx) => readRegistrationTarget(tx as DbClient, row.organizationId),
+        );
         // GAP-037 — a patient already known to DoseSpot is EDITED, never re-created (no duplicate chart).
         const knownDosespotPatientId = await dosespotPatientIdResolver.resolve(
           row.organizationId,
@@ -173,10 +190,14 @@ async function processRow(
         const outboxPort = deps.outbox;
         // §2.6 "on success": record the vendor-returned id (the ONLY writer of `dosespot_patient_sync`'s
         // id — reached only with a real `upsertPatient` response) and announce it in the SAME tx.
-        await withOrgContext(
+        const recorded = await withOrgContext(
           deps.db,
           { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
           async (tx) => {
+            // FIRST: the registration may have moved to another clinic while the vendor call ran (registration-target.ts)
+            if (!(await vendorWriteIsCurrent(tx as DbClient, row.organizationId, target))) {
+              return false;
+            }
             await recordPatientSyncSuccess(tx as DbClient, {
               organizationId: row.organizationId,
               patientId: row.patientId,
@@ -196,9 +217,21 @@ async function processRow(
                 },
               });
             }
+            return true;
           },
         );
-        if (row.invalidateRxBenefitCache) {
+        if (!recorded) {
+          // the patient now exists at the OLD clinic: nothing is recorded, and the row waits to run again under the new registration
+          deps.warn?.(
+            {
+              organizationId: row.organizationId,
+              patientId: row.patientId,
+              class: "registration_moved",
+            },
+            "M12 sync drain: the DoseSpot registration moved to another clinic during the patient sync; the vendor patient id was dropped and the row runs again",
+          );
+          outcome = { kind: "defer", error: REGISTRATION_MOVED_SYNC_TEXT };
+        } else if (row.invalidateRxBenefitCache) {
           // GAP-037 — demographics / payer changed: the cached coverage may no longer be true, so drop it
           // (the prewarm cron repopulates). Same org scope, after the id is recorded.
           await withOrgContext(
@@ -208,7 +241,7 @@ async function processRow(
               invalidateRxBenefitCacheForPatient(tx as DbClient, row.organizationId, row.patientId),
           );
         }
-        outcome = { kind: "completed" };
+        if (recorded) outcome = { kind: "completed" };
       }
     } else {
       const dosespotPatientId = await dosespotPatientIdResolver.resolve(
@@ -216,10 +249,17 @@ async function processRow(
         row.patientId,
       );
       if (dosespotPatientId === null) {
+        // Two different reasons for "no id": never synced, or synced under the clinic the registration USED to name (a move cleared the id). Both end
+        // the row (the pull needs an id and nothing here registers a patient: only an order, or a demographic change, does), but the second says so,
+        // and it is told apart from a sync that merely has not happened yet.
+        const retargeted = await patientSyncWasRetargeted(
+          deps.db,
+          row.organizationId,
+          row.patientId,
+        );
         outcome = {
           kind: "failed",
-          error:
-            "no DoseSpot-side patient id is recorded for this patient — the prior patient-sync has not succeeded yet",
+          error: retargeted ? PATIENT_NOT_AT_CURRENT_CLINIC_TEXT : PATIENT_NOT_SYNCED_TEXT,
         };
       } else {
         if (!deps.outbox) {

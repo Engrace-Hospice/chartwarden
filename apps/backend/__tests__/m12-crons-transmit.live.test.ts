@@ -20,6 +20,7 @@ import {
   createLayeredTenantConfigResolver,
   sigDirections,
 } from "@chartwarden/dosespot";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
@@ -54,6 +55,10 @@ import {
 } from "../src/modules/12-dosespot/jobs/index";
 import { TRANSMIT_BATCH_SIZE } from "../src/modules/12-dosespot/jobs/transmit-newrx";
 import { alertAfterCommit } from "../src/modules/12-dosespot/tenant-config/effects";
+import {
+  readRegistrationTarget,
+  vendorWriteIsCurrent,
+} from "../src/modules/12-dosespot/tenant-config/registration-target";
 import { createTransmissionResolveService } from "../src/modules/12-dosespot/tenant-config/transmission-resolve";
 import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
 import { buildM36DosespotAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/dosespot-alerts";
@@ -866,11 +871,25 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         [done.transmissionId],
       );
 
+      const keyOf = async (id: string | null) =>
+        (await txRow(id as string)).idempotency_key as string;
+      const before = {
+        waiting: await keyOf(waiting.transmissionId),
+        held: await keyOf(held.transmissionId),
+        done: await keyOf(done.transmissionId),
+      };
+
       const out = await moveToProduction();
 
       expect(out.changedFields).toEqual(
         expect.arrayContaining(["environment", "clinicId", "vendorBindings"]),
       );
+      // a waiting transmission gets a FRESH idempotency key (the new clinic never sees the old one); a held and a finished one keep theirs
+      const waitingKey = await keyOf(waiting.transmissionId);
+      expect(waitingKey).not.toBe(before.waiting);
+      expect(waitingKey).toMatch(/^[0-9a-f]{64}$/);
+      expect(await keyOf(held.transmissionId)).toBe(before.held);
+      expect(await keyOf(done.transmissionId)).toBe(before.done);
       expect(await prescriberRow()).toMatchObject({ id: null, marker: null, npi: null });
       expect(
         await h.q(
@@ -904,7 +923,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       );
     });
 
-    it("a queued order whose prescriber is on the roster with no vendor id WAITS (no call, no retry spent); a revoked prescriber's order still fails", async () => {
+    it("a queued order whose prescriber is on the roster with no vendor id is NOT CLAIMED (no write, no retry spent); a revoked prescriber's order still fails", async () => {
       const { orderId, transmissionId } = await queued();
       await moveToProduction();
       // the patient is synced again under the new clinic: the only thing left to wait for is the prescriber's re-enrolment
@@ -918,9 +937,16 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           transmittedAt: T0.toISOString(),
         }),
       });
+      const orderBefore = await h.q(
+        "SELECT updated_at, version FROM medication_order WHERE id=$1",
+        [orderId],
+      );
       const r = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
-      expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, failed: 0, requeued: 0 });
-      expect(vendor.calls.filter((c) => c.method === "transmitNewRx")).toEqual([]);
+      expect(r).toMatchObject({ claimed: 0, deferredByOutage: 0, failed: 0, requeued: 0 });
+      expect(vendor.calls).toEqual([]);
+      expect(
+        await h.q("SELECT updated_at, version FROM medication_order WHERE id=$1", [orderId]),
+      ).toEqual(orderBefore); // untouched: no audited write
       expect(await orderRow(orderId)).toMatchObject({
         status: "queued_for_transmission",
         s: "queued",
@@ -929,17 +955,221 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect(t.retry_count).toBe(0);
       expect(t.transmission_failed_at).toBeNull();
 
-      // the prescriber is revoked from the roster instead: that is not a wait
+      // re-enrolled: the very same order is claimable at once
       await h.admin.query(
-        "UPDATE dosespot_prescriber SET revoked_at=now() WHERE organization_id=$1",
+        "UPDATE dosespot_prescriber SET dosespot_prescriber_id='810' WHERE organization_id=$1",
+        [ORG_A],
+      );
+      await registerOldClinic(); // live again
+      const sent = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(sent).toMatchObject({ claimed: 1, transmitted: 1 });
+
+      // a prescriber revoked from the roster instead is not a wait
+      const second = await queued();
+      await h.admin.query(
+        "UPDATE dosespot_prescriber SET dosespot_prescriber_id=NULL, revoked_at=now() WHERE organization_id=$1",
         [ORG_A],
       );
       const revoked = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
       expect(revoked).toMatchObject({ claimed: 1, failed: 1 });
-      expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed" });
-      expect((await txRow(transmissionId as string)).last_error_class).toBe(
+      expect(await orderRow(second.orderId)).toMatchObject({ status: "transmission_failed" });
+      expect((await txRow(second.transmissionId as string)).last_error_class).toBe(
         "prescriber_not_enrolled",
       );
+    });
+
+    it("30 waiting orders older than one that can go do not starve it: the waiting ones are skipped by the claim, the claimable one is sent in the same pass", async () => {
+      // a second prescriber, re-enrolled (has its vendor id)
+      const U2 = "44444444-4444-4444-8444-444444444404";
+      await h.admin.query(
+        `INSERT INTO "user" (id,email) VALUES ($1,'m12-second-prescriber@x.test') ON CONFLICT DO NOTHING`,
+        [U2],
+      );
+      const m2 = (
+        await h.admin.query(
+          "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id",
+          [U2, ORG_A],
+        )
+      ).rows[0].id as string;
+      await h.admin.query(
+        "INSERT INTO dosespot_prescriber (organization_id, membership_id, dosespot_prescriber_id, ial2_status, enrolled_at) VALUES ($1,$2,'811','verified',now())",
+        [ORG_A, m2],
+      );
+      try {
+        // the first prescriber lost its vendor id (a move), and has 30 queued orders, all OLDER than the claimable one
+        await h.admin.query(
+          "UPDATE dosespot_prescriber SET dosespot_prescriber_id=NULL WHERE organization_id=$1 AND membership_id=$2",
+          [ORG_A, h.memberOf[ORG_A]],
+        );
+        const waiting: string[] = [];
+        for (let i = 0; i < 30; i += 1) waiting.push((await queued()).orderId);
+        const ready = await queued();
+        await h.admin.query("UPDATE medication_order SET prescriber_membership_id=$2 WHERE id=$1", [
+          ready.orderId,
+          m2,
+        ]);
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async () => ({
+            dosespotPrescriptionId: "rx-ready",
+            transmittedAt: T0.toISOString(),
+          }),
+        });
+        const r = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+        expect(r).toMatchObject({ claimed: 1, transmitted: 1, deferredByOutage: 0 });
+        expect((await orderRow(ready.orderId)).status).toBe("transmitted");
+        const states = await h.q(
+          "SELECT dosespot_send_state s, count(*)::int n FROM medication_order WHERE id = ANY($1::uuid[]) GROUP BY 1",
+          [waiting],
+        );
+        expect(states).toEqual([{ s: "queued", n: 30 }]);
+      } finally {
+        await h.admin.query("DELETE FROM dosespot_prescriber WHERE membership_id=$1", [m2]);
+      }
+    });
+
+    it("a transmission whose call has BEGUN keeps its created id and its key (it may be held, and the administrator looks for that prescription); a waiting one does not", async () => {
+      const begun = await queued();
+      const waiting = await queued();
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-begun', transmission_started_at=now() WHERE id=$1",
+        [begun.transmissionId],
+      );
+      await h.admin.query(
+        "UPDATE medication_order SET dosespot_send_state='in_flight' WHERE id=$1",
+        [begun.orderId],
+      );
+      const keyBefore = (await txRow(begun.transmissionId as string)).idempotency_key;
+      await moveToProduction();
+      const kept = await txRow(begun.transmissionId as string);
+      expect(kept.dosespot_prescription_id).toBe("rx-begun");
+      expect(kept.idempotency_key).toBe(keyBefore);
+      expect((await txRow(waiting.transmissionId as string)).idempotency_key).not.toBe(
+        waiting.idempotencyKey,
+      );
+    });
+
+    // ── a vendor round trip that began under the old clinic is fenced against the move (registration-target.ts) ───────────────────────
+    describe("a vendor round trip that began under the old clinic never writes its ids after the move", () => {
+      const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+      const warned: Array<Record<string, string | number>> = [];
+      const depsWithWarn = (vendor: FakeDoseSpotVendor): M12CronDeps => ({
+        ...deps(vendor),
+        warn: (fields) => warned.push(fields),
+      });
+      beforeEach(() => {
+        warned.length = 0;
+      });
+
+      it("the transmit worker: the move lands after the created id was recorded: the worker drops it itself, does not send, and the order waits (no retry spent)", async () => {
+        const { orderId, transmissionId } = await queued();
+        let sent = false;
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_o, _p, _k, resume) => {
+            await resume?.onCreated?.("rx-created-under-old-clinic"); // persisted: the registration still names the old clinic
+            await moveToProduction(); // the PUT commits mid-call; the clear skips the stamped row (its call has begun)
+            await resume?.beforeSend?.(); // refuses: the registration moved
+            sent = true;
+            return { dosespotPrescriptionId: "rx-never", transmittedAt: T0.toISOString() };
+          },
+        });
+        const r = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+        expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, failed: 0, requeued: 0 });
+        expect(sent).toBe(false);
+        expect(await orderRow(orderId)).toMatchObject({
+          status: "queued_for_transmission",
+          s: "queued",
+        });
+        const t = await txRow(transmissionId as string);
+        expect(t.dosespot_prescription_id).toBeNull(); // not left for a later resume under the new clinic
+        expect(t.retry_count).toBe(0);
+        expect(t.transmission_started_at).toBeNull();
+        expect(warned).toEqual([{ organizationId: ORG_A, orderId, class: "registration_moved" }]);
+      });
+
+      it("the transmit worker: the move lands BEFORE the created id would be recorded: it is not recorded", async () => {
+        const { orderId, transmissionId } = await queued();
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_o, _p, _k, resume) => {
+            await moveToProduction();
+            await resume?.onCreated?.("rx-created-under-old-clinic"); // refuses
+            return { dosespotPrescriptionId: "rx-never", transmittedAt: T0.toISOString() };
+          },
+        });
+        const r = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+        expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1 });
+        expect(await orderRow(orderId)).toMatchObject({ s: "queued" });
+        expect((await txRow(transmissionId as string)).dosespot_prescription_id).toBeNull();
+      });
+
+      it("a write that began before the move commits first and the move then clears what it wrote", async () => {
+        const target = await inOrg(h.handle.db, ORG_A, (tx) => readRegistrationTarget(tx, ORG_A));
+        let written: () => void = () => undefined;
+        const writeDone = new Promise<void>((resolve) => {
+          written = resolve;
+        });
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const writer = inOrg(h.handle.db, ORG_A, async (tx) => {
+          expect(await vendorWriteIsCurrent(tx, ORG_A, target)).toBe(true); // checked: still the old clinic
+          written();
+          await gate; // ...and the vendor round trip's answer is still on its way: the write has not happened yet
+          await tx.execute(
+            sql`UPDATE dosespot_prescriber SET dosespot_prescriber_id = 'old-clinic-id' WHERE organization_id = ${ORG_A}`,
+          );
+        });
+        await writeDone;
+        const move = moveToProduction();
+        try {
+          // the move must wait for the in-flight write: it cannot clear (or commit) while that write holds its shared lock
+          expect(
+            await Promise.race([move.then(() => "moved"), sleep(400).then(() => "waiting")]),
+          ).toBe("waiting");
+        } finally {
+          release(); // never leave the writer's transaction open, even when the assertion above fails
+        }
+        await writer;
+        await move;
+        expect((await prescriberRow()).id).toBeNull(); // what the write put there is gone: nothing stale survives
+      });
+
+      it("a write that starts while the move holds its lock waits for it and is then refused", async () => {
+        const oldTarget = await inOrg(h.handle.db, ORG_A, (tx) =>
+          readRegistrationTarget(tx, ORG_A),
+        );
+        let putDone: () => void = () => undefined;
+        const putReached = new Promise<void>((resolve) => {
+          putDone = resolve;
+        });
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const moving = inOrg(h.handle.db, ORG_A, async (tx) => {
+          await clinicService.put(
+            createDrizzleConfigStore(tx),
+            actor(),
+            { environment: "production", clinicId: "clinic-new" },
+            1,
+          );
+          putDone();
+          await gate; // the PUT's transaction stays open, holding the clear's lock
+        });
+        await putReached;
+        const writer = inOrg(h.handle.db, ORG_A, (tx) =>
+          vendorWriteIsCurrent(tx, ORG_A, oldTarget),
+        );
+        try {
+          expect(
+            await Promise.race([writer.then(() => "answered"), sleep(400).then(() => "waiting")]),
+          ).toBe("waiting");
+        } finally {
+          release(); // never leave the move's transaction open, even when the assertion above fails
+        }
+        await moving;
+        expect(await writer).toBe(false); // it saw the NEW target once the move committed
+      });
     });
   });
 

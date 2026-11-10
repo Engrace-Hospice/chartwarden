@@ -28,6 +28,10 @@ import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { CLINIC_AUDIT_EVENTS, type ClinicAuditPort } from "./audit-port";
 import type { PractitionerProfile, PractitionerProfileSource } from "./practitioner-profile";
+import { targetOfRegistration } from "./registration-target";
+
+/** The code `RosterStore.recordVendorId` throws when the registration moved to another clinic while the vendor call ran. */
+export const REGISTRATION_MOVED_CODE = "DOSESPOT_REGISTRATION_MOVED";
 
 export interface RosterRow {
   readonly id: string;
@@ -84,10 +88,12 @@ export interface ExpectedLink {
 
 /** The two tables an enrolment touches, over ONE open org-scoped transaction. */
 export interface RosterStore {
-  /** The registration's status and environment, or null when the org has none. */
-  registration(
-    organizationId: string,
-  ): Promise<{ readonly status: string; readonly environment: string } | null>;
+  /** The registration's status, environment and clinic, or null when the org has none. */
+  registration(organizationId: string): Promise<{
+    readonly status: string;
+    readonly environment: string;
+    readonly clinicId: string | null;
+  } | null>;
   /** Is this membership a member of THIS organization (read under the org's own RLS scope)? */
   membershipExists(organizationId: string, membershipId: string): Promise<boolean>;
   /** The membership's roster row, or null when it is not on the roster. */
@@ -120,7 +126,11 @@ export interface RosterStore {
    * marker (`claimedAt`): a claim that aged out and was re-stamped by another administrator must not be cleared by the first attempt.
    */
   releaseRequest(organizationId: string, membershipId: string, claimedAt: Date): Promise<void>;
-  /** Record the vendor link and the NPI the enrolment was made under. */
+  /**
+   * Record the vendor link and the NPI the enrolment was made under. Refused 409 `DOSESPOT_REGISTRATION_MOVED` (nothing written) when the
+   * registration no longer names the clinic the vendor call began under (`expectedTarget`, registration-target.ts): the id it returned is the OLD
+   * clinic's, and a registration move has cleared the roster's vendor ids, so writing it back would leave one nothing clears again.
+   */
   recordVendorId(
     organizationId: string,
     membershipId: string,
@@ -128,6 +138,8 @@ export interface RosterStore {
       readonly dosespotPrescriberId: string;
       readonly npi: string;
       readonly at: Date;
+      /** The clinic the vendor call began under: the registration's target as the claim read it, before the call. */
+      readonly expectedTarget: string;
       /**
        * The physician record the NPI came from: the row must still link it AND still carry the member's own confirmation of it and of
        * `npi` (409 DOSESPOT_ROSTER_CHANGED otherwise): a re-link, a revoke or a cleared confirmation while the vendor call ran stops
@@ -171,6 +183,8 @@ export interface EnrollPlan {
   readonly claimedAt: Date | null;
   /** The prescriber is already linked to DoseSpot: there is nothing to call or record. */
   readonly alreadyLinked: boolean;
+  /** The clinic the registration named when the plan was made (registration-target.ts): the write that records the vendor id is refused if it moved. */
+  readonly target: string;
 }
 
 export interface PrescriberEnrollmentService {
@@ -298,6 +312,7 @@ export function createPrescriberEnrollmentService(
       }
       return {
         environment: registration.environment,
+        target: targetOfRegistration(registration),
         row: await store.rosterRow(organizationId, membershipId),
       };
     });
@@ -311,6 +326,7 @@ export function createPrescriberEnrollmentService(
         physicianMdmId: null,
         claimedAt: null,
         alreadyLinked: true,
+        target: seen.target,
       };
     }
     // Who the clinician is: derived from the roster-linked practitioner record (no transaction open: it reads M40 and NPPES).
@@ -356,6 +372,7 @@ export function createPrescriberEnrollmentService(
       physicianMdmId: claim.alreadyLinked ? null : physicianMdmId,
       claimedAt: claim.claimedAt,
       alreadyLinked: claim.alreadyLinked,
+      target: seen.target,
     };
   }
 
@@ -407,12 +424,25 @@ export function createPrescriberEnrollmentService(
     const { organizationId, membershipId, profile } = plan;
     if (profile === null)
       throw new Error("an enrolment plan with no profile has nothing to record");
-    const row = await store.recordVendorId(organizationId, membershipId, {
-      dosespotPrescriberId: vendorId,
-      npi: profile.npi,
-      at: now(),
-      expectedPhysicianMdmId: plan.physicianMdmId,
-    });
+    let row: RosterRow;
+    try {
+      row = await store.recordVendorId(organizationId, membershipId, {
+        dosespotPrescriberId: vendorId,
+        npi: profile.npi,
+        at: now(),
+        expectedTarget: plan.target,
+        expectedPhysicianMdmId: plan.physicianMdmId,
+      });
+    } catch (err) {
+      if ((err as { code?: unknown } | null)?.code === REGISTRATION_MOVED_CODE) {
+        // the clinician now exists at the OLD clinic (an orphan there) and nothing was linked: say so (ids and the class only)
+        deps.warn(
+          { organizationId, membershipId, class: "registration_moved" },
+          "DoseSpot enrolment finished after the registration moved to another clinic; the vendor id was dropped, enrol the prescriber again",
+        );
+      }
+      throw err;
+    }
     await deps.outbox.publish(tx, {
       eventName: "m12.prescriber_enrolled",
       organizationId,

@@ -19,11 +19,13 @@ import {
 } from "./practitioner-profile";
 import {
   ENROLL_CLAIM_WINDOW_MS,
+  REGISTRATION_MOVED_CODE,
   type RosterRow,
   type RosterStore,
   createPrescriberEnrollmentService,
   linkConfirmedBy,
 } from "./prescriber-enrollment";
+import { targetOfRegistration } from "./registration-target";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const MEMBER = "33333333-3333-4333-8333-333333333333";
@@ -58,9 +60,12 @@ function build(
     releaseFails?: boolean;
     vendor?: (
       n: number,
+      moveClinic: (clinicId: string) => void,
     ) => Promise<{ dosespotPrescriberId: string; epcsEnrollmentStarted: boolean }>;
   } = {},
 ) {
+  // the clinic the registration names; a test moves it (as a PUT would) while the vendor call is in flight
+  let clinicId = "clinic-1";
   const log: string[] = [];
   const releasedWith: Date[] = [];
   const warned: { fields: Record<string, string>; message: string }[] = [];
@@ -87,7 +92,9 @@ function build(
   const store: RosterStore = {
     registration: async () => {
       const status = opts.status === undefined ? "verified" : opts.status;
-      return status === null ? null : { status, environment: opts.environment ?? "sandbox" };
+      return status === null
+        ? null
+        : { status, environment: opts.environment ?? "sandbox", clinicId };
     },
     membershipExists: async () => opts.membershipInOrg !== false,
     rosterRow: async () => roster,
@@ -124,6 +131,13 @@ function build(
     },
     async recordVendorId(_org, membershipId, input) {
       log.push("recordVendorId");
+      // what the real store does first (registration-target.ts): refuse an id obtained under a clinic the registration no longer names
+      if (
+        input.expectedTarget !==
+        targetOfRegistration({ environment: opts.environment ?? "sandbox", clinicId })
+      ) {
+        throw new ChartWardenError(REGISTRATION_MOVED_CODE, "the registration moved", 409);
+      }
       if (
         roster &&
         (roster.externalPhysicianMdmId !== input.expectedPhysicianMdmId ||
@@ -159,7 +173,9 @@ function build(
       calledInsideTx = calledInsideTx || txDepth > 0;
       log.push(`vendor:${payload.npi}:${payload.epcsRequested}`);
       return opts.vendor
-        ? opts.vendor(vendorCalls)
+        ? opts.vendor(vendorCalls, (to) => {
+            clinicId = to;
+          })
         : { dosespotPrescriberId: "700", epcsEnrollmentStarted: false };
     },
   };
@@ -269,6 +285,37 @@ describe("prescriber vendor enrolment", () => {
     });
     expect(JSON.stringify(h.audits)).not.toContain(NPI);
     expect(h.voids).toEqual([ORG]);
+  });
+
+  it("an enrolment whose vendor call overlapped a clinic move records NO vendor id (the old clinic's), says so with ids only, and a retry enrols under the new clinic", async () => {
+    const h = build({
+      vendor: async (n, moveClinic) => {
+        if (n === 1) moveClinic("clinic-2"); // the registration PUT commits while the call is in flight
+        return {
+          dosespotPrescriberId: n === 1 ? "old-clinic-700" : "new-clinic-800",
+          epcsEnrollmentStarted: false,
+        };
+      },
+    });
+    await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+      code: REGISTRATION_MOVED_CODE,
+      statusCode: 409,
+    });
+    expect(h.roster()?.dosespotPrescriberId).toBeNull();
+    expect(h.published).toEqual([]); // no m12.prescriber_enrolled for an id that was dropped
+    expect(h.audits).toEqual([]);
+    expect(h.warned).toEqual([
+      {
+        fields: { organizationId: ORG, membershipId: MEMBER, class: "registration_moved" },
+        message: expect.stringContaining("dropped"),
+      },
+    ]);
+    expect(JSON.stringify(h.warned)).not.toContain("old-clinic-700"); // the vendor id is not logged either
+
+    // the marker the move cleared is gone, so the administrator's retry runs under the NEW clinic and records its id
+    h.setRoster({ ...(h.roster() as RosterRow), vendorEnrollmentRequestedAt: null });
+    await h.service.enroll(ACTOR, MEMBER);
+    expect(h.roster()).toMatchObject({ dosespotPrescriberId: "new-clinic-800" });
   });
 
   it("never asks the vendor to start EPCS", async () => {

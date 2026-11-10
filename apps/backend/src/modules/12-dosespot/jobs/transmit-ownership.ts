@@ -7,8 +7,11 @@
 // the order (drained and taken over, or resolved by an administrator) writes nothing and, before the send, is stopped.
 //
 // LOCK ORDER everywhere: the order row, then the transmission row (the order the administrator's resolution and the drain take them in).
+import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
+import { NotEnabledError } from "@chartwarden/dosespot";
 import { and, eq } from "drizzle-orm";
+import { vendorWriteIsCurrent } from "../tenant-config/registration-target";
 import { type M12CronDeps, inOrg } from "./cron-common";
 
 const MO = schema.medicationOrders;
@@ -93,12 +96,57 @@ export async function lockOwnership(tx: DbClient, c: Claimed, owns: Ownership): 
 const LOST_ORDER = "this worker no longer owns the order, so the prescription is not sent";
 
 /**
+ * The registration moved to another clinic while this worker's call was in flight (registration-target.ts). A NotEnabledError, so the worker settles
+ * it as an outage: the order goes back to `queued`, no retry spent, and runs again under the new registration. Carries no id and no content.
+ */
+function registrationMoved(deps: M12CronDeps, organizationId: string, c: Claimed): NotEnabledError {
+  deps.warn?.(
+    { organizationId, orderId: c.order.id, class: "registration_moved" },
+    "M12 transmit: the DoseSpot registration moved to another clinic during the call; the created prescription id was dropped and the order waits",
+  );
+  return new NotEnabledError(
+    "dosespot",
+    "transmitNewRx",
+    "The DoseSpot registration moved to another clinic while this prescription was being sent; it will be sent under the new registration.",
+    randomUUID(),
+  );
+}
+
+/**
+ * The call-stage guard shared by {@link rememberCreated} and {@link requireOwnership}: in ONE transaction, check the registration still names the
+ * clinic the call began under (FIRST, before any row lock, so it cannot deadlock with the clear), lock what the worker owns (a worker that lost the
+ * order throws), and run `whileCurrent`. If the registration moved, the created id this worker may already have persisted is the OLD clinic's and the
+ * clear skipped it (the call had begun): the worker, which owns the transmission row, clears it itself, and the caller then throws.
+ */
+async function guardedCallStage(
+  deps: M12CronDeps,
+  organizationId: string,
+  c: Claimed,
+  token: string,
+  target: string,
+  whileCurrent: (tx: DbClient) => Promise<void>,
+): Promise<void> {
+  const current = await inOrg(deps.db, organizationId, async (tx) => {
+    const isCurrent = await vendorWriteIsCurrent(tx, organizationId, target);
+    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
+    if (isCurrent) {
+      await whileCurrent(tx);
+      return true;
+    }
+    await tx.update(MOT).set({ dosespotPrescriptionId: null }).where(eq(MOT.id, c.transmission.id));
+    return false;
+  });
+  if (!current) throw registrationMoved(deps, organizationId, c);
+}
+
+/**
  * Persist the id of a prescription that was CREATED at DoseSpot but not yet sent, on the transmission row, before the send. The order itself
  * carries an id only once it is really sent (webhooks bind by it). A failure here propagates: the send is not attempted, the order is retried.
  *
  * It answers only while the worker still owns the call (see {@link Ownership}): it throws otherwise, so the id of a prescription the worker had no
  * right to create for this order is not recorded, and the adapter stops before the send. The prescription stays at DoseSpot as an unsent draft, which
- * the administrator's own check of the prescriber's account shows. Locks the order, then the transmission row, like every other writer.
+ * the administrator's own check of the prescriber's account shows. Locks the order, then the transmission row, like every other writer. It also
+ * answers only while the registration still names the clinic the call began under (`target`): the id would be the old clinic's.
  */
 export async function rememberCreated(
   deps: M12CronDeps,
@@ -106,9 +154,9 @@ export async function rememberCreated(
   c: Claimed,
   token: string,
   prescriptionId: string,
+  target: string,
 ): Promise<void> {
-  await inOrg(deps.db, organizationId, async (tx) => {
-    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
+  await guardedCallStage(deps, organizationId, c, token, target, async (tx) => {
     await tx
       .update(MOT)
       .set({ dosespotPrescriptionId: prescriptionId })
@@ -120,14 +168,14 @@ export async function rememberCreated(
  * The adapter's `beforeSend`: just before it SENDS, on every path, the worker re-checks that it still owns the call and throws if not. `onCreated`
  * covers only a prescription this call created; a retry that is handed a persisted created id skips the create and goes straight to the send, so
  * without this a worker whose order an administrator resolved NOT SENT meanwhile would still send it. What it cannot cover: a send already in flight.
+ * It also refuses to send once the registration has moved to another clinic since the call began (`target`).
  */
 export async function requireOwnership(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
   token: string,
+  target: string,
 ): Promise<void> {
-  await inOrg(deps.db, organizationId, async (tx) => {
-    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
-  });
+  await guardedCallStage(deps, organizationId, c, token, target, async () => undefined);
 }

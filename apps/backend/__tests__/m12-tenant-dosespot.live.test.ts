@@ -78,6 +78,7 @@ import {
   createTransmissionGate,
 } from "../src/modules/12-dosespot/index";
 import { isValidNpi } from "../src/modules/12-dosespot/tenant-config/practitioner-profile";
+import { readRegistrationTarget } from "../src/modules/12-dosespot/tenant-config/registration-target";
 import { EnrollPrescriberVendorBodySchema } from "../src/modules/12-dosespot/tenant-config/typebox";
 import {
   createDrizzleM29PublishedSeamStore,
@@ -111,6 +112,7 @@ const ORG_A = "a1000000-0000-4000-8000-0000000000a1"; // onboarding: the tenant 
 const ORG_B = "b2000000-0000-4000-8000-0000000000b2"; // onboarding: a bystander (isolation)
 const ORG_C = "c3000000-0000-4000-8000-0000000000c3"; // active tenant (the operator lane is closed to it, deactivate aside)
 const ORG_D = "d4000000-0000-4000-8000-0000000000d4"; // no registration row, served by the env fallback
+const ORG_E = "e9000000-0000-4000-8000-0000000000e9"; // a clinic move while an enrolment's vendor call is in flight
 const TENANT_ADMIN = "e5000000-0000-4000-8000-0000000000e5";
 const OPERATOR = "f6000000-0000-4000-8000-0000000000f6";
 const MEMBERSHIP = "e7000000-0000-4000-8000-0000000000e7";
@@ -155,6 +157,7 @@ describe.skipIf(!DB_URL)(
     }[] = [];
     let enrollBehaviour: "ok" | "rejected" | "no_id" = "ok";
     let enrollDelayMs = 0;
+    let onClinicianAdd: (() => Promise<void>) | null = null;
     // EVERY vendor request (token mint, clinician add) that is made while a transaction on the tenant pool is open is
     // counted here; the final case asserts it never happened. `tdb` is the tenant pool with its `transaction` counted.
     // The flag follows the async call chain (AsyncLocalStorage), so a vendor call made by one concurrent request is not blamed on a
@@ -211,6 +214,10 @@ describe.skipIf(!DB_URL)(
       }
       if (url.endsWith("/api/clinicians")) {
         if (enrollDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, enrollDelayMs));
+        // a test's chance to act while the vendor call is in flight (it runs once)
+        const whileInFlight = onClinicianAdd;
+        onClinicianAdd = null;
+        await whileInFlight?.();
         if (enrollBehaviour === "no_id") return { status: 200, text: async () => "{}" };
         return enrollBehaviour === "ok"
           ? { status: 200, text: async () => JSON.stringify({ Id: ++vendorSeq }) }
@@ -393,6 +400,11 @@ describe.skipIf(!DB_URL)(
       stepUpRecent: true,
       request: { correlationId: `live-op-${++seq}`, requestId: `req-op-${seq}`, route: "TEST" },
     });
+    /** The clinic the org's registration names now: what an enrolment's claim reads before its vendor call. */
+    const targetNow = (org: string) =>
+      withOrgContext(tdb, { organizationId: org, userId: TENANT_ADMIN }, (tx) =>
+        readRegistrationTarget(tx as unknown as DbClient, org),
+      );
     const rowOf = async (org: string) =>
       (await q("SELECT * FROM dosespot_clinic_registration WHERE organization_id=$1", [org]))[0];
     const eventsOf = (type: string, org: string) =>
@@ -439,6 +451,7 @@ describe.skipIf(!DB_URL)(
         [ORG_B, "ds-b"],
         [ORG_C, "ds-c"],
         [ORG_D, "ds-d"],
+        [ORG_E, "ds-e"],
       ] as const) {
         await admin.query(
           "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -456,6 +469,7 @@ describe.skipIf(!DB_URL)(
         [ORG_B, "onboarding"],
         [ORG_C, "active"],
         [ORG_D, "onboarding"],
+        [ORG_E, "onboarding"],
       ] as const) {
         accountOf[org] = (
           await admin.query(
@@ -501,7 +515,7 @@ describe.skipIf(!DB_URL)(
         keyRingDb: platformPool.db,
       });
       validateModule34Seams();
-      for (const org of [ORG_A, ORG_B, ORG_C, ORG_D]) {
+      for (const org of [ORG_A, ORG_B, ORG_C, ORG_D, ORG_E]) {
         const wrapped = await adapter.mintAndWrapDek({ organizationId: org });
         await platformPool.db.transaction(async (tx) => {
           await tx.execute(
@@ -1133,6 +1147,50 @@ describe.skipIf(!DB_URL)(
         expect(fetchLog.slice(calls).filter((c) => c.url.endsWith("/api/clinicians"))).toHaveLength(
           0,
         );
+      });
+
+      it("an enrolment whose vendor call overlaps a clinic move records NO vendor id (409 DOSESPOT_REGISTRATION_MOVED); after the new registration is tested, the retry enrols under the new clinic", async () => {
+        const ME = "99000000-0000-4000-8000-0000000000e1";
+        await admin.query(
+          `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000e2','rx-move@ds.test')`,
+        );
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000e2',$2,'active')",
+          [ME, ORG_E],
+        );
+        await rosterWithPhysician(ORG_E, ME);
+        await verifiedFor(ORG_E); // sandbox clinic-live-1, tested
+        warnings.length = 0;
+        // the PUT commits while DoseSpot is still answering the clinician add
+        onClinicianAdd = async () => {
+          const version = (await rowOf(ORG_E))?.version;
+          await route.put(
+            tenantActor(ORG_E),
+            { ...BASE, clinicId: "clinic-live-moved", clinicKey: CLINIC_KEY },
+            version,
+          );
+        };
+        enrollBehaviour = "ok";
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_E), ME))).toBe(
+          "DOSESPOT_REGISTRATION_MOVED",
+        );
+        const row = (await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [ME]))[0];
+        expect(row?.dosespot_prescriber_id).toBeNull(); // the old clinic's id was not written
+        expect(warnings.some((w) => w.includes("registration_moved"))).toBe(true);
+        expect((await eventsOf("m12.prescriber_enrolled", ORG_E)).length).toBe(0);
+
+        // the new clinic is tested, and the same prescriber enrols under it
+        probeStatus = 200;
+        await route.verify(tenantActor(ORG_E));
+        await enrollment.enroll(tenantActor(ORG_E), ME);
+        expect(
+          (
+            await q(
+              "SELECT dosespot_prescriber_id FROM dosespot_prescriber WHERE membership_id=$1",
+              [ME],
+            )
+          )[0]?.dosespot_prescriber_id,
+        ).toMatch(/^7\d{2}$/);
       });
 
       it("is idempotent: a linked prescriber is not enrolled twice", async () => {
@@ -1992,6 +2050,7 @@ describe.skipIf(!DB_URL)(
                link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
             [m.membershipId, m.physician.id, m.physician.npi],
           );
+          const expectedTarget = await targetNow(ORG_A);
           const code = await errorCode(
             withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
               createDrizzleRosterStore(tx as unknown as DbClient).recordVendorId(
@@ -2001,6 +2060,7 @@ describe.skipIf(!DB_URL)(
                   dosespotPrescriberId: "880001",
                   npi: m.physician.npi as string,
                   at: new Date(),
+                  expectedTarget,
                   expectedPhysicianMdmId: m.physician.id,
                 },
               ),
@@ -2091,12 +2151,14 @@ describe.skipIf(!DB_URL)(
             "DOSESPOT_PRACTITIONER_UNCONFIRMED",
           );
           // the statement-level guard too, straight at the store: nothing is recorded
+          const expectedTargetNow = await targetNow(ORG_A);
           const recorded = await withOrgContext(
             tdb,
             { organizationId: ORG_A, userId: m.userId },
             (tx) =>
               createDrizzleRosterStore(tx as unknown as DbClient)
                 .recordVendorId(ORG_A, m.membershipId, {
+                  expectedTarget: expectedTargetNow,
                   expectedPhysicianMdmId: m.physician.id,
                   dosespotPrescriberId: "9001",
                   npi: m.physician.npi as string,
