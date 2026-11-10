@@ -359,3 +359,36 @@ describe("11 — writers outside the supported list, onto a protected path", () 
     expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });
+
+// Shapes found while narrowing the harness-switch rule below: each one hid a command from the classifier.
+describe("related — `--` after a wrapper, `builtin cd`, and process substitution", () => {
+  it.each([
+    "sudo -- rm -rf scripts/harness",
+    "env -- rm -r compliance",
+    "nice -n 5 -- tee scripts/harness/pre-tool-guard.ts",
+    "builtin cd .claude && echo x > settings.json",
+    "echo x > >(tee scripts/harness/pre-tool-guard.ts)",
+    "echo x | tee >(cat > compliance/controls.yaml)",
+    "cat <(sed -i s/a/b/ compliance/controls.yaml)",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "cat <(cat .env)",
+    "diff <(cat .env) <(echo x)",
+    "sudo -- cat .env",
+    "echo $(cat <(cat .env))",
+  ])("denies %s", (cmd) => expect(d(cmd)).toBe("deny"));
+
+  it.each([
+    "diff <(sort a.txt) <(sort b.txt)",
+    "sudo -- ls /root",
+    "env -- node --version",
+    "builtin cd apps/web && bun run build",
+    "cat <(echo hi)",
+    "tee >(cat > /tmp/out.txt) < /tmp/in.txt",
+    "node -e 'const f = x => (x + 1); console.log(f(1))'",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});

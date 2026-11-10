@@ -413,8 +413,9 @@ function ungroup(segment: string): string {
 }
 
 /**
- * The text inside every `$( … )` and backtick pair that the shell would actually run (single quotes
- * make them literal). Each one is judged as its own command line, so `echo $(cat .env)` is the `cat`.
+ * The text inside every `$( … )`, `<( … )`, `>( … )` and backtick pair that the shell would actually run
+ * (single quotes make them literal). Each one is judged as its own command line, so `echo $(cat .env)` is
+ * the `cat`.
  */
 function substitutions(cmd: string): string[] {
   const out: string[] = [];
@@ -430,7 +431,8 @@ function substitutions(cmd: string): string[] {
       i = end;
       continue;
     }
-    if (ch === "$" && cmd[i + 1] === "(" && cmd[i + 2] !== "(") {
+    // `$( … )`, and the process substitutions `<( … )` / `>( … )`, which also run their text as a command.
+    if ((ch === "$" || ch === "<" || ch === ">") && cmd[i + 1] === "(" && cmd[i + 2] !== "(") {
       let depth = 1;
       let j = i + 2;
       for (; j < cmd.length && depth > 0; j++) {
@@ -556,6 +558,7 @@ const WRAPPER_FLAG_VALUE: ReadonlyMap<string, RegExp> = new Map([
   ...[
     "time",
     "command",
+    "builtin",
     "exec",
     "nohup",
     "setsid",
@@ -609,6 +612,8 @@ function program(seg: string): { prog: string; args: string[]; assigns: string[]
       while (k < w.length && /^-/.test(w[k] ?? "") && (w[k] ?? "") !== "--") {
         k += takesValue.test(w[k] ?? "") ? 2 : 1;
       }
+      // `sudo -- rm x`: `--` ends the wrapper's options, and the command follows it.
+      if (w[k] === "--") k++;
     } else break;
   }
   // `env -u X` with no command prints the environment: it is still `env`.
