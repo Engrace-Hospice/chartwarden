@@ -144,6 +144,7 @@ describe("runIdempotent", () => {
 });
 
 describe("a claim that stays pending past the bound is stuck, not in flight", () => {
+  const ok: IdempotentResponse = { status: "201", body: { id: 1 } };
   const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
   const pendingFor = (pendingForMs?: number): IdempotencyRecord => ({
     state: "pending",
