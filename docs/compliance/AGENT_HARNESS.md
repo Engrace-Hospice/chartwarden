@@ -207,19 +207,29 @@ Covered (each has a regression test in `scripts/__tests__/harness-bypasses.test.
 
 **Shell classifier limits and coverage.** `classifyBash` is a text heuristic for a cooperative agent, not a
 sandbox. It tracks `cd`, `pushd` and `..` through a command, and expands `~`, `$HOME`, `$CODEX_HOME` and
-`$PWD`. It resolves every write target before comparing it with the protected paths, and it treats a
-directory that contains a protected path as protected when the command is a delete, move, or tree-merge
-(`rm -r`, `mv`, `cp -R`, `rsync`, `tar x`, `unzip`). The writers it understands are redirections, `tee`,
-`dd of=`, `sed -i`, `perl -i`, `find -delete/-exec`, `cp/mv/ln/install`, `chmod/chown -R`, `patch`, and
-`git apply/am/checkout/restore/rm/mv/clean`. It reads inline interpreter code and heredoc or stdin script
-bodies as text, with quotes and `+` removed. It cannot read a script file (`python3 /tmp/w.py`), computed
-or encoded names, glob targets, symlinks, a `$VAR` path prefix, or anything fed through `xargs`. A `cd` it
-cannot resolve followed by a write asks. Whole-tree reads that bypass `.gitignore` (`grep -r`,
-`rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built by command substitution
-and agents started with approval prompts, the sandbox or hooks off. Reasons never echo URL userinfo and cap
-any token they quote. Pathological input is bounded (32 substitutions per level, 300 judged command lines
-per call) because a guard that times out lets the call through. Reading a protected file does not ask; only
-a command that writes one does.
+`$PWD`. A `cd` is trusted only along an `&&` chain; after `;`, `||`, a newline, a pipe, `&` or a group
+(`( … )`) the command may still run where it started, so a relative write is judged against EVERY directory
+it could be in (at most 16, then unknown, which asks). It resolves every write target before comparing it
+with the protected paths, and it treats a directory that contains a protected path as protected when the
+command is a delete, move, or tree-merge (`rm -r`, `mv`, `cp -R`, `rsync`, `tar x`, `unzip`); a recursive
+`chmod`/`chown`/`rm`, or a `find … -delete` or `-exec` that is not narrowed by `-name`/`-path`/`-regex`,
+over the whole repo root asks as well. The writers it understands are redirections, `tee`, `dd of=`,
+`sed -i` (including the GNU long-option abbreviations), `perl -i`, `find -delete/-exec`, `cp/mv/ln/install`,
+`chmod/chown -R`, `patch`, `curl -o`, `wget -O`, `sort -o`, `openssl -out`, `base64 -o`, in-place
+compressors, and `git apply/am/checkout/restore/rm/mv/clean`. It judges the commands inside `$( )`,
+backticks and `<( )`/`>( )` as command lines, and sees through `sudo`, `env`, `builtin` and `--`. It reads
+inline interpreter code and heredoc or stdin script bodies as text, with quotes and `+` removed. It cannot
+read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinks, a `$VAR` path
+prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
+current directory), or a recursive delete of an ANCESTOR of the repo root. Whole-tree reads that bypass
+`.gitignore` (`grep -r`, `rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built
+by command substitution and agents started with approval prompts, the sandbox or hooks off. A harness
+switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, …) asks only when it is
+ASSIGNED (`VAR=… cmd`, `export`, `env`, `declare`), not when its name appears in a search pattern. Reasons
+never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
+call through in Claude Code: a command over 64 KB asks before it is parsed, glob matching is linear (no
+backtracking), and substitutions (32 per level) and judged command lines (300 per call) are capped; over
+any cap the answer is ask. Reading a protected file does not ask; only a command that writes one does.
 
 **Fails closed.** Empty or unparseable hook input, an internal error, and a write too large to scan
 (over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it.
