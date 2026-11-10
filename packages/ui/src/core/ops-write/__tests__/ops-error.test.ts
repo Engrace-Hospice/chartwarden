@@ -327,7 +327,7 @@ describe("Retry-After", () => {
     "carries no wait for an unusable header (%s)",
     (header) => {
       const failure = describeOpsError(envelope("RATE_LIMITED", "x"), response(429, header));
-      expect("retryAfterSeconds" in failure).toBe(false);
+      expect(failure.retryAfterSeconds).toBeNull();
     },
   );
 

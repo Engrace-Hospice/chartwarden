@@ -45,6 +45,7 @@ function seed(over: Partial<HelpRequestRow>): HelpRequestRow {
     closedByUserId: null,
     closedAt: null,
     closeNote: null,
+    messagePurgedAt: null,
     ...over,
   };
   state.requests.set(row.id, row);

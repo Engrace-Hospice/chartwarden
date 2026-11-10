@@ -26,8 +26,10 @@ export function useMacCheck(args: {
     probe.clear();
     const outcome = await probe.run(`check:${providerEntityId}`, (key) =>
       client.POST(TEST, {
-        params: { path: { providerEntityId } },
-        headers: { "Idempotency-Key": key },
+        params: {
+          path: { providerEntityId },
+          header: { "Idempotency-Key": key },
+        },
       }),
     );
     if (!outcome.ok) return;

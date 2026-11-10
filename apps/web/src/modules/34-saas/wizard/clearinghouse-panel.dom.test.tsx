@@ -42,6 +42,9 @@ const verifiedBaa = (verified: { at: string } | null) => ({
   documentRef: "Claim.MD BAA, signed copy",
   recordedAt: "2026-11-02T00:00:00.000Z",
   verified,
+  revoked: false,
+  revokedAt: null,
+  revokedReasonCode: null,
 });
 
 function mount(

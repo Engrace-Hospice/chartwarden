@@ -398,13 +398,13 @@ describe("createOrganizationStageReader", () => {
     let status: "created" | "active" | "suspended" | "closed" | null = "created";
     const read = vi.fn(async () => status);
     const reader = createOrganizationStageReader(read, { ttlMs: 60_000 });
-    expect(await reader.isCreated(ORG)).toBe(true);
+    expect(await reader.isCreated?.(ORG)).toBe(true);
     expect(await reader.isConfined(ORG)).toBe(true);
     expect(read).toHaveBeenCalledTimes(1);
     for (const other of ["active", "suspended", "closed", null] as const) {
       status = other;
       reader.invalidate(ORG);
-      expect(await reader.isCreated(ORG), String(other)).toBe(false);
+      expect(await reader.isCreated?.(ORG), String(other)).toBe(false);
     }
   });
 

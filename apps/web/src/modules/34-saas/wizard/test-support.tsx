@@ -46,6 +46,7 @@ export function wizardStep(
     skipRationale: null,
     systemSkipped: false,
     skippedBy: null,
+    skippedByLabel: null,
     skippable,
     tenantSkippable: skippable,
     createdAt: "2026-11-01T00:00:00.000Z",

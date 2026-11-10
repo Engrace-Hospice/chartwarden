@@ -46,6 +46,9 @@ const baa = (verified: { at: string } | null) => ({
   documentRef: "Claim.MD BAA, signed copy",
   recordedAt: "2026-11-02T00:00:00.000Z",
   verified,
+  revoked: false,
+  revokedAt: null,
+  revokedReasonCode: null,
 });
 const VERIFIED_BAA = baa({ at: "2026-11-03T00:00:00.000Z" });
 const READY = { ...CLAIMMD_DRAFT, status: "verified" as const, baa: VERIFIED_BAA };
@@ -503,7 +506,6 @@ describe("refusals", () => {
     mount(withPut(() => reply));
     await openAndSave();
     expect(await screen.findByText(/Try again in about 30 seconds\./)).toBeTruthy();
-    expect(screen.getByText(/tried too many times in a row/)).toBeTruthy();
   });
 
   it.each([

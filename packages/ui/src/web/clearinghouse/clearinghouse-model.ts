@@ -154,6 +154,7 @@ export function clearinghouseFacts(
 
 export interface ClearinghouseActions {
   readonly canVerifyBaa: boolean;
+  readonly canRevokeBaa: boolean;
   readonly canVerifyConnection: boolean;
   /**
    * What to say where an Activate button used to be: only the tenant's own billing administrator activates its clearinghouse
@@ -165,6 +166,7 @@ export interface ClearinghouseActions {
 
 const NO_ACTIONS: ClearinghouseActions = {
   canVerifyBaa: false,
+  canRevokeBaa: false,
   canVerifyConnection: false,
   tenantActivationNote: null,
 };
@@ -174,7 +176,8 @@ export function clearinghouseActions(view: ClearinghouseSharedView): Clearinghou
   const baaVerified = view.baa?.verified != null;
   const connectionVerified = view.status === "verified";
   return {
-    canVerifyBaa: view.baaRequired && view.baa !== null && !baaVerified,
+    canVerifyBaa: view.baaRequired && view.baa !== null && !view.baa.revoked && !baaVerified,
+    canRevokeBaa: view.baaRequired && view.baa !== null && !view.baa.revoked,
     canVerifyConnection: view.status === "draft" && view.hasSecret,
     tenantActivationNote: !connectionVerified
       ? null
