@@ -45,6 +45,8 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   // A 413 with no envelope comes from a proxy in front of the API, whose cap may be wrong: do not quote the API's limit.
   PAYLOAD_TOO_LARGE:
     "The server refused this upload as too large. If the file is under 10 MiB, tell engineering: the upload should have been accepted.",
+  // The API's own per-operator limit and the platform vhost's per-address nginx limit (a bare 429 page) both land here: neither processed the request.
+  RATE_LIMITED: "Too many attempts. Nothing was saved. Wait a minute, then try again.",
   BAA_DOCUMENT_REQUIRED: "An executed BAA needs the document id of the signed agreement.",
   INVALID_ORG_TIMEZONE: "That is not a valid time zone. Use an IANA name such as America/Denver.",
   INVALID_DISPLAY_NAME: "That display name is not valid.",
