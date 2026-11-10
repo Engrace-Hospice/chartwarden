@@ -36,8 +36,9 @@ export const IDEMPOTENCY_IN_FLIGHT_CODE = "IDEMPOTENCY_IN_FLIGHT";
 /**
  * DEPLOY-WINDOW STOPGAP: delete this constant and `isLegacyInFlight` once every server answers `IDEMPOTENCY_IN_FLIGHT`. An older server
  * answers that duplicate with a plain 409 `CONFLICT` whose message is exactly this (IdempotencyInFlightError, packages/shared).
+ * Exported only so scripts/__tests__/idempotency-in-flight-contract.test.ts can check it against the server source.
  */
-const LEGACY_IN_FLIGHT_MESSAGE = "Idempotency-Key request is still being processed";
+export const LEGACY_IN_FLIGHT_MESSAGE = "Idempotency-Key request is still being processed";
 
 function isLegacyInFlight(envelope: ErrorEnvelope): boolean {
   return envelope.code === "CONFLICT" && envelope.message === LEGACY_IN_FLIGHT_MESSAGE;
@@ -52,6 +53,33 @@ export function isInFlightDuplicate(status: number, body: unknown): boolean {
   const envelope = envelopeOf(body);
   if (envelope === null) return false;
   return envelope.code === IDEMPOTENCY_IN_FLIGHT_CODE || isLegacyInFlight(envelope);
+}
+
+const MS_PER_MINUTE = 60_000;
+
+/**
+ * How long an intent keeps its key after its last UNANSWERED attempt (no answer, or a gateway page). The server caches an answer for a
+ * limited time (24h), and a retry long after the first attempt is a new intent (the same text submitted again on purpose), which must
+ * not be handed a replay of the old answer; a lost-reply retry comes in seconds to minutes. An in-flight 409 does not move it: the
+ * server can leave a claim pending for its whole TTL when it fails to complete or release it, and sliding on that 409 would lock the
+ * user out of that write for as long as they kept trying. Shared by the API client's middleware and the kit's keeper.
+ */
+export const IDEMPOTENCY_KEY_TTL_MS = 15 * MS_PER_MINUTE;
+
+/**
+ * The most an intent may keep one key, measured from its FIRST attempt however often it was retried. Sliding the idle window alone
+ * would let a user who retries every 14 minutes outlive the server's fixed 24h claim; an hour is far past any lost-reply retry.
+ */
+export const IDEMPOTENCY_KEY_MAX_AGE_MS = 60 * MS_PER_MINUTE;
+
+/** True once an intent is past the hard cap from its first attempt. */
+export function keyPastMaxAge(firstAttemptAt: number, now: number): boolean {
+  return now - firstAttemptAt >= IDEMPOTENCY_KEY_MAX_AGE_MS;
+}
+
+/** True once an intent has gone a full TTL without an unanswered attempt. */
+export function keyIdleTooLong(lastAttemptAt: number, now: number): boolean {
+  return now - lastAttemptAt >= IDEMPOTENCY_KEY_TTL_MS;
 }
 
 /**

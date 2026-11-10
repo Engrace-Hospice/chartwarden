@@ -182,8 +182,10 @@ export function PortalSignedIn(): JSX.Element {
 
   async function leave(): Promise<void> {
     generation.current++;
+    // No page reload here, so the next person to sign in on this page must not inherit this session's unanswered writes. Cleared BEFORE the
+    // sign-out is awaited: a failed or slow sign-out must not leave them behind.
+    clearIdempotencyKeys(client);
     await signOut();
-    clearIdempotencyKeys(client); // no page reload here: the next person to sign in must not inherit this session's unanswered writes
     navigate("/", { replace: true });
   }
 

@@ -11,7 +11,7 @@
 | Concern | Fact | Evidence |
 |---|---|---|
 | Rate limiting | Global `onRequest` hook only: 600/min authenticated, 30/min unauthenticated. The bucket key is `org:<orgId>` once org-bound, so **every user in a tenant shares one 600/min bucket**. No per-route or per-user limit on send, DM-directory search or alert inbox. Fails open if the store is down. | `apps/backend/src/bootstrap/plugins/security.ts:26-29,91-132` |
-| Idempotency (server) | Global `applyIdempotency` hook (all non-GET/HEAD). It acts **only if an `Idempotency-Key` header is sent**; the request hash covers org, user, actor kind, method, route template, path params, query string and `If-Match`, plus the key and body. A duplicate still in flight answers 409. M36 declares no `requireIdempotencyKey` anywhere. | `apps/backend/src/bootstrap/plugins/idempotency.ts` (the `preHandler` hook), mounted `bootstrap/index.ts:321` |
+| Idempotency (server) | Global `applyIdempotency` hook (all non-GET/HEAD). It acts **only if an `Idempotency-Key` header is sent**; the request hash covers org, user, actor kind, method, route template, path params, query string and `If-Match`, plus the key and body. A duplicate still in flight answers 409. M36 declares no `requireIdempotencyKey` anywhere. | `apps/backend/src/bootstrap/plugins/idempotency.ts` (the `preHandler` hook), mounted `bootstrap/index.ts:335` |
 | Idempotency (web) | The shared `@chartwarden/ui` client (`createApiClient`) adds an `Idempotency-Key` to every keyless POST/PUT/PATCH/DELETE and holds it per write intent (method + URL + `If-Match` + JSON body): the same intent keeps its key across a request that got no answer, a gateway page that never reached the app and an in-flight 409, and any other answer renews it, so a Send re-clicked after a lost reply is a replay the guard can dedupe. A caller that supplies its own key (the M36 send path does: `SendAttempt.idempotencyKey`) is never touched. | `packages/ui/src/core/api/idempotency-middleware.ts`, registered in `packages/ui/src/core/api/client.ts`; the rule `keepsKey` in `packages/ui/src/core/ops-write/idempotency-key.ts`; M36 send `apps/web/src/modules/36-messaging/messaging-utils.ts` |
 | Validation | Every body, query and params object goes through `parse(<TypeBox schema>)` (`TB:414`), which throws the 422 `VALIDATION_FAILED` envelope. One caveat: the `channel_visibility` ABAC predicate runs **before** `parse` and reads raw `params.id` (RT:92). | RT, TB |
 | Write audit | DB-level M4 triggers `trg_audit_<table>` on `channel`, `channel_member`, `message`, `message_receipt`, `alert`, `alert_rule`, `tenant_alert_routing_override`, `user_notification_preferences` and others. `delivery_endpoint`, `presence` and similar tables carry **none by design**. | `packages/db/migrations/0017_messaging_m36_rls_audit_triggers.sql:198-531` |
@@ -43,7 +43,7 @@ Test keys used below:
 | 2 | GET `/api/v1/messaging/channels/:id` | `messaging.read` | `channel_visibility` | yes, `resourceIdParam:"id"`, `patientIdPayloadPath:"patientId"` | n/a | n/a | params | R, G64; **no live test of `getChannel`** | RT:170-188, SVC:872 |
 | 3 | GET `/api/v1/messaging/channels/:id/messages` | `messaging.read` | `channel_visibility` | yes, aggregate `list:true`, kind `message`, patient from payload; no per-message id | n/a | n/a | params + query | R, G64, W, L-MEM (`listMessages`) | RT:191-214, SVC:952 |
 | 4 | GET `/api/v1/messaging/channels/:id/mention-candidates` | `messaging.read` | `channel_visibility` | yes, `resourceIdParam:"id"`, kind `message_mention_candidate` | n/a | n/a | params + query | R, W; no live test | RT:219-244, SVC:541-662 |
-| 5 | POST `/api/v1/messaging/channels/:id/messages` | `messaging.send` | `channel_visibility` (same predicate as read) | n/a | `trg_audit_message`, `trg_audit_message_receipt`; outbox `m36.message.mentioned` per mentioned staff | yes / yes (fresh key per click) | params + body (`SendMessageBodySchema`, TB:87) | R, W, L-MEM (`sendMessage`); no attachment, parent or quoted tests | RT:247-267, SVC:1115 |
+| 5 | POST `/api/v1/messaging/channels/:id/messages` | `messaging.send` | `channel_visibility` (same predicate as read) | n/a | `trg_audit_message`, `trg_audit_message_receipt`; outbox `m36.message.mentioned` per mentioned staff | yes / yes (one key per composed message, reused on every retry: `SendAttempt.idempotencyKey`, `apps/web/src/modules/36-messaging/messaging-utils.ts`) | params + body (`SendMessageBodySchema`, TB:87) | R, W, L-MEM (`sendMessage`); no attachment, parent or quoted tests | RT:247-267, SVC:1115 |
 | 6 | PATCH `/api/v1/messaging/messages/:id` | `messaging.send` | **none** (author check in SVC only) | n/a | `trg_audit_message`; no outbox; no revision row | yes / yes | params + body | R only; **no live test** | RT:270-280, SVC:1192 |
 | 7 | DELETE `/api/v1/messaging/messages/:id` | `messaging.send` | **none** (author check only) | n/a | `trg_audit_message` (soft delete, cipher retained); no outbox | yes / yes | params | R only; **no live test** | RT:283-288, SVC:1272 |
 | 8 | POST `/api/v1/messaging/messages/:id/read` | `messaging.read` | **none** | no (POST; no `auditRead`) | `trg_audit_message_receipt`, `trg_audit_channel_member` (read pointer) | yes / yes | params + body | R, L-MEM (`markRead`, 1 call) | RT:291-301, WC `markMessagesRead` |
@@ -91,7 +91,7 @@ Test keys used below:
 
 - Routes: **27** (23 tenant-user, 1 admin, 3 webhook).
 - Rows 1-23 missing a **declared read-audit where one would be expected**: row 8 (`markRead`, benign) and row 21 (alert read, benign). No GET is missing the gate (the gate enforces it).
-- Routes that **do not require** an `Idempotency-Key` (all of them): **23/23 tenant routes** (server honours but never requires). Web sends a fresh key on all mutating ones, which does not give logical-retry idempotency.
+- Routes that **do not require** an `Idempotency-Key` (all of them): **23/23 tenant routes** (server honours but never requires). Web sends a key on all mutating ones; since 2026-11-09 the shared client holds one per write intent across a lost reply (`packages/ui/src/core/api/idempotency-middleware.ts`), so a retry is a replay the server can dedupe (this audit found a fresh key per call).
 - Routes where idempotency matters and the only protection is incidental: row 5 (send), row 14 (announce), row 6/7.
 - Routes with **no live test of the Drizzle service method**: rows 2, 4, 6, 7, 10, 14, 15, 19, 22 (9 routes). Rows 12 and 13 have only the non-live `MA` suite.
 - Routes with **no HTTP-level live test at all**: **all 27**.
@@ -160,7 +160,7 @@ The audit says M36 does not consume `m2.membership.revoked/suspended` or `m2.use
 - The web client never sends `attachments`.
 - Owner: **WP 1.5**. Until then, reject a non-empty `attachments` with 422 rather than dropping it (one-line change; **new** hotfix item in WP 1.5 or WP 0.7).
 
-**M6 (Medium). Idempotency is optional and the web mints a new key per click (confirms F6/F13 with an addition).**
+**M6 (Medium). Idempotency is optional and the web mints a new key per click (confirms F6/F13 with an addition).** *At audit time. Since 2026-11-09 the shared client holds one key per write intent, and the M36 send path supplies one per composed message; the key stays optional on the server.*
 - Section 0. A send that times out ambiguously and is retried by the user is a duplicate message, and a duplicate clinical message fans out duplicate receipts and mention alerts.
 - Owner: **WP 1.2** (require the key on send, announce, escalation; derive the key from a client-generated `clientMessageId` that persists across retries, which the current client does not do).
 
@@ -189,7 +189,7 @@ The audit says M36 does not consume `m2.membership.revoked/suspended` or `m2.use
 
 **F5 (threads):** confirmed and strengthened (M3): no same-channel or same-tenant validation, plain FK, cross-tenant pointer and delete-blocking possible. The web never sends the fields.
 
-**F6/F13 (idempotency):** confirmed. Addition: the web does send a header on every mutation (`packages/ui/src/core/api/client.ts:62-70`) but a fresh one per call, so the audit's "unconfirmed" is now confirmed, and it does not protect against user retry (M6).
+**F6/F13 (idempotency):** confirmed. Addition: the web does send a header on every mutation (`packages/ui/src/core/api/client.ts:62-70`) but a fresh one per call, so the audit's "unconfirmed" is now confirmed, and it did not protect against user retry (M6). *Since 2026-11-09 the client holds one key per write intent across a lost reply, so it does.*
 
 **F9 (read auditing):** confirmed, with specifics: resource-id params on channel detail, mention-candidates and care-team-channel; aggregate list audit with `patientIdPayloadPath` on message history; list audit without ids on channel list and alert inbox; two reasoned waivers (`dm/staff`, preferences GET). `resourceIdParam` is correctly absent only on list reads.
 

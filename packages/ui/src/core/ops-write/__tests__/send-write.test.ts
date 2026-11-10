@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { createApiClient } from "../../api/client";
 import { createIdempotencyKeeper } from "../idempotency";
+import { IDEMPOTENCY_KEY_MAX_AGE_MS, IDEMPOTENCY_KEY_TTL_MS } from "../idempotency-key";
 import { reachedNoOne, sendWrite, settleWrite, writeRefused } from "../send-write";
 
 const counter = () => {
@@ -152,5 +153,77 @@ describe("sendWrite and the 409 that says an earlier request under the key is st
     await sendWrite(keeper, "same", reply(409, conflict));
 
     expect(seen[1]).not.toBe(seen[0]);
+  });
+});
+
+describe("sendWrite and the keeper's bounds", () => {
+  const T0 = Date.parse("2026-11-09T10:00:00.000Z");
+  const inFlight = { error: { code: "IDEMPOTENCY_IN_FLIGHT", message: "m" } };
+  const answer = (status: number, body?: unknown) => ({
+    error: body,
+    response: { ok: status < 400, status },
+  });
+
+  it("does not slide the idle window on an in-flight 409, so a claim left pending cannot hold the form forever", async () => {
+    let clock = T0;
+    const keeper = createIdempotencyKeeper(counter(), () => clock);
+    const keys: string[] = [];
+    const reply = (status: number, body?: unknown) => async (key: string) => {
+      keys.push(key);
+      if (status === 0) throw new TypeError("Failed to fetch");
+      return answer(status, body);
+    };
+
+    await sendWrite(keeper, "same", reply(0)); // lost reply: the window starts here
+    clock += IDEMPOTENCY_KEY_TTL_MS - 5_000;
+    await sendWrite(keeper, "same", reply(409, inFlight));
+    clock += 4_000;
+    await sendWrite(keeper, "same", reply(409, inFlight));
+    clock += 1_000; // a TTL after the unanswered attempt; the two 409s did not move it
+    await sendWrite(keeper, "same", reply(201));
+
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).toBe(keys[0]);
+    expect(keys[3]).not.toBe(keys[0]);
+  });
+
+  it("slides it on an unanswered attempt (no answer, or a gateway page), up to the hard cap", async () => {
+    let clock = T0;
+    const keeper = createIdempotencyKeeper(counter(), () => clock);
+    const keys: string[] = [];
+    const gateway = async (key: string) => {
+      keys.push(key);
+      return answer(502);
+    };
+    const step = IDEMPOTENCY_KEY_TTL_MS - 1_000;
+    const start = clock;
+
+    await sendWrite(keeper, "same", gateway);
+    while (clock - start + step < IDEMPOTENCY_KEY_MAX_AGE_MS) {
+      clock += step;
+      await sendWrite(keeper, "same", gateway);
+    }
+    clock += step;
+    await sendWrite(keeper, "same", gateway);
+
+    const last = keys.at(-1);
+    expect(new Set(keys.slice(0, -1)).size).toBe(1);
+    expect(last).not.toBe(keys[0]);
+  });
+
+  it("gives the call the intent's first-attempt time, the same one on a retry", async () => {
+    let clock = T0;
+    const keeper = createIdempotencyKeeper(counter(), () => clock);
+    const stamps: string[] = [];
+    const drop = async (_key: string, stampedAt: string) => {
+      stamps.push(stampedAt);
+      throw new TypeError("Failed to fetch");
+    };
+
+    await sendWrite(keeper, "sign", drop);
+    clock += 60_000;
+    await sendWrite(keeper, "sign", drop);
+
+    expect(stamps).toEqual(["2026-11-09T10:00:00.000Z", "2026-11-09T10:00:00.000Z"]);
   });
 });

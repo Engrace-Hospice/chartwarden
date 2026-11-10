@@ -49,4 +49,35 @@ describe("PR4.4 restricted funeral-home case", () => {
     );
     expect(screen.queryByText("Example Person")).toBeNull();
   });
+
+  it("drops the held Idempotency-Keys when the case is finished: no page reload follows", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ ok: true })));
+    const keys: (string | null)[] = [];
+    const client = createApiClient({
+      baseUrl: "http://localhost",
+      fetch: async (input) => {
+        const request = input instanceof Request ? input : new Request(String(input));
+        if (new URL(request.url).pathname === "/api/v1/funeral/case")
+          return json({ decedentName: "Example Person", dateOfDeath: "2026-10-12" });
+        keys.push(request.headers.get("Idempotency-Key"));
+        if (keys.length === 1) throw new TypeError("Failed to fetch"); // the redemption's reply is lost
+        return json({});
+      },
+    });
+    const redeem = () =>
+      client
+        .POST("/api/v1/collaborators/consume" as never, { body: { token: "t" } } as never)
+        .catch(() => undefined);
+    await redeem();
+    window.history.pushState({}, "", "/portal/funeral/case");
+    render(<PortalApp client={client} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Finish and close access" }));
+    await waitFor(() =>
+      expect(screen.getByText("This access is no longer available.")).toBeTruthy(),
+    );
+    await redeem(); // the next person on this page
+
+    expect(keys[1]).not.toBe(keys[0]);
+  });
 });

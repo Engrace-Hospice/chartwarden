@@ -4,11 +4,14 @@
 // createIdempotencyKeeper/sendWrite hold per screen (`keepsKey`).
 import createClient from "openapi-fetch";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { freshIdempotencyKeyHeaders } from "../../ops-write/idempotency-key";
-import { clearIdempotencyKeys, createApiClient } from "../client";
 import {
   IDEMPOTENCY_KEY_MAX_AGE_MS,
   IDEMPOTENCY_KEY_TTL_MS,
+  freshIdempotencyKeyHeaders,
+  keepsKey,
+} from "../../ops-write/idempotency-key";
+import { clearIdempotencyKeys, createApiClient } from "../client";
+import {
   MAX_FINGERPRINT_BODY_CHARS,
   MAX_TRACKED_INTENTS,
   createIdempotencyKeys,
@@ -67,7 +70,15 @@ function setup({ now, readBody = true }: SetupOptions = {}) {
     expect(keys).toHaveLength(before + 1);
     return { key: keys[before] ?? null, body: bodies[before] ?? null, result };
   };
-  return { client, send, script, keys, bodies, clear: idempotency.clear };
+  return {
+    client,
+    send,
+    script,
+    keys,
+    bodies,
+    clear: idempotency.clear,
+    held: idempotency.heldIntents,
+  };
 }
 
 afterEach(() => {
@@ -405,6 +416,33 @@ describe("bodies it cannot fingerprint", () => {
     expect(second.key).not.toBe(first.key);
   });
 
+  it("does not decode a single huge JSON-typed chunk: its bytes alone put it past the cap", async () => {
+    const decode = vi.spyOn(TextDecoder.prototype, "decode");
+    const { send, script } = setup({ readBody: false });
+    script.push("no-answer");
+    const init = () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(20 * 1024 * 1024).fill(0x20));
+          controller.close();
+        },
+      }),
+      bodySerializer: (body: unknown) => body,
+      duplex: "half",
+    });
+
+    const first = await send("POST", "/api/x", init());
+    const second = await send("POST", "/api/x", init());
+
+    expect(second.key).not.toBe(first.key);
+    // (undici decodes small response bodies with the same TextDecoder; only a decode of the huge chunk would be ours)
+    const decodedBytes = decode.mock.calls.map(
+      ([chunk]) => (chunk as Uint8Array | undefined)?.byteLength ?? 0,
+    );
+    expect(Math.max(0, ...decodedBytes)).toBeLessThan(1024 * 1024);
+    decode.mockRestore();
+  });
+
   it("sends a JSON body past the size cap on a fresh key every time, with its body intact", async () => {
     const { send, script } = setup();
     script.push("no-answer");
@@ -499,15 +537,35 @@ describe("what the table holds", () => {
     expect(afterClear.key).not.toBe(first.key);
   });
 
-  it("forgets every key when the session ends (any 401 answer)", async () => {
+  it("does NOT forget a held key on a 401 (a mistyped unlock or step-up code is a 401 on a live session)", async () => {
     const { send, script } = setup();
-    script.push("no-answer", envelope(401, "UNAUTHENTICATED"));
+    script.push(
+      "no-answer",
+      envelope(401, "INVALID_CREDENTIALS"),
+      envelope(401, "ORGANIZATION_NOT_SELECTED"),
+    );
 
-    const first = await send("POST", "/api/x", { body: { a: 1 } });
-    await send("GET", "/api/me"); // the session is gone
-    const afterExpiry = await send("POST", "/api/x", { body: { a: 1 } });
+    const first = await send("POST", "/api/x", { body: { a: 1 } }); // lost reply
+    await send("POST", "/api/v1/auth/unlock", { body: { password: "wrong" } });
+    await send("GET", "/api/v1/auth/context");
+    const retry = await send("POST", "/api/x", { body: { a: 1 } });
 
-    expect(afterExpiry.key).not.toBe(first.key);
+    expect(retry.key).toBe(first.key);
+  });
+
+  it("holds no body or URL text in the table, only digests", async () => {
+    const { send, script, held } = setup();
+    script.push("no-answer");
+
+    await send("POST", "/api/patients/p1/notes", { body: { note: "Jane Doe is anxious" } });
+
+    expect(held()).toHaveLength(1);
+    for (const digest of held()) {
+      expect(digest).not.toContain("Jane");
+      expect(digest).not.toContain("patients");
+      expect(digest).not.toContain("localhost");
+      expect(digest.length).toBeLessThan(40);
+    }
   });
 });
 
@@ -610,6 +668,127 @@ describe("how long, and how many", () => {
   });
 });
 
+describe("the middleware and keepsKey agree on every answer", () => {
+  const GATEWAY_PAGE = "<html>Bad gateway</html>";
+  const cases: ReadonlyArray<{
+    readonly label: string;
+    readonly step: Step;
+    readonly status?: number;
+    readonly body?: unknown;
+    readonly keeps: boolean;
+    readonly abort?: boolean;
+  }> = [
+    { label: "no answer (network error)", step: "no-answer", keeps: true },
+    { label: "no answer (aborted)", step: "until-aborted", abort: true, keeps: true },
+    { label: "200", step: json(200, {}), status: 200, body: {}, keeps: false },
+    {
+      label: "401",
+      step: envelope(401, "UNAUTHENTICATED"),
+      status: 401,
+      body: { error: { code: "UNAUTHENTICATED", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "403",
+      step: envelope(403, "STEP_UP_REQUIRED"),
+      status: 403,
+      body: { error: { code: "STEP_UP_REQUIRED", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "429",
+      step: envelope(429, "RATE_LIMITED"),
+      status: 429,
+      body: { error: { code: "RATE_LIMITED", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "409 coded in-flight",
+      step: envelope(409, "IDEMPOTENCY_IN_FLIGHT"),
+      status: 409,
+      body: { error: { code: "IDEMPOTENCY_IN_FLIGHT", message: "m" } },
+      keeps: true,
+    },
+    {
+      label: "409 legacy in-flight message",
+      step: json(409, { error: { code: "CONFLICT", message: IN_FLIGHT_MESSAGE } }),
+      status: 409,
+      body: { error: { code: "CONFLICT", message: IN_FLIGHT_MESSAGE } },
+      keeps: true,
+    },
+    {
+      label: "409 business CONFLICT",
+      step: envelope(409, "CONFLICT"),
+      status: 409,
+      body: { error: { code: "CONFLICT", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "409 CONCURRENT_UPDATE",
+      step: envelope(409, "CONCURRENT_UPDATE"),
+      status: 409,
+      body: { error: { code: "CONCURRENT_UPDATE", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "409 IDEMPOTENCY_CONFLICT",
+      step: envelope(409, "IDEMPOTENCY_CONFLICT"),
+      status: 409,
+      body: { error: { code: "IDEMPOTENCY_CONFLICT", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "422",
+      step: envelope(422, "VALIDATION_FAILED"),
+      status: 422,
+      body: { error: { code: "VALIDATION_FAILED", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "500 with the envelope",
+      step: envelope(500, "INTERNAL"),
+      status: 500,
+      body: { error: { code: "INTERNAL", message: "m" } },
+      keeps: false,
+    },
+    {
+      label: "502 gateway page",
+      step: new Response(GATEWAY_PAGE, { status: 502 }),
+      status: 502,
+      body: GATEWAY_PAGE,
+      keeps: true,
+    },
+    {
+      label: "503 gateway page",
+      step: new Response(GATEWAY_PAGE, { status: 503 }),
+      status: 503,
+      body: GATEWAY_PAGE,
+      keeps: true,
+    },
+    {
+      label: "504 gateway page",
+      step: new Response(null, { status: 504 }),
+      status: 504,
+      body: undefined,
+      keeps: true,
+    },
+  ];
+
+  it.each(cases)("$label: the key is kept exactly when keepsKey says so", async (row) => {
+    const { send, script } = setup();
+    script.push(row.step);
+    const controller = new AbortController();
+    const init = { body: { a: 1 }, ...(row.abort ? { signal: controller.signal } : {}) };
+    if (row.abort) setTimeout(() => controller.abort(), 0);
+
+    const first = await send("POST", "/api/x", init);
+    const retry = await send("POST", "/api/x", { body: { a: 1 } });
+
+    expect(retry.key === first.key).toBe(row.keeps);
+    if (row.status !== undefined) expect(keepsKey(row.status, row.body)).toBe(row.keeps);
+  });
+});
+
 describe("when crypto.randomUUID is missing", () => {
   it("still sends a key, and holds it across a retry", async () => {
     vi.stubGlobal("crypto", {});
@@ -652,7 +831,10 @@ describe("answer handling that must not fail a write", () => {
 });
 
 describe("createApiClient wires it in for every caller", () => {
-  const apiClient = (steps: Step[], onResponseStatus?: (status: number) => void) => {
+  const apiClient = (
+    steps: Step[],
+    onResponseStatus?: (status: number, url: string, response: Response) => void,
+  ) => {
     const seen: (string | null)[] = [];
     const bodies: string[] = [];
     const client = createApiClient({
@@ -706,7 +888,8 @@ describe("createApiClient wires it in for every caller", () => {
     await post(); // the next person's identical write
 
     expect(seen[1]).not.toBe(seen[0]);
-    expect(() => clearIdempotencyKeys({} as never)).not.toThrow(); // a client this module did not build
+    expect(clearIdempotencyKeys(client)).toBe(true);
+    expect(clearIdempotencyKeys({} as never)).toBe(false); // a client this module did not build: reported, not a silent no-op
   });
 
   it("keeps each client's table to itself", async () => {
@@ -748,5 +931,23 @@ describe("createApiClient wires it in for every caller", () => {
     expect((refused as { response?: Response } | undefined)?.response?.status).toBe(403);
     expect(seen[1]).not.toBe(seen[0]); // the cached 403 must not be replayed on the same key
     expect(reportError).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a held key on a gateway page and on an in-flight 409 even when an observer consumes the response body (pins the registration order)", async () => {
+    const consume = (_status: number, _url: string, response: Response): void => {
+      // The live response, not a clone: the middleware must have read its fate before this runs.
+      void response.text().catch(() => undefined);
+    };
+    for (const held of [
+      new Response("<html>Bad gateway</html>", { status: 502 }),
+      json(409, { error: { code: "IDEMPOTENCY_IN_FLIGHT", message: "m" } }),
+    ]) {
+      const { post, seen } = apiClient([held], consume);
+
+      await post(); // answered, and the observer ate the body, so the caller's own read fails too
+      await post();
+
+      expect(seen[1]).toBe(seen[0]);
+    }
   });
 });

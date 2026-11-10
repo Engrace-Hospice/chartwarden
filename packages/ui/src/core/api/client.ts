@@ -14,13 +14,34 @@ export type ApiClient = Client<paths>;
 /** Each client's own Idempotency-Key table, reachable through {@link clearIdempotencyKeys} without widening the `ApiClient` type. */
 const idempotencyTables = new WeakMap<object, () => void>();
 
+let warnedAboutUnknownClient = false;
+
+/** Development only, once: a clear that reached no table is a wiring mistake (a fake client, or one not built by createApiClient). */
+function warnAboutUnknownClient(): void {
+  const meta = import.meta as unknown as { env?: { DEV?: boolean; MODE?: string } };
+  // Development only, and never under a test run: tests hand screens fake clients on purpose.
+  if (meta.env?.DEV !== true || meta.env.MODE === "test" || warnedAboutUnknownClient) return;
+  warnedAboutUnknownClient = true;
+  console.warn(
+    "clearIdempotencyKeys: that client was not built by createApiClient, so there was nothing to clear.",
+  );
+}
+
 /**
- * Forget every Idempotency-Key the client is holding for an unanswered write. Call it when the signed-in user changes WITHOUT a page
- * reload (a reload discards the table with the page; every sign-out in the three apps reloads except the portal onboarding "leave").
- * A 401 answer clears it on its own, so a session that expires needs no call.
+ * Forget every Idempotency-Key the client is holding for an unanswered write, so the next person to use this page does not inherit the
+ * last one's. The client never does this by itself (not every 401 is a dead session). Call it where the app decides the session is
+ * over (the shell's session-expired signal, the portal session guard, the admin actor-session 401) and from every sign-out that does
+ * NOT reload the page (a reload discards the table with the page). Returns false, and warns once in development, when `client` is not
+ * one `createApiClient` built, so a wrong wiring is not a silent no-op.
  */
-export function clearIdempotencyKeys(client: ApiClient): void {
-  idempotencyTables.get(client)?.();
+export function clearIdempotencyKeys(client: ApiClient): boolean {
+  const clear = idempotencyTables.get(client);
+  if (clear === undefined) {
+    warnAboutUnknownClient();
+    return false;
+  }
+  clear();
+  return true;
 }
 
 export interface ApiClientOptions {

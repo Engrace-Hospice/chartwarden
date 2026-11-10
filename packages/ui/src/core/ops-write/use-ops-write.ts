@@ -25,6 +25,7 @@ export interface OpsWrite {
   readonly failure: OpsFailure | null;
   /**
    * `fingerprint` is the body (any stable text): the same one keeps the key across a retry, a changed one gets a new key.
+   * `stampedAt` is the intent's first-attempt time: send it, not `new Date()`, for a body field that carries a click-time clock value.
    * `afterSuccess` (a reload, closing the editor) runs inside the same in-flight window: until it finishes, `busy` stays true and a
    * second `run` (a double submit, an Enter while the first is saving) is dropped: it never settles, so its caller does nothing.
    * The window is bounded: a follow-up still pending after `AFTER_SUCCESS_TIMEOUT_MS` (a hung reload) stops holding it, so the button
@@ -32,7 +33,7 @@ export interface OpsWrite {
    */
   run<T>(
     fingerprint: string,
-    call: (idempotencyKey: string) => Promise<FetchResult<T>>,
+    call: (idempotencyKey: string, stampedAt: string) => Promise<FetchResult<T>>,
     afterSuccess?: (data: T) => Promise<unknown>,
   ): Promise<OpsWriteOutcome<T>>;
   clear(): void;
@@ -71,7 +72,7 @@ export function useOpsWrite(copy: OpsErrorCopy = NO_COPY): OpsWrite {
   const send = useCallback(
     async <T>(
       fingerprint: string,
-      call: (idempotencyKey: string) => Promise<FetchResult<T>>,
+      call: (idempotencyKey: string, stampedAt: string) => Promise<FetchResult<T>>,
     ): Promise<OpsWriteOutcome<T>> => {
       // The server answered: the next attempt starts on a new key. Kept instead (`keepsKey`): a 5xx WITHOUT the standard error envelope
       // (a gateway 502/504 that never reached the app), and the 409 that says an earlier request under the key is still running. No
@@ -91,7 +92,7 @@ export function useOpsWrite(copy: OpsErrorCopy = NO_COPY): OpsWrite {
   const run = useCallback(
     async <T>(
       fingerprint: string,
-      call: (idempotencyKey: string) => Promise<FetchResult<T>>,
+      call: (idempotencyKey: string, stampedAt: string) => Promise<FetchResult<T>>,
       afterSuccess?: (data: T) => Promise<unknown>,
     ): Promise<OpsWriteOutcome<T>> => {
       // ponytail: a dropped run never settles (its caller's follow-up never runs); a distinct outcome if a caller ever needs to know.

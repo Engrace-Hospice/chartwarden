@@ -2,10 +2,15 @@
 import { describe, expect, it } from "vitest";
 import {
   IDEMPOTENCY_IN_FLIGHT_CODE,
+  IDEMPOTENCY_KEY_MAX_AGE_MS,
+  IDEMPOTENCY_KEY_TTL_MS,
+  LEGACY_IN_FLIGHT_MESSAGE,
   freshIdempotencyKeyHeaders,
   isGatewayPage,
   isInFlightDuplicate,
   keepsKey,
+  keyIdleTooLong,
+  keyPastMaxAge,
   newIdempotencyKey,
 } from "../idempotency-key";
 
@@ -90,5 +95,22 @@ describe("freshIdempotencyKeyHeaders", () => {
     expect(Object.keys(first)).toEqual(["Idempotency-Key"]);
     expect(first["Idempotency-Key"]).toBeTruthy();
     expect(second["Idempotency-Key"]).not.toBe(first["Idempotency-Key"]);
+  });
+});
+
+describe("the key's lifetime", () => {
+  it("is idle-too-long exactly a TTL after the last unanswered attempt", () => {
+    expect(keyIdleTooLong(1_000, 1_000 + IDEMPOTENCY_KEY_TTL_MS - 1)).toBe(false);
+    expect(keyIdleTooLong(1_000, 1_000 + IDEMPOTENCY_KEY_TTL_MS)).toBe(true);
+  });
+
+  it("is past its age exactly the hard cap after the first attempt, regardless of retries", () => {
+    expect(keyPastMaxAge(1_000, 1_000 + IDEMPOTENCY_KEY_MAX_AGE_MS - 1)).toBe(false);
+    expect(keyPastMaxAge(1_000, 1_000 + IDEMPOTENCY_KEY_MAX_AGE_MS)).toBe(true);
+    expect(IDEMPOTENCY_KEY_MAX_AGE_MS).toBeGreaterThan(IDEMPOTENCY_KEY_TTL_MS);
+  });
+
+  it("names the legacy in-flight sentence the older server sends", () => {
+    expect(LEGACY_IN_FLIGHT_MESSAGE).toBe("Idempotency-Key request is still being processed");
   });
 });

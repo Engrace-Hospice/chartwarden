@@ -197,3 +197,36 @@ describe("describeOpsError", () => {
     );
   });
 });
+
+describe("describeOpsError and the in-flight duplicate 409", () => {
+  const IN_FLIGHT_SENTENCE = "Idempotency-Key request is still being processed";
+
+  it.each([
+    ["the IDEMPOTENCY_IN_FLIGHT code", envelope("IDEMPOTENCY_IN_FLIGHT", IN_FLIGHT_SENTENCE)],
+    ["the plain CONFLICT an older server sends", envelope("CONFLICT", IN_FLIGHT_SENTENCE)],
+  ])("says it in the operator's words, not the server's header jargon (%s)", (_label, body) => {
+    const failure = describeOpsError(body, { status: 409 });
+
+    expect(failure.kind).toBe("refused"); // keep the form: nothing was stale
+    expect(failure.message).not.toContain("Idempotency-Key");
+    expect(failure.message).toMatch(/still being saved/);
+  });
+
+  it("leaves an ordinary 409 CONFLICT sentence alone", () => {
+    const failure = describeOpsError(envelope("CONFLICT", "That plan is already published"), {
+      status: 409,
+    });
+
+    expect(failure.message).toBe("That plan is already published");
+  });
+
+  it("lets a screen's own sentence for the code win", () => {
+    const failure = describeOpsError(
+      envelope("IDEMPOTENCY_IN_FLIGHT", IN_FLIGHT_SENTENCE),
+      { status: 409 },
+      { IDEMPOTENCY_IN_FLIGHT: "Saving this plan. Give it a moment." },
+    );
+
+    expect(failure.message).toBe("Saving this plan. Give it a moment.");
+  });
+});

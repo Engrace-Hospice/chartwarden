@@ -13,6 +13,7 @@
 //   not-found / forbidden / unavailable / network, and unknown for the rest
 // Nothing is retried on the operator's behalf: a pinned write that was refused must be confirmed again against what was re-read.
 import { envelopeErrorMessage } from "../error-message";
+import { isInFlightDuplicate } from "./idempotency-key";
 
 export type OpsFailureKind =
   | "step-up"
@@ -89,6 +90,12 @@ const STALE_PIN_409_CODES: ReadonlySet<string> = new Set([
   "TENANT_STATUS_CHANGED",
   "STALE_VERSION",
 ]);
+/**
+ * The server's own sentence for an in-flight duplicate is an implementation detail ("Idempotency-Key request is still being processed").
+ * The operator's situation: an earlier try of this same change is still being saved, and re-sending it now would not help.
+ */
+const IN_FLIGHT_COPY =
+  "That change is still being saved. Wait a moment, then check the record before trying again.";
 /** A 413 with no envelope is a proxy (nginx's body cap) refusing before the app saw the request; it gets a code the caller's copy can name. */
 const PAYLOAD_TOO_LARGE_CODE = "PAYLOAD_TOO_LARGE";
 
@@ -159,7 +166,10 @@ export function describeOpsError(
     code,
     status,
     message:
-      (code !== null ? copy[code] : undefined) ?? envelopeErrorMessage(error) ?? GENERIC[kind],
+      (code !== null ? copy[code] : undefined) ??
+      (status !== null && isInFlightDuplicate(status, error) ? IN_FLIGHT_COPY : undefined) ??
+      envelopeErrorMessage(error) ??
+      GENERIC[kind],
     fieldErrors,
     details,
     current: recordedAt ? { recordedAt } : null,

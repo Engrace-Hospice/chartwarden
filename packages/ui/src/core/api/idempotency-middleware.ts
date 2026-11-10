@@ -3,7 +3,7 @@
 // A write whose reply is lost (offline, a reset, a timeout) may or may not have landed. For the server to recognise the retry as a retry,
 // the retry has to carry the SAME key; a fresh key per attempt would make a lost-reply write double up. So the key is held per intent,
 // the intent being method + full URL (path and query) + If-Match + JSON body (the server hashes the same things), by the rule
-// `keepsKey` (ops-write/idempotency-key.ts) that the kit's createIdempotencyKeeper / sendWrite share:
+// `keepsKey` (ops-write/idempotency-key.ts: `fateOf` below calls it) that the kit's createIdempotencyKeeper / sendWrite share:
 //   - the same intent keeps its key across a request that got NO answer, across a gateway page that never reached the app (a 5xx whose
 //     body is not the API error envelope), and across the 409 that says an earlier request under the key is still running (that first
 //     attempt is unresolved: a new key would run the write a second time);
@@ -22,13 +22,17 @@
 //
 // State is per client instance, not module-level: every app builds one client at its root so a screen sees the same table either way,
 // but tests (and any second client) cannot leak keys into each other, and the clock is injectable. The table keys on a short digest of
-// the intent, never on the body text (a clinical note must not sit in memory as a map key), and forgets everything on a 401 (the
-// session is gone, and its unanswered writes are not the next user's). An explicit sign-out is a full page navigation in all three apps,
-// which discards the table with the page; the one that is not (the portal onboarding "leave") calls clearIdempotencyKeys(client).
+// the intent, never on the body text (a clinical note must not sit in memory as a map key). It does NOT clear itself on a 401: not every
+// 401 is a dead session (a mistyped unlock or step-up code, a session with no organization yet), and dropping a held key there would turn
+// a lost-reply retry into a second write. The apps clear it with clearIdempotencyKeys(client) where they already decide the session is
+// over: the shell's session-expired signal (web), the session guard (portal), the actor-session 401 (admin), and every sign-out that
+// does not reload the page. A sign-out that reloads discards the table with the page.
 import type { Middleware } from "openapi-fetch";
 import {
-  isGatewayPage,
   isInFlightDuplicate,
+  keepsKey,
+  keyIdleTooLong,
+  keyPastMaxAge,
   newIdempotencyKey,
 } from "../ops-write/idempotency-key";
 
@@ -36,28 +40,11 @@ import {
 export const MUTATING_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
-const UNAUTHORIZED = 401;
-const MS_PER_MINUTE = 60_000;
-
-/**
- * How long an intent keeps its key after its last UNANSWERED attempt (no answer, or a gateway page). The server caches an answer for a
- * limited time (24h), and a retry long after the first attempt is a new intent (the same text submitted again on purpose), which must
- * not be handed a replay of the old answer; a lost-reply retry comes in seconds to minutes. An in-flight 409 does not move it: the
- * server can leave a claim pending for its whole TTL when it fails to complete or release it, and sliding on that 409 would lock the
- * user out of that write for as long as they kept trying.
- */
-export const IDEMPOTENCY_KEY_TTL_MS = 15 * MS_PER_MINUTE;
-
-/**
- * The most an intent may keep one key, measured from its FIRST attempt however often it was retried. Sliding the idle window alone
- * would let a user who retries every 14 minutes outlive the server's fixed 24h claim; an hour is far past any lost-reply retry.
- */
-export const IDEMPOTENCY_KEY_MAX_AGE_MS = 60 * MS_PER_MINUTE;
 
 /**
  * At most this many IDLE intents hold a key; past it the least recently used idle one is forgotten (it gets a new key on its next
  * retry). An intent whose request is still in flight is never evicted by the cap (a bulk action may fire more of them than this), only
- * by IDEMPOTENCY_KEY_MAX_AGE_MS.
+ * by IDEMPOTENCY_KEY_MAX_AGE_MS (ops-write/idempotency-key.ts).
  */
 export const MAX_TRACKED_INTENTS = 64;
 
@@ -69,6 +56,9 @@ export const MAX_FINGERPRINT_BODY_CHARS = 64 * 1024;
  * non-FormData body application/json) must not hold the request back, so past this it is sent on a fresh key.
  */
 export const FINGERPRINT_READ_TIMEOUT_MS = 250;
+
+/** UTF-8 encodes one UTF-16 code unit in at most this many bytes, so a chunk longer than cap * this cannot fit under the char cap. */
+const MAX_UTF8_BYTES_PER_CHAR = 3;
 
 /** The only bodies whose text is a stable fingerprint: JSON. A file or a multipart form is not (its boundary changes per request). */
 const JSON_CONTENT_TYPE = /[/+]json\b/i;
@@ -101,7 +91,11 @@ function digest(text: string): string {
   return `${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}.${text.length.toString(36)}`;
 }
 
-/** The body text, or null when it is past the size cap or cannot be read in time. Reads at most the cap, never `.text()` of a stream. */
+/**
+ * The body text, or null when it is past the size cap or cannot be read in time. It reads chunk by chunk and gives up at the first chunk
+ * that is past the cap (a chunk is not decoded when its BYTES alone prove it is: UTF-8 is at most 3 bytes per UTF-16 unit), never
+ * `.text()` of a stream.
+ */
 async function readBoundedText(request: Request): Promise<string | null> {
   const reader = request.body?.getReader();
   if (!reader) return "";
@@ -117,6 +111,7 @@ async function readBoundedText(request: Request): Promise<string | null> {
       const next = await Promise.race([reader.read(), deadline]);
       if (next === timedOut) return null;
       if (next.done) return text + decoder.decode();
+      if (next.value.byteLength > MAX_FINGERPRINT_BODY_CHARS * MAX_UTF8_BYTES_PER_CHAR) return null;
       text += decoder.decode(next.value, { stream: true });
       if (text.length > MAX_FINGERPRINT_BODY_CHARS) return null;
     }
@@ -135,8 +130,10 @@ export async function fingerprintOf(request: Request): Promise<string | null> {
   const intent = `${request.method}\n${request.url}\n${request.headers.get("if-match") ?? ""}\n`;
   if (!request.body) return digest(intent); // no body: the method, URL and version are the whole intent
   if (!JSON_CONTENT_TYPE.test(request.headers.get("content-type") ?? "")) return null;
+  // A size hint, honoured where a caller can set it (Node, SSR, tests). Browsers drop a script-set Content-Length (a forbidden header
+  // name), so there this never fires and the bounded read below is the real guard. Bytes are never fewer than chars.
   const declaredLength = Number(request.headers.get("content-length"));
-  if (declaredLength > MAX_FINGERPRINT_BODY_CHARS) return null; // a size hint some callers set: bytes are never fewer than chars
+  if (declaredLength > MAX_FINGERPRINT_BODY_CHARS) return null;
   try {
     const text = await readBoundedText(request.clone());
     return text === null ? null : digest(intent + text);
@@ -145,7 +142,7 @@ export async function fingerprintOf(request: Request): Promise<string | null> {
   }
 }
 
-/** What the answer means for the key: an in-flight 409 holds it, a gateway page keeps it fresh in the window, anything else renews. */
+/** What the answer means for the key: `keepsKey` decides whether it survives; an in-flight 409 holds it, a gateway page slides it. */
 async function fateOf(response: Response): Promise<Fate> {
   const { status } = response;
   if (status < 500 && status !== 409) return "renew";
@@ -156,14 +153,16 @@ async function fateOf(response: Response): Promise<Fate> {
     return "renew"; // the answer cannot be read (a locked body): it was an answer, so the attempt is over
   }
   const body: unknown = await copy.json().catch(() => undefined); // an empty or non-JSON body is "no envelope"
-  if (isInFlightDuplicate(status, body)) return "hold";
-  return isGatewayPage(status, body) ? "slide" : "renew";
+  if (!keepsKey(status, body)) return "renew";
+  return isInFlightDuplicate(status, body) ? "hold" : "slide";
 }
 
 export interface IdempotencyKeys {
   readonly middleware: Middleware;
   /** Forget every key (the session ended): the next attempt of any intent starts on a new one. */
   clear(): void;
+  /** The digests the table is keyed by, for tests and diagnostics: never the body or URL text. */
+  heldIntents(): readonly string[];
 }
 
 /** `now` is injectable for tests; production uses the wall clock (a record from last night must expire across a sleeping laptop). */
@@ -175,9 +174,8 @@ export function createIdempotencyKeys(now: () => number = Date.now): Idempotency
   function purge(): void {
     const current = now();
     for (const [digestOfIntent, intent] of intents) {
-      const tooOld = current - intent.firstAttemptAt >= IDEMPOTENCY_KEY_MAX_AGE_MS;
-      const idleTooLong =
-        intent.inFlight === 0 && current - intent.lastAttemptAt >= IDEMPOTENCY_KEY_TTL_MS;
+      const tooOld = keyPastMaxAge(intent.firstAttemptAt, current);
+      const idleTooLong = intent.inFlight === 0 && keyIdleTooLong(intent.lastAttemptAt, current);
       if (tooOld || idleTooLong) intents.delete(digestOfIntent);
     }
     for (const [digestOfIntent, intent] of intents) {
@@ -231,7 +229,6 @@ export function createIdempotencyKeys(now: () => number = Date.now): Idempotency
     },
 
     async onResponse({ request, response }) {
-      if (response.status === UNAUTHORIZED) intents.clear();
       const key = request.headers.get(IDEMPOTENCY_KEY_HEADER);
       if (key !== null) end(key, await fateOf(response));
       return undefined;
@@ -245,5 +242,5 @@ export function createIdempotencyKeys(now: () => number = Date.now): Idempotency
     },
   };
 
-  return { middleware, clear: () => intents.clear() };
+  return { middleware, clear: () => intents.clear(), heldIntents: () => [...intents.keys()] };
 }
