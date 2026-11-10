@@ -104,6 +104,44 @@ describe("control characters and NUL", () => {
     expect(normalizeReason("agreed\u0008 with the customer")).toBe("agreed with the customer");
   });
 
+  it("strips zero-width and bidi format characters, so an invisible or reordering string is not stored or shown to the approver", () => {
+    // U+200B zero-width space, U+200E/F direction marks, U+202A-E embeddings and overrides, U+2060-4 word joiner and invisible
+    // operators, U+2066-9 isolates, U+FEFF byte-order mark.
+    const hidden =
+      "\u200b\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2060\u2061\u2062\u2063\u2064\u2066\u2067\u2068\u2069\ufeff";
+    expect(normalizeEvidence({ evidenceNote: `customer ${hidden}approved the order` }).note).toBe(
+      "customer approved the order",
+    );
+    // a bidi override inside an otherwise normal sentence reverses what the approver reads: it is stored without it
+    expect(
+      normalizeEvidence({ evidenceNote: "paid \u202egnitset\u202c by the customer" }).note,
+    ).toBe("paid gnitset by the customer");
+    expect(normalizeReason("agreed with the \u2066customer\u2069 on the call")).toBe(
+      "agreed with the customer on the call",
+    );
+    // the zero-width joiner and non-joiner are part of some scripts' spelling and stay
+    expect(
+      normalizeEvidence({
+        evidenceNote: "Persian \u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 note",
+      }).note,
+    ).toContain("\u200c");
+    expect(
+      normalizeEvidence({ evidenceNote: "family \u{1F469}\u200d\u{1F467} note" }).note,
+    ).toContain("\u200d");
+  });
+
+  it("an SSN-shaped value split by zero-width or bidi characters is still refused", () => {
+    for (const text of [
+      "see 900\u200b-12\u200b-3456",
+      "see 900\u202e-12\u202c-3456",
+      "see 9\ufeff0\u200e0\u200f123456",
+    ]) {
+      expect(refusal(() => normalizeEvidence({ evidenceNote: text })).code).toBe(
+        "EVIDENCE_LOOKS_LIKE_PHI",
+      );
+    }
+  });
+
   it("measures length after stripping, so control characters cannot pad a too-short reason", () => {
     expect(refusal(() => normalizeReason("sh\u0007o\u0007r\u0007t")).code).toBe(
       "ONBOARDING_REASON_REQUIRED",

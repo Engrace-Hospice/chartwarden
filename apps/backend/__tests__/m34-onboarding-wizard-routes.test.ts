@@ -303,6 +303,11 @@ describe("platform onboarding routes", () => {
     expect(platform.statusCode).toBe(422);
     expect(platform.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
     expect(platform.body).not.toContain(ssn);
+    // its own refusal text: an organisation name is not a note about what was checked, and nothing says to cite a document
+    expect(platform.json().error.message).toBe(
+      "displayName must not contain a patient identifier number (a Social Security or Medicare number); an organisation name is a name, not a record.",
+    );
+    expect(platform.body).not.toMatch(/cite|checked|ticket/i);
     const tenant = await app.inject({
       method: "PATCH",
       url: "/api/v1/tenant/org-profile",

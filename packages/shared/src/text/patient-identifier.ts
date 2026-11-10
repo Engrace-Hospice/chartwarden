@@ -93,13 +93,19 @@ export function looksLikePatientIdentifier(text: string): boolean {
 
 /**
  * Refuses (422, never echoing the value) text that holds a patient identifier. The one screen every operator free text shares.
- * The screen itself drops format characters (`\p{Cf}`: zero-width, bidi overrides) before judging. M34's own text cleaning strips
- * only control characters (`\p{Cc}`), so the callers that store the text as typed (M23, M35) depend on this.
+ * The screen itself drops format characters (`\p{Cf}`: zero-width, bidi overrides) before judging, so a caller that stores the
+ * text as typed (M23, M35) is covered. M34's text cleaning strips control characters and the zero-width and bidi format
+ * characters listed in its evidence.ts, and screens the text as typed first and again as stored.
+ *
+ * `message` replaces the default refusal text for a field it does not fit (an organisation name is not a note about what was
+ * checked); it must be static, never built from the value.
  */
-export function assertNoPatientIdentifier(field: string, text: string): void {
+export function assertNoPatientIdentifier(field: string, text: string, message?: string): void {
   if (looksLikePatientIdentifier(text)) {
     const code = "EVIDENCE_LOOKS_LIKE_PHI";
-    const message = `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title or a ticket number. Long ids and UUIDs can also trip this check: cite them by title instead.`;
-    throw new ChartWardenError(code, message, 422, [{ field, code, message }]);
+    const refusal =
+      message ??
+      `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title or a ticket number. Long ids and UUIDs can also trip this check: cite them by title instead.`;
+    throw new ChartWardenError(code, refusal, 422, [{ field, code, message: refusal }]);
   }
 }

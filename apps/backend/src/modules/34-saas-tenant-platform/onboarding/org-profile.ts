@@ -10,6 +10,9 @@ import { ChartWardenError } from "@chartwarden/types";
 import { Value } from "@sinclair/typebox/value";
 
 export const DISPLAY_NAME_MAX = 200;
+/** An organisation name is a name, not a note about what was checked: the shared screen's default advice does not fit it. */
+export const DISPLAY_NAME_PHI_REFUSAL =
+  "displayName must not contain a patient identifier number (a Social Security or Medicare number); an organisation name is a name, not a record.";
 
 export interface OrgProfile {
   readonly displayName: string;
@@ -55,7 +58,7 @@ export function validateDisplayName(value: unknown): string {
     );
   }
   // Typed by an operator (or the org's own admin) into the tenant-visible profile: no place for a patient identifier.
-  assertNoPatientIdentifier("displayName", name);
+  assertNoPatientIdentifier("displayName", name, DISPLAY_NAME_PHI_REFUSAL);
   return name;
 }
 
