@@ -11,10 +11,11 @@ its full description there. Newest first.
 **Why.** A `5xx`, or the retryable `409 CONCURRENT_UPDATE`, used to be stored as the key's response and replayed for 24 hours,
 so a same-key retry never ran the write.
 
-- A `5xx` or `409 CONCURRENT_UPDATE` that follows NO committed write (the request failed before anything became durable) no
+- A `5xx` or `409 CONCURRENT_UPDATE` that provably committed nothing (the request failed before anything became durable) no
   longer consumes the key: retrying with the SAME `Idempotency-Key` runs the request again.
-- If any write of the request had already committed (a post-commit step threw, a response failed to serialize, a second
-  transaction deadlocked after the first committed), the response is stored and replayed exactly as before: the retry
+- If any write of the request had already committed, or may have, or was still in progress when the response was built (a
+  post-commit step threw, a response failed to serialize, a second transaction deadlocked after the first committed, a
+  transaction was still running when a sibling failed), the response is stored and replayed exactly as before: the retry
   answers the same failure and does not write twice. Read the failure, check the resource, and use a new key for a new attempt.
 - The `409 CONCURRENT_UPDATE` text no longer says "nothing was saved". It now reads "This step conflicted with another change in
   progress and was not applied. An earlier step of the same request may have been applied: check the current state before

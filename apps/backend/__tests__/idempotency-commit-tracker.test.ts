@@ -28,16 +28,31 @@ const ORG = "00000000-0000-4000-8000-000000000001";
 
 type Done = () => void;
 type CheckoutCallback = (err: undefined, client: FakeClient, done: Done) => void;
+type AnswerCallback = (err: Error | undefined, result?: { rows: unknown[] }) => void;
 interface FakeClient {
-  query: (arg: unknown) => Promise<{ rows: unknown[] }>;
+  query: (arg: unknown, ...rest: unknown[]) => Promise<{ rows: unknown[] }> | undefined;
 }
 
 class FakePool extends EventEmitter {
   readonly sent: string[] = [];
+  /** An error to answer a statement with (matched on its text), the way the server would. */
+  failWith: (text: string) => Error | undefined = () => undefined;
   private readonly client: FakeClient = {
-    query: async (arg) => {
-      this.sent.push(typeof arg === "string" ? arg : String((arg as { text: string }).text));
-      return { rows: [] };
+    query: (arg, ...rest) => {
+      const text = typeof arg === "string" ? arg : String((arg as { text: string }).text);
+      this.sent.push(text);
+      const failure = this.failWith(text);
+      const callback = rest[rest.length - 1];
+      if (typeof callback === "function") {
+        // pg-pool's `pool.query` and a checkout used with a callback: the answer arrives there, not as a promise.
+        queueMicrotask(() =>
+          failure
+            ? (callback as AnswerCallback)(failure)
+            : (callback as AnswerCallback)(undefined, { rows: [] }),
+        );
+        return undefined;
+      }
+      return failure ? Promise.reject(failure) : Promise.resolve({ rows: [] });
     },
   };
   private announced = false;
@@ -66,6 +81,8 @@ class FakePool extends EventEmitter {
 
 const deadlock = (): Error =>
   Object.assign(new Error("deadlock detected"), { code: "40P01", severity: "ERROR" });
+const serverError = (code: string, severity = "ERROR"): Error =>
+  Object.assign(new Error(`server error ${code}`), { code, severity });
 
 /** A transaction as drizzle issues it: begin, the statements, commit. */
 async function transaction(
@@ -79,10 +96,18 @@ async function transaction(
   await client.query(end);
 }
 
+/** `pool.query(text, values, callback)`: how pg-pool answers an autocommit statement, awaited by the caller. */
+function queryWithCallback(client: FakeClient, text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    client.query(text, [], ((err?: Error) => (err ? reject(err) : resolve())) as never);
+  });
+}
+
 describe("idempotency release needs proof that nothing committed", () => {
   let app: FastifyInstance;
   let pool: FakePool;
   let runs: number;
+  let logLines: string[] = [];
 
   async function build(
     handler: (run: number, reply: import("fastify").FastifyReply) => unknown,
@@ -92,7 +117,10 @@ describe("idempotency release needs proof that nothing committed", () => {
     runs = 0;
     pool = new FakePool();
     instrumentPoolForCommits(pool as never);
-    app = Fastify();
+    logLines = [];
+    app = Fastify({
+      logger: { level: "warn", stream: { write: (line: string) => void logLines.push(line) } },
+    });
     app.decorateRequest("context", undefined as never);
     app.addHook("onRequest", async (request) => {
       (request as unknown as { context: unknown }).context = {
@@ -278,6 +306,12 @@ describe("idempotency release needs proof that nothing committed", () => {
     expect((await post()).statusCode).toBe(500);
     expect(runs).toBe(1);
     expect(pool.inserts()).toBe(1);
+    // the fail-closed rule says so (a warning with the key and no payload), instead of silently caching every failure
+    const warnings = logLines.filter((line) =>
+      line.includes("commit tracker is not the ambient one"),
+    );
+    expect(warnings).toHaveLength(1); // the replay of the cached outcome never runs the handler
+    expect(warnings.join("")).not.toContain('"a":1');
   });
 
   it("(k) the ambient tracker belongs to ANOTHER request: cached too", async () => {
@@ -294,6 +328,130 @@ describe("idempotency release needs proof that nothing committed", () => {
     );
     await post();
     await post();
+    expect(runs).toBe(1);
+  });
+
+  it("(l) a write still OPEN in another transaction when a sibling fails: cached, so its late COMMIT cannot land under a freed key", async () => {
+    let commitSecondTransaction: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      commitSecondTransaction = resolve;
+    });
+    let secondTransaction: Promise<void> = Promise.resolve();
+    await build(async () => {
+      secondTransaction = (async () => {
+        const client = (await pool.connect()) as FakeClient;
+        await client.query("begin");
+        await client.query("insert into t (n) values (1)"); // written, not committed
+        await gate;
+        await client.query("commit");
+      })();
+      await new Promise((resolve) => setTimeout(resolve, 5)); // the first transaction has issued its INSERT
+      throw deadlock(); // the other half of the Promise.all loses
+    });
+    const first = await post();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("CONCURRENT_UPDATE");
+    commitSecondTransaction(); // the COMMIT now lands, after the answer
+    await secondTransaction;
+    const retry = await post();
+    expect(retry.statusCode).toBe(409); // the cached outcome, not a second run
+    expect(runs).toBe(1);
+    expect(pool.inserts()).toBe(1);
+  });
+
+  it("(l2) a deadline 503 over a transaction that is still running is cached too", async () => {
+    await build(async (_run, reply) => {
+      const client = (await pool.connect()) as FakeClient;
+      await client.query("begin");
+      await client.query("insert into t (n) values (1)"); // never reaches COMMIT within this request
+      return reply.code(503).send({ error: { code: "DEADLINE_EXCEEDED" } });
+    });
+    expect((await post()).statusCode).toBe(503);
+    expect((await post()).statusCode).toBe(503);
+    expect(runs).toBe(1);
+  });
+
+  it("(l3) once the other transaction has rolled back, the failure is released again", async () => {
+    await build(async (run, reply) => {
+      if (run === 1) {
+        await transaction(pool, ["insert into t (n) values (1)"], "rollback");
+        throw deadlock();
+      }
+      return reply.code(201).send({ saved: true });
+    });
+    expect((await post()).statusCode).toBe(409);
+    expect((await post()).statusCode).toBe(201);
+    expect(runs).toBe(2);
+  });
+
+  it("(m) a COMMIT the server refused (40001, 40P01, a constraint) provably applied nothing: the retry runs", async () => {
+    const failedStatus = { "40001": 409, "40P01": 409, "23505": 500 } as const;
+    for (const code of ["40001", "40P01", "23505"] as const) {
+      await build(async (run, reply) => {
+        if (run === 1) {
+          pool.failWith = (text) => (/^commit$/i.test(text) ? serverError(code) : undefined);
+          await transaction(pool, ["insert into t (n) values (1)"]);
+        }
+        return reply.code(201).send({ saved: true });
+      });
+      expect((await post(`key-${code}`)).statusCode).toBe(failedStatus[code]); // the refused COMMIT rejects: the handler fails
+      pool.failWith = () => undefined;
+      expect((await post(`key-${code}`)).statusCode).toBe(201);
+      expect(runs).toBe(2);
+      await app.close();
+    }
+  });
+
+  it("(m2) a COMMIT that fails without a server answer (a lost connection) or with FATAL may have applied: cached", async () => {
+    const lost = Object.assign(new Error("Connection terminated unexpectedly"), {
+      code: "ECONNRESET",
+    });
+    for (const failure of [
+      lost,
+      serverError("57P01", "FATAL"),
+      serverError("08006", "ERROR"),
+      new Error("who knows"),
+    ]) {
+      await build(async () => {
+        pool.failWith = (text) => (/^commit$/i.test(text) ? failure : undefined);
+        await transaction(pool, ["insert into t (n) values (1)"]);
+        return { saved: true };
+      });
+      expect((await post()).statusCode).toBe(500);
+      expect((await post()).statusCode).toBe(500);
+      expect(runs).toBe(1);
+      await app.close();
+    }
+  });
+
+  it("(m3) an autocommit write refused by the server clears; one answered through a callback (pg-pool) too", async () => {
+    await build(async (run, reply) => {
+      const client = (await pool.connect()) as FakeClient;
+      if (run === 1) {
+        pool.failWith = (text) => (/^update/i.test(text) ? serverError("23514") : undefined);
+        await queryWithCallback(client, "update t set n = 1"); // rejects: the handler fails
+      }
+      return reply.code(201).send({ saved: true });
+    });
+    expect((await post()).statusCode).toBe(500);
+    pool.failWith = () => undefined;
+    expect((await post()).statusCode).toBe(201);
+    expect(runs).toBe(2);
+  });
+
+  it("(m4) a refused write does not clear the mark of one that DID apply", async () => {
+    await build(async () => {
+      const client = (await pool.connect()) as FakeClient;
+      await client.query("update t set n = 1"); // applied
+      pool.failWith = (text) =>
+        /^update t set n = 2/i.test(text) ? serverError("23505") : undefined;
+      await client.query("update t set n = 2"); // refused
+      return { saved: true };
+    });
+    // the refused update rejected, so the handler failed with a 500 after the first update applied
+    expect((await post()).statusCode).toBe(500);
+    pool.failWith = () => undefined;
+    expect((await post()).statusCode).toBe(500);
     expect(runs).toBe(1);
   });
 

@@ -52,6 +52,16 @@ describe("database contention is a retryable 409, not a 500", () => {
         expect(res.body).not.toContain(SECRET);
         expect(log).not.toContain(SECRET);
         expect(log).not.toContain("unhandled error");
+        // The body names no SQLSTATE, no table and no statement: it is the fixed text, the correlation id and a docs link.
+        expect(res.body).not.toContain(code);
+        expect(res.body).not.toContain("tenant_go_live_attestation");
+        expect(res.body).not.toMatch(/\b(?:update|insert|select)\b/i);
+        expect(Object.keys(res.json().error).sort()).toEqual([
+          "code",
+          "correlationId",
+          "documentationUrl",
+          "message",
+        ]);
       }
     },
   );

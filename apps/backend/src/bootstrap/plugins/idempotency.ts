@@ -19,15 +19,17 @@
 // second transaction that deadlocks after the first committed) HAS written, and re-running it on a same-key retry would write
 // twice. So the outcome is cached and replayed as before (the safe direction) whenever the per-request commit tracker
 // (`@chartwarden/db` commit-tracker.ts, fed by the pool every query goes through) saw a write commit, or may have, after the
-// claim, and also whenever there is no tracker to ask or the ambient one is not this request's (the async context was lost, so
-// its writes were not seen). A SELECT that calls a function counts as a write unless the function is a known read-only
-// builtin. Released, the same key runs again once the store is reachable; if the release itself fails (a database outage that
-// caused the 5xx usually breaks it too) the key stays `pending` and a retry answers 409 in flight until the record's 24h TTL
-// ends. What the tracker cannot see (an outbound call, a queue or object-store write made directly in a route) is not counted:
-// those belong behind the outbox, after the commit.
+// claim; whenever a write of this request is still open (a transaction that has written but not issued COMMIT yet, e.g. one half
+// of a Promise.all while the other half failed) or unanswered; and whenever there is no tracker to ask or the ambient one is not
+// this request's (the async context was lost, so its writes were not seen). A SELECT that calls a function counts as a write
+// unless the function is a known read-only builtin. Released, the same key runs again once the store is reachable; if the
+// release itself fails (a database outage that caused the 5xx usually breaks it too) the key stays `pending` and a retry
+// answers 409 in flight until the record's 24h TTL ends. What the tracker cannot see (an outbound call, a queue or object-store
+// write made directly in a route) is not counted: those belong behind the outbox, after the commit.
 import {
   createCommitTracker,
   currentCommitTracker,
+  mayHaveCommitted,
   resetCommitTracker,
   runWithCommitTracker,
 } from "@chartwarden/db";
@@ -142,11 +144,15 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       resetCommitTracker(tracker);
       // The pool attributes writes to the AMBIENT tracker. If the async context was lost between `onRequest` and here (or holds
       // another request's), nothing this request writes would reach `tracker`, which would stay clean and every 5xx would be
-      // released. Fail closed: a request whose context is not its own tracker is treated as committed (cached).
-      if (currentCommitTracker() !== tracker) tracker.committed = true;
-      // The pool attributes writes to the AMBIENT tracker. If the async context was lost between `onRequest` and here (or holds
-      // another request's), nothing this request writes would reach `tracker`, which would stay clean and every 5xx would be
-      // released. Fail closed: a request whose context is not its own tracker is treated as committed (cached).
+      // released. Fail closed: a request whose context is not its own tracker is treated as committed (cached). Logged, so a
+      // runtime that drops the context shows up as warnings instead of as silently unreleasable keys.
+      if (currentCommitTracker() !== tracker) {
+        tracker.committed = true;
+        request.log.warn(
+          { idempotencyKey: key },
+          "idempotency: the request's commit tracker is not the ambient one; its failures will be cached, not released",
+        );
+      }
     }
     pendingCaptures.set(request, { orgId, key, requestHash });
   });
@@ -161,10 +167,19 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
     };
     const tracker = commitTrackers.get(request);
     // No tracker to ask means no proof that nothing committed: cache (never release). The same when the ambient tracker is not
-    // this request's: the context was lost somewhere after the claim, so the writes of the handler were not seen either.
-    const provablyUncommitted =
-      tracker !== undefined && !tracker.committed && currentCommitTracker() === tracker;
-    if (provablyUncommitted && isRetryableOutcome(reply.statusCode, response.body)) {
+    // this request's: the context was lost somewhere after the claim, so the writes of the handler were not seen either. And the
+    // same while a write of this request is still open or unanswered (one half of a Promise.all that has not committed YET, a
+    // transaction still running behind a 503 deadline): its COMMIT would land under a freed key.
+    const retryable = isRetryableOutcome(reply.statusCode, response.body);
+    const ownsContext = tracker !== undefined && currentCommitTracker() === tracker;
+    const provablyUncommitted = tracker !== undefined && !mayHaveCommitted(tracker) && ownsContext;
+    if (retryable && tracker !== undefined && !ownsContext) {
+      request.log.warn(
+        { idempotencyKey: marker.key, statusCode: reply.statusCode },
+        "idempotency: the async context was lost before the response; a retryable failure is cached, not released",
+      );
+    }
+    if (provablyUncommitted && retryable) {
       // Nothing of this request committed, so "retry" is true: free the key so the same-key retry runs instead of replaying
       // the failure. A failed release leaves the record `pending` (a retry answers 409 in flight until the record's TTL), the
       // same fail-safe as a failed `complete`; it is logged, never allowed to rewrite the response.

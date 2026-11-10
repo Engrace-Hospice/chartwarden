@@ -142,8 +142,9 @@ export function applyErrorHandler(app: FastifyInstance): void {
 
     // A deadlock or serialization failure: the database aborted THIS transaction because a concurrent one got in its way, so
     // nothing it did was kept, and running it again is the remedy. An earlier transaction of the same request may already have
-    // committed, so the text says "this step ... may have been applied earlier", never "nothing was saved". A retryable 409, not a
-    // 500 beside the genuine faults. As above, the raw error is not logged (its message embeds the query and its bound parameters).
+    // committed, so CONCURRENT_UPDATE_MESSAGE says this step "was not applied" and that an earlier step "may have been applied",
+    // never that nothing was saved. A retryable 409, not a 500 beside the genuine faults. As above, the raw error is not logged
+    // (its message embeds the query and its bound parameters).
     const retryable = classifyRetryableDatabaseError(err);
     if (retryable) {
       request.log.info(
