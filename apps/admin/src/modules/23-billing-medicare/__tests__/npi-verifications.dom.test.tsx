@@ -47,7 +47,8 @@ interface Seen {
   idempotencyKey: string | null;
 }
 
-function mount(onPost?: (path: string) => Response): Seen[] {
+/** `onPost` may answer a write with a Response, throw (no answer: offline), or return undefined to let it succeed. */
+function mount(onPost?: (path: string) => Response | undefined): Seen[] {
   const seen: Seen[] = [];
   let rows: unknown[] = [unverified, verified];
   const fetchStub = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
