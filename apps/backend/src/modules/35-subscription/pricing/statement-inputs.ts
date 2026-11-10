@@ -7,7 +7,7 @@
 import { schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { asc, eq, inArray } from "drizzle-orm";
-import { pausedUntilOfLedgerRow } from "../routes/admin-transition";
+import { ORG_SUSPENDED_REASON_CODE, pausedUntilOfLedgerRow } from "../routes/admin-transition";
 import type { WriteTx } from "../routes/service-drizzle";
 import { type ContractRecord, loadModeHistory, selectContracts } from "./contract-select";
 import { loadBands } from "./plan-service";
@@ -45,10 +45,13 @@ export interface Lifetime {
  * open forever (an open pause bills nothing, so a stale one would stop the bill for good). `updated_at` drifts on unrelated writes, which
  * is why it is only the fallback.
  *
- * A pause with an END DATE (`paused_until`) is over at that date whether or not anyone resumed it: nothing resumes a subscription when its
- * date arrives, so without this a pause "until the 15th" would bill nothing after the 15th until an operator remembered. The date is read
- * from the row for the pause still in force and from the ledger row's `reason_detail` for one already closed (a resume clears the row's
- * date). The pause ends at the EARLIER of its date and the transition that closed it; a date still in the future at `at` changes nothing.
+ * A pause with an END DATE (`paused_until`) is over at that date whether or not anyone has resumed it yet. The hourly pause-resume sweep
+ * (billing-runtime/pause-resume.ts) resumes the stored status once the date has passed and dates its ledger row AT that date, which this
+ * reads as the transition that closed the pause (the same window); this branch covers the hours between the date and the next sweep, and a
+ * sweep that is late, so a pause "until the 15th" never bills nothing after the 15th. The date is read from the row for the pause still in
+ * force and from the ledger row's `reason_detail` for one already closed (a resume clears the row's date). The pause ends at the EARLIER of
+ * its date and the transition that closed it; a date still in the future at `at` changes nothing. A platform suspension that arrives while the
+ * pause is still running (a `paused -> paused` ledger row with ORG_SUSPENDED_REASON_CODE) voids the date: the pause is open-ended from then.
  */
 export function lifetimeFromTransitions(
   transitions: readonly Transition[],
@@ -60,6 +63,11 @@ export function lifetimeFromTransitions(
     const open = pauses[pauses.length - 1];
     const keepsPaused = t.from === "paused" && t.to === "paused";
     if (open && open.to === null && !keepsPaused) open.to = t.at;
+    // A platform suspension that arrived while the dated pause was running makes it open-ended (the consumer cleared the row's date with
+    // it): the date no longer ends the pause. Any other `paused -> paused` row (a plan change) leaves the date in force.
+    if (open && open.to === null && keepsPaused && t.reasonCode === ORG_SUSPENDED_REASON_CODE) {
+      open.until = null;
+    }
     if (t.to === "paused" && t.from !== "paused")
       pauses.push({ from: t.at, to: null, until: pausedUntilOfLedgerRow(t) });
   }

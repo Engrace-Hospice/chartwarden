@@ -278,7 +278,8 @@ async function loadContract(
 
 /**
  * The billing service mode in force TODAY of the org's live contracted subscription (newest live contract), or null when it has none:
- * never contracted, canceled, or PAUSED (an open-ended or still-running pause; a lapsed one counts as live: contract-select.ts). A paused
+ * never contracted, canceled, or PAUSED (an open-ended or still-running pause; a lapsed one counts as live, whether or not the hourly
+ * pause-resume sweep has stored it as `active` yet: contract-select.ts). A paused
  * org still HAS a contract and a mode, so null is not "uncontracted": the seam doc (BillingServiceModeReader) says so to its consumers.
  * Reads on the TENANT pool under `withOrgContext` (the contract tables are SELECT-only to the app role); no cache; a failed read throws
  * and the caller decides (slice 3 fails closed: an unread mode must never read as `none`). Refuses when it is called inside ANOTHER

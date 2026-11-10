@@ -6,6 +6,27 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — A paused subscription whose end date has passed is resumed automatically
+
+**Why.** `POST /api/admin/subscriptions/{id}/pause` takes an optional `pausedUntil`. Billing already treated such a pause as over at that
+date, but nothing changed the stored status, so the subscription read `paused` (in the admin list, the tenant's own view and the
+claims-billing entitlement) until an operator remembered to resume it.
+
+- An hourly sweep (`m35.subscription-pause-resume`) now resumes a subscription that is `paused` with a `pausedUntil` that has passed: `status`
+  becomes `active` and `pausedAt` and `pausedUntil` become `null`. Until the sweep runs (at most about an hour) the stored status still reads
+  `paused`, and billing still counts the pause as over at its date.
+- The resume is announced with the same `m35.subscription.resumed` event an operator's resume publishes; `resumedAt` is the pause's end
+  date, not the instant the sweep ran. The subscription's status history (`reasonCode` `platform_ops_pause_lapsed`, no actor) is dated at
+  that end date too, so a statement for the month the pause ended in does not change when the sweep runs.
+- The sweep visits active organizations only. A pause with no end date, a pause whose date is ahead, and an organization suspension (which
+  pauses with no end date) are never resumed by it. A superseded pause is also left alone when the organization already has another live
+  subscription.
+- When the platform suspends an organization (`m2.organization.suspended`) while an operator's dated pause is still running, the pause
+  becomes open-ended: `pausedUntil` is cleared, the subscription's status history gains a `paused` to `paused` row (`reasonCode`
+  `org_suspended_by_platform_admin`) dated at the suspension, and `m35.subscription.paused` is published again with `pausedUntil: null`.
+  The suspended organization stays unbilled past the old date until it is reactivated.
+- No request or response shape changes.
+
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
 
 **Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong
