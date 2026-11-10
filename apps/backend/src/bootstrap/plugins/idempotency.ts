@@ -16,9 +16,9 @@ import {
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
+  claimIdempotencyKey,
   computeIdempotencyHash,
 } from "@chartwarden/shared";
-import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 declare module "fastify" {
@@ -31,8 +31,30 @@ declare module "fastify" {
   }
 }
 
-/** Per-request marker: a `pending` lock this request opened and must `complete` on send. */
-const pendingCaptures = new WeakMap<FastifyRequest, { orgId: string; key: string }>();
+/** Per-request marker: a `pending` lock this request opened and must `complete` (or `release`) on send. */
+const pendingCaptures = new WeakMap<
+  FastifyRequest,
+  { orgId: string; key: string; requestHash: string }
+>();
+
+/** The error code of the retryable deadlock/serialization 409 (error-handler.ts): "nothing was saved; retry it". */
+const RETRYABLE_CONFLICT_CODE = "CONCURRENT_UPDATE";
+
+/**
+ * A response that says the write did NOT happen and the client should run it again — any 5xx, and the retryable
+ * deadlock/serialization 409. Replaying it for the 24h TTL would turn "retry" into "never": the same-key retry would
+ * get the cached failure back while the write never ran. These release the claim instead of completing it.
+ */
+function isRetryableOutcome(statusCode: number, body: unknown): boolean {
+  if (statusCode >= 500) return true;
+  if (statusCode !== 409 || typeof body !== "object" || body === null) return false;
+  const error = (body as { error?: unknown }).error;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === RETRYABLE_CONFLICT_CODE
+  );
+}
 
 function parsePayload(payload: unknown): unknown {
   if (typeof payload !== "string") return payload;
@@ -75,30 +97,11 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       request.headers["if-match"] ?? null,
     ]);
     const requestHash = computeIdempotencyHash(scope, key, request.body ?? null);
-    const answerFrom = (existing: IdempotencyRecord) => {
-      if (existing.requestHash !== requestHash) throw new IdempotencyConflictError();
-      if (existing.state === "complete") {
-        const status = Number(existing.response.status) || 200;
-        return reply.code(status).send(existing.response.body);
-      }
-      // Still `pending` — a concurrent duplicate arrived before the first finished.
-      throw new ConflictError("Idempotency-Key request is still being processed");
-    };
-
-    const existing = await store.load(orgId, key);
-    if (existing) return answerFrom(existing);
-
-    // The claim is the serialization point (GAP-007): `load` returning null does not mean we own
-    // the key, only that nobody did a moment ago. Only the caller whose `putPending` wins runs the
-    // handler; a loser reloads the winner's record and replays it or reports it in flight.
-    if (!(await store.putPending(orgId, key, requestHash))) {
-      const winner = await store.load(orgId, key);
-      if (winner) return answerFrom(winner);
-      // The record vanished between the lost claim and the reload (swept or expired in between):
-      // fail safe — never run the handler without the claim; the client retries.
-      throw new ConflictError("Idempotency-Key request is still being processed");
-    }
-    pendingCaptures.set(request, { orgId, key });
+    // The shared claim (`@chartwarden/shared` claimIdempotencyKey, the core of runIdempotent) decides: a cached
+    // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a duplicate still in flight is 409 CONFLICT.
+    const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
+    if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
+    pendingCaptures.set(request, { orgId, key, requestHash });
   });
 
   app.addHook("onSend", async (request, reply, payload) => {
@@ -109,6 +112,20 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       status: String(reply.statusCode),
       body: parsePayload(payload),
     };
+    if (isRetryableOutcome(reply.statusCode, response.body)) {
+      // The write did not happen: free the key so the client's same-key retry runs instead of replaying the failure.
+      // A failed release leaves the record `pending` (a retry answers 409 in flight until the TTL), the same fail-safe
+      // as a failed `complete`; it is logged, never allowed to rewrite the response.
+      try {
+        await store.release(marker.orgId, marker.key, marker.requestHash);
+      } catch (error) {
+        request.log.error(
+          { err: error, idempotencyKey: marker.key },
+          "idempotency: could not release the claim after a retryable failure; the key stays pending",
+        );
+      }
+      return payload;
+    }
     // BOOKKEEPING MUST NOT REWRITE THE OUTCOME (F-073, #182). By `onSend` the handler has already
     // COMMITTED; letting a store error escape turns a write that happened into a 500 that says it
     // did not — which is exactly what a bodiless 204 did on the production store, verified live: the
@@ -178,6 +195,14 @@ export function createInMemoryIdempotencyStore(
         record: { state: "complete", requestHash: existing.record.requestHash, response },
         expiresAt: existing.expiresAt,
       });
+    },
+    async release(orgId, key, requestHash) {
+      // Only the claimant's own pending record goes (same hash, still pending); never a completed response.
+      const existing = live(orgId, key);
+      if (existing?.record.state !== "pending" || existing.record.requestHash !== requestHash) {
+        return;
+      }
+      entries.delete(k(orgId, key));
     },
   };
 }
