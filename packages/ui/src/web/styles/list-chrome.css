@@ -751,18 +751,16 @@
   .wx-kv.is-middle {
     align-items: center;
   }
-  /* A fieldset card's legend reads as the card heading, not a caption cut into the top border. */
+  /* A fieldset card's legend reads as the card heading, not a caption cut into the top border. The float is what stops it being the
+     fieldset's "rendered legend"; the card is a grid, where a float has no effect, so the card's own gap sets the space below it
+     (a margin here, or a clear on the next sibling, would double it: measured 24px against the 12px every other card head gets). */
   fieldset.wx-drawer-card > legend {
     float: left;
     width: 100%;
-    margin-bottom: 0.75rem;
     padding: 0;
     color: var(--color-on-surface);
     font-size: 0.9375rem;
     font-weight: 700;
-  }
-  fieldset.wx-drawer-card > legend + * {
-    clear: both;
   }
   /* A sub-group legend inside a card: a small subheading. */
   fieldset.wx-form-stack > legend {

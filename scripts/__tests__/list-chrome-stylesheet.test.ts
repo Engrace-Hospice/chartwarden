@@ -32,6 +32,25 @@ describe("shared list-chrome stylesheet (GAP-207)", () => {
     for (const selector of LIST_CHROME_SELECTORS) expect(shared).toContain(selector);
   });
 
+  const ruleBody = (selector: string): string =>
+    new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(
+      shared,
+    )?.[1] ?? "";
+
+  it("spaces a fieldset card's legend with the card's grid gap, not a margin or a clear that would double it", () => {
+    const legend = ruleBody("fieldset.wx-drawer-card > legend");
+    expect(legend).toContain("float: left"); // keeps it out of the fieldset's border-cutting "rendered legend" slot
+    expect(legend).not.toContain("margin-bottom");
+    expect(shared).not.toContain("fieldset.wx-drawer-card > legend + *");
+  });
+
+  it("only makes a row title look clickable when it acts (button, link, or an interactive row's title)", () => {
+    expect(ruleBody(".wx-row-title")).not.toContain("cursor");
+    expect(ruleBody("button.wx-row-title,\n  a.wx-row-title")).toContain("cursor: pointer");
+    expect(shared).toContain('tr[role="button"] .wx-row-title:hover');
+    expect(shared).not.toMatch(/\n  \.wx-row-title:hover/);
+  });
+
   it("defines no design tokens (arch:design-tokens reads them from each app)", () => {
     expect(shared).not.toMatch(/@theme|:root\s*\{|--color-[a-z-]+:\s*#/);
   });
