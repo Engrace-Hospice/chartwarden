@@ -190,14 +190,19 @@ describe("ClaimEditor — type of bill", () => {
     expect(notice.textContent).toMatch(/stay ended by revocation on 03\/20\/2026/);
     expect(notice.textContent).toMatch(/Re-run validation and the type of bill is updated to 811/);
     fireEvent.click(screen.getByRole("button", { name: "Re-run validation" }));
-    await waitFor(() =>
-      expect(POST).toHaveBeenCalledWith("/api/v1/claims/{id}/validate", {
-        params: { path: { id: CLAIM } },
-        // a re-run always asks for a fresh run: its own key, never the client's per-intent key
-        headers: { "Idempotency-Key": expect.any(String) },
-      }),
-    );
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(GET.mock.calls.length).toBeGreaterThan(2)); // reloaded
+    fireEvent.click(await screen.findByRole("button", { name: "Re-run validation" }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(2));
+    // a re-run always asks for a fresh run: its own key per click, never one shared across clicks
+    const [first, second] = POST.mock.calls.map(
+      (call) => call as unknown as [string, { params: unknown; headers: Record<string, string> }],
+    );
+    expect(first?.[0]).toBe("/api/v1/claims/{id}/validate");
+    expect(first?.[1].params).toEqual({ path: { id: CLAIM } });
+    expect(first?.[1].headers["Idempotency-Key"]).toBeTruthy();
+    expect(second?.[1].headers["Idempotency-Key"]).toBeTruthy();
+    expect(second?.[1].headers["Idempotency-Key"]).not.toBe(first?.[1].headers["Idempotency-Key"]);
   });
 
   it("asks for a replacement on a paid claim and opens the TOB-817 ceremony", async () => {

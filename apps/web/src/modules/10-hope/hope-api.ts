@@ -209,6 +209,8 @@ export async function assembleSubmission(
 ): Promise<WriteResult<SubmissionView>> {
   const { data, error, response } = await client.POST("/api/v1/hope/submissions/assemble", {
     body: { providerEntityId },
+    // The package is built from the records as they are now (after a correction): never replay an earlier (lost-reply) answer.
+    headers: freshIdempotencyKeyHeaders(),
   });
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data };

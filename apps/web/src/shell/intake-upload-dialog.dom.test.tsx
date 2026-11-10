@@ -60,6 +60,11 @@ describe("IntakeUploadDialog — unfiled fax", () => {
         body: { documentId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", sourceChannel: "fax" },
       }),
     );
+    // Starting DocLens reads the batch as it is now, so the run is sent on its own key, never the client's per-intent key.
+    const run = post.mock.calls.find(
+      ([p]) => p === "/api/v1/intake/uploads/{id}/extraction/run",
+    ) as unknown as [string, { headers?: Record<string, string> }];
+    expect(run[1].headers?.["Idempotency-Key"]).toBeTruthy();
     expect(onFiled.mock.calls[0]?.[0]).toMatch(/appears in the queue/);
   });
 });

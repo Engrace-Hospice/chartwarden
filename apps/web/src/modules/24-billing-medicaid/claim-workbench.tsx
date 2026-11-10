@@ -10,6 +10,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  freshIdempotencyKeyHeaders,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -184,7 +185,8 @@ export function MedicaidClaimWorkbench(): JSX.Element {
         const init =
           mode === "abandon"
             ? { params: { path: { id: claim.id }, header: { "If-Match": String(claim.version) } } }
-            : { params: { path: { id: claim.id } } };
+            : // A validation run checks the claim as it is now: never replay an earlier (lost-reply) answer.
+              { params: { path: { id: claim.id } }, headers: freshIdempotencyKeyHeaders() };
         const path =
           mode === "abandon"
             ? "/api/v1/medicaid-claims/{id}/abandon"
