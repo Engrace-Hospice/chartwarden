@@ -578,6 +578,8 @@
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
         "apps/backend/__tests__/m34-slice7-contract-routes.test.ts",
+        "apps/backend/__tests__/m34-support-session-routes.test.ts",
+        "apps/backend/__tests__/m34-support-session.live.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
