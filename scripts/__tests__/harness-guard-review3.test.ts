@@ -144,6 +144,18 @@ describe("finding 3: Codex `workdir` is where a shell command runs, so its relat
     put(elsewhere, "scripts/harness/x.ts");
     expect(decision(bash("echo x > x.ts", join(elsewhere, "scripts/harness")))).toBeUndefined();
   });
+
+  // The directory a command runs in is a real one: a workdir that is a symlink into a protected tree writes there.
+  it("judges a workdir by the real directory it is, not by its symlinked name", () => {
+    symlinkSync("../scripts/harness", join(root, "apps/link"));
+    symlinkSync("backend", join(root, "apps/alias"));
+    for (const command of ["echo x > io.ts", "tee patterns.ts < /tmp/x", "sed -i s/a/b/ io.ts"]) {
+      expect(decision(bash(command, "apps/link")), `${command} @ apps/link`).toBe("deny");
+      expect(decision(bash(command, join(root, "apps/link")))).toBe("deny");
+    }
+    expect(decision(bash("echo x > notes.txt", "apps/alias"))).toBeUndefined();
+    expect(decision(bash("cat package.json", "apps/alias"))).toBeUndefined();
+  });
 });
 
 describe("finding 9: cwd and repo root are compared as real paths, not as text", () => {

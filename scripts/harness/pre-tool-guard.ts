@@ -287,7 +287,8 @@ function judgeBash(cmd: string, root: string, cwd: string, workdir: string): Bas
   const branch = currentBranch(root);
   const judge = (r: string, base: string): BashVerdict => {
     // A persisted `cd apps/backend` from an earlier call leaves the shell there: judge relative writes from it.
-    const dir = workdir ? resolve(base, workdir) : base;
+    // A `workdir` that is a symlink (`apps/link -> ../scripts/harness`) is where the command really runs.
+    const dir = workdir ? canon(resolve(base, workdir)) : base;
     return classifyBash(cmd, {
       branch,
       root: r,
