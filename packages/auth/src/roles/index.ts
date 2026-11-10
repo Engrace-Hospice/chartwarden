@@ -67,6 +67,7 @@ export {
   roleConfersKey,
 } from "./platform-reserved";
 export {
+  ADMINISTRATOR_EXCLUDED_KEYS,
   FULL_CATALOG_ROLE_KEYS,
   type MirrorPermission,
   PLATFORM_PERMISSION_CATEGORY,
