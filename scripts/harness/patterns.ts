@@ -21,6 +21,7 @@
 import { userInfo } from "node:os";
 
 import { switchesHarness } from "./harness-switch";
+import { readsScriptFromStdin, runsInlineCode } from "./inline-code";
 import { relativeTo } from "./path-alias";
 import {
   BARE,
@@ -1164,11 +1165,6 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   );
 }
 
-const INTERPRETER = /^(python[0-9.]*|node|bun|deno|perl|ruby|php|awk|gawk|lua)$/;
-const INLINE_CODE = /\s(-c|-e|-p|-E|--eval|--print)\b/;
-/** awk always takes its program inline; the others only behind -c/-e/-p/--eval. */
-const runsInlineCode = (prog: string, args: readonly string[]): boolean =>
-  INTERPRETER.test(prog) && (/^g?awk$/.test(prog) || INLINE_CODE.test(` ${args.join(" ")}`));
 // A secret file named inside inline code. `process.env.X` is a property, not a file: the dot must not
 // follow a letter, `)` or `]`.
 const SECRET_MENTION =
@@ -1895,19 +1891,6 @@ function scriptTextVerdict(text: string): BashVerdict | null {
     );
   }
   return null;
-}
-
-/** An interpreter whose script arrives on stdin: `python3 -`, `node <<EOF`, `… | python3`. */
-function readsScriptFromStdin(p: Parsed, index: number): boolean {
-  if (!INTERPRETER.test(p.prog) || /^g?awk$/.test(p.prog) || runsInlineCode(p.prog, p.args)) {
-    return false;
-  }
-  const positional = p.args.filter((a) => !a.startsWith("-") || a === "-");
-  if (p.args.some((a) => /^(-v|-V|-h|--version|--help)$/.test(a))) return false;
-  return (
-    positional[0] === "-" ||
-    (positional.length === 0 && (index > 0 || p.ins.length + p.docs.length > 0))
-  );
 }
 
 // ---------------------------------------------------------------------------------------------------
