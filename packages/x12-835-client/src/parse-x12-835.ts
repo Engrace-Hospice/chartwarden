@@ -367,8 +367,31 @@ function unwrapEnvelope(
 function parsePlb(
   seg: X12Segment,
   compSep: string,
-): { readonly reason: string; readonly reference?: string; readonly cents: number }[] {
-  const out: { reason: string; reference?: string; cents: number }[] = [];
+  segmentPosition: number,
+): {
+  readonly reason: string;
+  readonly reference?: string;
+  readonly cents: number;
+  readonly providerIdentifier: string;
+  readonly fiscalPeriod: string;
+  readonly segmentPosition: number;
+  readonly occurrence: number;
+}[] {
+  const providerIdentifier = elem(seg, 1);
+  const fiscalPeriod = elem(seg, 2);
+  if (!providerIdentifier) fail("PLB provider identifier is missing");
+  if (!fiscalPeriod) fail("PLB fiscal period is missing");
+  const normalizedFiscalPeriod = toIsoDate(fiscalPeriod, "PLB02");
+  const out: {
+    reason: string;
+    reference?: string;
+    cents: number;
+    providerIdentifier: string;
+    fiscalPeriod: string;
+    segmentPosition: number;
+    occurrence: number;
+  }[] = [];
+  let occurrence = 0;
   for (let i = 3; i < seg.el.length; i += 2) {
     const reasonElement = elem(seg, i);
     const amount = elem(seg, i + 1);
@@ -376,7 +399,16 @@ function parsePlb(
     if (!reasonElement || !amount) fail("PLB reason/amount pair is incomplete");
     const [reason, reference] = reasonElement.split(compSep, 2);
     if (!reason) fail("PLB reason is missing");
-    out.push({ reason, ...(reference ? { reference } : {}), cents: toCents(amount, "PLB amount") });
+    occurrence += 1;
+    out.push({
+      reason,
+      ...(reference ? { reference } : {}),
+      cents: toCents(amount, "PLB amount"),
+      providerIdentifier,
+      fiscalPeriod: normalizedFiscalPeriod,
+      segmentPosition,
+      occurrence,
+    });
   }
   return out;
 }
@@ -413,6 +445,10 @@ interface Body {
     readonly reason: string;
     readonly reference?: string;
     readonly cents: number;
+    readonly providerIdentifier: string;
+    readonly fiscalPeriod: string;
+    readonly segmentPosition: number;
+    readonly occurrence: number;
   }[];
 }
 
@@ -428,8 +464,16 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
   let party: ParsedRemittanceParty | undefined;
   let partyKind: "PR" | "PE" | undefined;
   const claims: ClaimDraft[] = [];
-  const plb: { reason: string; reference?: string; cents: number }[] = [];
-  for (const seg of body) {
+  const plb: {
+    reason: string;
+    reference?: string;
+    cents: number;
+    providerIdentifier: string;
+    fiscalPeriod: string;
+    segmentPosition: number;
+    occurrence: number;
+  }[] = [];
+  for (const [segmentIndex, seg] of body.entries()) {
     const id = segId(seg);
     const current = claims[claims.length - 1];
     if (id === "BPR") {
@@ -441,7 +485,7 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
     } else if (id === "CLP") {
       if (!bpr || !trn) fail("CLP before BPR/TRN");
       claims.push(newClaim(seg));
-    } else if (id === "PLB") plb.push(...parsePlb(seg, compSep));
+    } else if (id === "PLB") plb.push(...parsePlb(seg, compSep, segmentIndex + 1));
     else if (id === "SVC") (current ?? fail("SVC outside a CLP")).lines.push(newLine(seg, compSep));
     else if (id === "N1" && !current) {
       const kind = elem(seg, 1);
@@ -523,6 +567,10 @@ function buildSet(
               reason: x.reason,
               ...(x.reference ? { reference: x.reference } : {}),
               amount: x.cents / 100,
+              providerIdentifier: x.providerIdentifier,
+              fiscalPeriod: x.fiscalPeriod,
+              segmentPosition: x.segmentPosition,
+              occurrence: x.occurrence,
             }),
           ),
         }
