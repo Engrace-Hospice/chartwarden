@@ -248,18 +248,30 @@ export function createDrizzleWizardStore(
       const documentFiled = await governingBaaDocumentFiled(baa, (ref) =>
         baaDocumentFiled(tx, ref),
       );
+      const documentUploadedByMembershipId =
+        documentFiled && baa.documentId !== null
+          ? await baaDocumentUploader(tx, {
+              organizationId: baa.organizationId,
+              documentId: baa.documentId,
+            })
+          : null;
+      // The user behind the uploader's membership, by id whatever its status (a revoked row still names its user). The platform carrier
+      // reads `membership` (table-wide SELECT); on a tenant connection the operator's home-org row is not visible and this is null.
+      const [uploader] =
+        documentUploadedByMembershipId === null
+          ? []
+          : await tx
+              .select({ userId: schema.memberships.userId })
+              .from(schema.memberships)
+              .where(eq(schema.memberships.id, documentUploadedByMembershipId))
+              .limit(1);
       return {
         baaStatus: baa.baaStatus,
         expiresOn: dateOnly(baa.expiresOn),
         documentId: baa.documentId,
         documentFiled,
-        documentUploadedByMembershipId:
-          documentFiled && baa.documentId !== null
-            ? await baaDocumentUploader(tx, {
-                organizationId: baa.organizationId,
-                documentId: baa.documentId,
-              })
-            : null,
+        documentUploadedByMembershipId,
+        documentUploadedByUserId: uploader?.userId ?? null,
         recordedByUserId: baa.recordedByUserId,
         updatedByUserId: baa.updatedByUserId,
       };

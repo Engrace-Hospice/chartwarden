@@ -62,7 +62,8 @@ function assertCatalogTextHasNoIdentifier(fields: {
   readonly description?: string | undefined;
 }): void {
   assertNoPatientIdentifier("title", fields.title);
-  if (fields.description !== undefined) assertNoPatientIdentifier("description", fields.description);
+  if (fields.description !== undefined)
+    assertNoPatientIdentifier("description", fields.description);
 }
 
 /** Register the §4.1 platform-ops onboarding-template catalog routes. */

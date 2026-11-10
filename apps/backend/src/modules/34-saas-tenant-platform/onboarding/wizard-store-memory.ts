@@ -36,6 +36,7 @@ export type MemoryBaa = Pick<GoverningBaa, "baaStatus" | "expiresOn"> &
       | "documentId"
       | "documentFiled"
       | "documentUploadedByMembershipId"
+      | "documentUploadedByUserId"
       | "recordedByUserId"
       | "updatedByUserId"
     >
@@ -230,6 +231,7 @@ export function createMemoryWizardStore(
             documentId: null,
             documentFiled: true,
             documentUploadedByMembershipId: null,
+            documentUploadedByUserId: null,
             recordedByUserId: null,
             updatedByUserId: null,
             ...baa,
