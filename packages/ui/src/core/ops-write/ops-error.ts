@@ -45,6 +45,8 @@ export interface OpsFailure {
   /** The earlier wizard step that must be settled first (ONBOARDING_STEP_OUT_OF_ORDER), else null. */
   readonly blockedBy: string | null;
   readonly correlationId: string | null;
+  /** Seconds the server asks the caller to wait (a `Retry-After` header on a 429), when it sent a usable one. */
+  readonly retryAfterSeconds?: number;
 }
 
 export type OpsErrorCopy = Readonly<Record<string, string>>;
@@ -135,13 +137,29 @@ function kindOf(status: number | null, code: string | null): OpsFailureKind {
   return "unknown";
 }
 
+/** What `describeOpsError` reads of a response: its status, and (when it is a real `Response`) the `Retry-After` header. */
+export interface ErrorResponse {
+  readonly status: number;
+  readonly headers?: { get(name: string): string | null };
+}
+
+/** The longest wait worth quoting: a header asking for more is read as "later", not as a countdown. */
+const MAX_RETRY_AFTER_SECONDS = 3600;
+
+function retryAfterOf(response: ErrorResponse | null | undefined): number | undefined {
+  const raw = response?.headers?.get("Retry-After") ?? null;
+  if (raw === null || !/^\d+$/.test(raw.trim())) return undefined;
+  const seconds = Number(raw.trim());
+  return seconds > 0 && seconds <= MAX_RETRY_AFTER_SECONDS ? seconds : undefined;
+}
+
 /**
  * `copy` maps a server code to the operator's own sentence and wins over the server's. Without one the server's sentence is used
  * (the envelope never carries record content), except for authorization-class codes, whose policy text is withheld.
  */
 export function describeOpsError(
   error: unknown,
-  response: { readonly status: number } | null | undefined,
+  response: ErrorResponse | null | undefined,
   copy: OpsErrorCopy = {},
 ): OpsFailure {
   const status = response?.status ?? null;
@@ -150,6 +168,7 @@ export function describeOpsError(
   const code = envelope.code ?? (status === 413 ? PAYLOAD_TOO_LARGE_CODE : null);
   const kind = kindOf(status, code);
   const recordedAt = details.find((d) => d.field === CURRENT_RECORDED_AT)?.message;
+  const retryAfterSeconds = retryAfterOf(response);
   const fieldErrors: Record<string, string> = {};
   if (kind === "validation") {
     for (const d of details) fieldErrors[d.field] = d.message;
@@ -166,5 +185,18 @@ export function describeOpsError(
     blockedBy:
       kind === "locked" ? (details.find((d) => d.field === "templateKey")?.code ?? null) : null,
     correlationId,
+    ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
   };
+}
+
+/**
+ * A refusal that is about an input the screen renders: the form stays open and each message is read beside its field, so the notice is
+ * not repeated. `renders` says which fields this screen actually shows (default: any): a refusal that names only fields the screen does
+ * not render (the server's `(root)` for an unknown shape) is NOT about an input, and its notice must show.
+ */
+export function isAboutAnInput(
+  failure: Pick<OpsFailure, "kind" | "fieldErrors">,
+  renders: (field: string) => boolean = () => true,
+): boolean {
+  return failure.kind === "validation" && Object.keys(failure.fieldErrors).some(renders);
 }

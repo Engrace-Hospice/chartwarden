@@ -7,6 +7,11 @@ import type { Fact } from "../components/fact-list";
 
 export type ClearinghouseView =
   operations["getApiV1PlatformTenantsByOrgSlugClearinghouse"]["responses"][200]["content"]["application/json"];
+/**
+ * The view the shared model and form read: the platform view minus `hasContract`. The tenant's view has no such field (a tenant cannot
+ * change its billing service mode), and nothing here reads it, so both lanes' views fit.
+ */
+export type ClearinghouseSharedView = Omit<ClearinghouseView, "hasContract">;
 export type ClearinghouseVendor = "stedi" | "claimmd" | "outside";
 export type ClearinghouseMode = "test" | "production";
 
@@ -23,11 +28,11 @@ export const MODE_LABEL: Readonly<Record<ClearinghouseMode, string>> = {
 };
 
 /** A vendor ChartWarden sends claims through with the tenant's own sealed credential (not `outside`, not nothing). */
-export const isTransmitting = (view: ClearinghouseView): boolean =>
+export const isTransmitting = (view: ClearinghouseSharedView): boolean =>
   view.vendor === "stedi" || view.vendor === "claimmd";
 
 /** This tenant's own choice is on record (not the deployment's shared fallback, not nothing). */
-const isChosen = (view: ClearinghouseView): boolean =>
+export const isChosen = (view: ClearinghouseSharedView): boolean =>
   view.vendor !== null && view.source === "tenant";
 
 /**
@@ -35,7 +40,7 @@ const isChosen = (view: ClearinghouseView): boolean =>
  * (a change starts the new key at draft). Billing outside takes none.
  */
 export function needsSecret(
-  current: ClearinghouseView,
+  current: ClearinghouseSharedView,
   choice: { vendor: ClearinghouseVendor; mode: ClearinghouseMode },
 ): boolean {
   if (choice.vendor === "outside") return false;
@@ -51,19 +56,42 @@ const OUTCOME_TEXT: Record<string, string> = {
 
 const when = (iso: string): string => new Date(iso).toLocaleString();
 
-export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
+/** The words a lane gives the facts: an operator reads about "the tenant", the tenant about "your organization". */
+export interface ClearinghouseWording {
+  /** Detail on "A clearinghouse is chosen" while only the deployment's shared setting names one. */
+  readonly platformEnvDetail: string;
+  /** Detail on "Billing outside ChartWarden". */
+  readonly outsideDetail: string;
+  readonly baaRecordedLabel: string;
+  /** Detail on the BAA fact while none is recorded. */
+  readonly baaNotRecordedDetail: string;
+  readonly baaVerifiedLabel: string;
+}
+
+export const OPERATOR_WORDING: ClearinghouseWording = {
+  platformEnvDetail:
+    "Only the deployment's shared setting names one; none is recorded for this tenant.",
+  outsideDetail:
+    "ChartWarden transmits nothing for this tenant: no credential, BAA or activation is needed.",
+  baaRecordedLabel: "The tenant recorded its vendor BAA",
+  baaNotRecordedDetail: "The tenant records this itself, in its own settings.",
+  baaVerifiedLabel: "An operator verified the vendor BAA",
+};
+
+/** The text a connection test's outcome reads as ("the vendor rejected the credential"). */
+export const testOutcomeText = (outcome: string): string => OUTCOME_TEXT[outcome] ?? outcome;
+
+export function clearinghouseFacts(
+  view: ClearinghouseSharedView,
+  wording: ClearinghouseWording = OPERATOR_WORDING,
+): Fact[] {
   if (!isChosen(view)) {
     return [
       {
         key: "chosen",
         label: "A clearinghouse is chosen",
         state: "pending",
-        ...(view.source === "platform_env"
-          ? {
-              detail:
-                "Only the deployment's shared setting names one; none is recorded for this tenant.",
-            }
-          : {}),
+        ...(view.source === "platform_env" ? { detail: wording.platformEnvDetail } : {}),
       },
     ];
   }
@@ -73,8 +101,7 @@ export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
         key: "chosen",
         label: "Billing outside ChartWarden",
         state: "ok",
-        detail:
-          "ChartWarden transmits nothing for this tenant: no credential, BAA or activation is needed.",
+        detail: wording.outsideDetail,
       },
     ];
   }
@@ -95,15 +122,15 @@ export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
     },
     {
       key: "baa-recorded",
-      label: "The tenant recorded its vendor BAA",
+      label: wording.baaRecordedLabel,
       state: view.baa ? "ok" : "pending",
       detail: view.baa
         ? `${view.baa.documentRef}, effective ${view.baa.effectiveDate}`
-        : "The tenant records this itself, in its own settings.",
+        : wording.baaNotRecordedDetail,
     },
     {
       key: "baa-verified",
-      label: "An operator verified the vendor BAA",
+      label: wording.baaVerifiedLabel,
       state: view.baa?.verified ? "ok" : "pending",
       ...(view.baa?.verified ? { detail: `Verified ${when(view.baa.verified.at)}` } : {}),
     },
@@ -113,7 +140,7 @@ export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
       state: connected ? "ok" : "pending",
       ...(!connected && lastTest
         ? {
-            detail: `Last test ${when(lastTest.at)}: ${OUTCOME_TEXT[lastTest.outcome] ?? lastTest.outcome}.`,
+            detail: `Last test ${when(lastTest.at)}: ${testOutcomeText(lastTest.outcome)}.`,
           }
         : {}),
     },
@@ -142,7 +169,7 @@ const NO_ACTIONS: ClearinghouseActions = {
   tenantActivationNote: null,
 };
 
-export function clearinghouseActions(view: ClearinghouseView): ClearinghouseActions {
+export function clearinghouseActions(view: ClearinghouseSharedView): ClearinghouseActions {
   if (!isChosen(view) || !isTransmitting(view)) return NO_ACTIONS;
   const baaVerified = view.baa?.verified != null;
   const connectionVerified = view.status === "verified";

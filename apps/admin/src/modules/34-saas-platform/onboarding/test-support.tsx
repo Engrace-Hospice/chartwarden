@@ -1,5 +1,6 @@
 // Test fixtures shared by the wizard's suites: a wizard view builder and a stub API client that dispatches on the typed path.
 import { type ApiClient, ApiClientProvider, STEP_UP_RETURN_STATE } from "@chartwarden/ui";
+import type { StubClient } from "@chartwarden/ui/testing";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -94,46 +95,15 @@ export const OVERVIEW = {
   activeSessions: 0,
 };
 
-type Reply = { data?: unknown; error?: unknown; response?: { status: number } };
-export type Handler = (init: { params?: Record<string, unknown>; body?: unknown }) =>
-  | Reply
-  | Promise<Reply>;
-export type Handlers = Partial<
-  Record<"GET" | "POST" | "PUT" | "PATCH" | "DELETE", Record<string, Handler>>
->;
-
-const NOT_STUBBED: Reply = {
-  error: { error: { code: "NOT_STUBBED", message: "no stub for this call" } },
-  response: { status: 500 },
-};
-
-/** A client whose methods dispatch on the typed path and record every call (`client.POST.mock.calls`). */
-export function stubClient(handlers: Handlers) {
-  const method = (name: keyof Handlers) =>
-    vi.fn(async (path: string, init: { params?: Record<string, unknown>; body?: unknown } = {}) => {
-      const handler = handlers[name]?.[path];
-      return handler ? await handler(init) : NOT_STUBBED;
-    });
-  return {
-    GET: method("GET"),
-    POST: method("POST"),
-    PUT: method("PUT"),
-    PATCH: method("PATCH"),
-    DELETE: method("DELETE"),
-  };
-}
-export type StubClient = ReturnType<typeof stubClient>;
-
-export const ok = (data: unknown, status = 200): Reply => ({ data, response: { status } });
-export const refused = (
-  status: number,
-  code: string,
-  message = "refused",
-  details?: unknown[],
-): Reply => ({
-  error: { error: { code, message, correlationId: "corr-test", ...(details ? { details } : {}) } },
-  response: { status },
-});
+// The stub API client is @chartwarden/ui's (the tenant wizard's suites share it): dispatches on method + typed path, records every call.
+export {
+  ok,
+  refused,
+  stubClient,
+  type StubClient,
+  type StubHandler as Handler,
+  type StubHandlers as Handlers,
+} from "@chartwarden/ui/testing";
 
 /** Where a panel mounts on the operator's return from a successful Re-verify: the only visit a stashed draft is restored on. */
 export const RETURNED_FROM_STEP_UP = { pathname: "/x", state: STEP_UP_RETURN_STATE };

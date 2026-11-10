@@ -6,10 +6,11 @@ import type { JSX, Ref } from "react";
 import { Button } from "../components/button";
 import { SelectField, TextField } from "../components/fields";
 import { InlineAlert } from "../components/inline-alert";
+import { SECRET_INPUT_PROPS } from "../components/secret-input-props";
 import {
   type ClearinghouseMode,
+  type ClearinghouseSharedView,
   type ClearinghouseVendor,
-  type ClearinghouseView,
   needsSecret,
 } from "./clearinghouse-model";
 
@@ -60,7 +61,7 @@ export const SECRET_MAX = 512;
 
 /** This write moves a contracted tenant OUT of outside for a vendor: the operator names the billing mode it takes (the server requires it). */
 export function isLeavingOutside(
-  view: ClearinghouseView,
+  view: ClearinghouseSharedView,
   form: Pick<ChoiceForm, "vendor">,
   context: ChoiceContext,
 ): boolean {
@@ -73,7 +74,7 @@ export function isLeavingOutside(
 }
 
 export function validateChoice(
-  view: ClearinghouseView,
+  view: ClearinghouseSharedView,
   form: ChoiceForm,
   secret: string,
   context: ChoiceContext,
@@ -107,7 +108,7 @@ export interface ChoiceContext {
  * from the 1st of next month once live).
  */
 export function consequenceOf(
-  view: ClearinghouseView,
+  view: ClearinghouseSharedView,
   form: ChoiceForm,
   context: ChoiceContext,
 ): string {
@@ -164,7 +165,7 @@ export function ChoiceFormCard({
   copy,
   busy = false,
 }: {
-  view: ClearinghouseView;
+  view: ClearinghouseSharedView;
   form: ChoiceForm;
   secret: string;
   errors: ChoiceErrors;
@@ -192,7 +193,9 @@ export function ChoiceFormCard({
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        onContinue();
+        // aria-disabled, not disabled: the submit that was just pressed keeps focus while the write runs, so a second press is dropped here
+        // (and by the caller's own in-flight guard) instead of the button vanishing from the tab order.
+        if (!busy) onContinue();
       }}
     >
       <div className="wx-drawer-card-head">
@@ -239,8 +242,7 @@ export function ChoiceFormCard({
                   : (copy?.secretKeptHint ??
                     "Write-only. Leave blank to keep the credential on file.")
               }
-              type="password"
-              autoComplete="new-password"
+              {...SECRET_INPUT_PROPS}
               value={secret}
               onChange={(e) => onSecret(e.target.value)}
               error={errors.secret}
@@ -257,7 +259,7 @@ export function ChoiceFormCard({
         <Button tone="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" aria-disabled={busy || undefined}>
           {copy?.submitLabel ?? "Continue"}
         </Button>
       </div>
