@@ -55,6 +55,7 @@ import { countActiveStaffForMonth } from "../src/modules/35-subscription/pricing
 import {
   type StatementStripePort,
   calendarMonthOf,
+  runStatementSweep,
   runStatementsForOrg,
 } from "../src/modules/35-subscription/pricing/statement-service";
 import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
@@ -1775,6 +1776,14 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       expect(row).toMatchObject({ status: "final", net_collections_cents: "1650050" });
       // two remittances of the month had not posted when it closed: an operator should look (final + pending => needs_review)
       expect(row).toMatchObject({ net_collections_pending_count: 2, needs_review: true });
+      // and 19 of its 30 live days had a census, below MIN_CENSUS_COVERAGE_PERCENT: the month froze on that mean, so it is ALSO recorded
+      // for review once, with a reason code (a final statement has no correction path; the operator has to see it)
+      expect(
+        await q(
+          "SELECT period_year_month, reason FROM subscription_statement_review WHERE subject_organization_id=$1 ORDER BY period_year_month",
+          [ORG_A],
+        ),
+      ).toEqual([{ period_year_month: "2026-11", reason: "sparse_census" }]);
       // the Stripe seam: the FINAL statement was pushed once through the port and its usage record stored; the draft was not
       expect(stripePushes).toHaveLength(1);
       expect(
@@ -1858,7 +1867,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ]);
     });
 
-    it("a final statement is frozen by its trigger, even against the platform carrier; only the Stripe columns may be written", async () => {
+    it("a final statement is frozen by its trigger, even against the platform carrier (the Stripe push record has its own once-only rule, next)", async () => {
       await asCarrier(async (carrier) => {
         for (const assignment of [
           "total_cents = 1",
@@ -1875,12 +1884,6 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
             assignment,
           ).rejects.toThrow(/final statement cannot change/);
         }
-        await expect(
-          carrier.query(
-            "UPDATE subscription_statement SET stripe_usage_record_id='ur_manual' WHERE organization_id=$1 AND status='final'",
-            [ORG_A],
-          ),
-        ).resolves.toBeDefined();
       });
       await expect(
         admin.query(
@@ -1888,6 +1891,53 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           [ORG_A],
         ),
       ).rejects.toThrow(/final statement cannot change/);
+    });
+
+    it("F-6 (migration 1464): a final statement's Stripe push record is written ONCE: from NULL it may be set, but never cleared or rewritten, so a posted statement cannot go back into the unposted set", async () => {
+      // fixture: one final statement put back to "never pushed" the only way that can be done, by a superuser that skips triggers
+      const [target] = await q<{ id: string }>(
+        "SELECT id FROM subscription_statement WHERE organization_id=$1 AND status='final' ORDER BY period_year_month LIMIT 1",
+        [ORG_A],
+      );
+      expect(target?.id).toBeDefined();
+      await admin.query("BEGIN");
+      await admin.query("SET LOCAL session_replication_role = replica");
+      await admin.query(
+        "UPDATE subscription_statement SET stripe_usage_record_id = NULL, stripe_posted_at = NULL WHERE id=$1",
+        [target?.id],
+      );
+      await admin.query("COMMIT");
+
+      await asCarrier(async (carrier) => {
+        const write = (assignment: string) =>
+          carrier.query(`UPDATE subscription_statement SET ${assignment} WHERE id=$1`, [
+            target?.id,
+          ]);
+        // the push itself: NULL -> value, on each column (and a retry that finds one column already written is fine)
+        await expect(write("stripe_usage_record_id = 'ur_once'")).resolves.toBeDefined();
+        await expect(write("stripe_posted_at = '2027-01-09T00:00:00Z'")).resolves.toBeDefined();
+        // writing the same record again changes nothing
+        await expect(write("stripe_usage_record_id = 'ur_once'")).resolves.toBeDefined();
+        // what would put a posted statement back into the unposted set, or re-point it, is refused
+        for (const assignment of [
+          "stripe_posted_at = NULL",
+          "stripe_usage_record_id = NULL",
+          "stripe_usage_record_id = 'ur_other'",
+          "stripe_posted_at = '2027-02-01T00:00:00Z'",
+          "stripe_posted_at = NULL, stripe_usage_record_id = NULL",
+        ]) {
+          await expect(write(assignment), assignment).rejects.toThrow(
+            /cannot be cleared or rewritten/,
+          );
+        }
+        // the freeze of every other column is unchanged
+        await expect(write("total_cents = 1")).rejects.toThrow(/final statement cannot change/);
+      });
+      const [after] = await q<{ stripe_usage_record_id: string; posted: boolean }>(
+        "SELECT stripe_usage_record_id, stripe_posted_at IS NOT NULL AS posted FROM subscription_statement WHERE id=$1",
+        [target?.id],
+      );
+      expect(after).toEqual({ stripe_usage_record_id: "ur_once", posted: true });
     });
 
     it("the database refuses a statement whose figures do not add up: the greater-of platform fee, the proration, the minimum floor, the half-up billing fee, the prior-period lines, the total", async () => {
@@ -2716,6 +2766,60 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       });
     });
 
+    it("PRC-1: a pause with an end date is over at that date though nothing resumed it (statement days, the live contract scope), and a later resume does not move it", async () => {
+      const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
+      const route = (iso: string) =>
+        buildDrizzleM35RouteService(app.db, { platformRunner, outbox, audit, now: at(iso) });
+      const [sub] = await q<{ id: string }>(
+        "SELECT id FROM subscription WHERE organization_id=$1",
+        [ORG_J],
+      );
+      const live = async (iso: string) =>
+        (await platformRunner((tx) => selectNewestContract(tx, "live", new Date(iso), ORG_J))) !==
+        null;
+      // a date that is not in the future is refused with nothing written
+      await expect(
+        route("2026-11-26T12:00:00Z").adminPauseSubscription(
+          operator,
+          sub?.id ?? "",
+          "2026-11-26T11:00:00Z",
+        ),
+      ).rejects.toMatchObject({ code: "PAUSE_UNTIL_NOT_FUTURE", statusCode: 422 });
+      expect(
+        await q("SELECT 1 FROM subscription WHERE id=$1 AND status='paused'", [sub?.id]),
+      ).toHaveLength(0);
+
+      // paused Nov 26 12:00 until Nov 28 00:00; the ledger row keeps the date
+      await route("2026-11-26T12:00:00Z").adminPauseSubscription(
+        operator,
+        sub?.id ?? "",
+        "2026-11-28T00:00:00Z",
+      );
+      expect(
+        (
+          await q<{ reason_detail: string }>(
+            "SELECT reason_detail FROM subscription_state_history WHERE subscription_id=$1 AND reason_code='platform_ops_pause'",
+            [sub?.id],
+          )
+        )[0]?.reason_detail,
+      ).toBe("paused_until=2026-11-28T00:00:00.000Z");
+
+      // while the date is in the future the subscription is not live and the open pause bills nothing: Nov 1..26 only
+      expect(await live("2026-11-27T12:00:00Z")).toBe(false);
+      await runStatementsForOrg(deps("2026-11-27T12:00:00Z"), ORG_J);
+      expect(await statementOf(ORG_J, "2026-11")).toMatchObject({ days_live: 26 });
+
+      // the date passed and NOBODY resumed it: live again, and the 28th through the 30th bill (the 27th is the one fully paused day)
+      expect(await live("2026-11-29T12:00:00Z")).toBe(true);
+      await runStatementsForOrg(deps("2026-11-29T12:00:00Z"), ORG_J);
+      expect(await statementOf(ORG_J, "2026-11")).toMatchObject({ days_live: 29 });
+
+      // an operator resumes it late: the row's own date is cleared, the ledger's is not, so the pause still ended on the 28th
+      await route("2026-11-29T12:00:00Z").adminResumeSubscription(operator, sub?.id ?? "");
+      await runStatementsForOrg(deps("2026-11-29T13:00:00Z"), ORG_J);
+      expect(await statementOf(ORG_J, "2026-11")).toMatchObject({ days_live: 29 });
+    });
+
     it("MEDIUM: a platform operator's pause, resume and cancel name the operator in the PLATFORM audit row and NOT in the tenant-readable history or its audit copy", async () => {
       const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
       // The admin pause / resume / cancel run on the REAL platform carrier (`platformRunner` is `chartwarden_platform_login`, the pool
@@ -2978,15 +3082,18 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         reason: string;
         subject_organization_id: string;
       }>(
-        "SELECT period_year_month, reason, subject_organization_id FROM subscription_statement_review WHERE subject_organization_id=$1",
+        "SELECT period_year_month, reason, subject_organization_id FROM subscription_statement_review WHERE subject_organization_id=$1 ORDER BY period_year_month",
         [ORG_G],
       );
+      // November closed on a sparse census (ORG_G went live Nov 20 and was swept 7 of its 11 live days): flagged once when it finalized;
+      // December has no census day at all: flagged once however many hourly runs find it
       expect(flags).toEqual([
+        { period_year_month: "2026-11", reason: "sparse_census", subject_organization_id: ORG_G },
         { period_year_month: "2026-12", reason: "no_census", subject_organization_id: ORG_G },
       ]);
       // the flag itself is audited (M04): one platform-scoped insert event (no org, because the carrier holds no tenant context)
       const flagAudit = await q<{ event_type: string; organization_id: string | null }>(
-        "SELECT event_type, organization_id FROM audit_event WHERE resource_kind='subscription_statement_review' AND resource_id=(SELECT id FROM subscription_statement_review WHERE subject_organization_id=$1)",
+        "SELECT event_type, organization_id FROM audit_event WHERE resource_kind='subscription_statement_review' AND resource_id=(SELECT id FROM subscription_statement_review WHERE subject_organization_id=$1 AND reason='no_census')",
         [ORG_G],
       );
       expect(flagAudit).toHaveLength(1);
@@ -3137,6 +3244,42 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
   });
 
   // ── 7. the dev seed ────────────────────────────────────────────────────────────────────────────────
+  // ── the sweep spends platform transactions deliberately (every platform call is an audited bypass) ──
+  describe("the hourly statement sweep over the real database", () => {
+    it("PRC-2: one platform call reads every contracted org's facts, an org writes in at most one more, and a rerun at the same instant writes nothing", async () => {
+      const clock = "2026-12-02T00:00:00Z";
+      let calls = 0;
+      const counting: PlatformRunner = (fn) => {
+        calls += 1;
+        return platformRunner(fn);
+      };
+      const sweepDeps = {
+        platformRunner: counting,
+        keyProvider,
+        netCollections: buildNetCollectionsReader(app.db),
+        goLive: { goLiveAt: readTenantGoLive },
+        now: at(clock),
+      };
+      const contracted = await listContractedOrgIds(platformRunner, "statements", new Date(clock));
+      expect(contracted.size).toBeGreaterThan(5);
+      const snapshot = () =>
+        q<{ id: string; updated_at: string }>(
+          "SELECT id, updated_at::text FROM subscription_statement ORDER BY id",
+        );
+
+      await runStatementSweep(sweepDeps);
+      // the old shape spent two per org plus the listing; now the shared read plus at most one write transaction per org
+      expect(calls).toBeGreaterThanOrEqual(1);
+      expect(calls).toBeLessThanOrEqual(1 + contracted.size);
+
+      const afterFirst = await snapshot();
+      calls = 0;
+      await runStatementSweep(sweepDeps);
+      expect(await snapshot()).toEqual(afterFirst); // idempotent: a rerun rewrites no draft and finalizes nothing
+      expect(calls).toBeLessThanOrEqual(1 + contracted.size);
+    });
+  });
+
   describe("the dev plan seed", () => {
     const seed = () =>
       spawnSync("bun", ["run", "scripts/db/seed-plans.ts"], {
