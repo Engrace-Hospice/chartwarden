@@ -270,4 +270,68 @@ describe("EntityLookupField paging by keyboard", () => {
     const input = screen.getByRole("combobox");
     expect(input.getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("option")[0]?.id);
   });
+
+  it("keeps the list open and on page 1+2 while a slow page loads: Load more keeps focus (aria-disabled, never disabled) and is not re-pressable", async () => {
+    // Only the timers are faked (user-event and Testing Library wait on real ones): focus is moved with focus(), activation with a click.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const SLOW_PAGE_MS = 600;
+      const advance = (ms: number): Promise<void> =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+      const loadOptions = vi.fn(
+        ({ cursor }: { cursor: string | null }) =>
+          new Promise<{ options: typeof OPTIONS; nextCursor: string | null }>((resolve) => {
+            setTimeout(
+              () =>
+                resolve(
+                  cursor
+                    ? { options: [THIRD], nextCursor: "page-3" }
+                    : { options: OPTIONS, nextCursor: "page-2" },
+                ),
+              cursor ? SLOW_PAGE_MS : 0,
+            );
+          }),
+      );
+      render(
+        <EntityLookupField label="Patient" value="" onChange={vi.fn()} loadOptions={loadOptions} />,
+      );
+      await act(async () => {
+        screen.getByRole("combobox").focus();
+      });
+      await advance(200); // the 180ms debounce, then page 1
+      expect(screen.getAllByRole("option")).toHaveLength(2);
+      const more = screen.getByRole("button", { name: "Load more" });
+      await act(async () => {
+        more.focus(); // Tab from the input
+      });
+      expect(document.activeElement).toBe(more);
+
+      fireEvent.click(more);
+      // In flight. A browser drops focus from a button that is `disabled`; this one must not be, so focus stays and nothing
+      // reports focus leaving (which would arm the popup's close timer).
+      expect(more.getAttribute("aria-disabled")).toBe("true");
+      expect((more as HTMLButtonElement).disabled).toBe(false);
+      expect(document.activeElement).toBe(more);
+      // Pressed again while busy: ignored, no second request.
+      fireEvent.click(more);
+      expect(loadOptions).toHaveBeenCalledTimes(2);
+
+      // Longer than the 120ms close delay, still loading: the list is open and page 1 is untouched.
+      await advance(300);
+      expect(screen.getByRole("listbox")).toBeTruthy();
+      expect(screen.getAllByRole("option")).toHaveLength(2);
+
+      await advance(SLOW_PAGE_MS);
+      // The appended page, not a restart at page 1; the button is back to normal and still has focus.
+      expect(screen.getAllByRole("option")).toHaveLength(3);
+      expect(loadOptions.mock.calls.map(([input]) => input.cursor)).toEqual([null, "page-2"]);
+      const again = screen.getByRole("button", { name: "Load more" });
+      expect(again.hasAttribute("aria-disabled")).toBe(false);
+      expect(document.activeElement).toBe(again);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

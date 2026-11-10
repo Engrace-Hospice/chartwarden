@@ -96,7 +96,9 @@ export function EntityLookupField({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  // "Load more" disables while it loads (dropping keyboard focus) and goes away after the last page: focus returns to it, else to the input.
+  // "Load more" stays focusable while it loads (aria-disabled, never `disabled`: a disabled button drops the keyboard user's focus, and
+  // a browser reporting that as focus leaving would close the popup under the load) and goes away after the last page: focus then
+  // returns to the input.
   const captureFocus = useRestoreFocus(loadingMore, () => inputRef.current);
 
   const display = open
@@ -385,13 +387,16 @@ export function EntityLookupField({
                     type="button"
                     size="sm"
                     tone="secondary"
-                    loading={loadingMore}
+                    aria-disabled={loadingMore || undefined}
+                    style={loadingMore ? { opacity: 0.72, cursor: "progress" } : undefined}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
+                      if (loadingMore) return; // busy: the click is ignored, the button keeps focus
                       captureFocus();
                       void load(nextCursor, true);
                     }}
                   >
+                    {loadingMore ? <LoadingSpinner label="Loading more" size={14} /> : null}
                     Load more
                   </Button>
                 </span>
