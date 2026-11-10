@@ -390,3 +390,34 @@ describe("M34 best-effort warn sinks log a database error through the redacting 
     expect(line).toContain("23505"); // still diagnosable
   });
 });
+
+/**
+ * The M35 sweeps (the org fan-out, the statement and refund runs, the Stripe webhook handler) are the same class as M34's: a Drizzle
+ * error's message IS `Failed query: ... params: ...`. They log the error object under `err`; the webhook handler also persists its
+ * message into `stripe_webhook_event.error_text`, through `safeErrorMessage`.
+ */
+describe("M35 sweep sinks format no database error message by hand", () => {
+  const M35_SOURCES = [
+    "src/modules/35-subscription/billing-runtime/jobs.ts",
+    "src/modules/35-subscription/billing-runtime/refund-executor.ts",
+    "src/modules/35-subscription/billing-runtime/webhook-handler.ts",
+    "src/modules/35-subscription/pricing/statement-service.ts",
+  ];
+
+  it.each(M35_SOURCES)("%s formats no error message by hand", async (relative) => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(__dirname, "..", relative), "utf8");
+    expect(src).not.toMatch(/err(?:or)?\s+instanceof\s+Error\s*\?\s*err(?:or)?\.message/);
+  });
+
+  it("the webhook handler persists the redacted form", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(
+      join(__dirname, "..", "src/modules/35-subscription/billing-runtime/webhook-handler.ts"),
+      "utf8",
+    );
+    expect(src).toContain("safeErrorMessage");
+  });
+});

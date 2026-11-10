@@ -67,10 +67,8 @@ export async function runM35Fanout(
       await fn(organizationId);
     } catch (err) {
       errors.push(err);
-      deps.log?.(`m35 ${label} failed for an org`, {
-        organizationId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      // under `err` (the logger's PHI-safe serializer), never `err.message`: a Drizzle error's message carries the bound values
+      deps.log?.(`m35 ${label} failed for an org`, { organizationId, err });
     }
   }
   if (errors.length > 0)
