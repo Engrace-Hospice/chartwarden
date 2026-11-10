@@ -148,3 +148,45 @@ describe("a command over 64 KB is refused, not asked about", () => {
     expect(v(padded("echo x > compliance/controls.yaml", LIMIT + 1)).decision).toBe("deny");
   });
 });
+
+// `grep -r`, `rg -u` and `tar c` over the repo root read every live secret file under it. They were judged
+// from the directory every `cd` would reach if each one succeeded; a `cd` that fails, or runs in a subshell or
+// a pipe, leaves the command at the root. They are judged from every directory the command may be in, as
+// writes are.
+describe("a whole-tree read is judged from every directory the command may be running in", () => {
+  const atRoot = { ...ctx, cwd: ROOT };
+
+  it.each([
+    "cd nope; grep -r KEY .",
+    "cd nope || grep -r KEY .",
+    "(cd apps && true); grep -r KEY .",
+    "cd apps | cat; grep -r KEY .",
+    "cd nope; tar c .",
+    "cd apps | cat; tar c .",
+    "cd nope; rg -u KEY",
+    "cd nope; rg --hidden KEY",
+    "true || cd apps && grep -r KEY .",
+    "true || cd apps && tar c .",
+    "cd apps; grep -r KEY .",
+    "cd apps; grep -r KEY",
+    "cd /tmp/d1; cd nope; grep -r KEY .",
+  ])("asks before %s", (cmd) => expect(d(cmd, atRoot)).toBe("ask"));
+
+  it.each([
+    "cd apps/backend && grep -rn foo src",
+    "cd apps/backend && grep -rn foo .",
+    "cd apps/web && rg -u foo",
+    "cd apps/web && tar c .",
+    "grep -rn foo apps/",
+    "cd apps; grep -rn foo src",
+    "cd apps; rg -u foo src",
+    "grep -rn foo --include=*.ts .",
+    "cd apps && grep -rn foo --include=*.ts .",
+    "rg foo",
+    "cd /tmp && grep -r foo .",
+    "tar c apps/web",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd, atRoot);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});

@@ -1114,12 +1114,12 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
     refillWork();
   }
   const start = startingDir(ctx);
-  const verdict = judge(cmd, ctx, depth, { seq: start, any: [start] });
+  const verdict = judge(cmd, ctx, depth, [start]);
   // A deny found before the budget ran out stands; anything else is no better than "too big to check".
   return work.spent && verdict.decision !== "deny" ? ask(WORK_BUDGET_REASON) : verdict;
 }
 
-function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashVerdict {
+function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
   const c = cmd.trim();
   if (depth > MAX_NESTING || --judgeBudget < 0) {
     return ask(
@@ -1143,28 +1143,25 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashV
   }
 
   // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
-  // judged against every directory the command could be running in (see `Dirs`).
+  // judged against every directory the command could be running in (see `Cwd`), and so are the whole-tree reads.
   const verdicts: BashVerdict[] = [];
-  let seq = start.seq;
-  let after = start.any; // where the next command runs when the one before it succeeded
-  let anywhere = start.any; // everywhere any later command could run
+  let after = start; // where the next command runs when the one before it succeeded
+  let anywhere = start; // everywhere any later command could run
   let scriptOnStdin = false;
   parts.forEach((part, index) => {
     const parsed = parsedParts[index] as Parsed;
     // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
     const here = sequential && part.joiner === "&&" ? after : anywhere;
-    const v = classifySegment(part.text, parsed, ctx, seq, here);
+    const v = classifySegment(part.text, parsed, ctx, here);
     if (v) verdicts.push(v);
     // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`.
     if (parsed.prog === "eval") {
-      verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, { seq, any: here }));
+      verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
     } else if (NESTED_SHELL.test(parsed.prog)) {
       const k = parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a));
-      if (k >= 0)
-        verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, { seq, any: here }));
+      if (k >= 0) verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, here));
     }
     scriptOnStdin ||= readsScriptFromStdin(parsed, index);
-    seq = nextDir(seq, parsed.prog, parsed.args, ctx);
     const moved = nextDirs(here, parsed.prog, parsed.args, ctx);
     // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
     // that follows `||` the next `&&` command may be in the old directory as well as in X.
@@ -1175,8 +1172,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: Dirs): BashV
   const inners = substitutions(c);
   if (inners.length > MAX_SUBSTITUTIONS) {
     verdicts.push(ask("Too many command substitutions to check; a human decides."));
-  } else
-    for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, { seq, any: anywhere }));
+  } else for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, anywhere));
   // A script fed to an interpreter on stdin is only text to us: judge all of it (heredoc body included).
   if (scriptOnStdin) {
     const v = scriptTextVerdict(c);
@@ -1416,17 +1412,10 @@ function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): s
 const startingDir = (ctx: BashContext): Cwd =>
   ctx.cwd === undefined ? "" : resolvePath(ctx.cwd, "", ctx);
 
-/**
- * Where a command line is running. A `cd` is not certain to apply to what follows (it fails, or sits in a
- * subshell, a pipeline or a background job), so a write is judged against EVERY directory it could land
- * in, and one that resolves onto a protected path asks.
- */
-interface Dirs {
-  /** Every `cd` applied in order, as if each succeeded and persisted: what the read sweeps judge from. */
-  readonly seq: Cwd;
-  /** The directories the next command could be running in; `null` is one the guard cannot resolve. */
-  readonly any: readonly Cwd[];
-}
+// Where a command line is running is a SET of directories (`readonly Cwd[]`; `null` is one the guard cannot
+// resolve). A `cd` is not certain to apply to what follows (it fails, or sits in a subshell, a pipeline or a
+// background job), so a write, and a whole-tree read, is judged against EVERY directory it could land in, and
+// one that resolves onto a protected path (or the repo root) asks.
 
 /** More possible directories than this means the guard has lost the thread: treat the directory as unknown. */
 const MAX_CWD_CANDIDATES = 16;
@@ -2086,7 +2075,6 @@ function classifySegment(
   seg: string,
   parsed: Parsed,
   ctx: BashContext,
-  cwd: Cwd,
   here: readonly Cwd[],
 ): BashVerdict | null {
   const { prog, args, assigns, outs, ins } = parsed;
@@ -2257,10 +2245,13 @@ function classifySegment(
     }
   }
 
-  // --- Whole-tree reads that go around .gitignore, and archives of the repo root.
-  const sweep =
-    recursiveSearchVerdict(prog, args, cwd, ctx) ?? archiveRootVerdict(prog, args, cwd, ctx);
-  if (sweep) return sweep;
+  // --- Whole-tree reads that go around .gitignore, and archives of the repo root: from every directory the
+  // command may be in, so a `cd` that may not have applied cannot move the sweep off the root.
+  for (const dir of here) {
+    const sweep =
+      recursiveSearchVerdict(prog, args, dir, ctx) ?? archiveRootVerdict(prog, args, dir, ctx);
+    if (sweep) return sweep;
+  }
 
   // --- Inline interpreter code that names a secret file: `python -c "open('.env').read()"`.
   if (runsInlineCode(prog, args)) {
