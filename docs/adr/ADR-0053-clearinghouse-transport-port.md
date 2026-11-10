@@ -333,6 +333,12 @@ owned by M23 (it owns the D3 binding; M25 and M41 depend on M23, never the rever
   NULL that still holds a cipher; an `awaiting_entitlement` row counts, it can wait up to 90 days). While any exist the sweep
   logs `claimmd.webhook.unsettled_under_other_key` (a count and the oldest receipt time) at warn level every minute. Settled
   rows lose their cipher 90 days after receipt (every receipt does, settled or not) and are never decrypted again.
+- **Alerts are raised after the sweep commits, at most once.** `onFailed` (a receipt went terminal `failed`) and `onUndecryptable`
+  are collected during the sweep and raised once its transaction has committed, so a rollback never repeats one and a throwing
+  sink is logged and cannot fail a row. The price: if the process dies after the commit and before the alerts are raised, the
+  terminal rows are never selected again and those alerts are lost. The sweep therefore also counts every receipt that went
+  `failed` in the last 24 hours and logs `claimmd.webhook.recent_failed_receipts` at warn level on every sweep (a count and the
+  oldest time only), which is the durable signal (migration 1463 indexes it).
 
 **D8 as applied to Claim.MD: tenant resolution never trusts the payload's claims about a tenant.** An enrollment resolves
 by `prov_npi` to the one `provider_entity` with that NPI (unique platform-wide), and only when that NPI is platform-verified

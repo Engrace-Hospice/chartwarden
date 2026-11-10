@@ -840,6 +840,47 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       expect(quiet).toEqual([]);
     });
 
+    it("warns every sweep for 24 hours about receipts that went terminal `failed`, so an alert lost to a crash is still visible", async () => {
+      await store([enrollFor("l1", NPI_A)]);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      const grace = new Date(T0.getTime() + CLAIMMD_KEY_FAULT_GRACE_DAYS * DAY);
+      const warns: Array<{ event: string; detail: Record<string, unknown> }> = [];
+      const warn = (event: string, detail: Record<string, unknown>) =>
+        warns.push({ event, detail });
+      // The receipt goes `failed` here; its onFailed alert never arrives (the sink is down).
+      await sweep(undefined, grace, {
+        cipher: wrongKey,
+        warn,
+        onFailed: () => {
+          throw new Error("the ops sink is down");
+        },
+      });
+      const expected = {
+        event: "claimmd.webhook.recent_failed_receipts",
+        detail: { count: 1, oldestProcessedAt: grace.toISOString(), windowHours: 24 },
+      };
+      expect(warns).toEqual([expected]);
+      // Hours later the row is terminal and not selected, but the durable count still shows it (counts and times only).
+      const later = new Date(grace.getTime() + 20 * 3_600_000);
+      await sweep(undefined, later, { warn });
+      expect(warns).toEqual([expected, expected]);
+      expect(JSON.stringify(warns)).not.toMatch(/l1/);
+      // After the window it stops.
+      const beyond = new Date(grace.getTime() + 25 * 3_600_000);
+      await sweep(undefined, beyond, { warn });
+      expect(warns).toHaveLength(2);
+    });
+
+    it("the retention clear is served by the partial received_at index of migration 1462, the failed count by 1463's", async () => {
+      const { rows: failedIx } = await admin.query(
+        "SELECT indexdef FROM pg_indexes WHERE indexname = 'claimmd_webhook_event_failed_ix'",
+      );
+      expect(failedIx).toHaveLength(1);
+      expect(failedIx[0].indexdef).toMatch(
+        /\(processed_at\) WHERE \(processing_outcome = 'failed'/,
+      );
+    });
+
     it("the retention clear is served by the partial received_at index of migration 1462", async () => {
       const { rows } = await admin.query(
         "SELECT indexdef FROM pg_indexes WHERE indexname = 'claimmd_webhook_event_cipher_age_ix'",

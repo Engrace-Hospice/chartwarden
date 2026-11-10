@@ -399,6 +399,31 @@ async function unsettledUnderOtherKey(
   };
 }
 
+/** Hours a terminal-`failed` receipt keeps showing up in the per-sweep warning (see {@link recentFailedReceipts}). */
+export const CLAIMMD_RECENT_FAILED_WINDOW_HOURS = 24;
+
+/**
+ * Receipts that went terminal `failed` in the last CLAIMMD_RECENT_FAILED_WINDOW_HOURS: a count and the oldest time, nothing else.
+ * `onFailed` is raised ONCE, after the sweep's transaction commits (never inside it), so if the process dies between the commit and
+ * the alert the row is terminal and is never selected again: that alert is lost, AT MOST ONCE. This durable count, warned every sweep
+ * for a day, is the other signal, so ops still sees the rows (served by claimmd_webhook_event_failed_ix, migration 1463).
+ */
+async function recentFailedReceipts(
+  tx: DbClient,
+  now: Date,
+): Promise<{ readonly count: number; readonly oldestProcessedAt: string | null }> {
+  const since = new Date(now.getTime() - CLAIMMD_RECENT_FAILED_WINDOW_HOURS * 3_600_000);
+  const row = await one<{ n: number | string; oldest: Date | string | null }>(
+    tx,
+    sql`SELECT count(*) AS n, min(processed_at) AS oldest FROM claimmd_webhook_event
+        WHERE processing_outcome = 'failed' AND processed_at >= ${since}`,
+  );
+  return {
+    count: Number(row?.n ?? 0),
+    oldestProcessedAt: row?.oldest ? new Date(row.oldest).toISOString() : null,
+  };
+}
+
 /** Raises a sink call after commit. A sink that throws must neither fail the sweep nor undo a durable row: it is logged by name. */
 function notify(deps: ClaimMdSweepDeps, sink: string, call: () => void): void {
   try {
@@ -479,12 +504,16 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
       }
     }
     const otherKey = await unsettledUnderOtherKey(tx, deps.cipher.keyId);
+    const recentFailed = await recentFailedReceipts(tx, now);
     const result: ClaimMdSweepResult = { seen: pending.length, outcomes };
-    return { result, failed, undecryptableClass, otherKey };
+    return { result, failed, undecryptableClass, otherKey, recentFailed };
   });
 
   // The transaction has committed: every row's state is durable. Raise the alerts; none of them can change a row now.
-  const { result, failed, undecryptableClass, otherKey } = swept;
+  // AT MOST ONCE: if the process dies after the commit and before the loop below, the terminal `failed` rows it committed are
+  // never selected again, so their onFailed alert is lost (the old in-transaction ordering could duplicate, but could not lose).
+  // The recent-failed warning at the end is the durable signal that covers that window.
+  const { result, failed, undecryptableClass, otherKey, recentFailed } = swept;
   for (const detail of failed) notify(deps, "onFailed", () => deps.onFailed?.(detail));
   const undecryptable =
     (result.outcomes.payload_undecryptable ?? 0) + (result.outcomes.payload_key_mismatch ?? 0);
@@ -500,6 +529,16 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
         count: otherKey.count,
         oldestReceivedAt: otherKey.oldestReceivedAt,
         graceDays: CLAIMMD_KEY_FAULT_GRACE_DAYS,
+      }),
+    );
+  }
+  if (recentFailed.count > 0) {
+    // Every sweep for CLAIMMD_RECENT_FAILED_WINDOW_HOURS after a receipt goes terminal `failed`: visible even if its alert was lost.
+    notify(deps, "warn", () =>
+      (deps.warn ?? deps.log)?.("claimmd.webhook.recent_failed_receipts", {
+        count: recentFailed.count,
+        oldestProcessedAt: recentFailed.oldestProcessedAt,
+        windowHours: CLAIMMD_RECENT_FAILED_WINDOW_HOURS,
       }),
     );
   }
