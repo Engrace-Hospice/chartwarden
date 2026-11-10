@@ -48,7 +48,8 @@ from Codex's hook protocol:
   from the session directory with symlinks followed, and match case-insensitively (macOS and Windows resolve
   `.Claude/` to `.claude/`). A path with a control or exotic-space character is refused (Codex's Rust trim
   drops U+0085 where JS's does not, so `hooks.json<U+0085>` would otherwise read as another file), as is a
-  patch the parser cannot read or one over 256 KB (the scan must finish inside Codex's timeout). Through
+  patch the parser cannot read or one over 256 KB (the scan must finish inside Codex's timeout; a patch sent
+through the shell is also bound by the 64 KB command cap below, so a larger one must use the `apply_patch` tool). Through
   the shell only exactly one `apply_patch <<'EOF' … EOF` is accepted, run in the session directory or the
   call's `workdir`; `cd`, a pipe, a redirect or a second command is refused, because `apply_patch` is on
   PATH and each of those applies a patch the guard cannot place. Codex has no Read/Grep/Glob tools; its reads
@@ -56,7 +57,9 @@ from Codex's hook protocol:
   login, quiet or connection flags. The hook also matches `write_stdin` and permits empty polling only;
   refusing the interactive process at creation remains defence in depth. A reviewed script, finite input
   file, or standalone help/version invocation remains available. A command or workdir that is present and not text is refused, never coerced with
-  `String()` and judged.
+  `String()` and judged. The call's `workdir` is where a shell command runs, so every relative target in
+  it (a redirect, `tee`, `sed -i`, a `cat` of a key file that exists there) is judged from the session
+  directory joined with the `workdir`, not from the session directory itself.
 - **MCP tools** arrive as `mcp__<server>__<tool>` with arbitrary JSON, and nothing says which field is a path
   or text. The guard therefore judges EVERY string in `tool_input`, object keys included, at any depth: each
   line as a secret path and as a protected path (as written, and resolved from the session directory with
@@ -64,7 +67,10 @@ from Codex's hook protocol:
   scan. It guesses nothing else about the tool. An input that is not an object, nests 32 levels or deeper,
   holds more than 2,000 strings or 256 KB of text, or has more than 20,000 lines to resolve is refused (the
   scan has to finish inside Codex's timeout). A reason names a path only when the value is one short word;
-  it never echoes prose.
+  it never echoes prose. A line that becomes a secret or protected path once its control, format and
+  non-ASCII-space characters are removed (`hooks.json<U+0085>`: a Rust trim strips U+0085, a JS one keeps
+  it) is refused, as an `apply_patch` path with such a character is. Ordinary text with unicode or odd
+  spaces in it is not: only a line that turns into such a path is.
 - **The root is where the guard script lives**, not `CLAUDE_PROJECT_DIR`. The pinned command runs
   `$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts`, so the script's grandparent is the
   session's repo. An exported `CLAUDE_PROJECT_DIR` (from a Claude shell, pointing at another tree) used to
@@ -72,15 +78,25 @@ from Codex's hook protocol:
   is the test-only seam; production never sets it, and a developer must not export it. Claude Code still
   takes its root from `CLAUDE_PROJECT_DIR`, which Claude Code itself sets.
 - **The hook command is pinned byte for byte** (`CODEX_GUARD_COMMAND` in
-  `scripts/check-compliance-controls.ts`), and each part matters. `bun --config=/dev/null --no-env-file`:
-  a `bunfig.toml` `preload` in the session directory would otherwise run before the guard and could silence
-  it (`bunfig.toml` is protected for that reason). `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs
+  `scripts/check-compliance-controls.ts`), and each part matters. `bun --config=/dev/null --no-env-file
+  --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session directory would otherwise run
+  before the guard and could silence it (`bunfig.toml` is protected for that reason), and bun applies the
+  `compilerOptions.paths` of the `tsconfig.json` (or `jsconfig.json`) in the session directory, or of the
+  file it extends, to the guard script's OWN imports: `"paths": {"*": ["./evil.ts"]}` beside an `evil.ts`
+  that calls `process.exit(0)` made the guard exit 0 without reading its input, so every secret read was
+  allowed. An empty override leaves no `paths` to apply, wherever the session directory is (checked against
+  a root, a nested and an extended config); the hostile-fixture test in
+  `scripts/__tests__/harness-guard-review3.test.ts` runs the real pinned commands against such a config.
+  The flag changes the pinned Codex command, so each developer re-trusts it with `/hooks`. `--no-env-file` is
+  a silent no-op on bun 1.3.0 to 1.3.2 (verified against each release; 1.3.3 and later honour it), so
+  `engines.bun` in `package.json` is `>=1.3.3` (CI and the images pin 1.3.5).
+  `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs
   the call when a hook times out (10 s here) and when `exec` fails perl would exit 0, an allow. `|| exit 2`:
   exit 2 with a message blocks in Codex, so a guard that cannot start, crashes or times out blocks the call.
   `perl` and `bun` must be on the hook's PATH; without them every shell call and patch is refused, loudly.
   Claude's own three hooks (guard, ledger, Stop gate) are pinned the same way (`CLAUDE_GUARD_COMMAND`,
-  `CLAUDE_LEDGER_COMMAND`, `CLAUDE_STOP_COMMAND`) and run with the same `--config=/dev/null --no-env-file`,
-  for the same reason. They deliberately have no perl alarm and no `|| exit 2`: Claude Code has its own
+  `CLAUDE_LEDGER_COMMAND`, `CLAUDE_STOP_COMMAND`) and run with the same
+  `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`, for the same reason. They deliberately have no perl alarm and no `|| exit 2`: Claude Code has its own
   timeout, and a missing `perl` would otherwise lock out every Claude tool call.
 - **The hook layer is a guardrail, not a boundary.** Each developer must trust the hook once (`/hooks`, tied
   to its hash, so a changed hook is skipped until re-trusted) and the project `.codex/` layer must be
@@ -95,16 +111,36 @@ from Codex's hook protocol:
   deny entries reach `.claude/audit/`, tagged `codex/<tool>`, capped at 1000 characters a field, and carrying
   the decision actually answered (`deny`, never the `ask` Codex cannot honour).
 
+**Real paths, not text** (both agents). A cwd and a repo root that name one directory with different text (macOS's
+`/tmp` against `/private/tmp`, a symlinked checkout) used to compare as unequal, so a relative write to
+`scripts/harness/` from the symlinked spelling answered allow. The guard judges a shell command twice, with
+the paths as written and with the real path of the root and of the directory the command runs in, and the
+stricter answer wins (real paths alone would lose the match for an absolute path spelled with the root's
+own symlinked text). Read/Write/Edit paths are checked as written and as the real file they name, so a
+symlink to a secret file is refused under an innocent name.
+
 `.codex/config.toml`, `bunfig.toml`, `AGENTS.override.md` and `.codex/{hooks,rules}/` are on the guard's
 protected list at any depth (they are loaded from any directory, and `~/.codex/config.toml` can disable the
 hook for a user); `.codex/config.toml` itself stays local and git-ignored, at any depth: `.gitignore` ignores
 `**/.codex/*` and `**/.agents/*` (a nested `apps/x/.codex/` is local state too) and re-includes only the
 root's shared pieces, each AFTER the ignore line (git's last match wins). `arch:compliance` fails if
 `.codex/hooks.json` is missing or differs from the pinned command, matcher (`Bash|write_stdin|apply_patch|mcp__.*`), type
-or timeout (1 to 30 s), if one of the three Claude hook commands differs from its pinned form, if the
-`.claude/` and `.agents/` mirror reads as empty on either side or differs by a single byte (files are compared
-by SHA-256 of their bytes, not decoded text), or if `.gitignore` or CODEOWNERS stop covering any of this or
-`bunfig.toml`.
+or timeout (an integer of 9 to 30 s: strictly above the 8 s perl alarm it is pinned with, derived from the
+same constant, because a timeout at or under the alarm fires inside Codex first and the call runs), if one of
+the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
+5 to 30 s (the Stop gate's 300 is untouched), if `.claude/settings.json` sets `disableAllHooks`, a
+`bypassPermissions` default mode, or an `env` entry for `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,
+`CW_STOP_GATE`, `CLAUDE_PROJECT_DIR`, `CW_HARNESS_ROOT_FOR_TESTS` or `BUN_OPTIONS` (a `--preload` there runs
+before the guard), if the `.claude/` and `.agents/` mirror reads as empty on either side or differs by a
+single byte (files are compared by SHA-256 of their bytes, not decoded text), or if `.gitignore` or
+CODEOWNERS stop covering any of this or `bunfig.toml`. `.gitignore` is judged by git, not by its text: the
+gate writes it into a throwaway repository and runs `git check-ignore --no-index -v` over the shared pieces
+(`.agents/{rules,agents,skills}`, `.codex/hooks.json`, `.claude/{settings.json,rules,agents,skills}`, the env
+template: none may be ignored) and the local state (`.agents/{plans,prds}`, `.codex/config.toml` at any depth,
+`.claude/{audit,.cache,plans,settings.local.json}`, live env files: all must be), so a later
+`!**/.codex/config.toml`, `.agents/rules/*` or `.claude/*` line fails even though every line the text checks
+look for is still there. A CRLF `.gitignore` fails, and so does a git that cannot be run (the probe never
+passes by default).
 
 ## ECC settings applied by the project (`.claude/settings.json` → `env`)
 
@@ -174,19 +210,35 @@ Covered (each has a regression test in `scripts/__tests__/harness-bypasses.test.
 
 **Shell classifier limits and coverage.** `classifyBash` is a text heuristic for a cooperative agent, not a
 sandbox. It tracks `cd`, `pushd` and `..` through a command, and expands `~`, `$HOME`, `$CODEX_HOME` and
-`$PWD`. It resolves every write target before comparing it with the protected paths, and it treats a
-directory that contains a protected path as protected when the command is a delete, move, or tree-merge
-(`rm -r`, `mv`, `cp -R`, `rsync`, `tar x`, `unzip`). The writers it understands are redirections, `tee`,
-`dd of=`, `sed -i`, `perl -i`, `find -delete/-exec`, `cp/mv/ln/install`, `chmod/chown -R`, `patch`, and
-`git apply/am/checkout/restore/rm/mv/clean`. It reads inline interpreter code and heredoc or stdin script
-bodies as text, with quotes and `+` removed. It cannot read a script file (`python3 /tmp/w.py`), computed
-or encoded names, glob targets, symlinks, a `$VAR` path prefix, or anything fed through `xargs`. A `cd` it
-cannot resolve followed by a write asks. Whole-tree reads that bypass `.gitignore` (`grep -r`,
-`rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built by command substitution
-and agents started with approval prompts, the sandbox or hooks off. Reasons never echo URL userinfo and cap
-any token they quote. Pathological input is bounded (32 substitutions per level, 300 judged command lines
-per call) because a guard that times out lets the call through. Reading a protected file does not ask; only
-a command that writes one does.
+`$PWD`. A `cd` is trusted only along an `&&` chain; after `;`, `||`, a newline, a pipe, `&` or a group
+(`( … )`) the command may still run where it started, so a relative write is judged against EVERY directory
+it could be in (at most 16, then unknown, which asks). It resolves every write target before comparing it
+with the protected paths, and it treats a directory that contains a protected path as protected when the
+command is a delete, move, or tree-merge (`rm -r`, `mv`, `cp -R`, `rsync`, `tar x`, `unzip`); a recursive
+`chmod`/`chown`/`rm`, or a `find … -delete` or `-exec` that is not narrowed by `-name`/`-path`/`-regex`,
+over the whole repo root asks as well. The writers it understands are redirections, `tee`, `dd of=`,
+`sed -i` (including the GNU long-option abbreviations), `perl -i`, `find -delete/-exec`, `cp/mv/ln/install`,
+`chmod/chown -R`, `patch`, `curl -o`, `wget -O`, `sort -o`, `openssl -out`, `base64 -o` (a long output option is
+matched by any prefix its tool accepts: `sort --out`, `wget --output-d`; a prefix two options share is ambiguous and
+writes nothing), in-place
+compressors, and `git apply/am/checkout/restore/rm/mv/clean`. It judges the commands inside `$( )`,
+backticks and `<( )`/`>( )` as command lines, and sees through `sudo`, `env`, `builtin` and `--`. It reads
+inline interpreter code and heredoc or stdin script bodies as text, with quotes and `+` removed. It cannot
+read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
+prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
+current directory), or a recursive delete of an ANCESTOR of the repo root. Whole-tree reads that bypass
+`.gitignore` (`grep -r`, `rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built
+by command substitution and agents started with approval prompts, the sandbox or hooks off. A harness
+switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, …) asks only when it is
+ASSIGNED (`VAR=… cmd`, `export`, `env`, `declare`), not when its name appears in a search pattern. Reasons
+never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
+call through in Claude Code: a command over 64 KB is REFUSED before it is parsed (an ask would let padding
+turn a denied command into a prompt; put large file content in a file with the Write tool, and a heredoc patch
+that size through the `apply_patch` tool), glob matching is a two-pointer matcher with star backtracking, O(name length x wildcard tokens) over the short
+sample names and with no regular expression (so no exponential backtracking), brace alternatives
+(4,096) and path resolutions (16,384) are budgeted per command, and substitutions (32 per level) and judged
+command lines (300 per call) are capped; over any of those caps the answer is ask, and a deny found before
+the cap was hit still stands. Reading a protected file does not ask; only a command that writes one does.
 
 **Fails closed.** Empty or unparseable hook input, an internal error, and a write too large to scan
 (over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it.
