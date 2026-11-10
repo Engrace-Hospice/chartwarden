@@ -256,6 +256,8 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
       doneCount: 2,
       totalCount: n,
       currentStepKey: "baa_executed",
+      // the catalog's own label for that step, as the wizard shows it
+      currentStepTitle: "BAA",
       goLiveState: "not_ready",
     });
     expect(n).toBeGreaterThanOrEqual(13);

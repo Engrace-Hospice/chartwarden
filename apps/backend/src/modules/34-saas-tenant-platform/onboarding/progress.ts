@@ -15,6 +15,8 @@ export interface OnboardingProgress {
   readonly totalCount: number;
   /** The first gating step that is not settled (the wizard's "you are here"), or null when every one is. */
   readonly currentStepKey: string | null;
+  /** That step's own title (the catalog's `display_label`, as the wizard shows it), so a list can name the next step without a second read. */
+  readonly currentStepTitle: string | null;
   readonly goLiveState: GoLiveState;
 }
 
@@ -29,10 +31,12 @@ export function summarizeOnboarding(input: {
   const doneCount = input.tasks.filter(
     (t) => gating.has(t.templateKey) && isSettled(t.status),
   ).length;
+  const current = currentStepKey(input.templates, input.tasks);
   return {
     doneCount,
     totalCount: gating.size,
-    currentStepKey: currentStepKey(input.templates, input.tasks),
+    currentStepKey: current,
+    currentStepTitle: input.templates.find((t) => t.key === current)?.title ?? null,
     goLiveState: goLiveStateOf(input),
   };
 }

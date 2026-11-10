@@ -96770,6 +96770,8 @@ export interface operations {
                                 /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
                                 totalCount: number;
                                 currentStepKey: string | null;
+                                /** @description The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step. */
+                                currentStepTitle: string | null;
                                 goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
                             } | null;
                         }[];
@@ -96858,6 +96860,8 @@ export interface operations {
                             /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
                             totalCount: number;
                             currentStepKey: string | null;
+                            /** @description The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step. */
+                            currentStepTitle: string | null;
                             goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
                         } | null;
                         latestStatusEvent: {

@@ -308,6 +308,10 @@ export const OnboardingProgressViewSchema = Type.Object({
       "Gating steps in the wizard: canonical, not optional, not retired (the go-live step included).",
   }),
   currentStepKey: Type.Union([Type.String(), Type.Null()]),
+  currentStepTitle: Type.Union([Type.String(), Type.Null()], {
+    description:
+      "The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step.",
+  }),
   goLiveState: Type.Union([
     Type.Literal("not_ready"),
     Type.Literal("awaiting_attestation"),

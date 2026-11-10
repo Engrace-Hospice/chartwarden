@@ -271868,6 +271868,7 @@
                                   "doneCount",
                                   "totalCount",
                                   "currentStepKey",
+                                  "currentStepTitle",
                                   "goLiveState"
                                 ],
                                 "properties": {
@@ -271880,6 +271881,17 @@
                                     "type": "integer"
                                   },
                                   "currentStepKey": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "currentStepTitle": {
+                                    "description": "The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step.",
                                     "anyOf": [
                                       {
                                         "type": "string"
@@ -272130,6 +272142,7 @@
                             "doneCount",
                             "totalCount",
                             "currentStepKey",
+                            "currentStepTitle",
                             "goLiveState"
                           ],
                           "properties": {
@@ -272142,6 +272155,17 @@
                               "type": "integer"
                             },
                             "currentStepKey": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "currentStepTitle": {
+                              "description": "The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step.",
                               "anyOf": [
                                 {
                                   "type": "string"

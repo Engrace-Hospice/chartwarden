@@ -72,6 +72,28 @@ describe("summarizeOnboarding", () => {
     expect(p.goLiveState).toBe("not_ready");
   });
 
+  it("carries the next step's own title, as the wizard shows it, not the key worded", () => {
+    const p = summarizeOnboarding({
+      tenantStatus: "onboarding",
+      templates: TEMPLATES.map((t) => (t.key === "plan" ? { ...t, title: "Plan & contract" } : t)),
+      tasks: [task("org", "done")],
+      attestations: [],
+    });
+    expect(p.currentStepKey).toBe("plan");
+    expect(p.currentStepTitle).toBe("Plan & contract");
+  });
+
+  it("has no title when every gating step is settled", () => {
+    const p = summarizeOnboarding({
+      tenantStatus: "onboarding",
+      templates: TEMPLATES,
+      tasks: TEMPLATES.filter((t) => t.canonical && !t.optional).map((t) => task(t.key, "done")),
+      attestations: [],
+    });
+    expect(p.currentStepKey).toBeNull();
+    expect(p.currentStepTitle).toBeNull();
+  });
+
   it("counts a skipped step as settled, and points at the first gating step that is not", () => {
     const p = summarizeOnboarding({
       tenantStatus: "onboarding",
