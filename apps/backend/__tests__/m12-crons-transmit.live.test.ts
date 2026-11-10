@@ -56,6 +56,7 @@ import {
 import { TRANSMIT_BATCH_SIZE } from "../src/modules/12-dosespot/jobs/transmit-newrx";
 import { alertAfterCommit } from "../src/modules/12-dosespot/tenant-config/effects";
 import {
+  lockVendorBindingsForClear,
   readRegistrationTarget,
   vendorWriteIsCurrent,
 } from "../src/modules/12-dosespot/tenant-config/registration-target";
@@ -1410,6 +1411,64 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(t.retry_count).toBe(0);
         expect((await orderRow(orderId)).s).toBe("queued");
       });
+
+      // A registration change that holds the exclusive lock and is stuck (waiting on a row lock, say) would otherwise block every guarded write behind it,
+      // and the per-org passes run one after another: one tenant's stuck change would stall every later tenant's pass for the tick.
+      it("a guarded write waits a bounded time for a registration change that holds the lock, then treats the registration as moved: the settle requeues, and the next org still runs", async () => {
+        const a = await queued(ORG_A);
+        await h.admin.query(
+          "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-held-open' WHERE id=$1",
+          [a.transmissionId],
+        );
+        const b = await queued(ORG_B);
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        let locked: () => void = () => undefined;
+        const lockHeld = new Promise<void>((resolve) => {
+          locked = resolve;
+        });
+        let releasedBySafetyTimer = false;
+        const safety = setTimeout(() => {
+          releasedBySafetyTimer = true; // the old, unbounded wait would only ever end here
+          release();
+        }, 12_000);
+        const holder = inOrg(h.handle.db, ORG_A, async (tx) => {
+          await lockVendorBindingsForClear(tx, ORG_A); // a registration change, stuck after taking its lock
+          locked();
+          await gate;
+        });
+        await lockHeld;
+        const failing = new FakeDoseSpotVendor({
+          transmit: async () => {
+            throw retryable();
+          },
+        });
+        const goes = new FakeDoseSpotVendor({
+          transmit: async () => ({
+            dosespotPrescriptionId: "rx-b",
+            transmittedAt: T0.toISOString(),
+          }),
+        });
+        try {
+          const first = await runTransmitNewRxForOrg(depsWithWarn(failing), ORG_A);
+          expect(releasedBySafetyTimer).toBe(false); // the settle gave up waiting by itself
+          expect(first).toMatchObject({ claimed: 1, deferredByOutage: 1, requeued: 0, failed: 0 });
+          const second = await runTransmitNewRxForOrg(depsWithWarn(goes), ORG_B);
+          expect(second).toMatchObject({ claimed: 1, transmitted: 1 }); // the next tenant's pass ran
+        } finally {
+          clearTimeout(safety);
+          release(); // never leave the stuck transaction open, even when an assertion above fails
+          await holder;
+        }
+        const t = await txRow(a.transmissionId as string);
+        expect(t.dosespot_prescription_id).toBeNull(); // a change in progress is treated as a move: the old id and key go
+        expect(t.idempotency_key).not.toBe(a.idempotencyKey);
+        expect(t.retry_count).toBe(0);
+        expect((await orderRow(a.orderId)).s).toBe("queued");
+        expect((await orderRow(b.orderId)).status).toBe("transmitted");
+      }, 40_000);
 
       it("a move that commits between the payload's vendor ids and the stamp starts NO call: the payload may hold the old clinic's ids, so the order waits and is built again", async () => {
         const { orderId, transmissionId } = await queued();

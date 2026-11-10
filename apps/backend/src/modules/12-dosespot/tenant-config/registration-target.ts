@@ -67,15 +67,39 @@ export async function lockVendorBindingsForClear(
 }
 
 /**
+ * How long a guarded write waits for a registration change that holds the lock before it gives up and treats the registration as moved. The change
+ * holds the lock only for its own transaction, so a wait of seconds means it is stuck (on a row lock, say): without a bound every guarded write behind
+ * it, and so every later tenant's pass (the per-org passes run one after another), would stall with it.
+ */
+export const BINDINGS_LOCK_WAIT_MS = 5_000;
+const BINDINGS_LOCK_POLL_MS = 100;
+
+/** The shared lock, taken without ever blocking: polled until it is free or {@link BINDINGS_LOCK_WAIT_MS} has passed. */
+async function acquireBindingsLockShared(tx: DbClient, organizationId: string): Promise<boolean> {
+  const deadline = Date.now() + BINDINGS_LOCK_WAIT_MS;
+  for (;;) {
+    const answered = await tx.execute(
+      sql`SELECT pg_try_advisory_xact_lock_shared(${bindingsLockKey(organizationId)}) AS locked`,
+    );
+    const rows = (answered as unknown as { rows?: Array<{ locked?: unknown }> }).rows ?? [];
+    if (rows[0]?.locked === true) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise<void>((resolve) => setTimeout(resolve, BINDINGS_LOCK_POLL_MS));
+  }
+}
+
+/**
  * Is a vendor id obtained under `expectedTarget` still the right thing to write? Call it FIRST in the transaction that writes the id (before any
  * row lock of its own, so it cannot deadlock with the clear), and write only on `true`. On `false` the registration moved while the vendor
- * round trip ran: drop the write.
+ * round trip ran, OR a registration change holds the lock and did not release it within {@link BINDINGS_LOCK_WAIT_MS} (it is in progress, which
+ * is a move for this purpose: the exclusive lock is taken only by a change of clinic): either way drop the write, and a caller that settles
+ * a call treats it as moved.
  */
 export async function vendorWriteIsCurrent(
   tx: DbClient,
   organizationId: string,
   expectedTarget: string,
 ): Promise<boolean> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(${bindingsLockKey(organizationId)})`);
+  if (!(await acquireBindingsLockShared(tx, organizationId))) return false;
   return (await readRegistrationTarget(tx, organizationId)) === expectedTarget;
 }
