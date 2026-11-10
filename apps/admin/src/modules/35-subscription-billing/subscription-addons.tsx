@@ -5,8 +5,10 @@ import {
   TableScroll,
   TextAreaField,
   TextField,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
+  useIdempotencyKeeper,
   useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -17,16 +19,8 @@ import type { operations } from "@chartwarden/ui";
 // active-patient count is the current period's census (shown, not billed: Stripe charging is deferred).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { cap, formatCents, formatDate, idempotencyKey } from "./status";
-import {
-  type Outcome,
-  OutcomeBanner,
-  StateEmpty,
-  StateLoading,
-  UNREACHABLE_OUTCOME,
-  failureOutcome,
-  settleWrite,
-} from "./ui";
+import { cap, formatCents, formatDate } from "./status";
+import { type Outcome, OutcomeBanner, StateEmpty, StateLoading, writeFailure } from "./ui";
 
 type SubscriptionAddon =
   operations["getApiAdminSubscriptionsByIdAddons"]["responses"][200]["content"]["application/json"][number];
@@ -63,6 +57,8 @@ export function AddonsPanel({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // A refused grant or cancel re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
   const captureFocus = useRestoreFocus(busy);
+  // One Idempotency-Key per grant / cancel: a retry of the same unchanged request after "could not reach the server" replays it.
+  const keeper = useIdempotencyKeeper();
 
   const load = useCallback(async () => {
     const res = await client.GET("/api/admin/subscriptions/{id}/addons", {
@@ -88,34 +84,32 @@ export function AddonsPanel({
     captureFocus();
     setBusy(true);
     setOutcome(null);
-    const res = await settleWrite(
+    const body = {
+      addonSlug: CLAIMS_BILLING,
+      mode,
+      reason: reason.trim(),
+      ...(mode === "trial"
+        ? { trialEndsAt: new Date(`${trialEndsAt}T23:59:59Z`).toISOString() }
+        : {}),
+    };
+    const sent = await sendWrite(keeper, `grant:${subscriptionId}:${JSON.stringify(body)}`, (key) =>
       client.POST("/api/admin/subscriptions/{id}/addons", {
         params: { path: { id: subscriptionId } },
-        body: {
-          addonSlug: CLAIMS_BILLING,
-          mode,
-          reason: reason.trim(),
-          ...(mode === "trial"
-            ? { trialEndsAt: new Date(`${trialEndsAt}T23:59:59Z`).toISOString() }
-            : {}),
-        },
-        headers: { "Idempotency-Key": idempotencyKey() },
+        body,
+        headers: { "Idempotency-Key": key },
       }),
     );
     setBusy(false);
-    if (!res || res.error) {
-      setOutcome(
-        res
-          ? failureOutcome(res.error, "Could not add the claims-billing add-on.")
-          : UNREACHABLE_OUTCOME,
-      );
+    const failure = writeFailure(sent, "Could not add the claims-billing add-on.");
+    if (failure) {
+      setOutcome(failure);
       return;
     }
     setOutcome({ ok: true, message: mode === "trial" ? "Trial started." : "Add-on granted." });
     setReason("");
     setAttempted(false);
     await load();
-  }, [busy, client, subscriptionId, mode, trialEndsAt, reason, load, captureFocus]);
+  }, [busy, client, subscriptionId, mode, trialEndsAt, reason, load, captureFocus, keeper]);
 
   const cancel = useCallback(
     async (addonId: string) => {
@@ -124,18 +118,17 @@ export function AddonsPanel({
       setBusy(true);
       setCancellingId(addonId);
       setOutcome(null);
-      const res = await settleWrite(
+      const sent = await sendWrite(keeper, `cancel:${subscriptionId}:${addonId}`, (key) =>
         client.POST("/api/admin/subscriptions/{id}/addons/{addonId}/cancel", {
           params: { path: { id: subscriptionId, addonId } },
-          headers: { "Idempotency-Key": idempotencyKey() },
+          headers: { "Idempotency-Key": key },
         }),
       );
       setBusy(false);
       setCancellingId(null);
-      if (!res || res.error) {
-        setOutcome(
-          res ? failureOutcome(res.error, "Could not cancel the add-on.") : UNREACHABLE_OUTCOME,
-        );
+      const failure = writeFailure(sent, "Could not cancel the add-on.");
+      if (failure) {
+        setOutcome(failure);
         return;
       }
       setOutcome({
@@ -144,7 +137,7 @@ export function AddonsPanel({
       });
       await load();
     },
-    [busy, client, subscriptionId, load, captureFocus],
+    [busy, client, subscriptionId, load, captureFocus, keeper],
   );
 
   return (

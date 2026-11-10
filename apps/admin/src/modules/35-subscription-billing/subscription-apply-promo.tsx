@@ -2,8 +2,10 @@ import {
   Button,
   TextField,
   focusFirstInvalid,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
+  useIdempotencyKeeper,
   useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -14,16 +16,7 @@ import {
 import { useCallback, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { idempotencyKey } from "./status";
-import {
-  type Outcome,
-  OutcomeBanner,
-  StateError,
-  StateLoading,
-  UNREACHABLE_OUTCOME,
-  failureOutcome,
-  settleWrite,
-} from "./ui";
+import { type Outcome, OutcomeBanner, StateError, StateLoading, writeFailure } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
 import { useSuccessRedirect } from "./use-success-redirect";
 
@@ -39,6 +32,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const [busy, setBusy] = useState(false);
   // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
   const captureFocus = useRestoreFocus(busy);
+  const keeper = useIdempotencyKeeper();
   const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [attempted, setAttempted] = useState(false);
@@ -56,19 +50,17 @@ export function SubscriptionApplyPromo(): JSX.Element {
     captureFocus();
     setBusy(true);
     setOutcome(null);
-    const res = await settleWrite(
+    // One key per (subscription, code): a retry after "could not reach the server" replays it.
+    const sent = await sendWrite(keeper, `${id}:${promoCode}`, (key) =>
       client.POST("/api/admin/subscriptions/{id}/apply_promo", {
         params: { path: { id } },
         body: { promoCode },
-        headers: { "Idempotency-Key": idempotencyKey() },
+        headers: { "Idempotency-Key": key },
       }),
     );
-    if (!res || res.error) {
-      setOutcome(
-        res
-          ? failureOutcome(res.error, "That promo could not be applied to this subscription.")
-          : UNREACHABLE_OUTCOME,
-      );
+    const failure = writeFailure(sent, "That promo could not be applied to this subscription.");
+    if (failure) {
+      setOutcome(failure);
       setBusy(false);
       return;
     }
@@ -77,7 +69,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
     setAttempted(false);
     setBusy(false);
     finish(`/admin/subscriptions/${id}`, `Promo "${promoCode}" applied.`);
-  }, [busy, done, client, id, code, finish, captureFocus]);
+  }, [busy, done, client, id, code, finish, captureFocus, keeper]);
 
   return (
     <div className="wx-list-drawer">

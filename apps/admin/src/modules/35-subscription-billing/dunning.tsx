@@ -1,4 +1,11 @@
-import { Button, StatusPill, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatusPill,
+  TableScroll,
+  settleWrite,
+  useApiClient,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Dunning (`/admin/dunning`, dunning.admin.read +
 // dunning.admin.override). Subscriptions currently in an OPEN dunning stage over GET /api/admin/dunning
@@ -22,7 +29,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type DunningPage =
@@ -77,12 +84,17 @@ export function Dunning(): JSX.Element {
         action === "skip_stage"
           ? "/api/admin/dunning/{subscriptionId}/skip_stage"
           : "/api/admin/dunning/{subscriptionId}/reset";
-      const res = await client.POST(path, {
-        params: { path: { subscriptionId } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
-      if (res.error) {
-        setOutcome(failureOutcome(res.error, `Could not ${action.replace("_", " ")}.`));
+      const failure = writeFailure(
+        await settleWrite(
+          client.POST(path, {
+            params: { path: { subscriptionId } },
+            headers: { "Idempotency-Key": idempotencyKey() },
+          }),
+        ),
+        `Could not ${action.replace("_", " ")}.`,
+      );
+      if (failure) {
+        setOutcome(failure);
       } else {
         setOutcome({
           ok: true,

@@ -5,8 +5,10 @@ import {
   TextField,
   focusFirstInvalid,
   isValid,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
+  useIdempotencyKeeper,
   useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -23,14 +25,7 @@ import {
   checkRefundForm,
   refundFormErrors,
 } from "./form-rules";
-import { idempotencyKey } from "./status";
-import {
-  type Outcome,
-  OutcomeBanner,
-  UNREACHABLE_OUTCOME,
-  failureOutcome,
-  settleWrite,
-} from "./ui";
+import { type Outcome, OutcomeBanner, writeFailure } from "./ui";
 import { useSuccessRedirect } from "./use-success-redirect";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
@@ -60,6 +55,7 @@ export function RefundNew(): JSX.Element {
   const [busy, setBusy] = useState(false);
   // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
   const captureFocus = useRestoreFocus(busy);
+  const keeper = useIdempotencyKeeper();
   const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -77,37 +73,30 @@ export function RefundNew(): JSX.Element {
     captureFocus();
     setBusy(true);
     setOutcome(null);
-    const res = await settleWrite(
-      client.POST("/api/admin/refunds", {
-        body: {
-          invoiceId: form.invoiceId.trim(),
-          amountCents,
-          kind: form.kind as "full" | "partial" | "credit_only",
-          reasonCode: form.reasonCode as
-            | "duplicate"
-            | "fraudulent"
-            | "requested_by_customer"
-            | "other",
-          reasonDetail: form.detail.trim(),
-        },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      }),
+    const body = {
+      invoiceId: form.invoiceId.trim(),
+      amountCents,
+      kind: form.kind as "full" | "partial" | "credit_only",
+      reasonCode: form.reasonCode as "duplicate" | "fraudulent" | "requested_by_customer" | "other",
+      reasonDetail: form.detail.trim(),
+    };
+    // One key per request: a retry of the same unchanged request after "could not reach the server" replays it, so the server cannot
+    // file a second refund request if the first had landed; a changed request, or any answer, starts on a new key.
+    const sent = await sendWrite(keeper, JSON.stringify(body), (key) =>
+      client.POST("/api/admin/refunds", { body, headers: { "Idempotency-Key": key } }),
     );
-    if (!res || res.error) {
-      setOutcome(
-        res
-          ? failureOutcome(
-              res.error,
-              "Could not create the refund request (check the invoice id + fields).",
-            )
-          : UNREACHABLE_OUTCOME,
-      );
+    const failure = writeFailure(
+      sent,
+      "Could not create the refund request (check the invoice id + fields).",
+    );
+    if (failure) {
+      setOutcome(failure);
       setBusy(false);
       return;
     }
     setBusy(false);
     finish("/admin/refunds", "Refund request created — awaiting a distinct approver (four-eyes).");
-  }, [busy, done, client, form, finish, captureFocus]);
+  }, [busy, done, client, form, finish, captureFocus, keeper]);
 
   return (
     <div className="wx-list-drawer">

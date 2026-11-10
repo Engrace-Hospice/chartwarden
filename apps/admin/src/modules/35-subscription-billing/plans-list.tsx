@@ -9,6 +9,7 @@ import {
   isValid,
   parsePriceCents,
   parseWholeNumber,
+  settleWrite,
   stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
@@ -35,7 +36,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type PlanRow =
@@ -97,20 +98,25 @@ export function PlansList(): JSX.Element {
       return;
     setSaving(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/plans", {
-      body: {
-        slug: form.slug.trim(),
-        name: form.name.trim(),
-        tier: form.tier as "starter" | "professional" | "enterprise",
-        cadence: form.cadence as "monthly" | "annual",
-        basePriceCents,
-        currencyCode: "USD",
-        trialPeriodDays,
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not create the plan (check the fields)."));
+    const failure = writeFailure(
+      await settleWrite(
+        client.POST("/api/admin/plans", {
+          body: {
+            slug: form.slug.trim(),
+            name: form.name.trim(),
+            tier: form.tier as "starter" | "professional" | "enterprise",
+            cadence: form.cadence as "monthly" | "annual",
+            basePriceCents,
+            currencyCode: "USD",
+            trialPeriodDays,
+          },
+          headers: { "Idempotency-Key": idempotencyKey() },
+        }),
+      ),
+      "Could not create the plan (check the fields).",
+    );
+    if (failure) {
+      setOutcome(failure);
     } else {
       setOutcome({ ok: true, message: `Draft plan "${form.name}" created.` });
       setShowCreate(false);

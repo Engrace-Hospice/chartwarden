@@ -8,6 +8,8 @@ import {
   InlineAlert,
   LoadingSpinner,
   ReverifyLink,
+  type SettledWrite,
+  type WriteResult,
   isStepUpRequired,
 } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
@@ -41,11 +43,15 @@ export const UNREACHABLE_OUTCOME: Outcome = {
 };
 
 /**
- * Resolve a write to `null` when its request failed outright. openapi-fetch resolves an error response but RETHROWS a network
- * failure, which would strand the caller's busy lock: callers clear the lock and show UNREACHABLE_OUTCOME for `null`.
+ * The outcome to show for a write that did not succeed, or null when it did. `sent` comes from the kit's `settleWrite` / `sendWrite`,
+ * which read success as "no error AND response.ok" (an empty-body non-ok response is a refusal) and turn a rejected request (offline:
+ * openapi-fetch rethrows, which would strand the caller's busy lock) into `unreachable`.
  */
-export function settleWrite<T>(request: Promise<T>): Promise<T | null> {
-  return request.catch(() => null);
+export function writeFailure(sent: SettledWrite<WriteResult>, fallback: string): Outcome | null {
+  if (sent.status === "ok") return null;
+  return sent.status === "unreachable"
+    ? UNREACHABLE_OUTCOME
+    : failureOutcome(sent.res.error, fallback);
 }
 
 /** Navigation state that carries a finished write's confirmation to the page it lands on (see useSuccessRedirect). */

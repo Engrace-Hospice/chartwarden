@@ -4,7 +4,9 @@ import {
   StatusPill,
   TextAreaField,
   focusFirstInvalid,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
   useRequestGuard,
   useRestoreFocus,
 } from "@chartwarden/ui";
@@ -29,7 +31,6 @@ import {
   UNREACHABLE_OUTCOME,
   failureOutcome,
   isNotFound,
-  settleWrite,
 } from "./ui";
 import { useSuccessRedirect } from "./use-success-redirect";
 
@@ -67,6 +68,7 @@ export function RefundApprove(): JSX.Element {
   const decisionRef = useRef<HTMLDivElement>(null);
   // A refused decision re-enables the buttons: focus returns to the one that was pressed (it was disabled while in flight).
   const captureFocus = useRestoreFocus(acting !== null);
+  const keeper = useIdempotencyKeeper();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const guard = useRequestGuard();
@@ -102,19 +104,24 @@ export function RefundApprove(): JSX.Element {
     captureFocus();
     setActing("approve");
     setOutcome(null);
-    const res = await settleWrite(
+    // One key per decision: a retry after "could not reach the server" replays it (the first request may have landed).
+    const sent = await sendWrite(keeper, `approve:${id}`, (key) =>
       client.POST("/api/admin/refunds/{id}/approve", {
         params: { path: { id } },
-        headers: { "Idempotency-Key": crypto.randomUUID() },
+        headers: { "Idempotency-Key": key },
       }),
     );
-    if (!res || res.error) {
-      setOutcome(res ? denial(res.error, "Could not approve the refund.") : UNREACHABLE_OUTCOME);
+    if (sent.status !== "ok") {
+      setOutcome(
+        sent.status === "refused"
+          ? denial(sent.res.error, "Could not approve the refund.")
+          : UNREACHABLE_OUTCOME,
+      );
       setActing(null);
       return;
     }
     finish("/admin/refunds", "Refund approved — queued for execution.");
-  }, [acting, done, client, id, finish, captureFocus]);
+  }, [acting, done, client, id, finish, captureFocus, keeper]);
 
   const deny = useCallback(async () => {
     if (!id || acting || done) return;
@@ -126,20 +133,25 @@ export function RefundApprove(): JSX.Element {
     captureFocus();
     setActing("deny");
     setOutcome(null);
-    const res = await settleWrite(
+    const reason = denyReason.trim();
+    const sent = await sendWrite(keeper, `deny:${id}:${reason}`, (key) =>
       client.POST("/api/admin/refunds/{id}/deny", {
         params: { path: { id } },
-        body: { reason: denyReason.trim() },
-        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: { reason },
+        headers: { "Idempotency-Key": key },
       }),
     );
-    if (!res || res.error) {
-      setOutcome(res ? denial(res.error, "Could not deny the refund.") : UNREACHABLE_OUTCOME);
+    if (sent.status !== "ok") {
+      setOutcome(
+        sent.status === "refused"
+          ? denial(sent.res.error, "Could not deny the refund.")
+          : UNREACHABLE_OUTCOME,
+      );
       setActing(null);
       return;
     }
     finish("/admin/refunds", "Refund denied.");
-  }, [acting, done, client, id, denyReason, finish, captureFocus]);
+  }, [acting, done, client, id, denyReason, finish, captureFocus, keeper]);
 
   const pageHead = (
     <header className="wx-page-head">

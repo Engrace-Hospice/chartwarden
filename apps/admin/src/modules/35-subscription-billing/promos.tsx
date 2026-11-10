@@ -9,6 +9,7 @@ import {
   isValid,
   parsePriceCents,
   parseWholeNumber,
+  settleWrite,
   stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
@@ -35,7 +36,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type Promo =
@@ -109,20 +110,24 @@ export function Promos(): JSX.Element {
     const fixedOffCents = form.kind === "amount_off" ? parsePriceCents(form.amount) : null;
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/promos", {
-      body: {
-        code: form.code.trim(),
-        stripeCouponId: form.coupon.trim() || form.code.trim(),
-        stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
-        kind: form.kind as "percent_off" | "amount_off",
-        ...(percentOff !== null ? { percentOff } : {}),
-        ...(fixedOffCents !== null ? { fixedOffCents } : {}),
-        duration: form.duration as "once" | "repeating" | "forever",
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error)
-      setOutcome(failureOutcome(res.error, "Could not create the promo (check the fields)."));
+    const failure = writeFailure(
+      await settleWrite(
+        client.POST("/api/admin/promos", {
+          body: {
+            code: form.code.trim(),
+            stripeCouponId: form.coupon.trim() || form.code.trim(),
+            stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
+            kind: form.kind as "percent_off" | "amount_off",
+            ...(percentOff !== null ? { percentOff } : {}),
+            ...(fixedOffCents !== null ? { fixedOffCents } : {}),
+            duration: form.duration as "once" | "repeating" | "forever",
+          },
+          headers: { "Idempotency-Key": idempotencyKey() },
+        }),
+      ),
+      "Could not create the promo (check the fields).",
+    );
+    if (failure) setOutcome(failure);
     else {
       setOutcome({ ok: true, message: `Promo "${form.code}" created.` });
       setShowCreate(false);
@@ -136,16 +141,17 @@ export function Promos(): JSX.Element {
     async (id: string, code: string) => {
       setBusy(true);
       setOutcome(null);
-      const res = await client.POST("/api/admin/promos/{id}/deactivate", {
-        params: { path: { id } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
-      setOutcome(
-        res.error
-          ? failureOutcome(res.error, "Could not deactivate this promo.")
-          : { ok: true, message: `Promo "${code}" deactivated.` },
+      const failure = writeFailure(
+        await settleWrite(
+          client.POST("/api/admin/promos/{id}/deactivate", {
+            params: { path: { id } },
+            headers: { "Idempotency-Key": idempotencyKey() },
+          }),
+        ),
+        "Could not deactivate this promo.",
       );
-      if (!res.error) await load();
+      setOutcome(failure ?? { ok: true, message: `Promo "${code}" deactivated.` });
+      if (!failure) await load();
       setBusy(false);
     },
     [client, load],

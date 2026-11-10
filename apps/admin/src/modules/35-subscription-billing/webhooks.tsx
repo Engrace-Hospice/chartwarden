@@ -1,4 +1,11 @@
-import { Button, StatusPill, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatusPill,
+  TableScroll,
+  settleWrite,
+  useApiClient,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Stripe webhooks (`/admin/webhooks/stripe`,
 // stripe.admin.read). Recent inbound webhook receipts over GET /api/admin/webhooks/stripe/recent, searchable
@@ -14,7 +21,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type WebhookReceiptsPage =
@@ -72,12 +79,17 @@ export function Webhooks(): JSX.Element {
     async (eventId: string) => {
       setBusyId(eventId);
       setOutcome(null);
-      const res = await client.POST("/api/admin/webhooks/stripe/replay/{eventId}", {
-        params: { path: { eventId } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
-      if (res.error) {
-        setOutcome(failureOutcome(res.error, "Could not replay this event."));
+      const failure = writeFailure(
+        await settleWrite(
+          client.POST("/api/admin/webhooks/stripe/replay/{eventId}", {
+            params: { path: { eventId } },
+            headers: { "Idempotency-Key": idempotencyKey() },
+          }),
+        ),
+        "Could not replay this event.",
+      );
+      if (failure) {
+        setOutcome(failure);
       } else {
         setOutcome({ ok: true, message: `Event ${eventId} re-enqueued.` });
         await load(null, false);

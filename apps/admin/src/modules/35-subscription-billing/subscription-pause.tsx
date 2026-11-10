@@ -2,8 +2,10 @@ import {
   Button,
   TextAreaField,
   TextField,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
+  useIdempotencyKeeper,
   useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -13,16 +15,7 @@ import {
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { idempotencyKey } from "./status";
-import {
-  type Outcome,
-  OutcomeBanner,
-  StateError,
-  StateLoading,
-  UNREACHABLE_OUTCOME,
-  failureOutcome,
-  settleWrite,
-} from "./ui";
+import { type Outcome, OutcomeBanner, StateError, StateLoading, writeFailure } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
 import { useSuccessRedirect } from "./use-success-redirect";
 
@@ -39,6 +32,7 @@ export function SubscriptionPause(): JSX.Element {
   const [busy, setBusy] = useState(false);
   // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
   const captureFocus = useRestoreFocus(busy);
+  const keeper = useIdempotencyKeeper();
   const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -48,23 +42,23 @@ export function SubscriptionPause(): JSX.Element {
     setBusy(true);
     setOutcome(null);
     const body = until ? { pausedUntil: new Date(until).toISOString() } : {};
-    const res = await settleWrite(
+    // One key per pause: a retry of the same unchanged request after "could not reach the server" replays it.
+    const sent = await sendWrite(keeper, `${id}:${JSON.stringify(body)}`, (key) =>
       client.POST("/api/admin/subscriptions/{id}/pause", {
         params: { path: { id } },
         body,
-        headers: { "Idempotency-Key": idempotencyKey() },
+        headers: { "Idempotency-Key": key },
       }),
     );
-    if (!res || res.error) {
-      setOutcome(
-        res ? failureOutcome(res.error, "Could not pause the subscription.") : UNREACHABLE_OUTCOME,
-      );
+    const failure = writeFailure(sent, "Could not pause the subscription.");
+    if (failure) {
+      setOutcome(failure);
       setBusy(false);
       return;
     }
     setBusy(false);
     finish(`/admin/subscriptions/${id}`, "Subscription paused.");
-  }, [busy, done, client, id, until, finish, captureFocus]);
+  }, [busy, done, client, id, until, finish, captureFocus, keeper]);
 
   return (
     <div className="wx-list-drawer">

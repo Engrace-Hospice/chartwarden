@@ -1,4 +1,11 @@
-import { Button, StatGrid, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatGrid,
+  TableScroll,
+  settleWrite,
+  useApiClient,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Revenue (`/admin/revenue`, revenue.admin.read). The
 // MRR/ARR dashboard: the live current estimate (GET /api/admin/revenue/current) as KPI tiles, plus the
@@ -13,7 +20,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type Current =
@@ -57,11 +64,16 @@ export function Revenue(): JSX.Element {
   const recompute = useCallback(async () => {
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/revenue/snapshots/compute", {
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not recompute revenue."));
+    const failure = writeFailure(
+      await settleWrite(
+        client.POST("/api/admin/revenue/snapshots/compute", {
+          headers: { "Idempotency-Key": idempotencyKey() },
+        }),
+      ),
+      "Could not recompute revenue.",
+    );
+    if (failure) {
+      setOutcome(failure);
     } else {
       setOutcome({ ok: true, message: "Revenue snapshot recomputed." });
       await load();
