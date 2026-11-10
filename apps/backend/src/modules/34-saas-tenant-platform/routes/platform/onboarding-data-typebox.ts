@@ -141,7 +141,7 @@ export const OnboardingMacCredentialViewSchema = Type.Object({
   credentialExpiresAt: Nullable(Iso),
   lastSandboxTestAt: Type.Union([Iso, Type.Null()], {
     description:
-      "When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It confirms only that the portal answered from ChartWarden; it does not validate the credential, because the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
+      "When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
   }),
   version: Type.Integer(),
   createdAt: Iso,

@@ -13786,7 +13786,7 @@ const M23RuleConfigListResponse = Type.Object({
  * first real submission). The names stay; the words must not promise more than the check does.
  */
 const M23_MAC_PORTAL_CHECK_NOTE =
-  "It confirms only that the MAC portal for the credential's jurisdiction answered from ChartWarden; it does not validate the credential, because the secret, client id and submitter id are not sent (the first real submission is the first time they are used)";
+  "It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used)";
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
