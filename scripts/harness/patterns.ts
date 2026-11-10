@@ -18,6 +18,7 @@
  *
  * Never put a matched value into a reason or a ledger line: findings carry a REDACTED sample only.
  */
+import { userInfo } from "node:os";
 
 export interface SyntheticRegistry {
   readonly ssn: ReadonlySet<string>;
@@ -1103,9 +1104,12 @@ const echo = (token: string): string => {
 const deny = (reason: string): BashVerdict => ({ decision: "deny", reason: scrub(reason) });
 const ask = (reason: string): BashVerdict => ({ decision: "ask", reason: scrub(reason) });
 
-/** Variables that disable or redirect an agent guard, its ledger, or the tree whose controls it judges. */
+/**
+ * Variables that disable or redirect an agent guard, its ledger, or the tree whose controls it judges. `HOME`
+ * moves what `~` and `$HOME` mean, so `HOME=<the repo> sh -c 'echo x > ~/scripts/harness/p'` writes into it.
+ */
 const HARNESS_SWITCH_NAMES =
-  "CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR";
+  "CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR|HOME";
 /** A shell word that assigns one: `NAME=value`. */
 const HARNESS_SWITCH = new RegExp(`^(${HARNESS_SWITCH_NAMES})=`);
 /** The name and `=` ANYWHERE in a command's text, quotes and nested strings included (`ssh h 'NAME=x cmd'`). */
@@ -1438,7 +1442,16 @@ export const isInteractiveShell = (cmd: string): boolean =>
 type Cwd = string | null;
 
 const trimSlashes = (p: string): string => p.replace(/\/+$/, "");
-const homeOf = (ctx: BashContext): string => trimSlashes(ctx.home ?? process.env.HOME ?? "");
+/** The account's home directory from the user database, for when `$HOME` is unset or empty. */
+function accountHome(): string {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return "";
+  }
+}
+const homeOf = (ctx: BashContext): string =>
+  trimSlashes(ctx.home || process.env.HOME || accountHome());
 
 /** Collapse `.`, `..` and `//`; keeps a leading `/` or `~`, and the leading `..` of a relative path. */
 function collapse(p: string): string {
@@ -1490,6 +1503,8 @@ function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): s
     t = t.replace(REPO_ROOT, ".");
     base = "";
   } else t = t.replace(HERE, ".");
+  // Only `~` and `~/…` name the home directory. `~user`, `~+`, `~-` and `~1` name one the guard cannot place.
+  if (/^~[^/]/.test(t)) return null;
   if (strict && /[$`*?[]/.test(t)) return null;
   // `~` is the home directory: spell it out, or a repo that lives under it (`cd ~/Apps/x/repo`) is never
   // recognised as the repo.

@@ -3,6 +3,7 @@
  * `allow` (or took longer than the hook's 10 s) at a491dd563; each describe block pairs them with the nearby
  * everyday commands that must stay allowed. `classifyBash` is pure: `root`, `cwd` and `home` are injected.
  */
+import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { classifyBash } from "../harness/patterns";
 
@@ -434,5 +435,57 @@ describe("a secret file is found in the directory a cd left the command in", () 
   ])("allows the everyday %s", (cmd) => {
     const verdict = v(cmd, onDisk);
     expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});
+
+// `~` and `~/…` name the home directory; every other tilde prefix (`~user`, `~+`, `~-`, `~1`) is a directory the
+// guard cannot place, and a `HOME` the command sets moves `~` itself. With HOME unset, `~` is still the user's
+// home (the account database knows it).
+describe("a tilde form the guard cannot place, and a spoofed HOME, do not hide a write onto the repo", () => {
+  const user = { root: "/Users/fabrice/Apps/x2/wardenx4", home: "/Users/fabrice" };
+
+  it.each([
+    "echo x > ~fabrice/Apps/x2/wardenx4/scripts/harness/p",
+    "echo x > ~+/scripts/harness/p",
+    "echo x > ~-/scripts/harness/p",
+    "echo x > ~1/scripts/harness/p",
+    "cd ~fabrice/Apps/x2/wardenx4 && echo x > scripts/harness/p",
+    "cd ~+ && echo x > scripts/harness/p",
+    "cd scripts && cd /tmp && cd ~- && echo x > harness/p",
+    "HOME=/Users/fabrice/Apps/x2/wardenx4 sh -c 'echo x > ~/scripts/harness/p'",
+    "HOME=/Users/fabrice/Apps/x2/wardenx4 cd && echo x > scripts/harness/p",
+    "export HOME=/Users/fabrice/Apps/x2/wardenx4; echo x > ~/scripts/harness/p",
+    "env HOME=/Users/fabrice/Apps/x2/wardenx4 tee ~/scripts/harness/p < /dev/null",
+  ])("asks before %s", (cmd) => expect(d(cmd, user)).toBe("ask"));
+
+  it.each([
+    "echo x > ~/notes.txt",
+    "cd ~ && ls",
+    "cd ~/Apps/other && echo x > notes.txt",
+    "echo $HOME",
+    "HOME_DIR=/tmp ls",
+    "XDG_CONFIG_HOME=/tmp/x bun test",
+    "rg HOME= scripts",
+    "cat ~/.zshrc | head -3",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd, user);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+
+  it("falls back to the account's home directory when HOME is unset or empty", () => {
+    const real = homedir();
+    const root = `${real}/x/repo`;
+    const saved = process.env.HOME;
+    try {
+      for (const value of [undefined, ""]) {
+        if (value === undefined) Reflect.deleteProperty(process.env, "HOME");
+        else process.env.HOME = value;
+        const verdict = classifyBash("echo x > ~/x/repo/scripts/harness/p", { root, home: "" });
+        expect(verdict.decision, `HOME=${JSON.stringify(value)}`).toBe("ask");
+      }
+    } finally {
+      if (saved === undefined) Reflect.deleteProperty(process.env, "HOME");
+      else process.env.HOME = saved;
+    }
   });
 });
