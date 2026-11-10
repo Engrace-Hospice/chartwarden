@@ -63,10 +63,11 @@ export function idempotencyKeyIsStale(stored: string, requestHash: string): bool
 
 /**
  * The date (UTC, inclusive) by which the legacy plain-SHA-256 arm must be gone. The real trigger is "one idempotency TTL after the keyed
- * fingerprint is deployed everywhere"; this is the calendar proxy for it. If the keyed fingerprint ships later than a TTL before it, move
+ * fingerprint is deployed everywhere"; this is the calendar proxy for it, picked with about five weeks of margin after 2026-11-09 (the date
+ * is a judgement, not a fact about any deploy). If the keyed fingerprint ships later than a TTL before it (later than early December), move
  * the date in the same change that moves the deploy, and the compliance row's `review_by` (CW-SEC-02) with it.
  */
-export const LEGACY_ARM_REMOVE_AFTER = "2026-11-16";
+export const LEGACY_ARM_REMOVE_AFTER = "2026-12-15";
 
 /**
  * The fingerprint this module stored BEFORE it was keyed: plain SHA-256 hex. Only ever COMPUTED, to recognise a record written
