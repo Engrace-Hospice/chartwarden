@@ -28,6 +28,9 @@ function memoryStore(seed?: IdempotencyRecord): IdempotencyStore {
     complete: async (_o, _k, response) => {
       rec = rec ? { state: "complete", requestHash: rec.requestHash, response } : rec;
     },
+    release: async (_o, _k, requestHash) => {
+      if (rec?.state === "pending" && rec.requestHash === requestHash) rec = null;
+    },
   };
 }
 
@@ -103,6 +106,7 @@ describe("runIdempotent", () => {
       load: async () => loads.shift() ?? null,
       putPending: async () => false,
       complete: vi.fn(async () => undefined),
+      release: async () => undefined,
     };
     const handler = vi.fn(async () => ({ status: "500", body: null }));
     await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).resolves.toEqual(ok);
@@ -117,6 +121,7 @@ describe("runIdempotent", () => {
       load: async () => loads.shift() ?? null,
       putPending: async () => false,
       complete: async () => undefined,
+      release: async () => undefined,
     };
     const handler = vi.fn(async () => ok);
     await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(

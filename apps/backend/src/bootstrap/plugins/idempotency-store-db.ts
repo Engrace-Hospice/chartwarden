@@ -141,5 +141,23 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
           .where(and(eq(T.organizationId, organizationId), eq(T.key, key), eq(T.state, "pending")));
       });
     },
+
+    async release(organizationId, key, requestHash): Promise<void> {
+      await scoped(organizationId, async (tx) => {
+        // The claimant's own PENDING row only: a completed response someone is replaying, or a fresh claim another
+        // request made with a different fingerprint after this one's expired, is never deleted. The retryable outcome
+        // (a deadlock 409, a 5xx) is thereby not cached, and the same key can run again.
+        await tx
+          .delete(T)
+          .where(
+            and(
+              eq(T.organizationId, organizationId),
+              eq(T.key, key),
+              eq(T.state, "pending"),
+              eq(T.requestHash, requestHash),
+            ),
+          );
+      });
+    },
   };
 }
