@@ -13,7 +13,12 @@ import { type ClinicActor, createDoseSpotClinicService } from "./service";
 const ORG = "11111111-1111-4111-8111-111111111111";
 const MEMBER = "33333333-3333-4333-8333-333333333333";
 const OPERATOR = "44444444-4444-4444-8444-444444444444";
-const TENANT: ClinicActor = { organizationId: ORG, userId: "u-t", membershipId: MEMBER };
+const TENANT: ClinicActor = {
+  organizationId: ORG,
+  userId: "u-t",
+  membershipId: MEMBER,
+  lane: "tenant",
+};
 const OPS: ClinicActor = {
   organizationId: ORG,
   userId: "u-o",

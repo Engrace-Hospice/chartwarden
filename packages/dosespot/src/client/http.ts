@@ -608,7 +608,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       return { dosespotPatientId: id, upsertedAt: now().toISOString() };
     },
 
-    async enrollPrescriber(orgId, payload): Promise<DoseSpotPrescriberResponse> {
+    async enrollPrescriber(orgId, payload, options): Promise<DoseSpotPrescriberResponse> {
       const out = await call(
         "enrollPrescriber",
         orgId,
@@ -623,6 +623,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         },
         undefined,
         "setup", // a verified (not yet active) config may enrol its prescribers
+        true,
+        options?.expectedTarget,
       );
       const id = identifierOf(out);
       if (id === undefined) {

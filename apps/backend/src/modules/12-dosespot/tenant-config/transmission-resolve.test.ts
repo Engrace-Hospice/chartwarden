@@ -43,6 +43,24 @@ describe("resolving a held transmission", () => {
     expect(h.touched()).toBe(0);
   });
 
+  it.each(["Checked SSN 123-45-6789 in DoseSpot.", "Checked MBI 1EG4-TE5-MK73 in DoseSpot."])(
+    "refuses a patient identifier in the stored reason before the database is touched: %s",
+    async (reason) => {
+      const h = build(async () => {
+        throw new Error("not reached");
+      });
+      await expect(
+        h.service.resolve(
+          actor,
+          ORDER,
+          { outcome: "not_sent", reason },
+          { actorIsAdministrator: true },
+        ),
+      ).rejects.toMatchObject({ code: "EVIDENCE_LOOKS_LIKE_PHI", statusCode: 422 });
+      expect(h.touched()).toBe(0);
+    },
+  );
+
   it("an unexpected fault is rethrown typed and WITHOUT its cause, and logged with ids and the class only (never the reason)", async () => {
     const h = build(async () => {
       throw new TypeError(`Failed query: update ... params: ${REASON}`);

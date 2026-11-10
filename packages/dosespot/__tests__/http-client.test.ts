@@ -533,6 +533,28 @@ describe("a database-backed resolver (slice 4)", () => {
       expect(out.dosespotPatientId).toBe("601");
     });
 
+    it("a prescriber enrolment is refused before a token or clinician request reaches the moved clinic", async () => {
+      const { c, calls } = clientOver(swappable(live2()).r, {
+        "POST /connect/token": TOKEN_OK,
+        "POST /api/clinicians": () => ({ status: 200, body: { Id: 701 } }),
+      });
+      const err = await c
+        .enrollPrescriber(
+          ORG,
+          {
+            membershipId: "33333333-3333-4333-8333-333333333333",
+            firstName: "Grace",
+            lastName: "Hopper",
+            npi: "1234567893",
+            epcsRequested: false,
+          },
+          { expectedTarget: CLINIC_1 },
+        )
+        .catch((e) => e);
+      expect(isNotEnabledError(err)).toBe(true);
+      expect(calls).toEqual([]);
+    });
+
     it("an env-bound config (no registration target) is the target `env`; a caller that names no target is not checked", async () => {
       const envBound = cfg(1); // no registrationTarget: served by the env binding
       const { c } = clientOver(swappable(envBound).r, sendRoutes());

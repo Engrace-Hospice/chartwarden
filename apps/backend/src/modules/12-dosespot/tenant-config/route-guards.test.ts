@@ -18,7 +18,12 @@ describe("clinicActorOf", () => {
     const actor = clinicActorOf(
       requestWith({ organizationId: ORG, userId: USER, attributes: { membershipId: MEMBERSHIP } }),
     );
-    expect(actor).toMatchObject({ organizationId: ORG, userId: USER, membershipId: MEMBERSHIP });
+    expect(actor).toMatchObject({
+      organizationId: ORG,
+      userId: USER,
+      membershipId: MEMBERSHIP,
+      lane: "tenant",
+    });
   });
 
   it("answers 403 (not 401) for a signed-in session that has no membership", () => {

@@ -380,13 +380,17 @@ export function createPrescriberEnrollmentService(
     if (plan.alreadyLinked || plan.profile === null) return null;
     const { profile } = plan;
     try {
-      const out = await deps.client.enrollPrescriber(plan.organizationId, {
-        membershipId: plan.membershipId,
-        firstName: profile.firstName,
-        lastName: profile.lastName,
-        npi: profile.npi,
-        epcsRequested: false,
-      });
+      const out = await deps.client.enrollPrescriber(
+        plan.organizationId,
+        {
+          membershipId: plan.membershipId,
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          npi: profile.npi,
+          epcsRequested: false,
+        },
+        { expectedTarget: plan.target },
+      );
       return out.dosespotPrescriberId;
     } catch (err) {
       // Release the claim ONLY when the outcome is definitive: DoseSpot refused (a non-retryable refusal), or nothing could have reached

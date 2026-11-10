@@ -390,6 +390,7 @@ describe.skipIf(!DB_URL)(
       organizationId,
       userId: TENANT_ADMIN,
       membershipId: MEMBERSHIP,
+      lane: "tenant" as const,
       request: { correlationId: `live-${++seq}`, requestId: `req-${seq}` },
     });
     const operator = (): OnboardingOperator => ({

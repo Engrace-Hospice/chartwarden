@@ -23,6 +23,7 @@ export function clinicActorOf(request: FastifyRequest): ClinicRequestActor {
     organizationId,
     userId,
     membershipId,
+    lane: "tenant",
     request: {
       ...(ctx?.correlationId ? { correlationId: ctx.correlationId } : {}),
       requestId: String(request.id),

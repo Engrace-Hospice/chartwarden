@@ -1132,7 +1132,12 @@ describe.skipIf(!DB_URL)(
         withOrgContext(handle.db, { organizationId: ORG_A, userId: USER }, (tx) =>
           clinicService.put(
             createDrizzleConfigStore(tx as unknown as DbClient),
-            { organizationId: ORG_A, userId: USER, membershipId: memberOf[ORG_A] as string },
+            {
+              organizationId: ORG_A,
+              userId: USER,
+              membershipId: memberOf[ORG_A] as string,
+              lane: "tenant",
+            },
             { environment: "production", clinicId: "clinic-new" },
             1,
           ),

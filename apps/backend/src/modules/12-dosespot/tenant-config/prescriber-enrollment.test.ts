@@ -166,10 +166,12 @@ function build(
   };
   let vendorCalls = 0;
   const vendorPayloads: Record<string, unknown>[] = [];
+  const vendorTargets: Array<string | undefined> = [];
   const client: Pick<DoseSpotClient, "enrollPrescriber"> = {
-    async enrollPrescriber(_org, payload) {
+    async enrollPrescriber(_org, payload, options) {
       vendorCalls += 1;
       vendorPayloads.push({ ...payload });
+      vendorTargets.push(options?.expectedTarget);
       calledInsideTx = calledInsideTx || txDepth > 0;
       log.push(`vendor:${payload.npi}:${payload.epcsRequested}`);
       return opts.vendor
@@ -247,6 +249,7 @@ function build(
     insideTx: () => calledInsideTx,
     profileInsideTx: () => profileInsideTx,
     vendorPayloads,
+    vendorTargets,
     roster: () => roster,
   };
 }
@@ -322,6 +325,12 @@ describe("prescriber vendor enrolment", () => {
     const h = build();
     await h.service.enroll(ACTOR, MEMBER);
     expect(h.log.find((l) => l.startsWith("vendor:"))).toBe(`vendor:${NPI}:false`);
+  });
+
+  it("pins the vendor call to the registration target captured before the claim", async () => {
+    const h = build();
+    await h.service.enroll(ACTOR, MEMBER);
+    expect(h.vendorTargets).toEqual(["sandbox:clinic-1"]);
   });
 
   it("is idempotent: a prescriber already linked to DoseSpot is not enrolled a second time", async () => {

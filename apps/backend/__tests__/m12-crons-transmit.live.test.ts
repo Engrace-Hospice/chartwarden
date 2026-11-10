@@ -843,6 +843,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       organizationId: ORG_A,
       userId: USER,
       membershipId: h.memberOf[ORG_A] as string,
+      lane: "tenant" as const,
     });
     const clinicService = createDoseSpotClinicService({
       probe: { probe: async () => "ok" },

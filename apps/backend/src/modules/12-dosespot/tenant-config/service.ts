@@ -48,8 +48,8 @@ export interface ClinicActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly membershipId: string;
-  /** `platform` only for the platform-ops lane. Absent = the tenant's own lane: the safe default for anything that did not say. */
-  readonly lane?: "platform";
+  /** Required fail-closed discriminator: every caller says whether it is the tenant or platform-ops lane. */
+  readonly lane: "tenant" | "platform";
 }
 
 export interface PutClinicInput {

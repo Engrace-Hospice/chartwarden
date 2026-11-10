@@ -194,6 +194,7 @@ export interface DoseSpotClient {
   enrollPrescriber(
     orgId: string,
     payload: DoseSpotPrescriberPayload,
+    options?: DoseSpotCallOptions,
   ): Promise<DoseSpotPrescriberResponse>;
   revokePrescriber(orgId: string, dosespotPrescriberId: string): Promise<void>;
   transmitNewRx(

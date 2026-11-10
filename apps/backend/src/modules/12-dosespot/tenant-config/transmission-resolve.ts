@@ -12,11 +12,12 @@
 //             is the existing retransmit, where the prescriber signs a replacement. It is NEVER put back on the queue, so it is never sent again.
 // Both are one transaction under `FOR UPDATE` on the order row and are accepted ONLY while the hold marker is still on the transmission row, so two
 // resolutions, or a resolution racing the recovery drain (which never touches a held order), cannot both win: the loser answers 409
-// `DOSESPOT_TRANSMISSION_NOT_HELD`. The administrator's free-text reason is stored on the transmission row's `last_error_detail`, which the write-audit
-// trigger denylists (it can hold PHI fragments); the audit entry written here carries ids and the outcome only.
+// `DOSESPOT_TRANSMISSION_NOT_HELD`. The administrator's free-text reason is screened for SSN/MBI-shaped identifiers before it is stored on the
+// transmission row's `last_error_detail`; the write-audit trigger also denylists it, and the audit entry carries ids and the outcome only.
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { transitionMedicationOrder } from "@chartwarden/dosespot";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -128,6 +129,7 @@ export function createTransmissionResolveService(
         422,
       );
     }
+    assertNoPatientIdentifier("reason", reason);
     if (input.outcome === "sent" && prescriptionId === "") {
       throw new ChartWardenError(
         "DOSESPOT_PRESCRIPTION_ID_REQUIRED",
