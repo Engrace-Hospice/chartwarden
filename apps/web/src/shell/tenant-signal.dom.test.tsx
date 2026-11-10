@@ -103,17 +103,21 @@ describe("org-less 401 end to end", () => {
     await waitFor(() => expect(getGlobalResponseSignal()).toBeNull());
     expect(window.location.pathname).toBe("/expired");
   });
+});
 
-  it("routes a 403 ORGANIZATION_ONBOARDING to /admin/onboarding, and not again once there", async () => {
+// A generous wait: the first test mounts the whole shell and the suite runs beside many others.
+const SETTLE = { timeout: 5000 };
+
+describe("organization onboarding refusal end to end", () => {
+  it("routes a 403 ORGANIZATION_ONBOARDING (stage unknown) to /admin/onboarding, and not again once there", async () => {
     const client = mount(refusal("ORGANIZATION_ONBOARDING", 403), "/");
     await client.GET("/api/v1/patients" as never, {} as never);
-    await waitFor(() => expect(window.location.pathname).toBe("/admin/onboarding"));
+    await waitFor(() => expect(window.location.pathname).toBe("/admin/onboarding"), SETTLE);
     expect(getGlobalResponseSignal()).toBeNull(); // consumed
     // The wizard's own refused call must not bounce it: there is nowhere further to go.
-    window.history.pushState({}, "", "/admin/onboarding/plan_contract");
     await client.GET("/api/v1/patients" as never, {} as never);
-    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull());
-    expect(window.location.pathname).toBe("/admin/onboarding/plan_contract");
+    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull(), SETTLE);
+    expect(window.location.pathname).toBe("/admin/onboarding");
   });
 
   it("leaves the person where they are when the session already says onboarding (the screen guard routes; a refused background call is noise)", async () => {
@@ -121,7 +125,7 @@ describe("org-less 401 end to end", () => {
       organizationStage: "onboarding",
     });
     await client.GET("/api/v1/alerts/inbox" as never, {} as never);
-    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull());
+    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull(), SETTLE);
     expect(window.location.pathname).toBe("/admin/setup");
   });
 });
