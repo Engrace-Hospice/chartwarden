@@ -1,0 +1,1 @@
+Approved by the owner (fabwebdev) 2026-11-09 via chat: the compliance/controls.yaml change in this DRAFT commit (CW-AC-24, CW-AC-17 and CW-BA-01: the hold alert is persisted not delivered and keyed per window; the vendor lock holds while a tenant keeps sending), approved as written.
