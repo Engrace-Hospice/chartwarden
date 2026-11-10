@@ -201,6 +201,17 @@ describe("5 — a heredoc that feeds a shell or an interpreter is still a script
     expect(d("python3 - <<'PY'\nopen('scripts/harness/x', 'w')\nPY")).toBe("ask");
   });
 
+  it("reads heredoc scripts nested several deep, and asks beyond the depth it reads", () => {
+    const nested = (depth: number) =>
+      [
+        ...Array.from({ length: depth }, (_, k) => `bash <<L${k}`),
+        "git push --no-verify",
+        ...Array.from({ length: depth }, (_, k) => `L${depth - 1 - k}`),
+      ].join("\n");
+    expect(d(nested(8))).toBe("deny");
+    expect(d(nested(40))).toBe("ask");
+  });
+
   it("allows an interpreter script with an apostrophe and a comment", () => {
     expect(d("python3 - <<'PY'\n# it's fine\nprint(\"it's\")\nPY")).toBe("allow");
   });

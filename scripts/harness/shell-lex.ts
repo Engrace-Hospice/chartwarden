@@ -637,7 +637,7 @@ function ungroup(segment: string): string {
 }
 
 /** Heredoc scripts nested in heredoc scripts: beyond this the text is not read, so it asks. */
-const MAX_HEREDOC_LEVELS = 6;
+const MAX_HEREDOC_LEVELS = 16;
 
 /**
  * Split on `;`, `&&`, `||`, `|`, `&` and newlines at the top level of the command. A heredoc body is data
