@@ -11,6 +11,11 @@
  * ExternalPhysician the order names.
  * Prereqs: db:seed:staff, db:seed:mdm (the ExternalPhysician row), the API running.
  * Idempotent: an existing active enrolment for the same membership is reported, not an error.
+ * WARNING (demo data only): the step-up it presents is FORGED, by writing the step-up row directly under
+ * `session_replication_role = replica` (scripts/db/lib/step-up.ts), which skips the table's triggers and so the
+ * checks that make a step-up real. Never run it against a deployment that sets DOSESPOT_PRODUCTION_ENABLED, or any
+ * database that holds real tenants or patients (CW-AC-21: the roster enrolment and the prescriber's link confirmation
+ * it performs are the controls this bypasses).
  * Run: bun run db:seed:prescriber-roster
  */
 import { Client } from "pg";

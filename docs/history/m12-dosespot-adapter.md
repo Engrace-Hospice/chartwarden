@@ -223,3 +223,25 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a
   throwaway Postgres 18 with `max_locks_per_transaction=4096`.
+- A move to another clinic stranded the old clinic's ids (review of 3717fe9ee, HIGH, both reviews): changing the environment or the clinic dropped the sealed key
+  and nothing else, so the roster's `dosespot_prescriber_id`, the patient-sync `last_dosespot_patient_id` and a waiting transmission's persisted
+  `dosespot_prescription_id` still named the OLD clinic's clinicians, patients and prescription. Re-enrolment returned early (`alreadyLinked`), so a tenant moving
+  sandbox -> production (or fixing a mistyped clinic id) queued orders under ids DoseSpot refuses for good: a permanent `transmission_failed` no route
+  recovers. `put` now clears all three in the same transaction (`ConfigStore.clearVendorBindings`; also when a row takes over from the env binding), a queued
+  order whose prescriber is on the roster with no vendor id WAITS (no retry spent) instead of failing as `prescriber_not_enrolled`, and the field-level audit
+  row names `vendorBindings` (ADR-0111 D6). A held order keeps its created-prescription id (the administrator looks for it at the old clinic).
+  Chosen over a clinic-binding column on the three tables: three comparisons (gate, worker, enrolment) and a migration for the same result, with the
+  cost that an env-fallback -> row takeover of the SAME clinic re-enrols (DoseSpot's dedupe by NPI is unverified).
+- The patient-sync / MedHx drain treated `NotEnabledError` as terminal (same review, MEDIUM): a tenant that deactivated, rotated its key or had not
+  activated got every row marked `failed` for good (and its patients' last sync flipped to `failed`), while a retryable `ConfigUnavailableError` was
+  requeued every two minutes with no cap. A tenant WITH a registration row that is not live now has its rows left `pending` and unclaimed (preflight in
+  `jobs/sync-preflight.ts`; mid-batch a `NotEnabledError` or `ConfigUnavailableError` puts the row back with no attempt spent); a tenant with none keeps the
+  old behaviour on purpose (parking every patient's demographics for the day it switches DoseSpot on is worse than a failed row); a transient vendor
+  failure backs off by attempt count and ends the row after 8 attempts (`jobs/sync-outcome.ts`).
+- The unsealed credential and the bearer tokens outlived their TTL in an idle process (same review, LOW): the 5-minute check ran only when the same org was
+  looked up again, so a tenant that left the active enumeration kept its clinic key and live tokens in memory until the process exited (ADR-0111 D2 says
+  five minutes at most). Every lookup/mint now prunes the whole cache and an unref'd one-minute sweep runs while a cache holds anything
+  (`createExpirySweeper`, `client/token-cache.ts`).
+- Boot warnings for the two platform flags (compliance review, MEDIUM): `DOSESPOT_SANDBOX_ENABLED` on `NODE_ENV=production` and `DOSESPOT_PRODUCTION_ENABLED`
+  are operating policy (CW-AC-21, CW-BA-01), not machine-checked, so the boot says so loudly once per process (`describeM12PlatformFlagWarnings`); there is no
+  hard refusal (the demo VPS runs the sandbox on a production build).
