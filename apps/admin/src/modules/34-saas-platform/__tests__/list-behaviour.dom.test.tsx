@@ -729,4 +729,76 @@ describe("FeatureFlags kill-switch commit", () => {
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(firstRow()));
   });
+
+  const KILL_SWITCH = "/api/v1/platform/feature-flags/beta.thing/kill-switch";
+  const armAndConfirm = async (): Promise<void> => {
+    await waitFor(rowShown);
+    fireEvent.keyDown(firstRow(), { key: "Enter" });
+    await screen.findByRole("complementary", { name: "Feature flag" });
+    fireEvent.click(screen.getByRole("button", { name: "Arm kill switch…" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText(/Type the flag key to confirm/), {
+      target: { value: "beta.thing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm & toggle" }));
+  };
+
+  it("a refused commit (stale step-up) says so inside the open ceremony, offers Re-verify, and a retry can succeed", async () => {
+    let accept = false;
+    const { listCalls } = mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      [KILL_SWITCH]: () =>
+        accept
+          ? json({}, 202)
+          : json(
+              { error: { code: "STEP_UP_REQUIRED", message: "stale", correlationId: "c" } },
+              403,
+            ),
+    });
+    await armAndConfirm();
+    const refusal = await screen.findByText(/not recent enough for this action/);
+    expect(refusal.textContent).toContain("The kill switch was not changed.");
+    expect(screen.getByRole("link", { name: "Re-verify" })).toBeTruthy();
+    // The ceremony stays open with the operator's typed confirmation, and nothing was reloaded or closed behind it.
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect((screen.getByLabelText(/Type the flag key to confirm/) as HTMLInputElement).value).toBe(
+      "beta.thing",
+    );
+    expect(screen.getByRole("complementary", { name: "Feature flag" })).toBeTruthy();
+    expect(listCalls("/api/v1/platform/feature-flags")).toHaveLength(1);
+
+    accept = true;
+    fireEvent.click(screen.getByRole("button", { name: "Confirm & toggle" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(listCalls("/api/v1/platform/feature-flags")).toHaveLength(2));
+  });
+
+  it("an unreachable server is reported in the ceremony, which stays open and is not stuck", async () => {
+    mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      [KILL_SWITCH]: () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    await armAndConfirm();
+    expect(await screen.findByText(/Could not reach the server/)).toBeTruthy();
+    expect(screen.getByText(/Check the flag's current state/)).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    // Not stuck on "Working…": the commit button is back and can be pressed again.
+    expect(screen.getByRole("button", { name: "Confirm & toggle" })).toBeTruthy();
+  });
+
+  it("cancelling the ceremony clears the failure, so the next arming starts clean", async () => {
+    mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      [KILL_SWITCH]: () => json({ error: { code: "X", message: "no", correlationId: "c" } }, 403),
+    });
+    await armAndConfirm();
+    await screen.findByText(/do not have access|not changed/i);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Arm kill switch…" }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByText(/do not have access|not changed/i)).toBeNull();
+  });
 });

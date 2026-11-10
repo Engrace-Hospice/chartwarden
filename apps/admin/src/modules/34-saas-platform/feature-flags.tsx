@@ -4,11 +4,14 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  type OpsFailure,
+  ReverifyLink,
   SelectField,
   StatGrid,
   StatusPill,
   TableScroll,
   TextField,
+  describeOpsError,
   interactiveRowProps,
   useApiClient,
   useDebouncedValue,
@@ -60,6 +63,9 @@ const KIND_OPTIONS = [
   ...FLAG_KINDS.map((k) => ({ value: k, label: statusLabel(k) })),
 ];
 
+/** Refusals the server makes before it applies anything; for any other failure the flag's state is unknown. */
+const REFUSED_BEFORE_APPLY: ReadonlySet<OpsFailure["kind"]> = new Set(["step-up", "forbidden"]);
+
 const scopeLabel = (f: FeatureFlagView): string =>
   f.organizationId ? "Per-tenant" : "Platform-global";
 
@@ -86,6 +92,8 @@ export function FeatureFlags(): JSX.Element {
   const { selectedId, select, close } = useSelectionParam("flag");
   const [ceremony, setCeremony] = useState<FeatureFlagView | null>(null);
   const [committing, setCommitting] = useState(false);
+  // Why the last commit was refused, shown inside the ceremony, which stays open so the operator can re-verify or retry.
+  const [commitFailure, setCommitFailure] = useState<OpsFailure | null>(null);
 
   // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
   // catches up to the same text — without this the effect would fetch the identical query a second time.
@@ -138,28 +146,32 @@ export function FeatureFlags(): JSX.Element {
   const commitKillSwitch = useCallback(
     async (typed?: string): Promise<void> => {
       const flag = ceremony;
-      if (!flag || typed !== flag.flagKey) return;
+      if (!flag || committing || typed !== flag.flagKey) return;
       setCommitting(true);
-      const { error: err } = await client.POST(
-        "/api/v1/platform/feature-flags/{flagKey}/kill-switch",
-        {
+      setCommitFailure(null);
+      // A rejected request (offline) is a failure like an error response: it must not leave the ceremony stuck or silent.
+      const result = await client
+        .POST("/api/v1/platform/feature-flags/{flagKey}/kill-switch", {
           params: { path: { flagKey: flag.flagKey } },
           body: {
             killSwitchActive: !flag.killSwitchActive,
             reason: `Kill switch toggled via platform feature-flags console for ${flag.flagKey}`,
           },
-        },
-      );
+        })
+        .catch(() => null);
       setCommitting(false);
-      setCeremony(null);
-      if (!err) {
-        reopenedRowId.current = flag.id;
-        captureFocus();
-        close();
-        void load();
+      if (!result || result.error) {
+        // Refused (a stale step-up, a 403, a 5xx) or unreachable: say so and keep the ceremony open; nothing changed.
+        setCommitFailure(describeOpsError(result?.error, result?.response ?? null));
+        return;
       }
+      setCeremony(null);
+      reopenedRowId.current = flag.id;
+      captureFocus();
+      close();
+      void load();
     },
-    [ceremony, client, load, close, captureFocus],
+    [ceremony, committing, client, load, close, captureFocus],
   );
 
   // A failed load empties the list, so no drawer shows a flag that was last read before the failure (and a retry cannot re-mount it from stale data).
@@ -215,7 +227,10 @@ export function FeatureFlags(): JSX.Element {
           key={selected.id}
           flag={selected}
           onClose={close}
-          onArmKillSwitch={() => setCeremony(selected)}
+          onArmKillSwitch={() => {
+            setCommitFailure(null);
+            setCeremony(selected);
+          }}
         />
       ) : null}
       {ceremony ? (
@@ -234,6 +249,17 @@ export function FeatureFlags(): JSX.Element {
                 Arming the kill switch immediately disables this capability for every affected
                 tenant and emits a platform-emergency alert.
               </div>
+              {commitFailure ? (
+                <div className="wx-form-stack">
+                  <InlineAlert tone="error">
+                    {commitFailure.message}{" "}
+                    {REFUSED_BEFORE_APPLY.has(commitFailure.kind)
+                      ? "The kill switch was not changed."
+                      : "Check the flag's current state before trying again."}
+                  </InlineAlert>
+                  {commitFailure.kind === "step-up" ? <ReverifyLink>Re-verify</ReverifyLink> : null}
+                </div>
+              ) : null}
             </div>
           }
           legalText="I confirm this emergency change is authorized and understand it takes effect immediately."
@@ -245,7 +271,10 @@ export function FeatureFlags(): JSX.Element {
           }}
           commitLabel={committing ? "Working…" : "Confirm & toggle"}
           onCommit={(typed) => void commitKillSwitch(typed)}
-          onCancel={() => setCeremony(null)}
+          onCancel={() => {
+            setCeremony(null);
+            setCommitFailure(null);
+          }}
         />
       ) : null}
     </div>
