@@ -41,9 +41,24 @@ describe("1 — a cd that may not have applied (failed, subshell, pipe, backgrou
     expect(d("cd nope && echo x > scripts/harness/pre-tool-guard.ts")).toBe("allow");
   });
 
-  it("asks when a chain longer than the tracked set precedes a protected write", () => {
-    const hops = Array.from({ length: 40 }, (_, i) => `cd d${i}`).join("; ");
-    expect(d(`${hops}; echo x > scripts/harness/pre-tool-guard.ts`)).toBe("ask");
+  // Each `;` doubles the directories a command could be in (the `cd` applied or not): d hops reach 2^d. Past 16
+  // the guard has lost the thread, so a relative write asks for the unknown directory even to a name that is
+  // protected nowhere; with the cap lifted that write would be judged from 64 known, harmless directories.
+  const hops = (count: number): string =>
+    Array.from({ length: count }, (_, i) => `cd d${i}`).join("; ");
+
+  it("asks about a write to an ordinary name once more than 16 directories are possible", () => {
+    const verdict = v(`${hops(6)}; echo x > notes.txt`);
+    expect(verdict.decision).toBe("ask");
+    expect(verdict.reason).toMatch(/cannot resolve/i);
+  });
+
+  it("allows the same write while the possible directories are few enough to track", () => {
+    expect(d(`${hops(3)}; echo x > notes.txt`)).toBe("allow");
+  });
+
+  it("asks when a long chain precedes a protected write", () => {
+    expect(d(`${hops(40)}; echo x > scripts/harness/pre-tool-guard.ts`)).toBe("ask");
   });
 
   it.each([
