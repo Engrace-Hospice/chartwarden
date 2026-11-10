@@ -712,9 +712,13 @@ export interface ClaimsBillingEntitlementReader {
 
 /**
  * Slice 2 (tenant pricing) — the billing service mode of an organisation's subscription (owner M35). `null` = the org has
- * no contracted (census_banded) subscription. A small read so another module can enforce a rule that depends on it
- * (slice 3: a tenant that bills outside ChartWarden must be on `none`). Reads the database every call (no cache); throws
- * when the read fails, and a caller that must not guess fails closed.
+ * no LIVE contracted (census_banded) subscription right now, which is wider than "never contracted": it is also what an org
+ * whose contracted subscription is CANCELED or PAUSED reads (the read covers live contracts only, the same scope the daily
+ * census records for; a pause with an end date whose date has passed counts as live again, an open-ended pause or one still
+ * in the future does not). A paused org still has a contract and a mode; this read does not report it. A caller must therefore
+ * not take `null` to mean "uncontracted, so unrestricted" for an org that may be paused or between contracts. A small read so
+ * another module can enforce a rule that depends on it (slice 3: a tenant that bills outside ChartWarden must be on `none`).
+ * Reads the database every call (no cache); throws when the read fails, and a caller that must not guess fails closed.
  */
 export interface BillingServiceModeReader {
   billingServiceModeForOrg(organizationId: OrgId): Promise<BillingServiceMode | null>;
