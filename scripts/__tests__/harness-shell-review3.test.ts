@@ -199,3 +199,70 @@ describe("2 and 7 — bounded work on hostile input", () => {
     expect(d("cat {a}{b}")).toBe("allow");
   });
 });
+
+describe("6 — a destructive command over the whole repo root", () => {
+  it.each([
+    "chmod -R a-r .",
+    "chmod -R 000 ./",
+    "chown -R root .",
+    "chmod -R u+w $PWD",
+    "find . -type f -delete",
+    "find -delete",
+    "find . -delete",
+    "find /repo -type f -delete",
+    "find . -type f -exec rm {} +",
+    "find . -mtime +7 -delete",
+    "find . -name x -o -delete",
+    "find . ! -name '*.keep' -delete",
+    "find . -path ./node_modules -prune -o -type f -delete",
+    "find . -delete -name '*.tmp'",
+    "rm -rf $PWD",
+    'rm -rf "$PWD"',
+    "rm -rf $(pwd)",
+    "rm -rf $(git rev-parse --show-toplevel)",
+    "rm -rf /repo",
+    "rm -rf .",
+    "rm -rf ./",
+    "rm -r --force .",
+    "cd apps && rm -rf ..",
+    "cd apps/web && cd ../.. && rm -rf .",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it("says what is at stake, not an empty path", () => {
+    expect(v("rm -rf $PWD").reason).toMatch(/repo root/i);
+    expect(v("rm -rf $PWD").reason).not.toMatch(/^``/);
+  });
+
+  it.each([
+    "find . -name '*.tmp' -delete",
+    "find . -iname '*.log' -delete",
+    "find . -path './tmp/*' -delete",
+    "find . -regex '.*\\.o' -delete",
+    "find . -type f -name '*.js' -delete",
+    "find . \\( -name '*.o' -o -name '*.a' \\) -delete",
+    "find . -name node_modules -prune -o -name '*.tmp' -delete",
+    "find . -name '*.log' -exec rm {} +",
+    "find dist -type f -delete",
+    "find node_modules -delete",
+    "find apps/web/dist -mtime +7 -delete",
+    "find . -type f",
+    "find . -type f -exec grep foo {} +",
+    "find . -name '*.ts' -newer x",
+    "rm -rf dist",
+    "rm -rf node_modules",
+    "rm -rf apps/web/dist",
+    "rm -r apps/web/dist apps/backend/dist",
+    "rm -f x.ts",
+    "rm -rf /tmp/work",
+    "rm -rf /repo/apps/web/dist",
+    "chmod -R 755 apps/web",
+    "chmod -R u+w apps",
+    "chown -R me apps/web/dist",
+    "chmod +x scripts/new-tool.sh",
+    "cd apps/web && chmod -R 755 .",
+    "cd apps/web && rm -rf .turbo",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});

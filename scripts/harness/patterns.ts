@@ -1502,21 +1502,49 @@ function copyTargets(
   return [wt(dest, contents, contents), ...srcs.map((s) => wt(`${dest}/${baseName(s)}`))];
 }
 
-/** `find <start…> -delete` and `find <start…> -exec rm {} +` write to everything under the start paths. */
+const FIND_NARROWING = /^-(i?name|i?path|i?wholename|i?regex)$/;
+
+/**
+ * Is the `find` action at `rest[action]` (`-delete`, `-exec rm`) limited to files whose name or path matches
+ * a pattern? Reads back from the action to the start of its `-o` branch: a name test there narrows it, a
+ * negated one (`! -name x`) does not, and an `-o` before any test means it runs on everything.
+ */
+function findActionIsNarrowed(rest: readonly string[], action: number): boolean {
+  let depth = 0;
+  for (let j = action - 1; j >= 0; j--) {
+    const a = rest[j] ?? "";
+    if (a === ")" || a === "\\)") depth++;
+    else if (a === "(" || a === "\\(") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && (a === "-o" || a === "-or")) return false;
+    else if (FIND_NARROWING.test(a)) {
+      if (rest[j - 1] === "!" || rest[j - 1] === "-not") j--;
+      else return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * `find <start…> -delete` and `find <start…> -exec rm {} +` write to everything under the start paths. Over
+ * the repo root that is the whole tree, harness and compliance record included, unless a name or path test
+ * limits it (`find . -name '*.tmp' -delete` stays an everyday cleanup).
+ */
 function findWrites(args: readonly string[]): WriteTarget[] {
   let k = 0;
   while (/^-[HLP]$/.test(args[k] ?? "")) k++;
   const starts: string[] = [];
-  for (; k < args.length && !/^(-|\(|!)/.test(args[k] ?? ""); k++) starts.push(args[k] ?? "");
+  for (; k < args.length && !/^(-|\\?\(|!)/.test(args[k] ?? ""); k++) starts.push(args[k] ?? "");
   const rest = args.slice(k);
-  const destructive =
-    rest.includes("-delete") ||
-    rest.some((a, i) => {
-      if (!/^-(exec|execdir|ok|okdir)$/.test(a)) return false;
-      const next = rest[i + 1] ?? "";
-      return FIND_WRITER.test(next) || (next === "sed" && rest.slice(i + 2).some(isInPlace));
-    });
-  return destructive ? fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true)) : [];
+  const actions = rest.flatMap((a, i) => {
+    if (a === "-delete") return [i];
+    if (!/^-(exec|execdir|ok|okdir)$/.test(a)) return [];
+    const next = rest[i + 1] ?? "";
+    const writes = FIND_WRITER.test(next) || (next === "sed" && rest.slice(i + 2).some(isInPlace));
+    return writes ? [i] : [];
+  });
+  if (actions.length === 0) return [];
+  const wholeTree = actions.some((i) => !findActionIsNarrowed(rest, i));
+  return fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true, wholeTree));
 }
 
 /** `tar x…` and `unzip` unpack into `-C dir` / `-d dir`, or the current directory: a merge into it. */
@@ -1542,7 +1570,11 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
 function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   const files = fileArgs(args);
   const recursive = args.some(isRecursive);
-  if (/^(rm|unlink|shred|rmdir)$/.test(prog)) return files.map((f) => wt(f, true));
+  if (prog === "rm") {
+    const tree = args.some((a) => clusterHas(a, "rR") || a === "--recursive");
+    return files.map((f) => wt(f, true, tree));
+  }
+  if (/^(unlink|shred|rmdir)$/.test(prog)) return files.map((f) => wt(f, true));
   if (prog === "mv") {
     return [
       ...splitDest(args, files).srcs.map((s) => wt(s, true)),
@@ -1552,7 +1584,7 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   if (/^(cp|install|ln)$/.test(prog)) return copyTargets(args, files, recursive);
   if (prog === "rsync") return copyTargets(args, files, true);
   if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
-  if (/^(chmod|chown)$/.test(prog)) return files.map((f) => wt(f, recursive));
+  if (/^(chmod|chown)$/.test(prog)) return files.map((f) => wt(f, recursive, recursive));
   if (/^(sed|perl)$/.test(prog)) {
     return args.some(isInPlace) ? files.map((f) => wt(f)) : [];
   }
@@ -1656,6 +1688,8 @@ const UNKNOWN_DIR_REASON =
 const protectedReason = (path: string): string =>
   `\`${echo(path)}\` is part of the agent harness or the compliance record. Changing it through the shell skips the edit prompt, so a human approves it here.`;
 const WHOLE_TREE: WriteTarget = { raw: "", anc: true, merge: true };
+const ROOT_WIDE_REASON =
+  "This recursive delete, permission change or tree merge takes in the whole repo root, and with it the agent harness and the compliance record. A human decides.";
 
 /** Pathspecs a `git checkout|restore|rm|mv` writes, by the git rules for each (`--`, `--source X`, `-b`). */
 function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, dir: Cwd): string[] {
@@ -2108,7 +2142,11 @@ function classifySegment(
   const protectedHit = writesProtectedPath(parsed, here, ctx);
   if (protectedHit) {
     return ask(
-      protectedHit.path === null ? UNKNOWN_DIR_REASON : protectedReason(protectedHit.path),
+      protectedHit.path === null
+        ? UNKNOWN_DIR_REASON
+        : protectedHit.path === ""
+          ? ROOT_WIDE_REASON
+          : protectedReason(protectedHit.path),
     );
   }
   if (runsInlineCode(prog, args)) {
