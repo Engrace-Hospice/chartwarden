@@ -17,7 +17,7 @@ function Where(): JSX.Element {
   const location = useLocation();
   const type = useNavigationType();
   return (
-    <output data-testid="where">
+    <output data-testid="where" data-confirmation={location.state?.confirmation}>
       {type} {location.pathname}
     </output>
   );
@@ -47,6 +47,8 @@ describe("useSuccessRedirect", () => {
     expect(result.current.done).toBe(true);
     expect(screen.getByTestId("where").textContent).toBe("REPLACE /next");
     expect(screen.getAllByText("Saved.")).toHaveLength(1);
+    // The destination can keep showing it once the toast is gone.
+    expect(screen.getByTestId("where").getAttribute("data-confirmation")).toBe("Saved.");
   });
 
   it("toasts but does not navigate when the page unmounted before the write landed", () => {

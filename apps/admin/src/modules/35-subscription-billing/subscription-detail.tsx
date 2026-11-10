@@ -20,7 +20,14 @@ import {
   usageThresholdTone,
 } from "./status";
 import { type AddonUsage, AddonsPanel } from "./subscription-addons";
-import { DrawerHead, StateEmpty, StateError, StateLoading, isNotFound } from "./ui";
+import {
+  ConfirmationBanner,
+  DrawerHead,
+  StateEmpty,
+  StateError,
+  StateLoading,
+  isNotFound,
+} from "./ui";
 
 type AdminSub =
   operations["getApiAdminSubscriptionsById"]["responses"][200]["content"]["application/json"];
@@ -123,6 +130,7 @@ export function SubscriptionDetail(): JSX.Element {
             <Button onClick={() => navigate(`/admin/subscriptions/${sub.id}/pause`)}>Pause</Button>
           </div>
         </header>
+        <ConfirmationBanner />
         <h2 className="wx-action-title">Usage this period</h2>
         {!usage || usage.length === 0 ? (
           <StateEmpty icon="bar-chart">

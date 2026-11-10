@@ -11,6 +11,7 @@ import {
   isStepUpRequired,
 } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 
 /** A server result surfaced to the operator. `stepUp`: the refusal was STEP_UP_REQUIRED (offer Re-verify). */
 export interface Outcome {
@@ -45,6 +46,25 @@ export const UNREACHABLE_OUTCOME: Outcome = {
  */
 export function settleWrite<T>(request: Promise<T>): Promise<T | null> {
   return request.catch(() => null);
+}
+
+/** Navigation state that carries a finished write's confirmation to the page it lands on (see useSuccessRedirect). */
+export const confirmationState = (message: string): { confirmation: string } => ({
+  confirmation: message,
+});
+
+/**
+ * The confirmation of the write that sent the operator here, for the destination page to show. The toast announces it and is gone
+ * after five seconds, which is too short a record for a money write (a refund approved, a subscription paused): this stays on the
+ * page until the operator moves on (any navigation replaces the history state). Not a live region, the toast already announced it.
+ */
+export function ConfirmationBanner(): JSX.Element | null {
+  const message = (useLocation().state as { confirmation?: unknown } | null)?.confirmation;
+  return typeof message === "string" ? (
+    <InlineAlert tone="success" live={false}>
+      {message}
+    </InlineAlert>
+  ) : null;
 }
 
 /**

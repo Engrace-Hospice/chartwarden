@@ -18,7 +18,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
-import { DrawerHead, LoadMore, StateEmpty, StateError, StateLoading } from "./ui";
+import {
+  ConfirmationBanner,
+  DrawerHead,
+  LoadMore,
+  StateEmpty,
+  StateError,
+  StateLoading,
+} from "./ui";
 
 type RefundPage = operations["getApiAdminRefunds"]["responses"][200]["content"]["application/json"];
 type Refund = RefundPage["items"][number];
@@ -106,6 +113,7 @@ export function RefundsQueue(): JSX.Element {
             <Button onClick={() => navigate("/admin/refunds/new")}>New refund</Button>
           </div>
         </header>
+        <ConfirmationBanner />
         {loading && rows.length === 0 ? (
           <StateLoading label="Loading refunds…" />
         ) : error ? (

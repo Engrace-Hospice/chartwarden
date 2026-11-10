@@ -3,10 +3,12 @@
 // navigation and is announced by the destination's live region (an inline banner inserted just before a redirect is torn
 // down before a screen reader reads it). Locking matters: `busy` alone clears before the page is gone, so a second Enter
 // would send another POST under a fresh Idempotency-Key. The navigation REPLACES the form's entry, so Back does not return to
-// a form that could be submitted again.
+// a form that could be submitted again. The message also rides the navigation state, so the destination can keep showing it after
+// the toast is gone (ConfirmationBanner).
 import { useToast } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { confirmationState } from "./ui";
 
 export function useSuccessRedirect(): {
   done: boolean;
@@ -32,7 +34,7 @@ export function useSuccessRedirect(): {
       // A POST that resolves after the operator left the page still landed, so it is announced; but it must not pull them back.
       if (!mounted.current) return;
       setDone(true);
-      navigate(to, { replace: true });
+      navigate(to, { replace: true, state: confirmationState(message) });
     },
     [navigate, toast],
   );
