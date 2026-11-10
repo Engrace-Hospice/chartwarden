@@ -184,6 +184,50 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     expect(again).toBe(false);
   });
 
+  // `mot_idempotency_unique` is also the double-sign dedupe, and the key is deterministic: a registration move replaces a waiting transmission's key, so a
+  // second sign that read the order before the first committed (the sign path reads it without a lock) and enqueues after the move finds no row under
+  // the key it computes. The row is found by its ORDER first, so the move cannot turn a double-sign into a second transmission row.
+  it("sign-time enqueue: a stale second sign that races a clinic move's rekey reuses the order's transmission row (no second row)", async () => {
+    const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+    const { orderId } = await h.seedOrder({
+      org: ORG_A,
+      patientId,
+      status: "signed",
+      sendState: "not_required",
+      transmission: false,
+    });
+    const load = async () =>
+      inOrg(h.handle.db, ORG_A, async (tx) => {
+        const { schema } = await import("@chartwarden/db");
+        const { eq } = await import("drizzle-orm");
+        const [row] = await tx
+          .select()
+          .from(schema.medicationOrders)
+          .where(eq(schema.medicationOrders.id, orderId));
+        return row as NonNullable<typeof row>;
+      });
+    const staleRead = await load(); // the second sign's read: the order is still `not_required`
+    expect(
+      await inOrg(h.handle.db, ORG_A, async (tx) =>
+        enqueueTransmissionIfBound(tx, h.outbox, ORG_A, await load(), new Date()),
+      ),
+    ).toBe(true); // the first sign queues it
+    await h.admin.query(
+      "UPDATE medication_order_transmission SET idempotency_key='rekeyed-by-a-clinic-move' WHERE medication_order_id=$1",
+      [orderId],
+    ); // the registration move replaces the waiting transmission's key
+    const second = await inOrg(h.handle.db, ORG_A, async (tx) =>
+      enqueueTransmissionIfBound(tx, h.outbox, ORG_A, staleRead, new Date()),
+    );
+    expect(second).toBe(true);
+    expect(
+      await h.q(
+        "SELECT idempotency_key FROM medication_order_transmission WHERE medication_order_id=$1",
+        [orderId],
+      ),
+    ).toEqual([{ idempotency_key: "rekeyed-by-a-clinic-move" }]); // one row, still the rekeyed one
+  });
+
   it("sign-time enqueue refuses an order with no RxCUI (it stays on the local-activation path)", async () => {
     const patientId = await h.seedPatient(ORG_A, { synced: "501" });
     const { orderId } = await h.seedOrder({

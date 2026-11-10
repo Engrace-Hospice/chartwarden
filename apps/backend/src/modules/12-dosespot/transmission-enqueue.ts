@@ -62,12 +62,23 @@ export async function enqueueTransmissionIfBound(
     rxBusinessKey,
     correlationId: randomUUID(),
   });
-  const inserted = await tx
-    .insert(MOT)
-    .values({ organizationId, ...plan.insert })
-    .onConflictDoNothing()
-    .returning({ id: MOT.id });
-  let transmissionId = inserted[0]?.id;
+  // The order's own row first, whatever key it carries now: a registration move replaces a waiting transmission's key, and a second sign that read the
+  // order before the first committed (the sign path reads it without a lock) would otherwise find no row under the deterministic key it computes and
+  // insert a second one for the same order. The unique index on the key still serialises two signs that both find none.
+  const [ofThisOrder] = await tx
+    .select({ id: MOT.id })
+    .from(MOT)
+    .where(and(eq(MOT.organizationId, organizationId), eq(MOT.medicationOrderId, row.id)))
+    .limit(1);
+  const inserted =
+    ofThisOrder === undefined
+      ? await tx
+          .insert(MOT)
+          .values({ organizationId, ...plan.insert })
+          .onConflictDoNothing()
+          .returning({ id: MOT.id })
+      : [];
+  let transmissionId = ofThisOrder?.id ?? inserted[0]?.id;
   if (transmissionId === undefined) {
     const [existing] = await tx
       .select({ id: MOT.id, medicationOrderId: MOT.medicationOrderId })
