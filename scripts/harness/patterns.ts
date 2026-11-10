@@ -574,14 +574,38 @@ const WRAPPER_FLAG_VALUE: ReadonlyMap<string, RegExp> = new Map([
   ].map((w): [string, RegExp] => [w, NO_FLAG_VALUE]),
 ]);
 
-/** The program a simple command runs, skipping `VAR=value` prefixes and wrapper commands (`sudo`, `env`, `then`). */
-function program(seg: string): { prog: string; args: string[]; assigns: string[] } {
+/**
+ * `env -C DIR cmd`, `env --chdir=DIR cmd`, `sudo -D DIR cmd`: the wrapper runs the command in DIR, so a relative
+ * target of that command is relative to DIR. Matches the flag and, when it carries its own value, captures it.
+ */
+const CHDIR_FLAG: ReadonlyMap<string, RegExp> = new Map([
+  ["env", /^(?:-C|--chdir)$/],
+  ["sudo", /^(?:-D|--chdir)$/],
+]);
+const CHDIR_ATTACHED: ReadonlyMap<string, RegExp> = new Map([
+  ["env", /^(?:-C(.+)|--chdir=(.*))$/s],
+  ["sudo", /^(?:-D(.+)|--chdir=(.*))$/s],
+]);
+
+/**
+ * The program a simple command runs, skipping `VAR=value` prefixes and wrapper commands (`sudo`, `env`, `then`).
+ * A name the shell would unquote (`\cd`, `c\d`) is the program it names. `chdir` is the directory a wrapper moves
+ * the command into, when it names one.
+ */
+function program(seg: string): {
+  prog: string;
+  args: string[];
+  assigns: string[];
+  chdir?: string;
+} {
   const w = words(seg);
   let k = 0;
   let lastWrapper = "";
+  let chdir: string | undefined;
   while (k < w.length) {
     const word = w[k] ?? "";
-    if (word.replace(/^.*\//, "") === "timeout") {
+    const bare = unescapeWord(word);
+    if (bare.replace(/^.*\//, "") === "timeout") {
       lastWrapper = "timeout";
       k++;
       while (k < w.length) {
@@ -604,24 +628,31 @@ function program(seg: string): { prog: string; args: string[]; assigns: string[]
       if (k < w.length) k++;
       continue;
     }
-    const takesValue = WRAPPER_FLAG_VALUE.get(word);
+    const takesValue = WRAPPER_FLAG_VALUE.get(bare);
     if (ASSIGNMENT.test(word)) k++;
     else if (takesValue && k + 1 < w.length) {
-      lastWrapper = word;
+      lastWrapper = bare;
       k++;
       while (k < w.length && /^-/.test(w[k] ?? "") && (w[k] ?? "") !== "--") {
-        k += takesValue.test(w[k] ?? "") ? 2 : 1;
+        const flag = w[k] ?? "";
+        const attached = CHDIR_ATTACHED.get(bare)?.exec(flag);
+        if (attached) chdir = attached[1] ?? attached[2] ?? "";
+        else if (CHDIR_FLAG.get(bare)?.test(flag)) chdir = w[k + 1] ?? "";
+        // `--chdir DIR` takes its value from the next word as `-C DIR` does.
+        k += takesValue.test(flag) || flag === "--chdir" ? 2 : 1;
       }
       // `sudo -- rm x`: `--` ends the wrapper's options, and the command follows it.
       if (w[k] === "--") k++;
     } else break;
   }
   // `env -u X` with no command prints the environment: it is still `env`.
-  const prog = k >= w.length && lastWrapper === "env" ? "env" : (w[k] ?? "").replace(/^.*\//, "");
+  const prog =
+    k >= w.length && lastWrapper === "env" ? "env" : unescapeWord(w[k] ?? "").replace(/^.*\//, "");
   return {
     prog,
     args: prog === "env" && k >= w.length ? [] : w.slice(k + 1),
     assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
+    ...(chdir === undefined ? {} : { chdir }),
   };
 }
 
@@ -728,6 +759,8 @@ function splitRedirects(seg: string): Redirects {
 
 interface Parsed {
   readonly prog: string;
+  /** The directory a wrapper (`env -C`, `sudo -D`) runs the command in, as written. */
+  readonly chdir?: string;
   readonly args: string[];
   readonly assigns: string[];
   readonly outs: string[];
@@ -1152,6 +1185,30 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
   return work.spent && verdict.decision !== "deny" ? ask(WORK_BUDGET_REASON) : verdict;
 }
 
+/** A word as the shell must read it back as one word. */
+const shellQuote = (w: string): string =>
+  /^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`;
+
+/**
+ * The command lines a `find` runs: each `-exec CMD … ;` / `-ok CMD … +`, re-quoted so it reads as one command
+ * line. `-execdir` and `-okdir` run in the directory of each file found, which is not one the guard knows.
+ */
+function findExecCommands(args: readonly string[]): Array<{ command: string; inFileDir: boolean }> {
+  const runs: Array<{ command: string; inFileDir: boolean }> = [];
+  for (let i = 0; i < args.length; i++) {
+    const action = /^-(?:exec|ok)(dir)?$/.exec(args[i] ?? "");
+    if (!action) continue;
+    let end = i + 1;
+    // `\;` and `;` end the command, `+` batches it; a lone `\` is a `\;` the line splitter cut at the `;`.
+    while (end < args.length && !/^(?:\\?;|\+|\\)$/.test(args[end] ?? "")) end++;
+    const words = args.slice(i + 1, end);
+    if (words.length > 0)
+      runs.push({ command: words.map(shellQuote).join(" "), inFileDir: action[1] !== undefined });
+    i = end;
+  }
+  return runs;
+}
+
 function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
   const c = cmd.trim();
   if (depth > MAX_NESTING || --judgeBudget < 0) {
@@ -1181,24 +1238,31 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   let after = start; // where the next command runs when the one before it succeeded
   let anywhere = start; // everywhere any later command could run
   let scriptOnStdin = false;
+  // `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named.
+  const cdpath = /\bCDPATH\b/.test(c);
   parts.forEach((part, index) => {
     const parsed = parsedParts[index] as Parsed;
     // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
-    const here = sequential && part.joiner === "&&" ? after : anywhere;
+    const shellIn = sequential && part.joiner === "&&" ? after : anywhere;
+    // `env -C DIR cmd` runs `cmd` in DIR, not the shell around it.
+    const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
     const v = classifySegment(part.text, parsed, ctx, here);
     if (v) verdicts.push(v);
-    // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`.
+    // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`, `find -exec …`.
     if (parsed.prog === "eval") {
       verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
     } else if (NESTED_SHELL.test(parsed.prog)) {
       const k = parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a));
       if (k >= 0) verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, here));
+    } else if (parsed.prog === "find") {
+      for (const run of findExecCommands(parsed.args))
+        verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
     }
     scriptOnStdin ||= readsScriptFromStdin(parsed, index);
-    const moved = nextDirs(here, parsed.prog, parsed.args, ctx);
+    const moved = nextDirs(shellIn, parsed, part.text, ctx, cdpath);
     // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
     // that follows `||` the next `&&` command may be in the old directory as well as in X.
-    after = moved ? (part.joiner === "||" ? joinDirs(here, moved) : moved) : here;
+    after = moved ? (part.joiner === "||" ? joinDirs(shellIn, moved) : moved) : shellIn;
     if (moved) anywhere = joinDirs(anywhere, moved);
   });
   // `$( … )` and backticks run wherever the command around them runs.
@@ -1465,26 +1529,65 @@ const joinDirs = (a: readonly Cwd[], b: readonly Cwd[]): readonly Cwd[] =>
 const cdTarget = (args: readonly string[]): string =>
   args.find((a) => !/^-[LPe@]+$/.test(a) && a !== "--") ?? "~";
 
-/** The directory after a simple command: `cd`/`pushd` move it, `popd` and anything dynamic lose it. */
-function nextDir(cwd: Cwd, prog: string, args: readonly string[], ctx: BashContext): Cwd {
+/**
+ * The directory after a simple command: `cd` and `pushd DIR` move it; `popd`, a `pushd` that rotates or keeps
+ * the stack (`pushd`, `pushd +1`, `pushd -n DIR`), a `cd` that `CDPATH` may redirect, and anything dynamic lose it.
+ */
+function nextDir(
+  cwd: Cwd,
+  prog: string,
+  args: readonly string[],
+  ctx: BashContext,
+  cdpath: boolean,
+): Cwd {
   if (prog === "popd") return null;
   if (prog !== "cd" && prog !== "pushd") return cwd;
+  if (cdpath || (prog === "pushd" && (args.length !== 1 || /^[-+]/.test(args[0] ?? ""))))
+    return null;
   const target = cdTarget(args);
   if (target === "-") return null;
   const dir = resolvePath(target, cwd, ctx, true);
   return dir !== null && dir.length > MAX_CWD_CHARS ? null : dir;
 }
 
+/** Programs that run a script in THIS shell, which may `cd` anywhere. */
+const SOURCES = /^(source|\.)$/;
+/** A construct the guard does not parse (a loop, a `case`, a function definition) that holds a directory change. */
+const COMPOUND_START =
+  /^\s*(case|for|while|until|select|function)\b|^\s*[A-Za-z_][\w.-]*\s*\(\s*\)/;
+const MENTIONS_CD = /\b(cd|pushd|popd)\b/;
+
+/**
+ * Can this command change the directory of the shell around it without the guard seeing a `cd` it models? A
+ * script it sources, an `eval` of text that names a `cd` or that is built at run time, and a function or `case`
+ * whose body holds one. The directory is then unknown, and a relative write from it asks.
+ */
+function hidesDirectoryChange(p: Parsed, text: string): boolean {
+  if (SOURCES.test(p.prog)) return true;
+  if (p.prog === "eval") {
+    const body = p.args.join(" ");
+    return MENTIONS_CD.test(body) || /[$`]/.test(body);
+  }
+  return COMPOUND_START.test(text) && MENTIONS_CD.test(text);
+}
+
 /** {@link nextDir} for each possible directory; undefined when the command does not move at all. */
 function nextDirs(
   dirs: readonly Cwd[],
-  prog: string,
-  args: readonly string[],
+  p: Parsed,
+  text: string,
   ctx: BashContext,
+  cdpath: boolean,
 ): readonly Cwd[] | undefined {
-  if (prog !== "cd" && prog !== "pushd" && prog !== "popd") return undefined;
-  return capDirs([...new Set(dirs.map((dir) => nextDir(dir, prog, args, ctx)))]);
+  if (p.prog === "cd" || p.prog === "pushd" || p.prog === "popd") {
+    return capDirs([...new Set(dirs.map((dir) => nextDir(dir, p.prog, p.args, ctx, cdpath)))]);
+  }
+  return hidesDirectoryChange(p, text) ? [null] : undefined;
 }
+
+/** Where `env -C DIR cmd` and `sudo -D DIR cmd` run `cmd`: DIR, from each directory the command may be in. */
+const runIn = (dirs: readonly Cwd[], target: string, ctx: BashContext): readonly Cwd[] =>
+  capDirs([...new Set(dirs.map((dir) => nextDir(dir, "cd", [target], ctx, false)))]);
 
 /** Representative protected files, lower-case: a directory that holds one of them is an ancestor. */
 const PROTECTED_SAMPLES: readonly string[] = [

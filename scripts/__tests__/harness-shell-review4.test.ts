@@ -322,3 +322,69 @@ describe("a harness switch asks however it is spelled, where the original text r
     }
   });
 });
+
+// Any construct that can move the shell and that the guard cannot model leaves the directory UNKNOWN, and a
+// relative write from an unknown directory asks. Every payload below really writes into scripts/harness in a
+// real shell (`harness/p` is `scripts/harness/p` once the shell is in `scripts`), yet answered allow.
+describe("a directory change the guard cannot model leaves the directory unknown", () => {
+  it.each([
+    // a cd inside something that runs in this shell
+    "eval 'cd scripts'; echo x > harness/p",
+    "eval \"$(printf 'cd scripts')\"; echo x > harness/p",
+    "case 1 in 1) cd scripts;; esac; echo x > harness/p",
+    "f() { cd scripts; }; f && echo x > harness/p",
+    "function f { cd scripts; }; f && echo x > harness/p",
+    "cd() { builtin cd scripts; }; cd && echo x > harness/p",
+    "source ./go-to-scripts.sh; echo x > harness/p",
+    ". ./go-to-scripts.sh && echo x > harness/p",
+    // a spelling of cd the program name hides
+    "\\cd scripts && echo x > harness/p",
+    "c\\d scripts && echo x > harness/p",
+    // the directory stack
+    "cd scripts && pushd /tmp && pushd && echo x > harness/p",
+    "cd scripts && pushd /tmp && pushd +1 && echo x > harness/p",
+    "cd scripts && pushd /tmp && pushd -0 && echo x > harness/p",
+    "pushd -n /tmp; echo x > notes.txt && pushd scripts && popd && echo x > harness/p",
+    // CDPATH makes `cd harness` land somewhere else
+    "CDPATH=/repo/scripts cd harness && echo x > p",
+    "export CDPATH=/repo/scripts; cd harness && echo x > p",
+    // env and sudo move the command they run
+    "env -C scripts/harness tee p < /dev/null",
+    "env --chdir=scripts sh -c 'echo x > harness/p'",
+    "env --chdir scripts tee harness/p < /dev/null",
+    "sudo -D scripts/harness tee p < /dev/null",
+    // a shell the command starts, with a cd in it
+    "find . -maxdepth 0 -exec sh -c 'cd scripts && echo x > harness/p' \\;",
+    "find . -maxdepth 0 -exec bash -c 'cd scripts && echo x > harness/p' ;",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "cd apps/backend && bun run test",
+    "cd apps/web && echo x > notes.txt",
+    "builtin cd apps/web && bun run build",
+    "for f in a b; do echo $f; done; echo x > notes.txt",
+    "if [ -d dist ]; then rm -rf dist; fi",
+    "while read l; do echo $l; done < list.txt; echo x > notes.txt",
+    "case $1 in a) echo a;; esac; echo x > notes.txt",
+    "f() { echo hi; }; f && echo x > notes.txt",
+    "pushd apps/web && bun run build && popd",
+    "env -C apps/web bun run build",
+    "env NODE_ENV=test bun run test",
+    "env --chdir=apps/web bun run build",
+    "sudo -u root ls",
+    "sudo -D apps/web ls",
+    "find . -name '*.ts' -exec grep -l foo {} \\;",
+    "find . -maxdepth 0 -exec sh -c 'cd apps && ls' \\;",
+    'eval "$(ssh-agent -s)"',
+    "source .venv/bin/activate && pytest",
+    "\\rm -f dist/x.js",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+
+  it("reads a program name written with a backslash as the program", () => {
+    expect(d("\\rm -rf scripts/harness")).toBe("ask");
+    expect(d("\\tee scripts/harness/x < /tmp/in")).toBe("ask");
+  });
+});
