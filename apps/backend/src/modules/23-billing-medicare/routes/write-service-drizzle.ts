@@ -58,6 +58,7 @@ import {
   PriorElectionNotClosedError,
   priorElectionClosureTx,
 } from "../services/prior-election-closure";
+import { screenedText } from "../tenant-clearinghouse/screening";
 import type { M23WriteActor } from "./actor";
 import { mapNoe, mapNotr } from "./notice-views";
 import type {
@@ -102,6 +103,26 @@ import type {
 type BillingDb = repositories.BillingDb;
 
 const REASON_FLOOR = 40;
+
+const MAC_BAA_REF_MAX = 256;
+
+/**
+ * The MAC credential's BAA reference is typed by a person, stored beside the credential and returned by the list: it is folded to one
+ * line, bounded and refused when it looks like a patient identifier (an SSN or MBI shape), like the clearinghouse's own BAA reference.
+ * Absent stays absent (the field is optional and an update that omits it leaves the stored one). The refusal never echoes the text.
+ */
+function screenedBaaRecordRef(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  return screenedText(raw, {
+    field: "baaRecordRef",
+    min: 1,
+    max: MAC_BAA_REF_MAX,
+    lengthCode: "MAC_BAA_RECORD_REF_INVALID",
+    lengthMessage: `baaRecordRef must be 1-${MAC_BAA_REF_MAX} characters: say where the BAA is kept, or omit it`,
+    phiMessage:
+      "baaRecordRef looks like it contains a patient identifier; name the document, never a patient",
+  });
+}
 
 // ── projections (mirror the read-service mappers; kept local so write returns the same DTOs) ────────────
 
@@ -466,6 +487,8 @@ export function buildDrizzleM23WriteService(
     actor: M23WriteActor,
     args: UpsertMacCredentialArgs,
   ): Promise<MacCredentialView> => {
+    // Screened first: a refused reference reads and writes nothing (both lanes run this row function).
+    const baaRecordRef = screenedBaaRecordRef(args.baaRecordRef);
     const repo = new repositories.MacSubmitterCredentialRepository(tx);
     const existing = await repo.findByProviderEntity(args.providerEntityId);
     if (existing && existing.organizationId !== actor.organizationId) {
@@ -505,7 +528,7 @@ export function buildDrizzleM23WriteService(
         clientId: args.clientId,
         clientSecretCipher: cipher,
         clientSecretDekVersion: dekVersion,
-        ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+        ...(baaRecordRef !== undefined ? { baaRecordRef } : {}),
         ...(args.credentialExpiresAt !== undefined
           ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
           : {}),
@@ -524,7 +547,7 @@ export function buildDrizzleM23WriteService(
         clientSecretCipher: cipher,
         clientSecretDekVersion: dekVersion,
         setByMembershipId: actor.membershipId,
-        ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+        ...(baaRecordRef !== undefined ? { baaRecordRef } : {}),
         ...(args.credentialExpiresAt !== undefined
           ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
           : {}),

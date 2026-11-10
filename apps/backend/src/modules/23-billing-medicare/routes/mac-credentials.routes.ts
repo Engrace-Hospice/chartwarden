@@ -87,9 +87,10 @@ export function registerMacCredentialRoutes(
     },
   );
 
-  // POST /billing/mac-credentials/:providerEntityId/test — probe the MAC sandbox for a PE's credential and
-  // stamp `last_sandbox_test_at` on success. §4.1 #36 (GAP-144). Step-up (privileged config) + the provider
-  // scope + AI block + Idempotency-Key; the secret is never read, returned or logged.
+  // POST /billing/mac-credentials/:providerEntityId/test — check that the MAC portal for the PE's credential's jurisdiction
+  // answers and stamp `last_sandbox_test_at` when it does. §4.1 #36 (GAP-144). It does NOT validate the credential: the probe
+  // sends no secret, client id or submitter id (the first real submission is their first use). Step-up (privileged config) + the
+  // provider scope + AI block + Idempotency-Key; the secret is never read, returned or logged.
   app.post(
     "/api/v1/billing/mac-credentials/:providerEntityId/test",
     { preHandler: [ADMIN, ADMIN_PARAM_ABAC, ADMIN_STEPUP, NO_AI, IDEMPOTENT] },

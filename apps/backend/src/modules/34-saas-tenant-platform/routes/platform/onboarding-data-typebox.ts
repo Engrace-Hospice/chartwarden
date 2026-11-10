@@ -116,7 +116,13 @@ export const OnboardingMacCredentialUpsertRequest = Type.Composite([
       maxLength: 4096,
       description: "Write-only: sealed under the tenant's own key and never returned.",
     }),
-    baaRecordRef: Type.Optional(Type.String({ maxLength: 256 })),
+    baaRecordRef: Type.Optional(
+      Type.String({
+        maxLength: 256,
+        description:
+          "Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error.",
+      }),
+    ),
     credentialExpiresAt: Type.Optional(Type.String({ format: "date-time" })),
   }),
   OnboardingReasonSchema,
@@ -133,7 +139,10 @@ export const OnboardingMacCredentialViewSchema = Type.Object({
   hasSecret: Type.Boolean({ description: "The secret itself is never projected." }),
   baaRecordRef: Nullable(Type.String()),
   credentialExpiresAt: Nullable(Iso),
-  lastSandboxTestAt: Nullable(Iso),
+  lastSandboxTestAt: Type.Union([Iso, Type.Null()], {
+    description:
+      "When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It confirms only that the portal answered from ChartWarden; it does not validate the credential, because the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
+  }),
   version: Type.Integer(),
   createdAt: Iso,
   updatedAt: Iso,

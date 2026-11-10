@@ -170,7 +170,13 @@ export const UpsertMacCredentialBodySchema = Type.Object({
   tradingPartnerId: Type.String({ minLength: 1, maxLength: 64 }),
   clientId: Type.String({ minLength: 1, maxLength: 256 }),
   clientSecret: Type.String({ minLength: 1, maxLength: 4096 }),
-  baaRecordRef: Type.Optional(Type.String({ maxLength: 256 })),
+  baaRecordRef: Type.Optional(
+    Type.String({
+      maxLength: 256,
+      description:
+        "Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error.",
+    }),
+  ),
   credentialExpiresAt: Type.Optional(Type.String({ format: "date-time" })),
 });
 

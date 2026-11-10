@@ -140,7 +140,6 @@ function serverFor(confined: boolean) {
 }
 
 let idempotency = 0;
-const write = { "idempotency-key": "" };
 const send = (
   app: ReturnType<typeof serverFor>,
   method: "GET" | "POST" | "PUT",
@@ -150,7 +149,7 @@ const send = (
   app.inject({
     method,
     url,
-    headers: method === "GET" ? {} : { ...write, "idempotency-key": `onb-${++idempotency}` },
+    headers: method === "GET" ? {} : { "idempotency-key": `onb-${++idempotency}` },
     ...(payload ? { payload } : {}),
   });
 

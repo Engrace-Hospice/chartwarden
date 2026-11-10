@@ -53,8 +53,9 @@ export const PRE_ACTIVATION_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/v1/tenant/baa/:id/attest",
   // ── the billing steps (7: clearinghouse, 8: MAC credential, and the plan the tenant reads on step 2) ─────
   // The tenant settles these itself, so its session has to reach them before go-live. Every write keeps its own guards (the
-  // billing.clearinghouse / billing.mac_credential permission, a fresh step-up, the AI-actor block, an Idempotency-Key), and
-  // each write voids a pending go-live attestation in its own transaction. Exact pairs, no prefix.
+  // billing.clearinghouse / billing.mac_credential permission, a fresh step-up, the AI-actor block, an Idempotency-Key). The
+  // clearinghouse writes and the MAC credential save also void a pending go-live attestation in their own transaction (the MAC
+  // /test probe only stamps a timestamp and does not). Exact pairs, no prefix.
   "GET /api/v1/tenant/clearinghouse",
   "PUT /api/v1/tenant/clearinghouse",
   "POST /api/v1/tenant/clearinghouse/baa",

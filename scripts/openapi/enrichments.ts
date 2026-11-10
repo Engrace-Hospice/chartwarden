@@ -13780,6 +13780,13 @@ const M23RuleConfigListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 
+/**
+ * What `lastSandboxTestAt` and the test route's `ok` mean. The probe is the launch gateway's portal health check for the credential's
+ * jurisdiction: it sends neither the secret nor the client id, so it cannot say the credential works (the secret is first used by the
+ * first real submission). The names stay; the words must not promise more than the check does.
+ */
+const M23_MAC_PORTAL_CHECK_NOTE =
+  "It confirms only that the MAC portal for the credential's jurisdiction answered from ChartWarden; it does not validate the credential, because the secret, client id and submitter id are not sent (the first real submission is the first time they are used)";
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
@@ -13791,7 +13798,9 @@ const M23MacCredentialView = Type.Object({
   hasSecret: Type.Boolean(),
   baaRecordRef: Type.Union([Type.String(), Type.Null()]),
   credentialExpiresAt: Type.Union([Type.String(), Type.Null()]),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
   version: Type.Integer(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -13804,11 +13813,21 @@ const M23MacCredentialListResponse = Type.Object({
 const M23MacCredentialTestResponse = Type.Object({
   providerEntityId: Type.String(),
   macJurisdiction: Type.String(),
-  ok: Type.Boolean(),
-  method: Type.Literal("portal_health_probe"),
-  detail: Type.String(),
+  ok: Type.Boolean({
+    description: `True when the MAC portal for the credential's jurisdiction answered. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
+  method: Type.Literal("portal_health_probe", {
+    description:
+      "Always portal_health_probe: the check calls the jurisdiction's MAC portal health endpoint. It does not submit a test claim and does not use the stored credential.",
+  }),
+  detail: Type.String({
+    description:
+      "What the check saw (the portal answered or did not). It is never about the credential itself.",
+  }),
   checkedAt: Type.String(),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `The time the credential now records for this check: set when the portal answered, null when it did not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
 });
 const M23ValidationOverrideAuditPage = Type.Object({
   items: Type.Array(
@@ -13923,7 +13942,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/billing/mac-credentials/:providerEntityId/test": {
     summary:
-      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up; Idempotency-Key required (§4.1 #36)",
+      "Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36)",
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M23MacCredentialTestResponse,
   },

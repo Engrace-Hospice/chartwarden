@@ -340,4 +340,71 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
     );
     expect(opened).toBe(SECRET);
   });
+
+  it("screens baaRecordRef: an SSN or MBI shape is a 422 that stores and echoes nothing; a plain reference is stored and listed", async () => {
+    const app = serverWith({ M24_CREDENTIAL_ENCRYPTION_KEY: KEK_B64 });
+    const peRef = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const refOf = async () =>
+      (
+        await admin.query(
+          "SELECT baa_record_ref FROM mac_submitter_credential WHERE provider_entity_id=$1",
+          [peRef],
+        )
+      ).rows;
+    const post = (baaRecordRef: string, extra: Record<string, string> = {}) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/billing/mac-credentials",
+        headers: headers(extra),
+        payload: { ...BODY, providerEntityId: peRef, baaRecordRef },
+      });
+
+    // refused on a first save: no row at all (synthetic: SSN area 900 is never issued; the MBI is on the synthetic list)
+    for (const [ref, leaked] of [
+      ["BAA folder 900-11-2222", "900-11-2222"],
+      ["see 1EG4TE5MK73", "1EG4TE5MK73"],
+    ] as const) {
+      const refused = await post(ref);
+      expect(refused.statusCode, refused.body).toBe(422);
+      expect(refused.json().error.details).toEqual([
+        expect.objectContaining({ field: "baaRecordRef", code: "EVIDENCE_LOOKS_LIKE_PHI" }),
+      ]);
+      expect(refused.body).not.toContain(leaked);
+    }
+    expect(await refOf()).toHaveLength(0);
+
+    // a plain reference is stored (folded to one line) and the list returns it
+    const created = await post("  BAA folder   2026, contract 14 ");
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json().baaRecordRef).toBe("BAA folder 2026, contract 14");
+    expect((await refOf())[0].baa_record_ref).toBe("BAA folder 2026, contract 14");
+    const listed = await app.inject({
+      method: "GET",
+      url: "/api/v1/billing/mac-credentials",
+      headers: headers(),
+    });
+    expect(
+      listed.json().items.find((c: { providerEntityId: string }) => c.providerEntityId === peRef)
+        ?.baaRecordRef,
+    ).toBe("BAA folder 2026, contract 14");
+
+    // refused on an update: the stored reference and the version are untouched
+    const version = (
+      await admin.query(
+        "SELECT version FROM mac_submitter_credential WHERE provider_entity_id=$1",
+        [peRef],
+      )
+    ).rows[0].version;
+    const refusedUpdate = await post("BAA folder 900-11-2222", { "if-match": String(version) });
+    expect(refusedUpdate.statusCode, refusedUpdate.body).toBe(422);
+    expect((await refOf())[0].baa_record_ref).toBe("BAA folder 2026, contract 14");
+    expect(
+      (
+        await admin.query(
+          "SELECT version FROM mac_submitter_credential WHERE provider_entity_id=$1",
+          [peRef],
+        )
+      ).rows[0].version,
+    ).toBe(version);
+  });
 });

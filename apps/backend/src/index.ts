@@ -7743,7 +7743,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
                   // §4.5 validation override: one prominent audit_event per override, in the override's own transaction.
                   audit: buildM23OverrideAuditPort(),
-                  // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
+                  // GAP-144 — the MAC portal check (portal health) when the launch gateway is configured. It takes the jurisdiction only:
+                  // the credential's secret, client id and submitter id are never sent, so an answer proves the portal is up and says nothing
+                  // about the credential (the first real submission is its first use). The `detail` is what a person is told.
                   ...(m23LaunchGateway
                     ? {
                         macSandbox: {
@@ -7752,7 +7754,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                               await m23LaunchGateway.macPortal.probeHealth(macJurisdiction);
                             return {
                               ok: up,
-                              detail: up ? "MAC portal reachable" : "MAC portal unavailable",
+                              detail: up
+                                ? "The MAC portal for this jurisdiction answered. This does not validate the credential."
+                                : "The MAC portal for this jurisdiction did not answer.",
                             };
                           },
                         },

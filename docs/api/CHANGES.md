@@ -28,6 +28,19 @@ officer attests again. A refused write voids nothing.
 (a first save omits it, a change sends the credential's `version`), answers `201` on a first save and `200` on a change, and returns the
 credential view (never the secret). `POST /api/v1/billing/mac-credentials/{providerEntityId}/test` documents its `Idempotency-Key`.
 
+**`baaRecordRef` is screened.** The MAC credential's BAA reference (also on the operator's `POST /api/v1/platform/tenants/{orgSlug}/mac-credentials`)
+is folded to one line (1-256 characters) and refused with `422 EVIDENCE_LOOKS_LIKE_PHI` when it looks like a social security number or an MBI,
+the same screen the clearinghouse BAA reference has; the error never echoes the text, and nothing is stored. A blank value is
+`422 MAC_BAA_RECORD_REF_INVALID` (omit the field to leave it unset). `submitterId`, `tradingPartnerId` and `clientId` are identifiers the
+MAC issues and are not screened.
+
+**What the MAC "test" says.** `POST /api/v1/billing/mac-credentials/{providerEntityId}/test` checks that the MAC portal for the credential's
+jurisdiction answers; it does not validate the credential. It sends no secret, client id or submitter id, and the first real submission is
+the first time they are used. The response (`ok`, `method: "portal_health_probe"`, `detail`, `lastSandboxTestAt`) and the credential's
+`lastSandboxTestAt` keep their names; their descriptions now say so, and `detail` reads "The MAC portal for this jurisdiction answered. This
+does not validate the credential." or "... did not answer." A client should label `lastSandboxTestAt` as the last portal check, not as a
+credential test.
+
 ---
 
 ## 2026-11-09 — Slice 7 contract: help requests, support-session reads, the tenant's own skip (routes registered, services still being built)

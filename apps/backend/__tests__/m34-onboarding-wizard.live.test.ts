@@ -3702,11 +3702,11 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     });
   });
   describe("7A: tenant-lane billing writes void a pending go-live attestation, and auth/context reports the stage", () => {
-    const ORG_H = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01";
-    const T_H = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee02";
-    const ORG_I = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee03";
-    const T_I = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee04";
-    const PE_H = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee05";
+    const ORG_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a701";
+    const T_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a702";
+    const ORG_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a703";
+    const T_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a704";
+    const PE_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a705";
     let adminH: TenantActor;
     let officerH: TenantActor;
     let adminI: TenantActor;
