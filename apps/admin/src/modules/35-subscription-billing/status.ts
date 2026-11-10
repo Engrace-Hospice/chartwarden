@@ -92,13 +92,6 @@ export function orgLabel(name: string | null | undefined, id: string): string {
   return name && name.length > 0 ? name : id.slice(0, 8);
 }
 
-/** A fresh idempotency key for a mutating platform action (§4.17 — the server caches 24h replays). */
-export function idempotencyKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
-    return crypto.randomUUID();
-  return `idem-${Date.now()}`;
-}
-
 /** The set of live dunning stages a subscription can occupy (for the dunning-screen filter). */
 export const DUNNING_STAGES = [
   "day_1",

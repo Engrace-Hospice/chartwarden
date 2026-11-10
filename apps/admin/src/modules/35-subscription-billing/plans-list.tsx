@@ -9,10 +9,11 @@ import {
   isValid,
   parsePriceCents,
   parseWholeNumber,
-  settleWrite,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
+  useIdempotencyKeeper,
   useRequestGuard,
   useSelectionParam,
   useStaleSelection,
@@ -28,7 +29,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { PLAN_EMPTY_FORM, type PlanForm, planFormErrors } from "./form-rules";
-import { cap, formatCents, idempotencyKey } from "./status";
+import { cap, formatCents } from "./status";
 import {
   DrawerHead,
   type Outcome,
@@ -56,6 +57,8 @@ const CADENCE_OPTIONS = [
 
 export function PlansList(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   // The open plan lives in the URL, so Back closes the drawer and open/close keep any other query param.
   const { selectedId, select, close } = useSelectionParam("plan");
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -98,33 +101,35 @@ export function PlansList(): JSX.Element {
       return;
     setSaving(true);
     setOutcome(null);
-    const failure = writeFailure(
-      await settleWrite(
-        client.POST("/api/admin/plans", {
-          body: {
-            slug: form.slug.trim(),
-            name: form.name.trim(),
-            tier: form.tier as "starter" | "professional" | "enterprise",
-            cadence: form.cadence as "monthly" | "annual",
-            basePriceCents,
-            currencyCode: "USD",
-            trialPeriodDays,
-          },
-          headers: { "Idempotency-Key": idempotencyKey() },
-        }),
-      ),
-      "Could not create the plan (check the fields).",
-    );
-    if (failure) {
-      setOutcome(failure);
-    } else {
+    const body = {
+      slug: form.slug.trim(),
+      name: form.name.trim(),
+      tier: form.tier as "starter" | "professional" | "enterprise",
+      cadence: form.cadence as "monthly" | "annual",
+      basePriceCents,
+      currencyCode: "USD" as const,
+      trialPeriodDays,
+    };
+    try {
+      // One key per create request: a retry of the same unchanged plan replays it, so a lost reply cannot create a second draft.
+      const failure = writeFailure(
+        await sendWrite(keeper, JSON.stringify(body), (key) =>
+          client.POST("/api/admin/plans", { body, headers: { "Idempotency-Key": key } }),
+        ),
+        "Could not create the plan (check the fields).",
+      );
+      if (failure) {
+        setOutcome(failure);
+        return;
+      }
       setOutcome({ ok: true, message: `Draft plan "${form.name}" created.` });
       setShowCreate(false);
       setForm(PLAN_EMPTY_FORM);
       await load();
+    } finally {
+      setSaving(false); // also when the reload after a landed write throws: the form never stays locked
     }
-    setSaving(false);
-  }, [client, form, load]);
+  }, [client, form, load, keeper]);
 
   const selected = selectedId ? (plans.find((p) => p.id === selectedId) ?? null) : null;
   useStaleSelection({

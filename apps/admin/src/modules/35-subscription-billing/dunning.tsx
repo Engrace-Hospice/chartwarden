@@ -2,8 +2,9 @@ import {
   Button,
   StatusPill,
   TableScroll,
-  settleWrite,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
   useRequestGuard,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -18,7 +19,6 @@ import {
   cap,
   dunningTone,
   formatDate,
-  idempotencyKey,
   isCriticalDunningStage,
   orgLabel,
 } from "./status";
@@ -38,6 +38,8 @@ type DunningRow = DunningPage["items"][number];
 
 export function Dunning(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [rows, setRows] = useState<DunningRow[]>([]);
   const [stage, setStage] = useState<string>("");
   const [cursor, setCursor] = useState<string | null>(null);
@@ -84,27 +86,30 @@ export function Dunning(): JSX.Element {
         action === "skip_stage"
           ? "/api/admin/dunning/{subscriptionId}/skip_stage"
           : "/api/admin/dunning/{subscriptionId}/reset";
-      const failure = writeFailure(
-        await settleWrite(
-          client.POST(path, {
-            params: { path: { subscriptionId } },
-            headers: { "Idempotency-Key": idempotencyKey() },
-          }),
-        ),
-        `Could not ${action.replace("_", " ")}.`,
-      );
-      if (failure) {
-        setOutcome(failure);
-      } else {
+      try {
+        const failure = writeFailure(
+          await sendWrite(keeper, `${action}:${subscriptionId}`, (key) =>
+            client.POST(path, {
+              params: { path: { subscriptionId } },
+              headers: { "Idempotency-Key": key },
+            }),
+          ),
+          `Could not ${action.replace("_", " ")}.`,
+        );
+        if (failure) {
+          setOutcome(failure);
+          return;
+        }
         setOutcome({
           ok: true,
           message: action === "reset" ? "Dunning reset." : "Dunning stage skipped.",
         });
         await load(null, false);
+      } finally {
+        setBusyId(null); // also when the reload after a landed write throws: the row never stays locked
       }
-      setBusyId(null);
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   return (

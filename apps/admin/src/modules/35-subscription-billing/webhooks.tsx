@@ -2,8 +2,9 @@ import {
   Button,
   StatusPill,
   TableScroll,
-  settleWrite,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
   useRequestGuard,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -13,7 +14,7 @@ import type { operations } from "@chartwarden/ui";
 // that re-enqueues processing through the existing outbox path (vendor SDK OFF). Cursor-paged.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { formatDate, idempotencyKey } from "./status";
+import { formatDate } from "./status";
 import {
   LoadMore,
   type Outcome,
@@ -30,6 +31,8 @@ type Receipt = WebhookReceiptsPage["items"][number];
 
 export function Webhooks(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [rows, setRows] = useState<Receipt[]>([]);
   const [search, setSearch] = useState("");
   const [cursor, setCursor] = useState<string | null>(null);
@@ -79,24 +82,27 @@ export function Webhooks(): JSX.Element {
     async (eventId: string) => {
       setBusyId(eventId);
       setOutcome(null);
-      const failure = writeFailure(
-        await settleWrite(
-          client.POST("/api/admin/webhooks/stripe/replay/{eventId}", {
-            params: { path: { eventId } },
-            headers: { "Idempotency-Key": idempotencyKey() },
-          }),
-        ),
-        "Could not replay this event.",
-      );
-      if (failure) {
-        setOutcome(failure);
-      } else {
+      try {
+        const failure = writeFailure(
+          await sendWrite(keeper, `replay:${eventId}`, (key) =>
+            client.POST("/api/admin/webhooks/stripe/replay/{eventId}", {
+              params: { path: { eventId } },
+              headers: { "Idempotency-Key": key },
+            }),
+          ),
+          "Could not replay this event.",
+        );
+        if (failure) {
+          setOutcome(failure);
+          return;
+        }
         setOutcome({ ok: true, message: `Event ${eventId} re-enqueued.` });
         await load(null, false);
+      } finally {
+        setBusyId(null); // also when the reload after a landed write throws: the row never stays locked
       }
-      setBusyId(null);
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   return (

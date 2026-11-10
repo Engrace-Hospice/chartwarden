@@ -2,8 +2,9 @@ import {
   Button,
   StatGrid,
   TableScroll,
-  settleWrite,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
   useRequestGuard,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -13,7 +14,7 @@ import type { operations } from "@chartwarden/ui";
 // churn MRR. Recompute (revenue.admin.write, step-up) refreshes the latest snapshot. Amounts are cents.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { formatCents, formatDate, idempotencyKey } from "./status";
+import { formatCents, formatDate } from "./status";
 import {
   type Outcome,
   OutcomeBanner,
@@ -31,6 +32,8 @@ type Snapshot = SnapshotPage["items"][number];
 
 export function Revenue(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [current, setCurrent] = useState<Current | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,22 +67,25 @@ export function Revenue(): JSX.Element {
   const recompute = useCallback(async () => {
     setBusy(true);
     setOutcome(null);
-    const failure = writeFailure(
-      await settleWrite(
-        client.POST("/api/admin/revenue/snapshots/compute", {
-          headers: { "Idempotency-Key": idempotencyKey() },
-        }),
-      ),
-      "Could not recompute revenue.",
-    );
-    if (failure) {
-      setOutcome(failure);
-    } else {
+    try {
+      const failure = writeFailure(
+        await sendWrite(keeper, "recompute", (key) =>
+          client.POST("/api/admin/revenue/snapshots/compute", {
+            headers: { "Idempotency-Key": key },
+          }),
+        ),
+        "Could not recompute revenue.",
+      );
+      if (failure) {
+        setOutcome(failure);
+        return;
+      }
       setOutcome({ ok: true, message: "Revenue snapshot recomputed." });
       await load();
+    } finally {
+      setBusy(false); // also when the reload after a landed write throws: the button never stays locked
     }
-    setBusy(false);
-  }, [client, load]);
+  }, [client, load, keeper]);
 
   const stats = current
     ? [

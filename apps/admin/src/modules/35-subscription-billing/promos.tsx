@@ -9,10 +9,11 @@ import {
   isValid,
   parsePriceCents,
   parseWholeNumber,
-  settleWrite,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
+  useIdempotencyKeeper,
   useRequestGuard,
   useSelectionParam,
   useStaleSelection,
@@ -28,7 +29,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 
 import { PROMO_EMPTY_FORM, type PromoForm, promoFormErrors } from "./form-rules";
-import { cap, formatCents, idempotencyKey } from "./status";
+import { cap, formatCents } from "./status";
 import {
   DrawerHead,
   type Outcome,
@@ -69,6 +70,8 @@ const redemptionsText = (p: Promo): string =>
 
 export function Promos(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [promos, setPromos] = useState<Promo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,51 +113,57 @@ export function Promos(): JSX.Element {
     const fixedOffCents = form.kind === "amount_off" ? parsePriceCents(form.amount) : null;
     setBusy(true);
     setOutcome(null);
-    const failure = writeFailure(
-      await settleWrite(
-        client.POST("/api/admin/promos", {
-          body: {
-            code: form.code.trim(),
-            stripeCouponId: form.coupon.trim() || form.code.trim(),
-            stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
-            kind: form.kind as "percent_off" | "amount_off",
-            ...(percentOff !== null ? { percentOff } : {}),
-            ...(fixedOffCents !== null ? { fixedOffCents } : {}),
-            duration: form.duration as "once" | "repeating" | "forever",
-          },
-          headers: { "Idempotency-Key": idempotencyKey() },
-        }),
-      ),
-      "Could not create the promo (check the fields).",
-    );
-    if (failure) setOutcome(failure);
-    else {
+    const body = {
+      code: form.code.trim(),
+      stripeCouponId: form.coupon.trim() || form.code.trim(),
+      stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
+      kind: form.kind as "percent_off" | "amount_off",
+      ...(percentOff !== null ? { percentOff } : {}),
+      ...(fixedOffCents !== null ? { fixedOffCents } : {}),
+      duration: form.duration as "once" | "repeating" | "forever",
+    };
+    try {
+      // One key per create request: a retry of the same unchanged promo replays it, so a lost reply cannot create a second one.
+      const failure = writeFailure(
+        await sendWrite(keeper, JSON.stringify(body), (key) =>
+          client.POST("/api/admin/promos", { body, headers: { "Idempotency-Key": key } }),
+        ),
+        "Could not create the promo (check the fields).",
+      );
+      if (failure) {
+        setOutcome(failure);
+        return;
+      }
       setOutcome({ ok: true, message: `Promo "${form.code}" created.` });
       setShowCreate(false);
       setForm(PROMO_EMPTY_FORM);
       await load();
+    } finally {
+      setBusy(false); // also when the reload after a landed write throws: the form never stays locked
     }
-    setBusy(false);
-  }, [client, form, load]);
+  }, [client, form, load, keeper]);
 
   const deactivate = useCallback(
     async (id: string, code: string) => {
       setBusy(true);
       setOutcome(null);
-      const failure = writeFailure(
-        await settleWrite(
-          client.POST("/api/admin/promos/{id}/deactivate", {
-            params: { path: { id } },
-            headers: { "Idempotency-Key": idempotencyKey() },
-          }),
-        ),
-        "Could not deactivate this promo.",
-      );
-      setOutcome(failure ?? { ok: true, message: `Promo "${code}" deactivated.` });
-      if (!failure) await load();
-      setBusy(false);
+      try {
+        const failure = writeFailure(
+          await sendWrite(keeper, `deactivate:${id}`, (key) =>
+            client.POST("/api/admin/promos/{id}/deactivate", {
+              params: { path: { id } },
+              headers: { "Idempotency-Key": key },
+            }),
+          ),
+          "Could not deactivate this promo.",
+        );
+        setOutcome(failure ?? { ok: true, message: `Promo "${code}" deactivated.` });
+        if (!failure) await load();
+      } finally {
+        setBusy(false); // also when the reload after a landed write throws: the button never stays locked
+      }
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   const selected = selectedId ? (promos.find((p) => p.id === selectedId) ?? null) : null;
