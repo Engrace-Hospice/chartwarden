@@ -32,6 +32,7 @@ import type {
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   BillableEncounterReader,
+  BillingServiceModeReader,
   BillingStatusProvider,
   CarePlanReader,
   CareTeamProvider,
@@ -90,6 +91,7 @@ import type {
   MedicationOrderProvider,
   MileagePayrollReader,
   MswRiskFactorReader,
+  NetCollectionsReader,
   NonCoveredItemsReader,
   OnCallProvider,
   OnboardingStatusProvider,
@@ -1955,6 +1957,25 @@ export const patientCounterProviderDenyStub: PatientCounterProvider = {
 export const claimsBillingEntitlementReaderDenyStub: ClaimsBillingEntitlementReader = {
   async entitlementForOrg() {
     throw new NotImplementedError("ClaimsBillingEntitlementReader");
+  },
+};
+
+/** Slice 2 — the subscription's billing service mode. Throws: an unread mode must never read as `none` (a tenant that
+ *  bills in ChartWarden would look like one that bills outside it). */
+export const billingServiceModeReaderDenyStub: BillingServiceModeReader = {
+  async billingServiceModeForOrg() {
+    throw new NotImplementedError("BillingServiceModeReader");
+  },
+};
+
+/** Slice 2 (M25) — an org's net collections for a period. Throws: an unread meter must never read as zero collections
+ *  (a zero would price the billing service at nothing). */
+export const netCollectionsReaderDenyStub: NetCollectionsReader = {
+  async netCollectionsForPeriod() {
+    throw new NotImplementedError("NetCollectionsReader");
+  },
+  async netCollectionsByMonth() {
+    throw new NotImplementedError("NetCollectionsReader");
   },
 };
 

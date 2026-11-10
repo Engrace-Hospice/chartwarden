@@ -1749,6 +1749,28 @@ describe("ADR-0110 — the add-on routes and the billing-status block", () => {
   });
 });
 
+describe("M35 subscription lifecycle writes are human-only", () => {
+  it.each(["pause", "resume", "cancel"])("403s an AI actor on admin %s", async (action) => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/${action}`,
+      headers: {
+        ...SUPER_HEADERS,
+        ...IDEMP(),
+        "x-test-actor-kind": "ai_agent",
+      },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "AI principals cannot pause, resume or cancel subscriptions",
+    });
+    await app.close();
+  });
+});
+
 describe("M35 route smoke — the /api/admin `platform_billing_scope` lock", () => {
   it("403s a tenant-role session holding plan.admin.read but no platform-ops role", async () => {
     const backend = createM35Backend();

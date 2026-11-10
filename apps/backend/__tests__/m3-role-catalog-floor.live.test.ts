@@ -26,8 +26,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { SYSTEM_LOCKED_FLOORS, allPermissionMirrorRows } from "@chartwarden/auth";
-import { createDbClient } from "@chartwarden/db";
-import { runWithRequestContext } from "@chartwarden/tenancy";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -228,6 +229,114 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
     ).rejects.toMatchObject({ kind: "template" });
     await expect(asActor(() => store.delete(templateId))).rejects.toMatchObject({
       kind: "template",
+    });
+  });
+
+  // Slice 2 - `external_auditor` is the role M3's auditor grant creates in a tenant org (system_default, category external_auditor), and a
+  // real auditor must always land on THAT row. The route refuses a tenant role under the key (unit-tested); the database refuses it for
+  // every writer (migration 1415), which is what this proves as the NOBYPASSRLS app role through the store production mounts.
+  it("a tenant cannot create a role under the system-managed key external_auditor through the store (the database backstop), whatever the category; an ordinary role still creates", async () => {
+    for (const category of ["external_auditor", "clinical_staff", "admin_executive"]) {
+      await expect(
+        store.createCustom({
+          organizationId: ORG_A,
+          key: "external_auditor",
+          name: "Auditor",
+          category,
+          scopeLevel: "organization",
+          permissionKeys: [],
+        }),
+        category,
+      ).rejects.toMatchObject({
+        cause: expect.objectContaining({
+          code: "23514",
+          message: expect.stringMatching(/system auditor role/),
+        }),
+      });
+    }
+    expect(await admin.query("SELECT 1 FROM role WHERE key='external_auditor'")).toMatchObject({
+      rowCount: 0,
+    });
+    const ordinary = await store.createCustom({
+      organizationId: ORG_A,
+      key: "external_auditor_liaison",
+      name: "Liaison",
+      category: "operations",
+      scopeLevel: "organization",
+      permissionKeys: [],
+    });
+    expect(ordinary.key).toBe("external_auditor_liaison");
+  });
+
+  /** The auditor grant's marker: a transaction-local setting only M3's grant sets (migration 1439). */
+  const AUDITOR_GRANT_MARKER = "SELECT set_config('app.system_role_writer', 'auditor_grant', true)";
+  const systemRowInsert = `INSERT INTO role (organization_id, key, name, category, scope_level, system_default, enabled)
+         VALUES ($1,'external_auditor','External Auditor','external_auditor','organization',true,true)`;
+  /** One superuser transaction writing the system-shaped row, with or without the grant's marker. */
+  async function writeSystemRowAsAdmin(withMarker: boolean): Promise<void> {
+    await admin.query("BEGIN");
+    try {
+      if (withMarker) await admin.query(AUDITOR_GRANT_MARKER);
+      await admin.query(systemRowInsert, [ORG_A]);
+      await admin.query("COMMIT");
+    } catch (err) {
+      await admin.query("ROLLBACK");
+      throw err;
+    }
+  }
+
+  it("the SYSTEM row, as M3's auditor grant writes it (org-owned, system_default, category external_auditor, the grant's marker), is accepted; renaming a role's key or flipping it toward the reserved key is refused", async () => {
+    await expect(writeSystemRowAsAdmin(true)).resolves.toBeUndefined();
+    const ordinary = await seedRole("liaison", []);
+    await expect(
+      admin.query("UPDATE role SET key='external_auditor' WHERE id=$1", [ordinary]),
+    ).rejects.toThrow(/system auditor role/);
+    // a system row cannot be turned into a look-alike either
+    await expect(
+      admin.query(
+        "UPDATE role SET system_default=false WHERE organization_id=$1 AND key='external_auditor'",
+        [ORG_A],
+      ),
+    ).rejects.toThrow(/system auditor role/);
+  });
+
+  // The app role holds INSERT/UPDATE on every role column (migration 0009), `system_default` and `category` included, so the three
+  // facts that make a row "the system row" are writable by any code that runs as chartwarden_app. The database therefore asks for
+  // the grant's own marker as well (migration 1439); without it the system-shaped row is refused for the app role and the superuser.
+  it("the system-shaped row WITHOUT the grant's marker is refused, as the NOBYPASSRLS app role and as a superuser; with it the app role writes it", async () => {
+    const asApp = <T>(fn: (tx: DbClient) => Promise<T>): Promise<T> =>
+      withOrgContext<DbClient, T>(handle.db, { organizationId: ORG_A, userId: ACTOR }, fn);
+    const systemRow = {
+      organizationId: ORG_A,
+      key: "external_auditor",
+      name: "External Auditor",
+      category: "external_auditor" as const,
+      scopeLevel: "organization" as const,
+      systemDefault: true,
+      enabled: true,
+    };
+    await expect(asApp((tx) => tx.insert(schema.roles).values(systemRow))).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        code: "23514",
+        message: expect.stringMatching(/system auditor role/),
+      }),
+    });
+    await expect(writeSystemRowAsAdmin(false)).rejects.toThrow(/system auditor role/);
+    expect(await admin.query("SELECT 1 FROM role WHERE key='external_auditor'")).toMatchObject({
+      rowCount: 0,
+    });
+
+    await asApp(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.system_role_writer', 'auditor_grant', true)`);
+      await tx.insert(schema.roles).values(systemRow);
+    });
+    expect(
+      await admin.query("SELECT 1 FROM role WHERE key='external_auditor' AND system_default"),
+    ).toMatchObject({ rowCount: 1 });
+    // the marker is transaction-local: with the row gone, the same write on the same pool is refused again
+    await admin.query("DELETE FROM role WHERE key='external_auditor'");
+    await expect(asApp((tx) => tx.insert(schema.roles).values(systemRow))).rejects.toMatchObject({
+      cause: expect.objectContaining({ code: "23514" }),
     });
   });
 

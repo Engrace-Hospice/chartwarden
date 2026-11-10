@@ -3,7 +3,11 @@
 // `decideClaimsBillingEntitlement` is the pure rule (D3): entitled iff the org holds a trialing/active, not-ended
 // `subscription_addon` row for `claims_billing` AND the subscription that row hangs off is trialing, active, past_due
 // or at_risk. A suspended / canceled / paused base subscription denies with its own reason even while the add-on row
-// is live: the add-on rides on the subscription, it does not outlive it.
+// is live: the add-on rides on the subscription, it does not outlive it. This reads the STORED status and has no lapsed-pause special case
+// (unlike billing: pricing/contract-select.ts): an operator's pause whose end date has passed is resumed by the hourly pause-resume sweep
+// (billing-runtime/pause-resume.ts), so the `subscription_paused` denial normally ends within the hour, not when an operator remembers. It
+// lasts longer when the sweep is late or fails, when the organization is suspended (the sweep never visits it), and for a pause the sweep
+// leaves alone (an older, superseded subscription; the newest one when an older one is live).
 //
 // `createDrizzleClaimsBillingEntitlementReader` reads it on the TENANT pool under `withOrgContext` (the
 // `subscription_addon` SELECT-only policy is keyed on app.org_id). No cache (D4): a grant or cancel takes effect on

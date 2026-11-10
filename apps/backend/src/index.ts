@@ -1689,6 +1689,10 @@ import {
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
 import { canInviteFirstAdmin } from "./modules/34-saas-tenant-platform/invitation-token";
+import {
+  buildPricingOnboardingPort,
+  readTenantGoLive,
+} from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -1700,12 +1704,15 @@ import {
   M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
   type PlatformRunner,
+  buildContractService,
   buildDrizzleAddonService,
   buildDrizzleM35RouteService,
   buildM35OrgLifecycleConsumer,
   buildM35PatientActivePeriodConsumer,
   buildM35SessionCreatedConsumer,
   buildM35WebhookIngest,
+  buildPlatformAuditPort,
+  buildPricingPlanService,
   createDrizzlePseudonymKeyProvider,
   loadM35StripeConfig,
   mountM35Routes,
@@ -7065,6 +7072,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // audited `withPlatformContext`. When no platform credential is configured the runner is undefined
           // and the admin surface fails closed (503) — never reading under tenant RLS. The §4.3 webhook stays
           // fail-closed (503) until the live Stripe secret + DEK transport binds.
+          // The ONE platform audit mapping (M35 `buildPlatformAuditPort`, fed M4's real writer); the live suite injects the same function.
+          const m35PlatformAudit = buildPlatformAuditPort((tx, row) =>
+            auditPlatformEvent(tx as Parameters<typeof auditPlatformEvent>[0], row),
+          );
           mountM35Routes(app, {
             // GAP-058 — the inbound Stripe webhook binds when the signing secret, the payload key AND the
             // platform credential are all configured; otherwise it stays 503 (never half-bound).
@@ -7080,6 +7091,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 : {},
             service: buildDrizzleM35RouteService(dbHandle.db, {
               outbox: m35OutboxPublisher,
+              // A platform operator's pause / resume / cancel names the operator in the PLATFORM-scoped audit row, never in the
+              // tenant-readable state history.
+              audit: m35PlatformAudit,
               // GAP-060 — a client-supplied payment-method id is verified against Stripe (attached to THIS
               // org's customer) before it is stored; unset => attach refuses 503.
               ...(m35Stripe.client
@@ -7102,6 +7116,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m35OutboxPublisher,
               ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
             }),
+            // Slice 2 (tenant pricing) - the plan editor, onboarding step 2 (the contract; settles `plan_contract` through the
+            // M34 wizard, bound here as a port because M35 has no edge to M34) and the tenant's own pricing read. Writes run on the
+            // platform runner only; each is audited with the operator's reason (the platform audit writer, M4).
+            pricing: (() => {
+              const m35PricingAudit = m35PlatformAudit;
+              return {
+                plans: buildPricingPlanService({
+                  ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
+                  audit: m35PricingAudit,
+                }),
+                contracts: buildContractService({
+                  db: dbHandle.db,
+                  ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
+                  outbox: m35OutboxPublisher,
+                  audit: m35PricingAudit,
+                  onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
+                  log: (message, detail) => app.log.warn(detail, message),
+                }),
+              };
+            })(),
           });
           // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
           // service. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
@@ -9597,6 +9631,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       });
       const m35Log = (message: string, detail: Record<string, unknown>) =>
         app.log.warn(detail, message);
+      const m35PauseBlockedNotice = buildPlatformOpsNoticeSink({
+        webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+        log: (message) => app.log.error(message),
+      });
       const m35Workers = registerM35Workers({
         connection: queueConnection,
         jobs: {
@@ -9605,6 +9643,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           outbox: m35OutboxPublisher,
           listOrgs: () => m35Orgs.listActiveOrgs(),
           log: m35Log,
+          // A paused subscription blocked by another live one stays paused until an operator acts. This is an ops notice, not a dead-letter
+          // promotion: it gets its own kind, summary and correlation id. The shared sink logs it and optionally posts the webhook. Ids only.
+          onPauseBlocked: (blocked) =>
+            m35PauseBlockedNotice({
+              kind: "m35.pause-resume-blocked",
+              summary: "a paused subscription cannot resume while another subscription is live",
+              details: {
+                organizationId: blocked.organizationId,
+                subscriptionId: blocked.subscriptionId,
+                otherLiveSubscriptionId: blocked.olderLiveSubscriptionId,
+                trigger: blocked.trigger,
+              },
+              correlationId: `m35-pause-blocked-${blocked.subscriptionId}`,
+            }),
         },
         ...(m35Stripe.cipher ? { cipher: m35Stripe.cipher } : {}),
         ...(m35Stripe.client
@@ -9630,6 +9682,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 },
                 keyProvider: pseudonymKeyProvider,
               },
+              // Slice 2 - the daily census (same sweep, same reader) and the monthly statement sweep. The M25 net-collections seam is
+              // resolved lazily, like the census reader. Stripe push stays unbound (StatementStripePort).
+              pricing: {
+                census: {
+                  activePatientCount: (orgId: string) =>
+                    getSeam("PatientCensusReader").activePatientCount(orgId),
+                },
+                keyProvider: pseudonymKeyProvider,
+                netCollections: {
+                  netCollectionsForPeriod: (orgId, period) =>
+                    getSeam("NetCollectionsReader").netCollectionsForPeriod(orgId, period),
+                  netCollectionsByMonth: (orgId, period) =>
+                    getSeam("NetCollectionsReader").netCollectionsByMonth(orgId, period),
+                },
+                // M34 owns the go-live date (tenant activation); M35 has no edge to it, so it reads it through this port.
+                goLive: { goLiveAt: (tx, orgId) => readTenantGoLive(tx, orgId) },
+              },
             }
           : {}),
       });
@@ -9639,13 +9708,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         webhookHandler: m35Stripe.cipher !== undefined,
         refundExecutor: m35Stripe.client !== undefined,
         patientCensus: pseudonymKeyRing !== null && pseudonymKeyRing !== undefined,
+        pricingStatement: pseudonymKeyRing !== null && pseudonymKeyRing !== undefined,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
         })
         .catch((err) => app.log.error(err, "M35 job schedule registration failed"));
       app.log.info(
-        `M35 workers constructed: dunning, usage, payment-method expiry, revenue snapshot, reconciler${m35Stripe.cipher ? ", webhook handler" : ""}${m35Stripe.client ? ", refund executor" : ""}`,
+        `M35 workers constructed: dunning, usage, payment-method expiry, revenue snapshot, reconciler, pause-resume${m35Stripe.cipher ? ", webhook handler" : ""}${m35Stripe.client ? ", refund executor" : ""}`,
       );
     } else {
       app.log.warn("M35 workers disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required");

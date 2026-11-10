@@ -1,0 +1,388 @@
+// apps/backend/src/modules/35-subscription/pricing/statement-service.ts — the MONTHLY STATEMENT run (slice 2, tenant pricing).
+//
+// One statement per subscription per UTC calendar month, computed from three meters and the plan VERSION the tenant signed:
+//   staff     active staff accounts          ./staff-meter.ts   (the user_active_period ledger + the identity roles)
+//   ADC       average daily census           ./census-daily.ts  (M5 PatientCensusReader, via the m35.patient-census sweep)
+//   net coll. net collections of the month   the `NetCollectionsReader` seam (M25 remittance: see its header for the exact definition)
+// and the pure math in @chartwarden/subscription-billing. The decisions (which months, which late money, which figures) are the pure
+// functions of ./statement-plan.ts and the calendar of ./statement-period.ts; this file is the orchestration around them.
+//
+// LIFECYCLE. The month in progress is a `draft`, recomputed on every sweep and rewritten only when a figure changed (the row is unique on
+// (subscription, month); a rerun that changes nothing writes nothing, so it leaves no audit row). A month is finalized by the first sweep
+// at or after its end plus STATEMENT_FINALIZE_GRACE_DAYS, and a final row is never recomputed (a trigger freezes it). Money that posts
+// after that is billed on the next open statement as a prior-period line (never lost, never re-billing the closed month).
+//
+// WHO IS SWEPT. Statements do NOT depend on the active-organisation sweep: the worker asks the ONE shared contract selector which orgs can
+// still need a statement (`runStatementSweep`), so the last month of a suspended or closed organisation, and a canceled subscription's
+// final month, still finalize. A month is decided from the subscription's own lifetime (go-live, pauses, cancel), not from its status today: a closed month
+// finalizes whatever the subscription has become since, the month it was canceled in is billed for the days used, and months after that
+// are not billed at all. The one-time implementation fee rides the first statement the subscription ever has.
+//
+// Writes run on the platform runner only, under a per-organisation advisory lock (two runs for one org are serialized, so a month is
+// never written twice and the one-time fee and the prior-period lines are judged on the state the first run left). A tenant holds SELECT.
+//
+// PLATFORM TRANSACTIONS ARE AUDITED BYPASSES. Every `platformRunner` call writes a CRITICAL `platform.bypass_invoked` audit row, so the
+// hourly sweep spends them deliberately: ONE call reads every contracted org's facts, and an org gets a second (its write transaction)
+// only when it has something to compute: an org whose every month is a settlement month with no late money to carry costs none.
+// ponytail: a live org's open month is still one write transaction per org per hour; if that audit volume matters, run the writes of
+// all orgs in one transaction with a savepoint per org.
+import { schema } from "@chartwarden/db";
+import type { PseudonymKeyProvider } from "@chartwarden/subscription-billing";
+import type { NetCollections, NetCollectionsReader, OrgId } from "@chartwarden/types";
+import { eq, sql } from "drizzle-orm";
+import { runM35Fanout } from "../billing-runtime/jobs";
+import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
+import { readDailyCensus } from "./census-daily";
+import type { GoLiveReader } from "./ports";
+import { type StaffCount, countActiveStaffForMonth } from "./staff-meter";
+import { loadContractFacts, loadContractFactsByOrg, toExisting } from "./statement-inputs";
+import { type MonthPeriod, calendarMonthOf } from "./statement-period";
+import {
+  type ContractFacts,
+  type ExistingStatement,
+  type MonthMeters,
+  type MonthWork,
+  buildStatementValues,
+  figuresOf,
+  isSparseCensusMonth,
+  planMonths,
+  priorPeriodLinesFor,
+} from "./statement-plan";
+import { type StatementStripePort, type StatementView, toStatementView } from "./statement-view";
+
+export {
+  type MonthPeriod,
+  STATEMENT_FINALIZE_GRACE_DAYS,
+  calendarMonthOf,
+  isFinalizable,
+  previousCalendarMonth,
+} from "./statement-period";
+export {
+  type PriorPeriodLineView,
+  type StatementStripePort,
+  type StatementView,
+  toStatementView,
+} from "./statement-view";
+
+const SS = schema.subscriptionStatement;
+const SSR = schema.subscriptionStatementReview;
+const NO_COLLECTIONS: NetCollections = { netCents: 0, remittanceCount: 0, pendingCount: 0 };
+const NO_STAFF: StaffCount = { count: 0, basis: "identity_filtered" };
+
+export interface StatementDeps {
+  readonly platformRunner: PlatformRunner;
+  readonly keyProvider: PseudonymKeyProvider;
+  readonly netCollections: NetCollectionsReader;
+  /** When the tenant went live (M34 owns it). Without it no statement is computed. */
+  readonly goLive: GoLiveReader;
+  readonly stripe?: StatementStripePort;
+  readonly now?: () => Date;
+  readonly log?: (message: string, detail: Record<string, unknown>) => void;
+}
+
+export type StatementOutcome =
+  | { readonly outcome: "written"; readonly statement: StatementView }
+  | { readonly outcome: "unchanged"; readonly periodYearMonth: string }
+  | {
+      readonly outcome: "skipped";
+      readonly periodYearMonth: string;
+      readonly reason: "final" | "no_census" | "no_prior_period";
+    };
+
+type StatementRow = typeof SS.$inferSelect;
+type NetByMonth = ReadonlyMap<string, NetCollections>;
+
+const clockOf = (deps: Pick<StatementDeps, "now">): Date => (deps.now ?? (() => new Date()))();
+
+/** Per-organisation lock: two runs for one org never interleave their writes. Transaction-scoped, nothing to release. */
+const lockOrgStatements = (tx: WriteTx, organizationId: string) =>
+  tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m35-statement:${organizationId}`}::text, 0))`,
+  );
+
+/**
+ * M25's collections for the whole range the run may touch, by payment month: ONE call, read under the org's RLS before the write.
+ * The figures are the ORG's, and every contract of the org is offered the same month: that is only correct while two contracts of one
+ * org never have live days in the same month. It holds today: a contract is signed only while the tenant is provisioning or
+ * onboarding (TENANT_NOT_ONBOARDING otherwise), the tenant lifecycle graph has no edge back into `onboarding` (only `provisioned`,
+ * from `provisioning`), and a month with no live day reads no collections (a settlement month). If a way back to onboarding is ever
+ * added, scope the collections to each contract's live period here before it ships.
+ */
+async function readCollectionsByMonth(
+  deps: StatementDeps,
+  organizationId: string,
+  contracts: readonly ContractFacts[],
+  at: Date,
+): Promise<NetByMonth> {
+  const first = contracts.reduce(
+    (min, c) => (c.liveFrom < min ? c.liveFrom : min),
+    contracts[0]?.liveFrom ?? at,
+  );
+  // A failure throws; it is never recorded as zero collections.
+  const months = await deps.netCollections.netCollectionsByMonth(organizationId as OrgId, {
+    periodStart: calendarMonthOf(first).start,
+    periodEnd: calendarMonthOf(at).end,
+  });
+  return new Map(months.map((m) => [m.yearMonth, m]));
+}
+
+async function readMeters(
+  tx: WriteTx,
+  deps: StatementDeps,
+  contract: ContractFacts,
+  period: MonthPeriod,
+  net: NetByMonth,
+): Promise<MonthMeters> {
+  const daily = await readDailyCensus(tx, contract.organizationId, period);
+  const staff = await countActiveStaffForMonth(
+    tx,
+    deps.keyProvider,
+    contract.organizationId,
+    period,
+  );
+  return { daily, staff, collections: net.get(period.key) ?? NO_COLLECTIONS };
+}
+
+/** Insert or replace one month's row; [] when the row was already final (a final row is left exactly as it was). */
+async function upsertStatement(
+  tx: WriteTx,
+  values: ReturnType<typeof buildStatementValues>,
+  at: Date,
+): Promise<StatementRow[]> {
+  const { organizationId: _o, subscriptionId: _s, periodYearMonth: _p, ...replaceable } = values;
+  return tx
+    .insert(SS)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [SS.subscriptionId, SS.periodYearMonth],
+      set: { ...replaceable, updatedAt: at },
+      // A draft is replaced; a final row is left alone (and its trigger would refuse the write anyway).
+      setWhere: eq(SS.status, "draft"),
+    })
+    .returning();
+}
+
+interface MonthResult {
+  readonly outcome: StatementOutcome;
+  readonly written?: StatementRow;
+}
+
+type ReviewReason = typeof SSR.$inferInsert.reason;
+
+const REVIEW_LOG_MESSAGES: Readonly<Record<ReviewReason, string>> = {
+  no_census: "m35 statement month closed with no census day; not billed, flagged for review",
+  sparse_census:
+    "m35 statement month closed on a sparse census; billed on the days observed, flagged for review",
+};
+
+/**
+ * A closed month an operator must look at: record it ONCE (the table is unique on subscription, month, reason) and log it once, with
+ * the organisation, when the row is new. A rerun every hour finds the row and says nothing.
+ */
+async function flagForReview(
+  tx: WriteTx,
+  deps: StatementDeps,
+  contract: ContractFacts,
+  periodYearMonth: string,
+  reason: ReviewReason,
+): Promise<void> {
+  const inserted = await tx
+    .insert(SSR)
+    .values({
+      subjectOrganizationId: contract.organizationId,
+      subscriptionId: contract.subscriptionId,
+      periodYearMonth,
+      reason,
+    })
+    .onConflictDoNothing()
+    .returning({ id: SSR.id });
+  if (inserted.length === 0) return;
+  deps.log?.(REVIEW_LOG_MESSAGES[reason], {
+    organizationId: contract.organizationId,
+    subscriptionId: contract.subscriptionId,
+    periodYearMonth,
+  });
+}
+
+/** One month of one contract: meters, prior-period lines, figures; then skip, leave alone, or write. */
+async function runMonth(
+  tx: WriteTx,
+  deps: StatementDeps,
+  contract: ContractFacts,
+  work: MonthWork,
+  statements: readonly ExistingStatement[],
+  net: NetByMonth,
+  at: Date,
+): Promise<MonthResult> {
+  const key = work.period.key;
+  // A settlement month was not live: no meter is read for it (buildStatementValues zeroes the inputs).
+  const meters = work.settlement
+    ? { daily: [], staff: NO_STAFF, collections: NO_COLLECTIONS }
+    : await readMeters(tx, deps, contract, work.period, net);
+  if (!work.settlement && meters.daily.length === 0) {
+    // The org was live and swept none of the month: not billed (a missing census is not a census of zero). A CLOSED month is a data
+    // hole an operator must see: flagged once per subscription-month, not logged every hour.
+    if (work.finalize) await flagForReview(tx, deps, contract, key, "no_census");
+    return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "no_census" } };
+  }
+  const priorLines = priorPeriodLinesFor(work.period, statements, net);
+  const stored = statements.find((s) => s.periodYearMonth === key);
+  // A settlement month is written only when it has late money to carry, or when it is already a stored draft that must now finalize.
+  if (work.settlement && priorLines.length === 0 && !stored) {
+    return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "no_prior_period" } };
+  }
+  const values = buildStatementValues({
+    facts: contract,
+    work,
+    meters,
+    priorLines,
+    isFirstStatement: !statements.some((s) => s.periodYearMonth < key),
+    at,
+  });
+  if (stored?.status === "draft" && stored.figures === figuresOf(values)) {
+    return { outcome: { outcome: "unchanged", periodYearMonth: key } };
+  }
+  const [row] = await upsertStatement(tx, values, at);
+  if (!row) return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "final" } };
+  // The month closes on this write and is frozen from here on: a census that covered too few of its days is the operator's to see now.
+  if (row.status === "final" && isSparseCensusMonth(contract, work, meters.daily.length)) {
+    await flagForReview(tx, deps, contract, key, "sparse_census");
+  }
+  return {
+    outcome: { outcome: "written", statement: toStatementView(row, contract.currencyCode) },
+    written: row,
+  };
+}
+
+/** Every month of one contract that needs a statement, oldest first; each write is visible to the months after it (a month closed in
+ *  this run is a final statement whose lines the next month must not carry again). */
+async function runContract(
+  tx: WriteTx,
+  deps: StatementDeps,
+  contract: ContractFacts,
+  net: NetByMonth,
+  at: Date,
+): Promise<MonthResult[]> {
+  let statements: readonly ExistingStatement[] = contract.statements;
+  const results: MonthResult[] = [];
+  for (const work of planMonths(contract, at)) {
+    const result = await runMonth(tx, deps, contract, work, statements, net, at);
+    results.push(result);
+    if (result.written) {
+      statements = [
+        ...statements.filter((s) => s.periodYearMonth !== work.period.key),
+        toExisting(result.written),
+      ];
+    }
+  }
+  return results;
+}
+
+async function pushToStripe(
+  deps: StatementDeps,
+  row: StatementRow,
+  currency: string,
+): Promise<void> {
+  if (!deps.stripe || row.status !== "final") return; // the seam is unbound: see StatementStripePort
+  try {
+    const { usageRecordId } = await deps.stripe.pushFinalStatement(toStatementView(row, currency));
+    await deps.platformRunner((tx) =>
+      tx
+        .update(SS)
+        .set({ stripeUsageRecordId: usageRecordId, stripePostedAt: new Date() })
+        .where(eq(SS.id, row.id)),
+    );
+  } catch (error) {
+    // under `err`, not a hand-built message: the logger's err serializer redacts a database error's bound values, a message string would not
+    deps.log?.("m35 statement stripe push failed", { statementId: row.id, err: error });
+  }
+}
+
+const byPeriod = (a: StatementOutcome, b: StatementOutcome): number =>
+  periodOf(a).localeCompare(periodOf(b));
+const periodOf = (o: StatementOutcome): string =>
+  o.outcome === "written" ? o.statement.periodYearMonth : o.periodYearMonth;
+
+/**
+ * What a run for this org would do when every month of every contract is a settlement month (the subscription ended or is paused, so
+ * the month has no live day) with no stored draft and no late money to carry: nothing, and no write transaction is worth opening. The
+ * skipped outcomes it reports are the ones the write path reports for the same months. null when any month could write: a regular
+ * month (its meters are read inside the write transaction) or a settlement month with money to carry or a draft to finalize.
+ */
+function settlementOnlyOutcomes(
+  contracts: readonly ContractFacts[],
+  net: NetByMonth,
+  at: Date,
+): StatementOutcome[] | null {
+  const outcomes: StatementOutcome[] = [];
+  for (const contract of contracts) {
+    for (const work of planMonths(contract, at)) {
+      const key = work.period.key;
+      const carriesNothing =
+        priorPeriodLinesFor(work.period, contract.statements, net).length === 0 &&
+        !contract.statements.some((s) => s.periodYearMonth === key);
+      if (!work.settlement || !carriesNothing) return null;
+      outcomes.push({ outcome: "skipped", periodYearMonth: key, reason: "no_prior_period" });
+    }
+  }
+  return outcomes.sort(byPeriod);
+}
+
+/**
+ * Compute the org's statements: every month since go-live that is not final yet (finalized once its grace has passed, draft while it is
+ * open), plus a settlement statement when a closed month's late-posted money has no open month to ride. Idempotent: a rerun replaces a
+ * draft only when a figure moved and leaves a final statement alone. Empty when the org has no contract that can still bill, or is not live.
+ * `preloaded` is the org's facts as the sweep's one read already loaded them (without it the org's facts are read here, on a platform
+ * transaction of their own); the write transaction always re-reads under the lock.
+ */
+export async function runStatementsForOrg(
+  deps: StatementDeps,
+  organizationId: string,
+  preloaded?: readonly ContractFacts[] | null,
+): Promise<StatementOutcome[]> {
+  const at = clockOf(deps);
+  const planned =
+    preloaded ??
+    (await deps.platformRunner((tx) => loadContractFacts(tx, deps.goLive, organizationId, at)));
+  if (planned.length === 0) return [];
+  const net = await readCollectionsByMonth(deps, organizationId, planned, at);
+  const nothingToDo = settlementOnlyOutcomes(planned, net, at);
+  if (nothingToDo) return nothingToDo;
+
+  const done = await deps.platformRunner(async (tx) => {
+    await lockOrgStatements(tx, organizationId);
+    // Re-read under the lock: what is written is judged on the state the last run left, not the state before it.
+    const facts = await loadContractFacts(tx, deps.goLive, organizationId, at);
+    const out: { currency: string; result: MonthResult }[] = [];
+    for (const contract of facts) {
+      for (const result of await runContract(tx, deps, contract, net, at)) {
+        out.push({ currency: contract.currencyCode, result });
+      }
+    }
+    return out;
+  });
+  for (const { currency, result } of done) {
+    if (result.written) await pushToStripe(deps, result.written, currency);
+  }
+  return done.map((d) => d.result.outcome).sort(byPeriod);
+}
+
+/**
+ * The hourly sweep: every org that can still need a statement, each isolated from the others (one org's failure is logged with its id
+ * and reported at the end, never stops the rest). ONE platform call reads every org's facts; an org with nothing to compute opens no
+ * further platform transaction (see the file header).
+ */
+export async function runStatementSweep(deps: StatementDeps): Promise<void> {
+  const at = clockOf(deps);
+  const byOrg = await deps.platformRunner((tx) => loadContractFactsByOrg(tx, deps.goLive, at));
+  await runM35Fanout(
+    {
+      listOrgs: async () => [...byOrg.keys()].map((organizationId) => ({ organizationId })),
+      ...(deps.log ? { log: deps.log } : {}),
+    },
+    async (organizationId) => {
+      await runStatementsForOrg(deps, organizationId, byOrg.get(organizationId));
+    },
+    "pricing_statement",
+  );
+}
