@@ -119,6 +119,7 @@ describe("preActivationMayCall: exact METHOD + route template pairs", () => {
     ["POST", "/api/v1/sessions/step-up/initiate"],
     ["GET", "/api/v1/tenant/onboarding"],
     ["POST", "/api/v1/tenant/onboarding/:taskId/attest"],
+    ["POST", "/api/v1/tenant/onboarding/:taskId/skip"],
     ["POST", "/api/v1/tenant/onboarding/:taskId/start"],
     ["PATCH", "/api/v1/tenant/org-profile"],
     ["PUT", "/api/v1/tenant/compliance-officer"],

@@ -44,6 +44,7 @@ const CONFINED_ROUTES: readonly string[] = [
   "POST /api/v1/tenant/onboarding/:taskId/block",
   "POST /api/v1/tenant/onboarding/:taskId/complete", // the deprecated alias of /attest, still called by existing clients
   "POST /api/v1/tenant/onboarding/:taskId/reopen",
+  "POST /api/v1/tenant/onboarding/:taskId/skip", // the organization's own skip of MAC credentials, payer enrollment or DoseSpot kickoff (step-up, Idempotency-Key)
   "POST /api/v1/tenant/onboarding/:taskId/start",
   "PATCH /api/v1/tenant/org-profile",
   "PUT /api/v1/tenant/compliance-officer",

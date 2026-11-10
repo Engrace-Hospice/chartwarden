@@ -174,10 +174,10 @@ describe("tenant skip and the step view", () => {
     expect(Value.Check(SkipOnboardingTaskRequest, { skipRationale: "short" })).toBe(false);
   });
 
-  it("adds skippedBy and tenantSkippable to the step view and keeps systemSkipped", () => {
+  it("adds skippedBy, skippedByLabel and tenantSkippable to the step view and keeps systemSkipped", () => {
     const properties = Object.keys(WizardStepViewSchema.properties);
     expect(properties).toEqual(
-      expect.arrayContaining(["skippedBy", "tenantSkippable", "systemSkipped"]),
+      expect.arrayContaining(["skippedBy", "skippedByLabel", "tenantSkippable", "systemSkipped"]),
     );
     for (const skippedBy of ["system", "tenant", "platform_ops", null]) {
       const step = {
@@ -202,6 +202,7 @@ describe("tenant skip and the step view", () => {
         skipRationale: "does not apply",
         systemSkipped: skippedBy === "system",
         skippedBy,
+        skippedByLabel: skippedBy === "tenant" ? "Your organization" : null,
         skippable: true,
         tenantSkippable: true,
         createdAt: null,
@@ -211,6 +212,7 @@ describe("tenant skip and the step view", () => {
       };
       expect(Value.Check(WizardStepViewSchema, step)).toBe(true);
       expect(Value.Check(WizardStepViewSchema, { ...step, skippedBy: "operator" })).toBe(false);
+      expect(Value.Check(WizardStepViewSchema, { ...step, skippedByLabel: undefined })).toBe(false);
     }
   });
 });

@@ -28672,7 +28672,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The organization's own "this does not apply to us" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Reversible by re-opening; the step's `skippedBy` says tenant */
+        /** The organization's own "this does not apply to us" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Recorded as the tenant's (the step's `skippedBy` says tenant, with the rationale, which the go-live approver sees) and, like any onboarding-data change, voids a pending go-live attestation. Reversible by re-opening */
         post: operations["postApiV1TenantOnboardingByTaskIdSkip"];
         delete?: never;
         options?: never;
@@ -97804,11 +97804,13 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
-                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -97903,11 +97905,13 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
-                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -98518,11 +98522,13 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
-                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -98587,11 +98593,13 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
-                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -98662,11 +98670,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -98734,11 +98744,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -98806,11 +98818,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117020,11 +117034,13 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
-                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -117377,11 +117393,13 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
-                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -117445,11 +117463,13 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
-                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -117520,11 +117540,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117591,11 +117613,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117666,11 +117690,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117737,11 +117763,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117811,11 +117839,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117880,11 +117910,13 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
-                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
-                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;

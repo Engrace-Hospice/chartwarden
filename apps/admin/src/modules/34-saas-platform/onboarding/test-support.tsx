@@ -44,6 +44,7 @@ export function wizardStep(
     skipRationale: null,
     systemSkipped: false,
     skippedBy: null,
+    skippedByLabel: null,
     // the server's skippable list (SKIPPABLE_STEP_KEYS), so a fixture step offers Skip exactly where the real view would
     skippable: SERVER_SKIPPABLE.has(key),
     tenantSkippable: false,
