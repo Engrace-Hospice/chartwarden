@@ -258,7 +258,7 @@ describe("GoLivePanel: awaiting approval", () => {
 
   it.each([
     ["GO_LIVE_SAME_PERSON", /different operator must approve/i],
-    ["GO_LIVE_APPROVER_WROTE_BAA", /You recorded this tenant's BAA/],
+    ["GO_LIVE_APPROVER_WROTE_BAA", /recorded, changed or uploaded the signed agreement/],
   ])("tells the operator what %s means", async (code, words) => {
     mount(ready(), { POST: { [APPROVE]: () => refused(409, code, "x") } });
     approveWith();

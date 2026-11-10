@@ -25,7 +25,7 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   GO_LIVE_SAME_PERSON:
     "The person who attested readiness cannot also approve it. A different operator must approve.",
   GO_LIVE_APPROVER_WROTE_BAA:
-    "You recorded this tenant's BAA, so you cannot approve go-live. A different operator must approve.",
+    "You recorded, changed or uploaded the signed agreement of this tenant's BAA, so you cannot approve go-live. A different operator must approve.",
   GO_LIVE_NOT_ATTESTED: "The compliance officer has not attested readiness yet.",
   GO_LIVE_ATTESTATION_EXPIRED:
     "The attestation is more than 14 days old. Revoke it so the compliance officer can attest again.",

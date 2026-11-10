@@ -255,17 +255,23 @@ export function assertAttesterStillValid(input: {
 
 /**
  * The BAA guard must not rest on one operator who both recorded the agreement and approved the go-live that depends on it:
- * refuses (409) an approver who filed or last changed the governing BAA row. A row written before the writer columns existed
- * carries no writer and cannot be judged.
+ * refuses (409) an approver who filed or last changed the governing BAA row, or who UPLOADED the signed agreement it links (the
+ * document's creator membership). A row written before the writer columns existed carries no writer and cannot be judged.
  */
 export function assertApproverDidNotWriteBaa(
-  baa: Pick<GoverningBaa, "recordedByUserId" | "updatedByUserId"> | undefined,
-  approverUserId: string,
+  baa:
+    | Pick<GoverningBaa, "recordedByUserId" | "updatedByUserId" | "documentUploadedByMembershipId">
+    | undefined,
+  approver: { readonly userId: string; readonly membershipId: string },
 ): void {
-  if (baa && (baa.recordedByUserId === approverUserId || baa.updatedByUserId === approverUserId)) {
+  if (!baa) return;
+  const wroteTheRow =
+    baa.recordedByUserId === approver.userId || baa.updatedByUserId === approver.userId;
+  const uploadedTheFile = baa.documentUploadedByMembershipId === approver.membershipId;
+  if (wroteTheRow || uploadedTheFile) {
     throw refuse(
       "GO_LIVE_APPROVER_WROTE_BAA",
-      "the operator who recorded or last changed the governing BAA cannot also approve the go-live; another platform operator must approve",
+      "the operator who recorded, last changed or uploaded the signed agreement of the governing BAA cannot also approve the go-live; another platform operator must approve",
       409,
     );
   }

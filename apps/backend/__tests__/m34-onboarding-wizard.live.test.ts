@@ -44,7 +44,10 @@ import {
   createOrganizationActivator,
   createOrganizationStatusReader,
 } from "../src/modules/02-identity";
-import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
+import {
+  isTenantBaaDocumentFiled,
+  tenantBaaDocumentUploader,
+} from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
@@ -89,6 +92,9 @@ const OPS_USER = "a0000000-0000-4000-8000-000000007701";
 const OPS_MEMBERSHIP = "b0000000-0000-4000-8000-000000007701";
 
 const OPS: PlatformActor = { kind: "platform", userId: OPS_USER, membershipId: OPS_MEMBERSHIP };
+/** What an operator's catalog write carries beyond the step: why, and which membership (the audit row names both). */
+const TEMPLATE_REASON = "Add a staff training step, ticket CHG-6001";
+const TEMPLATE_WRITE = { reason: TEMPLATE_REASON, operatorMembershipId: OPS_MEMBERSHIP };
 
 const EXPECTED_ORDER = [
   "account_created",
@@ -344,6 +350,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         activation: backend().activateApprovedTenant,
         orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
         baaDocumentFiled: isTenantBaaDocumentFiled,
+        baaDocumentUploader: tenantBaaDocumentUploader,
       }),
       orgProfile: buildDrizzleOrgProfilePort(app.db),
       ...(withAdvance
@@ -2020,6 +2027,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
             activation: backend().activateApprovedTenant,
             orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
             baaDocumentFiled: isTenantBaaDocumentFiled,
+            baaDocumentUploader: tenantBaaDocumentUploader,
           }).inPlatform("review: the governing BAA of a tenant", (store) => store.latestBaa(T_S6));
         const insert = async (documentId: string | null) =>
           admin.query(
@@ -2032,6 +2040,8 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         expect(await governing()).toMatchObject({
           baaStatus: "executed",
           documentFiled: false,
+          // not a filed BAA, so there is no uploader to name
+          documentUploadedByMembershipId: null,
         });
         const guards = evaluateGoLiveGuards({
           templates: [],
@@ -2041,10 +2051,27 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         });
         expect(guards.baaExecuted).toBe(false);
 
+        const ownDocument = await fileDocument(ORG_S6);
         await admin.query(
           "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
-          [T_S6, await fileDocument(ORG_S6)],
+          [T_S6, ownDocument],
         );
+        // read on the real platform carrier: migration 1477 lets it read the document's creator (go-live approval refuses that operator)
+        expect(await governing()).toMatchObject({
+          documentFiled: true,
+          documentUploadedByMembershipId: "e5000000-0000-4000-8000-0000000000e5",
+        });
+
+        // a document whose content was destroyed (a tombstone) is not a filed agreement: the status rests on nothing again
+        await admin.query("UPDATE document SET status = 'destroyed_tombstone' WHERE id = $1", [
+          ownDocument,
+        ]);
+        expect(await governing()).toMatchObject({
+          documentFiled: false,
+          documentUploadedByMembershipId: null,
+        });
+        // legal hold still holds the signed copy
+        await admin.query("UPDATE document SET status = 'legal_hold' WHERE id = $1", [ownDocument]);
         expect(await governing()).toMatchObject({ documentFiled: true });
       });
 
@@ -3458,12 +3485,13 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           description: null,
           canonicalOrder: 99,
           isCanonical: false,
+          ...TEMPLATE_WRITE,
         }),
       ).rejects.toMatchObject({ code: "ONBOARDING_TEMPLATE_CANONICAL", statusCode: 409 });
       expect(await row()).toEqual(before);
     });
 
-    it("never promotes a step to canonical, new or existing: the upsert is 409 and the row stays non-canonical (the column grant stays, the code is the guard)", async () => {
+    it("never promotes a step to canonical, new or existing: the upsert is 409 and the row stays non-canonical (the code answers 409 first; migration 1476 makes the database refuse it too)", async () => {
       const upsert = (key: string, isCanonical: boolean) =>
         backend().service.upsertOnboardingTemplate(OPS_USER, {
           key,
@@ -3471,6 +3499,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           description: null,
           canonicalOrder: 152,
           isCanonical,
+          ...TEMPLATE_WRITE,
         });
       await upsert("promote_guard_custom_step", false);
       for (const key of ["promote_guard_custom_step", "promote_guard_new_step"]) {
@@ -3492,6 +3521,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         description: "Staff walkthrough",
         canonicalOrder: 150,
         isCanonical: false,
+        ...TEMPLATE_WRITE,
       });
       expect(created).toMatchObject({ key: "grant_1425_custom_step", isCanonical: false });
       const edited = await backend().service.upsertOnboardingTemplate(OPS_USER, {
@@ -3500,6 +3530,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         description: null,
         canonicalOrder: 151,
         isCanonical: false,
+        ...TEMPLATE_WRITE,
       });
       expect(edited).toMatchObject({ title: "Custom training (renamed)", canonicalOrder: 151 });
 
@@ -3525,12 +3556,103 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         await expect(
           login.query("DELETE FROM onboarding_task_template WHERE key = 'grant_1425_custom_step'"),
         ).rejects.toMatchObject({ code: "42501" });
+        // Migration 1476: "the narrowest grant" no longer includes the canonical flag (the route never writes it), so promoting a step
+        // is 42501 for the carrier ...
+        await expect(
+          login.query(
+            "UPDATE onboarding_task_template SET is_canonical = true WHERE key = 'grant_1425_custom_step'",
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
       } finally {
         await login.end();
       }
       await admin.query(
         "DELETE FROM onboarding_task_template WHERE key = 'grant_1425_custom_step'",
       );
+    });
+
+    it("migration 1476: the database itself refuses the platform carrier a canonical row (a trigger), however the statement is shaped", async () => {
+      const login = new Client({
+        connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+      });
+      await login.connect();
+      try {
+        // INSERT is table-wide, so the column grant cannot stop a canonical INSERT: the trigger does
+        await expect(
+          login.query(
+            `INSERT INTO onboarding_task_template (key, display_label, description, canonical_order, required_role, default_due_days_after_provisioning, is_canonical)
+             VALUES ('grant_1476_promoted', 'Promoted', '', 160, 'platform_ops', 0, true)`,
+          ),
+        ).rejects.toMatchObject({
+          code: "23001",
+          message: expect.stringContaining("migration only"),
+        });
+        // a canonical row's title (a column the carrier may update on a custom step) is refused too: a canonical step changes by migration
+        await expect(
+          login.query(
+            "UPDATE onboarding_task_template SET display_label = 'Hijacked' WHERE key = 'baa_executed'",
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+        // a custom step is still editable by the carrier (the route's own write)
+        await login.query(
+          `INSERT INTO onboarding_task_template (key, display_label, description, canonical_order, required_role, default_due_days_after_provisioning, is_canonical)
+           VALUES ('grant_1476_custom_step', 'Custom', '', 161, 'platform_ops', 0, false)`,
+        );
+        await login.query(
+          "UPDATE onboarding_task_template SET display_label = 'Custom (renamed)' WHERE key = 'grant_1476_custom_step'",
+        );
+      } finally {
+        await login.end();
+      }
+      const baa = await admin.query(
+        "SELECT display_label, is_canonical FROM onboarding_task_template WHERE key = 'baa_executed'",
+      );
+      expect(baa.rows[0]).toMatchObject({ is_canonical: true });
+      expect(baa.rows[0].display_label).not.toBe("Hijacked");
+      expect(
+        (
+          await admin.query(
+            "SELECT 1 FROM onboarding_task_template WHERE key = 'grant_1476_promoted'",
+          )
+        ).rows,
+      ).toHaveLength(0);
+      // a superuser (a migration, which is how a canonical step is changed) is not refused
+      await admin.query(
+        "UPDATE onboarding_task_template SET description = description WHERE key = 'baa_executed'",
+      );
+      await admin.query(
+        "DELETE FROM onboarding_task_template WHERE key = 'grant_1476_custom_step'",
+      );
+    });
+
+    it("names its operator: the upsert leaves one m34.onboarding_template.upserted event with the operator, the reason and the step (the org-less row trigger records no actor, so this event is where the operator is named)", async () => {
+      await backend().service.upsertOnboardingTemplate(OPS_USER, {
+        key: "named_actor_step",
+        title: "Named actor step",
+        description: null,
+        canonicalOrder: 170,
+        isCanonical: false,
+        ...TEMPLATE_WRITE,
+      });
+      const events = await admin.query(
+        `SELECT actor_user_id, context FROM audit_event
+          WHERE event_type = 'm34.onboarding_template.upserted' AND context->>'templateKey' = 'named_actor_step'`,
+      );
+      expect(events.rows).toHaveLength(1);
+      expect(events.rows[0].context).toMatchObject({
+        operatorUserId: OPS_USER,
+        operatorMembershipId: OPS_MEMBERSHIP,
+        reason: TEMPLATE_REASON,
+        title: "Named actor step",
+        canonicalOrder: 170,
+      });
+      // the row's own trigger (the M1 org-less baseline) records the change but never an actor: without the event above it is nameless
+      const trail = await admin.query(
+        `SELECT actor_user_id FROM audit_event
+          WHERE event_type = 'onboarding_task_template.insert' AND after->>'key' = 'named_actor_step'`,
+      );
+      expect(trail.rows).toHaveLength(1);
+      await admin.query("DELETE FROM onboarding_task_template WHERE key = 'named_actor_step'");
     });
   });
 });

@@ -4,6 +4,7 @@
 // /tenant/onboarding): key, title, owner, sequence, optional, status, `locked` (an earlier gating step is unsettled),
 // completion mode, evidence, who/when - plus the overall `currentStepKey` and the go-live state. A step whose tenant has
 // no task row yet is shown pending with a null id (it still gates; nothing can act on it until provisioning writes it).
+import type { ActivationGuardInput } from "../routes/platform/activation-guards";
 import {
   type GoLiveState,
   attestationExpiresAt,
@@ -175,7 +176,7 @@ export function buildWizardView(input: {
   readonly templates: readonly StepTemplate[];
   readonly tasks: readonly StepTask[];
   readonly attestations: readonly GoLiveAttestation[];
-  readonly latestBaa: { readonly baaStatus: string; readonly expiresOn: string | null } | undefined;
+  readonly latestBaa: ActivationGuardInput["latestBaa"];
   readonly today: Date;
 }): WizardView {
   const { tenant, templates, tasks, attestations } = input;

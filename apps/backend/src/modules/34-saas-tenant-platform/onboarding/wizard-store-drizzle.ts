@@ -123,10 +123,18 @@ export type BaaDocumentFiledCheck = (
   ref: { readonly organizationId: string; readonly documentId: string },
 ) => Promise<boolean>;
 
+/** M22's read of who uploaded a filed signed BAA (the document's creator membership), on the store's transaction; null when it is not one. */
+export type BaaDocumentUploaderCheck = (
+  tx: DbClient,
+  ref: { readonly organizationId: string; readonly documentId: string },
+) => Promise<string | null>;
+
 export function createDrizzleWizardStore(
   tx: DbClient,
   /** Required: go-live rests on the governing BAA's document, and a store without the check would judge the status alone. */
   baaDocumentFiled: BaaDocumentFiledCheck,
+  /** Required: go-live approval is refused to the operator who uploaded the signed agreement, which only this read can tell. */
+  baaDocumentUploader: BaaDocumentUploaderCheck,
   activation?: WizardActivation,
   orgProfileFor?: OrgProfilePortFor,
 ): WizardStore {
@@ -236,16 +244,25 @@ export function createDrizzleWizardStore(
       const rows = await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId);
       const baa = pickGoverningBaa(rows);
       // Go-live judges the governing BAA's document too: an executed status over a link that does not verify is not an executed BAA.
-      return baa
-        ? {
-            baaStatus: baa.baaStatus,
-            expiresOn: dateOnly(baa.expiresOn),
-            documentId: baa.documentId,
-            documentFiled: await governingBaaDocumentFiled(baa, (ref) => baaDocumentFiled(tx, ref)),
-            recordedByUserId: baa.recordedByUserId,
-            updatedByUserId: baa.updatedByUserId,
-          }
-        : undefined;
+      if (!baa) return undefined;
+      const documentFiled = await governingBaaDocumentFiled(baa, (ref) =>
+        baaDocumentFiled(tx, ref),
+      );
+      return {
+        baaStatus: baa.baaStatus,
+        expiresOn: dateOnly(baa.expiresOn),
+        documentId: baa.documentId,
+        documentFiled,
+        documentUploadedByMembershipId:
+          documentFiled && baa.documentId !== null
+            ? await baaDocumentUploader(tx, {
+                organizationId: baa.organizationId,
+                documentId: baa.documentId,
+              })
+            : null,
+        recordedByUserId: baa.recordedByUserId,
+        updatedByUserId: baa.updatedByUserId,
+      };
     },
     async setComplianceOfficer(tenantAccountId, membershipId) {
       await tx
@@ -348,6 +365,8 @@ export interface DrizzleWizardRunnerDeps {
   readonly orgProfileFor: OrgProfilePortFor;
   /** M22's check of the governing BAA's document, on the wizard's own transaction (the go-live guard rests on it). REQUIRED. */
   readonly baaDocumentFiled: BaaDocumentFiledCheck;
+  /** M22's read of who uploaded that document (the approver may not be them). REQUIRED. */
+  readonly baaDocumentUploader: BaaDocumentUploaderCheck;
 }
 
 export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): WizardRunner {
@@ -358,6 +377,7 @@ export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): Wizard
           createDrizzleWizardStore(
             tx as unknown as DbClient,
             deps.baaDocumentFiled,
+            deps.baaDocumentUploader,
             undefined,
             deps.orgProfileFor,
           ),
@@ -373,7 +393,14 @@ export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): Wizard
           // actor_user_id, so the operator who made them would be nameless in the trail.
           if (actorUserId)
             await tx.execute(sql`SELECT set_config('app.user_id', ${actorUserId}, true)`);
-          return fn(createDrizzleWizardStore(tx, deps.baaDocumentFiled, deps.activation));
+          return fn(
+            createDrizzleWizardStore(
+              tx,
+              deps.baaDocumentFiled,
+              deps.baaDocumentUploader,
+              deps.activation,
+            ),
+          );
         },
       ),
   };

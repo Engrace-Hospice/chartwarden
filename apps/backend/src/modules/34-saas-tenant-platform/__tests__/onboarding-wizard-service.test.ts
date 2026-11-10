@@ -1087,6 +1087,45 @@ describe("a BAA recorded or last changed by the approving operator cannot take t
     },
   );
 
+  it("refuses (409 GO_LIVE_APPROVER_WROTE_BAA) an approver who UPLOADED the signed agreement, though another operator wrote the row", async () => {
+    state.baa = new Map([
+      [
+        TENANT,
+        {
+          baaStatus: "executed",
+          expiresOn: "2028-01-01",
+          documentId: "doc-1",
+          recordedByUserId: "someone-u",
+          updatedByUserId: "someone-u",
+          documentUploadedByMembershipId: OPS.membershipId,
+        },
+      ],
+    ]);
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).rejects.toMatchObject({
+      code: "GO_LIVE_APPROVER_WROTE_BAA",
+      statusCode: 409,
+    });
+    expect(tenant().status).toBe("onboarding");
+    expect(state.goLive[0]?.status).toBe("pending");
+    expect(activateOrganization).not.toHaveBeenCalled();
+  });
+
+  it("another operator approves when someone else uploaded the file, and a legacy row with no recorded uploader cannot be judged", async () => {
+    state.baa = new Map([
+      [
+        TENANT,
+        {
+          baaStatus: "executed",
+          expiresOn: "2028-01-01",
+          documentId: "doc-1",
+          recordedByUserId: "someone-u",
+          documentUploadedByMembershipId: "another-ops-m",
+        },
+      ],
+    ]);
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).resolves.toBeDefined();
+  });
+
   it("another operator approves, and a legacy row with no recorded writer cannot be judged", async () => {
     state.baa = new Map([
       [

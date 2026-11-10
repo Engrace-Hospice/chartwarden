@@ -349,6 +349,7 @@ export {
   buildEnvTenantBaaDocumentOnboardingPort,
   buildTenantBaaDocumentOnboardingPort,
   isTenantBaaDocumentFiled,
+  tenantBaaDocumentUploader,
 } from "./onboarding-baa-document-port";
 export { buildPortalDisclosureReader } from "./access-log/portal-disclosures";
 

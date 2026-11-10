@@ -30,7 +30,16 @@ export type MemoryGoLive = GoLiveAttestation & { organizationId: string };
  * document check, so a row is a filed one unless a test says `documentFiled: false`.
  */
 export type MemoryBaa = Pick<GoverningBaa, "baaStatus" | "expiresOn"> &
-  Partial<Pick<GoverningBaa, "documentId" | "documentFiled" | "recordedByUserId" | "updatedByUserId">>;
+  Partial<
+    Pick<
+      GoverningBaa,
+      | "documentId"
+      | "documentFiled"
+      | "documentUploadedByMembershipId"
+      | "recordedByUserId"
+      | "updatedByUserId"
+    >
+  >;
 
 export interface MemoryWizardState {
   tenants: TenantRef[];
@@ -220,6 +229,7 @@ export function createMemoryWizardStore(
         ? {
             documentId: null,
             documentFiled: true,
+            documentUploadedByMembershipId: null,
             recordedByUserId: null,
             updatedByUserId: null,
             ...baa,

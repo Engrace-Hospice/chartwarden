@@ -226,8 +226,8 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               </InlineAlert>
             ) : null}
             <InlineAlert tone="info">
-              A different operator approves than the one who recorded the BAA. Approving re-checks
-              every activation guard and opens the tenant's organization.
+              A different operator approves than the one who recorded or uploaded the BAA. Approving
+              re-checks every activation guard and opens the tenant's organization.
             </InlineAlert>
             {mayDecide ? (
               <div className="wx-drawer-actions">

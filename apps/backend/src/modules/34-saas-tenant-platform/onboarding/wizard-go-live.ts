@@ -275,7 +275,10 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
       attesterIsPlatformStaff: attester ? await isPlatformStaffMember(ctx.store, attester) : false,
     });
     const latestBaa = await ctx.store.latestBaa(ctx.tenant.tenantAccountId);
-    assertApproverDidNotWriteBaa(latestBaa, actor.userId);
+    assertApproverDidNotWriteBaa(latestBaa, {
+      userId: actor.userId,
+      membershipId: actor.membershipId,
+    });
     const guards = evaluateGoLiveGuards({
       templates: ctx.templates,
       tasks: ctx.tasks,

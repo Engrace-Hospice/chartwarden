@@ -1077,6 +1077,7 @@ import {
   scheduleFormRender,
   scheduleRecordsRequestExpiry,
   scheduleRetentionRotation,
+  tenantBaaDocumentUploader,
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
@@ -6990,8 +6991,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const m34Onboarding = {
             wizard: createOnboardingWizard({
               runner: createDrizzleWizardRunner({
-                // Go-live rests on the governing BAA's document too (M22's check, on the wizard's own transaction).
+                // Go-live rests on the governing BAA's document too (M22's check, on the wizard's own transaction), and the operator
+                // who uploaded that document cannot approve it (M22's read of its creator).
                 baaDocumentFiled: isTenantBaaDocumentFiled,
+                baaDocumentUploader: tenantBaaDocumentUploader,
                 db: dbHandle.db,
                 platformDb: platformDbHandle?.db ?? dbHandle.db,
                 auditBypass: m34PlatformBypassAuditor,
