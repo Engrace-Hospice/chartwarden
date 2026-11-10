@@ -27,7 +27,7 @@ const actor: M35WriteActor = {
 
 function tenantWorld(
   sub: Record<string, unknown>,
-  opts: { tier?: string; otherLive?: boolean } = {},
+  opts: { tier?: string; otherLive?: boolean; updateError?: unknown } = {},
 ) {
   const row = { id: SUB_ID, organizationId: ORG_ID, planId: "plan-1", ...sub };
   const log = {
@@ -62,7 +62,11 @@ function tenantWorld(
     }),
     update: () => {
       log.writes.push("update");
-      return { set: () => chain([]) };
+      // a concurrent writer's live subscription commits between this resume's check and its write: the database refuses the UPDATE
+      return {
+        set: () =>
+          opts.updateError ? { where: () => Promise.reject(opts.updateError) } : chain([]),
+      };
     },
     insert: () => {
       log.writes.push("insert");
@@ -134,6 +138,47 @@ describe("a tenant's resume refuses what has nothing to resume, and writes and a
     expect((failure as Error).message).not.toContain(OTHER_LIVE_ID);
     expect(w.log.writes).toEqual([]);
     expect(w.log.published).toEqual([]);
+  });
+
+  it("the tenant's 409 gives no instruction a tenant cannot follow (it cannot cancel or pause the other subscription): it says to contact support", async () => {
+    const w = tenantWorld({ status: "paused", cancelAtPeriodEnd: false }, { otherLive: true });
+
+    const failure = (await failureOf(w.service.resumeSubscription(actor))) as ChartWardenError;
+
+    expect(failure.message).toBe(
+      "this subscription cannot be resumed right now; contact support",
+    );
+    expect(failure.message).not.toMatch(/cancel|pause/i);
+  });
+
+  it("a concurrent live subscription that wins the race (the unique index refuses the UPDATE with 23505) is the SAME typed 409, not a raw 500", async () => {
+    const raced = Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+      constraint: "subscription_org_active_uq",
+    });
+    const w = tenantWorld(
+      { status: "paused", cancelAtPeriodEnd: false },
+      { updateError: new Error("Failed query: update subscription ...", { cause: raced }) },
+    );
+
+    const failure = await failureOf(w.service.resumeSubscription(actor));
+
+    expect(failure).toBeInstanceOf(ChartWardenError);
+    expect(failure).toMatchObject({ code: "SUBSCRIPTION_OTHER_LIVE_EXISTS", statusCode: 409 });
+    expect((failure as Error).message).toBe(
+      "this subscription cannot be resumed right now; contact support",
+    );
+    expect(w.log.published).toEqual([]);
+  });
+
+  it("any OTHER unique violation, or another failure, is left exactly as it was", async () => {
+    const other = Object.assign(new Error("duplicate key"), {
+      code: "23505",
+      constraint: "some_other_uq",
+    });
+    const w = tenantWorld({ status: "paused", cancelAtPeriodEnd: false }, { updateError: other });
+
+    expect(await failureOf(w.service.resumeSubscription(actor))).toBe(other);
   });
 
   it("a contracted plan is refused first (403): operations resume it", async () => {

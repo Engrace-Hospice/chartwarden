@@ -23,17 +23,27 @@ const operator: M35WriteActor = {
 };
 
 /** A transaction whose every select returns the one subscription row, and which records the writes and the lock modes it was asked for. */
+/** What a test may stage beyond the row's own status: the org's NEWEST subscription (when it is not this row), and a refused UPDATE. */
+interface Staged {
+  /** The row the second whole-row read (the "is this the newest?" check, after the lock) answers with. */
+  readonly newest?: Record<string, unknown>;
+  /** What the UPDATE of the row rejects with: a concurrent writer got there first. */
+  readonly updateError?: unknown;
+}
+
 function recordingTx(
   status: string,
   extra: Record<string, unknown> = {},
   onLock: () => void = () => undefined,
   otherLive = false,
+  staged: Staged = {},
 ) {
   const writes: string[] = [];
   const inserted: Record<string, unknown>[] = [];
   const updated: Record<string, unknown>[] = [];
   const locks: unknown[][] = [];
   const row = { id: SUBSCRIPTION_ID, organizationId: ORG_ID, status, ...extra };
+  let wholeRowReads = 0;
   const chain = (rows: unknown[]): unknown => {
     const proxy: unknown = new Proxy(() => undefined, {
       get: (_target, prop) => {
@@ -53,8 +63,12 @@ function recordingTx(
   const tx = {
     // `select()` with no argument reads whole rows (the subscription, its plan); `select({ id })` is the one-live-per-org check (and the
     // dunning-stage lookup, which only reads `stage`): another live subscription exists only when the test says so
-    select: (fields?: unknown) =>
-      chain(fields ? (otherLive ? [{ id: OTHER_LIVE_ID }] : []) : [row]),
+    select: (fields?: unknown) => {
+      if (fields) return chain(otherLive ? [{ id: OTHER_LIVE_ID }] : []);
+      wholeRowReads += 1;
+      // the first whole-row read is the lock by id; the second is the "is it the newest?" check (the staged newest, when the test has one)
+      return chain([wholeRowReads === 2 && staged.newest ? staged.newest : row]);
+    },
     insert: () => {
       writes.push("insert");
       const rows = chain([]) as { values: (v: Record<string, unknown>) => unknown };
@@ -71,7 +85,7 @@ function recordingTx(
       return {
         set: (v: Record<string, unknown>) => {
           updated.push(v);
-          return rows;
+          return staged.updateError ? { where: () => Promise.reject(staged.updateError) } : rows;
         },
       };
     },
@@ -90,8 +104,9 @@ function serviceOver(
   rowExtra: Record<string, unknown> = {},
   onLock: () => void = () => undefined,
   otherLive = false,
+  staged: Staged = {},
 ) {
-  const recorded = recordingTx(status, rowExtra, onLock, otherLive);
+  const recorded = recordingTx(status, rowExtra, onLock, otherLive, staged);
   const audited: PlatformAuditEntry[] = [];
   let runnerCalls = 0;
   const platformRunner: PlatformRunner = async (fn) => {
@@ -116,7 +131,8 @@ const run = (service: ReturnType<typeof serviceOver>["service"], action: Action)
 
 describe("admin pause / resume / cancel refuse a transition the status does not allow, with a stable 409 code, and write nothing", () => {
   it.each([
-    ["resume", "canceled", "SUBSCRIPTION_NOT_PAUSED"],
+    // a canceled subscription is final: the same code the tenant's resume answers for it
+    ["resume", "canceled", "SUBSCRIPTION_CANCELED"],
     ["resume", "active", "SUBSCRIPTION_NOT_PAUSED"],
     ["resume", "past_due", "SUBSCRIPTION_NOT_PAUSED"],
     ["pause", "canceled", "SUBSCRIPTION_CANCELED"],
@@ -151,6 +167,37 @@ describe("admin resume of a paused subscription whose organization already has a
     expect(t.audited).toEqual([]);
   });
 
+  it("the operator's message tells the operator what to do (it can cancel or pause the other subscription by id)", async () => {
+    const t = serviceOver("paused", true, undefined, {}, undefined, true);
+
+    const failure = (await run(t.service, "resume").catch((e: unknown) => e)) as Error;
+
+    expect(failure.message).toBe(
+      "the organization already has another live subscription; cancel or pause it first, then resume this one",
+    );
+  });
+
+  it("a concurrent live subscription that wins the race (the unique index refuses the UPDATE with 23505) is the same typed 409, not a raw 500, and nothing is audited or announced", async () => {
+    const raced = Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+      constraint: "subscription_org_active_uq",
+    });
+    const t = serviceOver("paused", true, undefined, {}, undefined, false, {
+      updateError: new Error("Failed query: update subscription ...", { cause: raced }),
+    });
+
+    const failure = await run(t.service, "resume").then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(failure).toBeInstanceOf(ChartWardenError);
+    expect(failure).toMatchObject({ code: "SUBSCRIPTION_OTHER_LIVE_EXISTS", statusCode: 409 });
+    expect((failure as Error).message).toContain("cancel or pause it first");
+    expect(t.audited).toEqual([]);
+    expect(t.inserted).toEqual([]);
+  });
+
   it("resumes normally when no other subscription is live", async () => {
     const t = serviceOver("paused");
 
@@ -159,6 +206,49 @@ describe("admin resume of a paused subscription whose organization already has a
 
     expect(t.updated).toHaveLength(1);
     expect(t.audited).toHaveLength(1);
+  });
+});
+
+describe("admin resume must be the organization's NEWEST subscription: a superseded one is never resurrected", () => {
+  const NEWER_ID = "5b000000-0000-4000-8000-0000000000aa";
+
+  it.each(["active", "paused", "canceled"])(
+    "resuming an older PAUSED subscription while the newest is %s -> 409 SUBSCRIPTION_SUPERSEDED, and nothing is written, audited or announced",
+    async (newestStatus) => {
+      const t = serviceOver("paused", true, undefined, {}, undefined, false, {
+        newest: { id: NEWER_ID, organizationId: ORG_ID, status: newestStatus },
+      });
+
+      const failure = await run(t.service, "resume").then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      expect(failure).toBeInstanceOf(ChartWardenError);
+      expect(failure).toMatchObject({ code: "SUBSCRIPTION_SUPERSEDED", statusCode: 409 });
+      expect((failure as Error).message).not.toContain(NEWER_ID); // no ids in the envelope
+      expect(t.writes).toEqual([]);
+      expect(t.audited).toEqual([]);
+    },
+  );
+
+  it("the newest paused subscription is judged next (an older one is live: SUBSCRIPTION_OTHER_LIVE_EXISTS), so the existing refusal still applies to it", async () => {
+    // the double's whole-row reads answer with this very row both times: it IS the newest
+    const t = serviceOver("paused", true, undefined, {}, undefined, true);
+
+    expect(await run(t.service, "resume").catch((e: unknown) => e)).toMatchObject({
+      code: "SUBSCRIPTION_OTHER_LIVE_EXISTS",
+    });
+  });
+
+  it("a status that is not paused is refused as before, before the newest is even read", async () => {
+    const t = serviceOver("active", true, undefined, {}, undefined, false, {
+      newest: { id: NEWER_ID, organizationId: ORG_ID, status: "active" },
+    });
+
+    expect(await run(t.service, "resume").catch((e: unknown) => e)).toMatchObject({
+      code: "SUBSCRIPTION_NOT_PAUSED",
+    });
   });
 });
 

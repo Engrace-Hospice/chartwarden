@@ -1035,7 +1035,12 @@ describe.skipIf(!DB_URL)(
           await sweepAt(1);
           await sweepAt(23);
           expect(alerts).toEqual([
-            { organizationId: org, subscriptionId: b, olderLiveSubscriptionId: a },
+            {
+              organizationId: org,
+              subscriptionId: b,
+              olderLiveSubscriptionId: a,
+              trigger: "lapsed_pause",
+            },
           ]);
           expect(logged).toEqual([
             "m35 lapsed pause not resumed: an older subscription of the organization is live",

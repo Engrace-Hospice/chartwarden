@@ -15,11 +15,13 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 import type { M35JobDeps, PauseBlockedEvent } from "../billing-runtime/jobs";
 import {
+  LOCK_TIMEOUT_MS,
   type PauseResumeDeps,
   runPauseResumeForOrg,
   runPauseResumeSweep,
 } from "../billing-runtime/pause-resume";
 import { buildM35OrgLifecycleConsumer } from "../outbox-consumers/m2-organization-lifecycle";
+import { ChartWardenError } from "@chartwarden/types";
 import { ORG_SUSPENDED_REASON_CODE, PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
 
 const ORG = "a1000000-0000-4000-8000-0000000000a1";
@@ -469,6 +471,7 @@ describe("the sweep resumes a lapsed operator pause", () => {
           organizationId: ORG,
           subscriptionId: newestId,
           olderLiveSubscriptionId: "5b000000-0000-4000-8000-00000000002f",
+          trigger: "lapsed_pause",
         },
       ]);
       expect(logged).toHaveLength(1);
@@ -774,5 +777,174 @@ describe("a suspension while an operator's DATED pause is still running makes it
       ["paused", "active", PAUSE_LAPSED_REASON_CODE],
       ["active", "paused", ORG_SUSPENDED_REASON_CODE],
     ]);
+  });
+});
+
+describe("the `.activated` consumer asks first: it never resumes a paused subscription beside another live one", () => {
+  const OLDER_LIVE = "5b000000-0000-4000-8000-0000000000c0";
+  const NEWEST_PAUSED = "5b000000-0000-4000-8000-0000000000c1";
+  const blocked = (newestId = NEWEST_PAUSED, olderId = OLDER_LIVE) =>
+    world([
+      lapsedPause({
+        id: olderId,
+        status: "active",
+        pausedAt: null,
+        pausedUntil: null,
+        startedAt: new Date("2026-09-01T00:00:00Z"),
+      }),
+      // an org suspension's pause (open-ended): the state a reactivation resumes
+      lapsedPause({
+        id: newestId,
+        pausedUntil: null,
+        startedAt: new Date("2026-11-01T00:00:00Z"),
+      }),
+    ]);
+  const activate = (
+    db: DbClient,
+    outbox: ReturnType<typeof deps>["outbox"],
+    extra: { log?: PauseResumeDeps["log"]; onPauseBlocked?: PauseResumeDeps["onPauseBlocked"]; now?: () => Date } = {},
+  ) =>
+    buildM35OrgLifecycleConsumer({ db, outbox, now: extra.now ?? (() => NOW), ...extra }).handle({
+      eventType: "m2.organization.activated",
+      organizationId: ORG,
+      payload: { organizationId: ORG, reason: "reinstated" },
+    });
+
+  it("writes nothing and announces nothing, and RETURNS (the event is consumed: no outbox retry loop to a dead letter)", async () => {
+    const w = blocked();
+    const { outbox, published } = deps(w.db);
+
+    await expect(activate(w.db, outbox)).resolves.toBeUndefined();
+
+    expect(w.state(NEWEST_PAUSED).status).toBe("paused");
+    expect(w.log.updates).toEqual([]);
+    expect(w.log.ledger).toEqual([]);
+    expect(published).toEqual([]);
+  });
+
+  it("raises the same blocked-pause log and ops alert the sweep does, with the ids and nothing else", async () => {
+    const newestId = "5b000000-0000-4000-8000-0000000000d1";
+    const olderId = "5b000000-0000-4000-8000-0000000000d0";
+    const w = blocked(newestId, olderId);
+    const { outbox } = deps(w.db);
+    const logged: [string, Record<string, unknown>][] = [];
+    const alerts: unknown[] = [];
+
+    await activate(w.db, outbox, {
+      log: (m, d) => void logged.push([m, d]),
+      onPauseBlocked: (e) => void alerts.push({ ...e }),
+    });
+
+    expect(alerts).toEqual([
+      {
+        organizationId: ORG,
+        subscriptionId: newestId,
+        olderLiveSubscriptionId: olderId,
+        trigger: "organization_activated",
+      },
+    ]);
+    // not "lapsed pause": the reactivation of an organization is what met it, and the line says so
+    expect(logged).toEqual([
+      [
+        "m35 organization reactivated but its paused subscription was not resumed: an older subscription of the organization is live",
+        { organizationId: ORG, subscriptionId: newestId },
+      ],
+    ]);
+  });
+
+  it("shares the once-a-day gate with the sweep: a redelivery, or the sweep after the activation, does not alert again the same day", async () => {
+    const newestId = "5b000000-0000-4000-8000-0000000000e1";
+    const olderId = "5b000000-0000-4000-8000-0000000000e0";
+    const alerts: unknown[] = [];
+    const hook = { onPauseBlocked: (e: PauseBlockedEvent) => void alerts.push(e) };
+    const w = blocked(newestId, olderId);
+    const { outbox } = deps(w.db);
+
+    await activate(w.db, outbox, hook);
+    await activate(w.db, outbox, hook); // the same event delivered again
+    expect(alerts).toHaveLength(1);
+
+    // the sweep meets the same blocked state an hour later (a lapsed pause now): already reported today
+    const lapsedBlocked = world([
+      {
+        ...lapsedPause({ id: olderId, startedAt: new Date("2026-09-01T00:00:00Z") }),
+        status: "active",
+        pausedAt: null,
+        pausedUntil: null,
+      },
+      lapsedPause({ id: newestId, startedAt: new Date("2026-11-01T00:00:00Z") }),
+    ]);
+    await runPauseResumeForOrg(
+      deps(lapsedBlocked.db, { ...hook, now: () => new Date(NOW.getTime() + 3_600_000) }).jobs,
+      ORG,
+    );
+    expect(alerts).toHaveLength(1);
+  });
+
+  it("a failing alert sink does not fail the delivery (the event would otherwise retry to a dead letter)", async () => {
+    const w = blocked("5b000000-0000-4000-8000-0000000000f1", "5b000000-0000-4000-8000-0000000000f0");
+    const { outbox } = deps(w.db);
+
+    await expect(
+      activate(w.db, outbox, {
+        onPauseBlocked: () => {
+          throw new Error("webhook down");
+        },
+        log: () => undefined,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("with no other live subscription it resumes as before: one ledger row, one resumed event", async () => {
+    const w = world(lapsedPause({ pausedUntil: null }));
+    const { outbox, published } = deps(w.db);
+
+    await activate(w.db, outbox);
+
+    expect(w.state().status).toBe("active");
+    expect(w.log.ledger).toHaveLength(1);
+    expect(published.map((e) => e.eventName)).toEqual(["m35.subscription.resumed"]);
+  });
+
+  it("asks AFTER it holds the row lock (the answer it acts on is the one the lock protects)", async () => {
+    const w = blocked("5b000000-0000-4000-8000-000000000101", "5b000000-0000-4000-8000-000000000100");
+    await activate(w.db, deps(w.db).outbox);
+    expect(w.log.locks).toEqual(["update"]);
+    expect(w.log.sequence.indexOf("lock")).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("the row-lock wait is bounded, and the bound cannot be switched off", () => {
+  it("the default is 5 seconds: a lapsed pause sends '5000' to set_config('lock_timeout', ...), transaction-local", async () => {
+    expect(LOCK_TIMEOUT_MS).toBe(5_000);
+    const w = world(lapsedPause());
+
+    await runPauseResumeForOrg(deps(w.db).jobs, ORG); // no override
+
+    const timeout = w.log.executes.find((e) => e.text.includes("lock_timeout"));
+    expect(timeout?.params).toEqual(["5000"]);
+    expect(timeout?.text).toMatch(/set_config\('lock_timeout', \$1, true\)/);
+  });
+
+  it.each([0, -1, -5_000, 0.5, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "an override of %s is refused before anything is opened (0 would disable the timeout in PostgreSQL)",
+    async (bad) => {
+      const w = world(lapsedPause());
+
+      const failure = await runPauseResumeForOrg(deps(w.db, { lockTimeoutMs: bad }).jobs, ORG).then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      expect(failure).toBeInstanceOf(ChartWardenError);
+      expect(failure).toMatchObject({ code: "PAUSE_RESUME_LOCK_TIMEOUT_INVALID" });
+      expect(w.log.transactions).toEqual([]);
+    },
+  );
+
+  it("a positive whole number of milliseconds is accepted", async () => {
+    const w = world(lapsedPause());
+    await runPauseResumeForOrg(deps(w.db, { lockTimeoutMs: 1 }).jobs, ORG);
+    expect(w.log.executes.find((e) => e.text.includes("lock_timeout"))?.params).toEqual(["1"]);
   });
 });
