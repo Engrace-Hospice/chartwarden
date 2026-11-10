@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { createApiClient } from "../../api/client";
 import { createIdempotencyKeeper } from "../idempotency";
-import { isGatewayPage, reachedNoOne, sendWrite, settleWrite, writeRefused } from "../send-write";
+import { reachedNoOne, sendWrite, settleWrite, writeRefused } from "../send-write";
 
 const counter = () => {
   let n = 0;
@@ -115,39 +115,42 @@ describe("sendWrite keeps one Idempotency-Key per user intent", () => {
     await sendWrite(keeper, "same", gateway);
     expect(keys[1]).toBe(keys[0]);
     expect(reachedNoOne(answer(GATEWAY_5XX))).toBe(true);
-    // The app's own 500 (it carries the envelope) WAS cached under the key.
+    // The app's own 500 carries the envelope: the app answered, so the attempt is over and the key renews.
     expect(reachedNoOne(answer(500, { error: { code: "PERSIST_FAILED" } }))).toBe(false);
   });
 });
 
-describe("isGatewayPage (the one definition the API client's own Idempotency-Key middleware shares)", () => {
-  it("is a 5xx whose body is not the API error envelope", () => {
-    expect(isGatewayPage(GATEWAY_5XX, "<html>Bad gateway</html>")).toBe(true);
-    expect(isGatewayPage(GATEWAY_5XX, undefined)).toBe(true);
-    expect(isGatewayPage(503, null)).toBe(true);
-    expect(isGatewayPage(500, { error: {} })).toBe(true);
-    expect(isGatewayPage(500, { error: { code: 5 } })).toBe(true);
-    expect(isGatewayPage(500, { message: "busy" })).toBe(true);
+describe("sendWrite and the 409 that says an earlier request under the key is still running", () => {
+  const seen: string[] = [];
+  const reply = (status: number, body: unknown) => async (key: string) => {
+    seen.push(key);
+    return { error: body, response: { ok: false, status } };
+  };
+
+  it.each([
+    ["the IDEMPOTENCY_IN_FLIGHT code", { error: { code: "IDEMPOTENCY_IN_FLIGHT", message: "m" } }],
+    [
+      "the plain CONFLICT an older server sends, by its exact message",
+      { error: { code: "CONFLICT", message: "Idempotency-Key request is still being processed" } },
+    ],
+  ])("keeps the key on %s: the first attempt is unresolved", async (_label, body) => {
+    seen.length = 0;
+    const keeper = createIdempotencyKeeper(counter());
+
+    expect((await sendWrite(keeper, "same", reply(409, body))).status).toBe("refused");
+    await sendWrite(keeper, "same", reply(409, body));
+
+    expect(seen[1]).toBe(seen[0]);
   });
 
-  it("is not a 5xx the app answered, nor any status below 500", () => {
-    expect(isGatewayPage(500, { error: { code: "PERSIST_FAILED" } })).toBe(false);
-    expect(isGatewayPage(409, undefined)).toBe(false);
-    expect(isGatewayPage(404, "<html>gone</html>")).toBe(false);
-    expect(isGatewayPage(200, undefined)).toBe(false);
-  });
+  it("renews the key on a plain business 409 CONFLICT, which is the app's own answer", async () => {
+    seen.length = 0;
+    const keeper = createIdempotencyKeeper(counter());
+    const conflict = { error: { code: "CONFLICT", message: "That plan is already published" } };
 
-  it("agrees with reachedNoOne on an openapi-fetch shaped result", () => {
-    const result = (status: number, error?: unknown) => ({ error, response: { status } });
-    for (const [status, error] of [
-      [502, undefined],
-      [502, "<html/>"],
-      [500, { error: { code: "X" } }],
-      [409, { error: { code: "X" } }],
-      [404, undefined],
-    ] as const) {
-      expect(reachedNoOne(result(status, error))).toBe(isGatewayPage(status, error));
-    }
-    expect(reachedNoOne({})).toBe(false); // no response at all
+    await sendWrite(keeper, "same", reply(409, conflict));
+    await sendWrite(keeper, "same", reply(409, conflict));
+
+    expect(seen[1]).not.toBe(seen[0]);
   });
 });

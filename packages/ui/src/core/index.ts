@@ -10,6 +10,7 @@ export type { FeatureFlags, SystemStatusComponent, SystemStatusLevel } from "./t
 export {
   ApiClientProvider,
   BACKGROUND_REQUEST_HEADERS,
+  clearIdempotencyKeys,
   createApiClient,
   useApiClient,
 } from "./api";
@@ -73,6 +74,7 @@ export type {
   OpsFailureKind,
 } from "./ops-write/ops-error";
 export { createIdempotencyKeeper, useIdempotencyKeeper } from "./ops-write/idempotency";
+export { freshIdempotencyKeyHeaders } from "./ops-write/idempotency-key";
 export type { IdempotencyKeeper } from "./ops-write/idempotency";
 export { AFTER_SUCCESS_TIMEOUT_MS, useOpsWrite } from "./ops-write/use-ops-write";
 export { reachedNoOne, sendWrite, settleWrite, writeRefused } from "./ops-write/send-write";

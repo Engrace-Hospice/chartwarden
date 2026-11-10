@@ -2,106 +2,222 @@
 //
 // A write whose reply is lost (offline, a reset, a timeout) may or may not have landed. For the server to recognise the retry as a retry,
 // the retry has to carry the SAME key; a fresh key per attempt would make a lost-reply write double up. So the key is held per intent,
-// the intent being method + full URL (path and query) + body, by the same rule createIdempotencyKeeper / sendWrite hold per screen:
-//   - the same intent keeps its key across a request that got NO answer, and across a gateway page that never reached the app (a 5xx
-//     whose body is not the API error envelope: nothing was cached under the key);
-//   - any real ANSWER, success or refusal, renews it. The server caches whatever it answered under the key, refusals included (a 403
+// the intent being method + full URL (path and query) + If-Match + JSON body (the server hashes the same things), by the rule
+// `keepsKey` (ops-write/idempotency-key.ts) that the kit's createIdempotencyKeeper / sendWrite share:
+//   - the same intent keeps its key across a request that got NO answer, across a gateway page that never reached the app (a 5xx whose
+//     body is not the API error envelope), and across the 409 that says an earlier request under the key is still running (that first
+//     attempt is unresolved: a new key would run the write a second time);
+//   - any other ANSWER, success or refusal, renews it. The server caches a completed answer under the key, refusals included (a 403
 //     STEP_UP_REQUIRED, a 409, a 422), so the next attempt after an answer is a new intent and must start on a new key;
-//   - a changed body, URL, query or method is another intent, with its own key.
+//   - a changed body, URL, query, method or If-Match is another intent, with its own key.
 // A request that supplies its own Idempotency-Key (the kit's sendWrite / useOpsWrite callers) is never touched and never tracked.
 //
+// What it cannot do, so callers know:
+//   - A body that carries a per-attempt timestamp or nonce never matches its own retry, so such a write silently gets a fresh key every
+//     time. Give it its own key (pass `Idempotency-Key`, or use the kit's sendWrite / useOpsWrite), not this middleware.
+//   - Only no-body and JSON bodies are fingerprinted; a file, multipart form, stream or a body past MAX_FINGERPRINT_BODY_CHARS goes out
+//     on a fresh key every time (a Request cannot tell a stream from a string, so the read is bounded by size and by time).
+//   - React StrictMode runs a mount effect twice in development, so a mount-time POST sends two identical requests on one key and the
+//     second is answered 409 in-flight. Production does not do this.
+//
 // State is per client instance, not module-level: every app builds one client at its root so a screen sees the same table either way,
-// but tests (and any second client) cannot leak keys into each other, and the clock is injectable.
+// but tests (and any second client) cannot leak keys into each other, and the clock is injectable. The table keys on a short digest of
+// the intent, never on the body text (a clinical note must not sit in memory as a map key), and forgets everything on a 401 (the
+// session is gone, and its unanswered writes are not the next user's). An explicit sign-out is a full page navigation in all three apps,
+// which discards the table with the page; the one that is not (the portal onboarding "leave") calls clearIdempotencyKeys(client).
 import type { Middleware } from "openapi-fetch";
-import { newIdempotencyKey } from "../ops-write/idempotency-key";
-import { isGatewayPage } from "../ops-write/send-write";
+import {
+  isGatewayPage,
+  isInFlightDuplicate,
+  newIdempotencyKey,
+} from "../ops-write/idempotency-key";
 
 /** Methods that mutate state: the ones the backend's `requireIdempotencyKey` guard can gate (TASK-020). */
 export const MUTATING_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
-
+const UNAUTHORIZED = 401;
 const MS_PER_MINUTE = 60_000;
 
 /**
- * How long an intent keeps its key after its last attempt. The server caches an answer for a limited time (24h), and a retry long after
- * the first attempt is a new intent (the same text submitted again on purpose), which must not be handed a replay of the old answer; a
- * lost-reply retry comes in seconds to minutes. A retry inside the window restarts it, so a user still retrying keeps the key.
+ * How long an intent keeps its key after its last UNANSWERED attempt (no answer, or a gateway page). The server caches an answer for a
+ * limited time (24h), and a retry long after the first attempt is a new intent (the same text submitted again on purpose), which must
+ * not be handed a replay of the old answer; a lost-reply retry comes in seconds to minutes. An in-flight 409 does not move it: the
+ * server can leave a claim pending for its whole TTL when it fails to complete or release it, and sliding on that 409 would lock the
+ * user out of that write for as long as they kept trying.
  */
 export const IDEMPOTENCY_KEY_TTL_MS = 15 * MS_PER_MINUTE;
 
-/** At most this many intents hold a key at once; past it the least recently used one is forgotten (it gets a new key on its next retry). */
+/**
+ * The most an intent may keep one key, measured from its FIRST attempt however often it was retried. Sliding the idle window alone
+ * would let a user who retries every 14 minutes outlive the server's fixed 24h claim; an hour is far past any lost-reply retry.
+ */
+export const IDEMPOTENCY_KEY_MAX_AGE_MS = 60 * MS_PER_MINUTE;
+
+/**
+ * At most this many IDLE intents hold a key; past it the least recently used idle one is forgotten (it gets a new key on its next
+ * retry). An intent whose request is still in flight is never evicted by the cap (a bulk action may fire more of them than this), only
+ * by IDEMPOTENCY_KEY_MAX_AGE_MS.
+ */
 export const MAX_TRACKED_INTENTS = 64;
 
-/** A body longer than this is not fingerprinted (the table would hold its text): the request goes out on a fresh key every time. */
+/** A body longer than this is not fingerprinted: the request goes out on a fresh key every time. */
 export const MAX_FINGERPRINT_BODY_CHARS = 64 * 1024;
 
-/** The only bodies whose text is a stable fingerprint: JSON. A file, a stream or a multipart form is not (its boundary changes per request). */
+/**
+ * The longest the body read may take. A string body is read at once; a JSON-typed stream that never ends (openapi-fetch labels ANY
+ * non-FormData body application/json) must not hold the request back, so past this it is sent on a fresh key.
+ */
+export const FINGERPRINT_READ_TIMEOUT_MS = 250;
+
+/** The only bodies whose text is a stable fingerprint: JSON. A file or a multipart form is not (its boundary changes per request). */
 const JSON_CONTENT_TYPE = /[/+]json\b/i;
+
+type Fate = "renew" | "slide" | "hold";
 
 interface TrackedIntent {
   readonly key: string;
+  readonly firstAttemptAt: number;
+  /** The last attempt that ended unanswered (no answer or a gateway page); an in-flight 409 leaves it alone. */
   readonly lastAttemptAt: number;
+  /** Requests under this key that have not been answered yet. */
+  readonly inFlight: number;
 }
 
 /**
- * The intent's fingerprint, or null when the request cannot be fingerprinted (its body is not JSON, is too large, or cannot be read):
- * such a request is simply not tracked and gets a fresh key, which is how every request behaved before intents were tracked.
+ * cyrb53, a non-cryptographic 53-bit string hash: crypto.subtle is unavailable in an insecure context, and the server's own request hash
+ * is the backstop (a collision would only share a key between two intents, which the server answers 409 IDEMPOTENCY_CONFLICT).
  */
-async function fingerprintOf(request: Request): Promise<string | null> {
-  const intent = `${request.method} ${request.url}`;
-  if (!request.body) return intent; // no body: the method and URL are the whole intent
-  if (!JSON_CONTENT_TYPE.test(request.headers.get("content-type") ?? "")) return null;
+function digest(text: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}.${text.length.toString(36)}`;
+}
+
+/** The body text, or null when it is past the size cap or cannot be read in time. Reads at most the cap, never `.text()` of a stream. */
+async function readBoundedText(request: Request): Promise<string | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = Symbol("timedOut");
+  const deadline = new Promise<typeof timedOut>((resolve) => {
+    timer = setTimeout(() => resolve(timedOut), FINGERPRINT_READ_TIMEOUT_MS);
+  });
   try {
-    const text = await request.clone().text();
-    return text.length > MAX_FINGERPRINT_BODY_CHARS ? null : `${intent}\n${text}`;
+    let text = "";
+    for (;;) {
+      const next = await Promise.race([reader.read(), deadline]);
+      if (next === timedOut) return null;
+      if (next.done) return text + decoder.decode();
+      text += decoder.decode(next.value, { stream: true });
+      if (text.length > MAX_FINGERPRINT_BODY_CHARS) return null;
+    }
+  } finally {
+    clearTimeout(timer);
+    void reader.cancel().catch(() => undefined); // the clone's branch only: the original still goes to the wire
+  }
+}
+
+/**
+ * A short digest of the intent (method, URL, If-Match, body), or null when the request cannot be fingerprinted: its body is not JSON, is
+ * too large, is not readable in time or cannot be cloned. Such a request is not tracked and gets a fresh key, as every request did before
+ * intents were tracked. The digest, not the text, is what the table holds.
+ */
+export async function fingerprintOf(request: Request): Promise<string | null> {
+  const intent = `${request.method}\n${request.url}\n${request.headers.get("if-match") ?? ""}\n`;
+  if (!request.body) return digest(intent); // no body: the method, URL and version are the whole intent
+  if (!JSON_CONTENT_TYPE.test(request.headers.get("content-type") ?? "")) return null;
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (declaredLength > MAX_FINGERPRINT_BODY_CHARS) return null; // a size hint some callers set: bytes are never fewer than chars
+  try {
+    const text = await readBoundedText(request.clone());
+    return text === null ? null : digest(intent + text);
   } catch {
     return null; // a body that cannot be cloned or read: never fail the request over its bookkeeping
   }
 }
 
-/** True when the response is a gateway page that never reached the app. Reads a clone: the caller's body is untouched. */
-async function neverReachedTheApp(response: Response): Promise<boolean> {
-  if (response.status < 500) return false;
-  const body: unknown = await response
-    .clone()
-    .json()
-    .catch(() => undefined); // an empty or non-JSON body is "no envelope"
-  return isGatewayPage(response.status, body);
+/** What the answer means for the key: an in-flight 409 holds it, a gateway page keeps it fresh in the window, anything else renews. */
+async function fateOf(response: Response): Promise<Fate> {
+  const { status } = response;
+  if (status < 500 && status !== 409) return "renew";
+  let copy: Response;
+  try {
+    copy = response.clone();
+  } catch {
+    return "renew"; // the answer cannot be read (a locked body): it was an answer, so the attempt is over
+  }
+  const body: unknown = await copy.json().catch(() => undefined); // an empty or non-JSON body is "no envelope"
+  if (isInFlightDuplicate(status, body)) return "hold";
+  return isGatewayPage(status, body) ? "slide" : "renew";
+}
+
+export interface IdempotencyKeys {
+  readonly middleware: Middleware;
+  /** Forget every key (the session ended): the next attempt of any intent starts on a new one. */
+  clear(): void;
 }
 
 /** `now` is injectable for tests; production uses the wall clock (a record from last night must expire across a sleeping laptop). */
-export function createIdempotencyKeyMiddleware(now: () => number = Date.now): Middleware {
-  // Insertion order IS recency order (a use re-inserts), so the oldest intent is always the first entry.
+export function createIdempotencyKeys(now: () => number = Date.now): IdempotencyKeys {
+  // Keyed by the intent's digest. Position is recency: a record is re-inserted when an unanswered attempt ends, so the first IDLE entry
+  // is the least recently used.
   const intents = new Map<string, TrackedIntent>();
 
-  function forgetStaleAndOverflow(): void {
-    const cutoff = now() - IDEMPOTENCY_KEY_TTL_MS;
-    for (const [fingerprint, intent] of intents) {
-      if (intent.lastAttemptAt > cutoff && intents.size <= MAX_TRACKED_INTENTS) break;
-      intents.delete(fingerprint);
+  function purge(): void {
+    const current = now();
+    for (const [digestOfIntent, intent] of intents) {
+      const tooOld = current - intent.firstAttemptAt >= IDEMPOTENCY_KEY_MAX_AGE_MS;
+      const idleTooLong =
+        intent.inFlight === 0 && current - intent.lastAttemptAt >= IDEMPOTENCY_KEY_TTL_MS;
+      if (tooOld || idleTooLong) intents.delete(digestOfIntent);
+    }
+    for (const [digestOfIntent, intent] of intents) {
+      if (intents.size <= MAX_TRACKED_INTENTS) return;
+      if (intent.inFlight === 0) intents.delete(digestOfIntent);
     }
   }
 
-  function keyFor(fingerprint: string): string {
-    forgetStaleAndOverflow();
-    const key = intents.get(fingerprint)?.key ?? newIdempotencyKey();
-    intents.delete(fingerprint);
-    intents.set(fingerprint, { key, lastAttemptAt: now() });
-    forgetStaleAndOverflow(); // the new entry may have pushed the table one past its cap
-    return key;
+  /** The key for this attempt: the intent's own, or a new one; the attempt counts as in flight until it is answered or fails. */
+  function begin(fingerprint: string): string {
+    purge();
+    const current = now();
+    const known = intents.get(fingerprint);
+    const intent: TrackedIntent = known
+      ? { ...known, inFlight: known.inFlight + 1 }
+      : { key: newIdempotencyKey(), firstAttemptAt: current, lastAttemptAt: current, inFlight: 1 };
+    intents.set(fingerprint, intent);
+    purge();
+    return intent.key;
   }
 
-  /** An answer renewed the key: the next attempt is a new intent. A key the caller supplied is in no record, so this does nothing. */
-  function renew(key: string): void {
+  /** The attempt under `key` ended. A key the caller supplied is in no record, so this does nothing for it. */
+  function end(key: string, fate: Fate): void {
     for (const [fingerprint, intent] of intents) {
       if (intent.key !== key) continue;
-      intents.delete(fingerprint);
-      return;
+      const inFlight = Math.max(0, intent.inFlight - 1);
+      if (fate === "hold") {
+        intents.set(fingerprint, { ...intent, inFlight });
+      } else {
+        intents.delete(fingerprint);
+        if (fate === "slide") {
+          intents.set(fingerprint, { ...intent, inFlight, lastAttemptAt: now() });
+        }
+      }
+      break;
     }
+    purge();
   }
 
-  return {
+  const middleware: Middleware = {
     async onRequest({ request }) {
       if (!MUTATING_METHODS.has(request.method) || request.headers.has(IDEMPOTENCY_KEY_HEADER)) {
         return request;
@@ -109,17 +225,25 @@ export function createIdempotencyKeyMiddleware(now: () => number = Date.now): Mi
       const fingerprint = await fingerprintOf(request);
       request.headers.set(
         IDEMPOTENCY_KEY_HEADER,
-        fingerprint === null ? newIdempotencyKey() : keyFor(fingerprint),
+        fingerprint === null ? newIdempotencyKey() : begin(fingerprint),
       );
       return request;
     },
 
-    // onError (no answer at all: openapi-fetch rethrows) is deliberately absent: the record stays, so the retry replays.
     async onResponse({ request, response }) {
+      if (response.status === UNAUTHORIZED) intents.clear();
       const key = request.headers.get(IDEMPOTENCY_KEY_HEADER);
-      if (key === null || (await neverReachedTheApp(response))) return undefined;
-      renew(key);
+      if (key !== null) end(key, await fateOf(response));
+      return undefined;
+    },
+
+    // No answer at all (offline, a reset, an abort: openapi-fetch rethrows): the key stays, so the retry replays.
+    onError({ request }) {
+      const key = request.headers.get(IDEMPOTENCY_KEY_HEADER);
+      if (key !== null) end(key, "slide");
       return undefined;
     },
   };
+
+  return { middleware, clear: () => intents.clear() };
 }

@@ -6,8 +6,10 @@
 // 2. A request that got NO answer at all (offline, reset: openapi-fetch rethrows) is its own outcome, never an exception: the caller
 //    releases its busy lock and says the server was not reached.
 // 3. With a keeper, the Idempotency-Key is held per user intent: the same fingerprint keeps the key across a retry after no answer (the
-//    request may have landed and only the reply been lost, so the server must be able to recognise the retry), and any ANSWER renews it.
+//    request may have landed and only the reply been lost, so the server must be able to recognise the retry), and any ANSWER renews it,
+//    except a gateway page and the server's "an earlier request under this key is still running" 409 (`keepsKey`, idempotency-key.ts).
 import type { IdempotencyKeeper } from "./idempotency";
+import { isGatewayPage, keepsKey } from "./idempotency-key";
 
 export interface WriteResponse {
   readonly error?: unknown;
@@ -22,18 +24,7 @@ export function writeRefused(result: WriteResponse): boolean {
   return response.ok === false || response.status >= 400;
 }
 
-/**
- * A gateway error page: a 5xx whose body is not the API's error envelope (`{ error: { code: string } }`) never reached the app, so
- * nothing was cached under the key. The ONE definition: `reachedNoOne` (an openapi-fetch result) and the API client's own
- * Idempotency-Key middleware (a status plus the parsed body) both read it from here.
- */
-export function isGatewayPage(status: number, body: unknown): boolean {
-  if (status < 500) return false;
-  const code = (body as { error?: { code?: unknown } } | null | undefined)?.error?.code;
-  return typeof code !== "string";
-}
-
-/** `isGatewayPage` over an openapi-fetch result: a 5xx is always a refusal, so only the status and the error body are read. */
+/** A gateway error page: a 5xx whose body is not the API's error envelope never reached the app (the definition lives in idempotency-key.ts). */
 export function reachedNoOne(result: WriteResponse): boolean {
   return isGatewayPage(result.response?.status ?? 0, result.error);
 }
@@ -60,7 +51,8 @@ export async function settleWrite<R extends WriteResponse>(
 
 /**
  * Send a write under the keeper's key for `fingerprint` (the body, or any stable text for the intent) and classify it. The key is kept
- * when the request got no answer (and when a gateway answered for the app), renewed by every real answer, success or refusal.
+ * when the request got no answer, when a gateway answered for the app, and when the server says an earlier request under the key is
+ * still running (`keepsKey`); it is renewed by every other answer, success or refusal.
  */
 export async function sendWrite<R extends WriteResponse>(
   keeper: IdempotencyKeeper,
@@ -69,6 +61,6 @@ export async function sendWrite<R extends WriteResponse>(
 ): Promise<SettledWrite<R>> {
   const settled = await settleWrite(call(keeper.keyFor(fingerprint)));
   if (settled.status === "unreachable") return settled;
-  if (!reachedNoOne(settled.res)) keeper.settled();
+  if (!keepsKey(settled.res.response?.status ?? 0, settled.res.error)) keeper.settled();
   return settled;
 }

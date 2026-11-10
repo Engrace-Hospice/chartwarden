@@ -1,14 +1,27 @@
 // @chartwarden/ui — typed REST API client (F0-T02, ADR-0032).
 // Wraps openapi-fetch over the generated `paths` (from docs/api/openapi.json via
 // `bun run client:gen`) and attaches the ChartWarden auth + correlation-id headers.
-// Leaf-safe: depends only on `openapi-fetch`, the generated schema and the pure helpers beside it in this package (the Idempotency-Key
-// middleware) — NO @chartwarden/* import, so `packages/ui` stays a leaf and the frontend never compile-imports the backend.
+// Leaf-safe: depends only on `openapi-fetch`, the generated schema and this package's own Idempotency-Key middleware (which imports just
+// ../ops-write/idempotency-key, a React-free file with no imports) — NO @chartwarden/* import, so `packages/ui` stays a leaf and the
+// frontend never compile-imports the backend.
 import createClient, { type Client, type ClientOptions, type Middleware } from "openapi-fetch";
-import { MUTATING_METHODS, createIdempotencyKeyMiddleware } from "./idempotency-middleware";
+import { MUTATING_METHODS, createIdempotencyKeys } from "./idempotency-middleware";
 import type { paths } from "./schema";
 
 /** The typed client: `client.GET("/api/v1/patients/{id}", { params: { path: { id } } })`. */
 export type ApiClient = Client<paths>;
+
+/** Each client's own Idempotency-Key table, reachable through {@link clearIdempotencyKeys} without widening the `ApiClient` type. */
+const idempotencyTables = new WeakMap<object, () => void>();
+
+/**
+ * Forget every Idempotency-Key the client is holding for an unanswered write. Call it when the signed-in user changes WITHOUT a page
+ * reload (a reload discards the table with the page; every sign-out in the three apps reloads except the portal onboarding "leave").
+ * A 401 answer clears it on its own, so a session that expires needs no call.
+ */
+export function clearIdempotencyKeys(client: ApiClient): void {
+  idempotencyTables.get(client)?.();
+}
 
 export interface ApiClientOptions {
   /** API origin. Default "" (same-origin — generated paths already carry `/api/v1`). */
@@ -99,22 +112,32 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
   };
   client.use(headers);
-  // §4.1.1 — every mutating request carries an `Idempotency-Key`, so a retry after a request that got no answer replays instead of
-  // double-executing, for every caller of this client with no per-screen code. The key is held per intent (method + URL + body): kept
-  // across a request that got no answer (and a gateway page that never reached the app), renewed by any real answer. A caller-supplied
-  // key (the kit's `sendWrite` / `useOpsWrite`) is never overwritten or tracked. Rules and bounds: ./idempotency-middleware.ts.
-  // `If-Match` (§7.7 optimistic concurrency) is NOT auto-generated — the caller must read the row version first, so it is passed
-  // explicitly per call via the typed `params.header["If-Match"]` option openapi-fetch derives from the enrichment's `headers`
-  // (scripts/openapi/enrichments.ts).
-  client.use(createIdempotencyKeyMiddleware());
   client.use(csrfToken);
   if (onResponseStatus) {
     client.use({
       onResponse({ response }) {
-        onResponseStatus(response.status, response.url, response);
+        // An observer is the app's own code: a bug in it must not fail a response that already came back, nor skip the idempotency
+        // bookkeeping below (a cached 403 would then be replayed to the retry). It is reported, never swallowed.
+        try {
+          onResponseStatus(response.status, response.url, response);
+        } catch (error) {
+          globalThis.reportError?.(error);
+        }
         return undefined;
       },
     });
   }
+  // §4.1.1 — every mutating request carries an `Idempotency-Key`, so a retry after a request that got no answer replays instead of
+  // double-executing, for every caller of this client with no per-screen code. The key is held per intent (method + URL + If-Match +
+  // body): kept across a request that got no answer, a gateway page that never reached the app and an in-flight 409, renewed by any
+  // other answer. A caller-supplied key (the kit's `sendWrite` / `useOpsWrite`) is never overwritten or tracked. Rules, bounds and
+  // limits: ./idempotency-middleware.ts. Registered LAST on purpose: openapi-fetch runs `onResponse` in reverse registration order, so
+  // this runs FIRST on every response, before any observer above can throw.
+  // `If-Match` (§7.7 optimistic concurrency) is NOT auto-generated — the caller must read the row version first, so it is passed
+  // explicitly per call via the typed `params.header["If-Match"]` option openapi-fetch derives from the enrichment's `headers`
+  // (scripts/openapi/enrichments.ts).
+  const idempotencyKeys = createIdempotencyKeys();
+  client.use(idempotencyKeys.middleware);
+  idempotencyTables.set(client, idempotencyKeys.clear);
   return client;
 }

@@ -73,9 +73,9 @@ export function useOpsWrite(copy: OpsErrorCopy = NO_COPY): OpsWrite {
       fingerprint: string,
       call: (idempotencyKey: string) => Promise<FetchResult<T>>,
     ): Promise<OpsWriteOutcome<T>> => {
-      // The server answered, and its answer is cached under the key: the next attempt starts on a new one. A 5xx WITHOUT the standard
-      // error envelope is a gateway (502/504) that never reached the app: nothing was cached, so a retry keeps the key. No answer at all
-      // keeps it too, so a retry replays. A non-ok status with an empty body is a refusal, not a success (see send-write.ts).
+      // The server answered: the next attempt starts on a new key. Kept instead (`keepsKey`): a 5xx WITHOUT the standard error envelope
+      // (a gateway 502/504 that never reached the app), and the 409 that says an earlier request under the key is still running. No
+      // answer at all keeps it too, so a retry replays. A non-ok status with an empty body is a refusal, not a success (see send-write.ts).
       const sent = await sendWrite(keeper, fingerprint, call);
       if (sent.status === "ok") return { ok: true, data: sent.res.data as T };
       const failed =
