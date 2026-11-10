@@ -8,7 +8,7 @@
 // store is supplied by the M1 backend bootstrap (M1-T10) and the HTTP middleware that
 // wraps this helper is wired there too.
 import { createHash } from "node:crypto";
-import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
+import { ChartWardenError, ERROR_CODES, IdempotencyConflictError } from "@chartwarden/types";
 
 /** SHA-256 hex of (organization_id, key, body) — the request fingerprint (SEC-025 / F13). */
 export function computeIdempotencyHash(organizationId: string, key: string, body: unknown): string {
@@ -58,10 +58,18 @@ export interface IdempotencyStore {
 /** The one `Idempotency-Key`-reused-with-a-different-body error (409 IDEMPOTENCY_CONFLICT, SEC-025). */
 export { IdempotencyConflictError };
 
-/** Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 CONFLICT. */
-export class IdempotencyInFlightError extends ConflictError {
+/**
+ * Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 IDEMPOTENCY_IN_FLIGHT. Its own code,
+ * not the plain CONFLICT: a client must be able to tell "your first request is still running, retry with the same key" from a
+ * business-rule 409, because renewing the key on this answer would write twice.
+ */
+export class IdempotencyInFlightError extends ChartWardenError {
   constructor(readonly key: string) {
-    super("Idempotency-Key request is still being processed");
+    super(
+      "IDEMPOTENCY_IN_FLIGHT",
+      "Idempotency-Key request is still being processed",
+      ERROR_CODES.IDEMPOTENCY_IN_FLIGHT,
+    );
     this.name = "IdempotencyInFlightError";
   }
 }

@@ -6,6 +6,22 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — New error code `IDEMPOTENCY_IN_FLIGHT`: your first request with this key is still running
+
+**Why.** A duplicate that arrived while the first request with the same `Idempotency-Key` was still running was answered as a
+plain `409` with code `CONFLICT`, the same code a business-rule refusal carries. A client that reads any 409 as "this key is
+spent, mint a new one" would then start a second write while the first was still in progress.
+
+- That answer now has its own code, `IDEMPOTENCY_IN_FLIGHT`. The status is still `409`, the body is the standard error envelope
+  (`{ "error": { "code", "message", "correlationId", "documentationUrl" } }`) and the message is unchanged ("Idempotency-Key
+  request is still being processed"). Only the `code` value changed, from `CONFLICT`.
+- **How to handle it.** Treat it as "your first request is still running": keep the SAME `Idempotency-Key`, wait, and retry
+  with the same key and body. Do not mint a new key. Once the first request finishes the retry replays its stored response (or,
+  if that request failed before committing anything, runs again).
+- The other idempotency 409 is unchanged: `IDEMPOTENCY_CONFLICT` is the same key sent with a different body (a client bug; do
+  not retry). A business-rule `409 CONFLICT` still means the request itself was refused.
+- Clients that matched on `409` + `CONFLICT` for this situation must match `IDEMPOTENCY_IN_FLIGHT` instead.
+
 ## 2026-11-09 — `Idempotency-Key`: a failed request frees its key only when it committed nothing
 
 **Why.** A `5xx`, or the retryable `409 CONCURRENT_UPDATE`, used to be stored as the key's response and replayed for 24 hours,

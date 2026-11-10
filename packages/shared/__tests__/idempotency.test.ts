@@ -5,6 +5,7 @@
  * the different-body conflict (SEC-025), and the concurrent-duplicate `pending` race.
  * Storage is an in-memory fake of the injected IdempotencyStore port.
  */
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   IdempotencyConflictError,
@@ -112,6 +113,15 @@ describe("runIdempotent", () => {
     await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).resolves.toEqual(ok);
     expect(handler).not.toHaveBeenCalled();
     expect(store.complete).not.toHaveBeenCalled();
+  });
+
+  it("the in-flight error carries its own code (IDEMPOTENCY_IN_FLIGHT, still a 409) and the same message", () => {
+    const error = new IdempotencyInFlightError("k1");
+    expect(error.code).toBe("IDEMPOTENCY_IN_FLIGHT");
+    expect(error.statusCode).toBe(409);
+    expect(error.message).toBe("Idempotency-Key request is still being processed");
+    expect(error.key).toBe("k1");
+    expect(error).toBeInstanceOf(ChartWardenError);
   });
 
   it("reports in-flight when the claim is lost to a still-pending winner", async () => {
