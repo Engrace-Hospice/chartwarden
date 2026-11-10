@@ -11,9 +11,20 @@
 // unauthenticated routes (no org scope to key on). A first request records a `pending`
 // lock then captures its response on the way out (onSend) and marks it `complete`. A replay
 // with the SAME body returns the cached response; a DIFFERENT body is a 409
-// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 CONFLICT. A response that says the write did not
-// happen and should be retried (a 5xx, or the deadlock/serialization 409 CONCURRENT_UPDATE) is NOT cached: the claim is
-// released instead, so a same-key retry runs the write rather than replaying the failure for the whole TTL.
+// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 CONFLICT.
+//
+// RETRYABLE FAILURES (a 5xx, or the deadlock/serialization 409 CONCURRENT_UPDATE) are released instead of cached, but ONLY when
+// the request provably committed nothing. A response that says "retry" is true only if no write of this request is durable: a
+// handler whose transaction committed and which then failed (a throwing post-commit step, a response the serializer refuses, a
+// second transaction that deadlocks after the first committed) HAS written, and re-running it on a same-key retry would write
+// twice. So the outcome is cached and replayed as before (the safe direction) whenever the per-request commit tracker
+// (`@chartwarden/db` commit-tracker.ts, fed by the pool every query goes through) saw a write commit, or may have, after the
+// claim, and also whenever there is no tracker to ask. Released, the same key runs again once the store is reachable; if the
+// release itself fails (a database outage that caused the 5xx usually breaks it too) the key stays `pending` and a retry
+// answers 409 in flight until the record's 24h TTL ends. What the tracker cannot see (an outbound call, a queue or object-store
+// write made directly in a route) is not counted: those belong behind the outbox, after the commit.
+import { createCommitTracker, resetCommitTracker, runWithCommitTracker } from "@chartwarden/db";
+import type { CommitTracker } from "@chartwarden/db";
 import {
   type IdempotencyRecord,
   type IdempotencyStore,
@@ -42,10 +53,13 @@ const pendingCaptures = new WeakMap<
 /** The error code of the retryable deadlock/serialization 409 (error-handler.ts): "nothing was saved; retry it". */
 const RETRYABLE_CONFLICT_CODE = "CONCURRENT_UPDATE";
 
+/** The per-request commit trackers: opened in `onRequest` (so the ambient store covers the whole request), read in `onSend`. */
+const commitTrackers = new WeakMap<FastifyRequest, CommitTracker>();
+
 /**
- * A response that says the write did NOT happen and the client should run it again — any 5xx, and the retryable
- * deadlock/serialization 409. Replaying it for the 24h TTL would turn "retry" into "never": the same-key retry would
- * get the cached failure back while the write never ran. These release the claim instead of completing it.
+ * A response that SAYS the write did not happen and the client should run it again — any 5xx, and the retryable
+ * deadlock/serialization 409. Replaying it for the 24h TTL would turn "retry" into "never" when the write really did not run;
+ * these are released instead of completed, but only if the request also committed nothing (see the header).
  */
 function isRetryableOutcome(statusCode: number, body: unknown): boolean {
   if (statusCode >= 500) return true;
@@ -68,6 +82,18 @@ function parsePayload(payload: unknown): unknown {
 }
 
 export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore): void {
+  // Open the commit tracker for a request that can be claimed (a mutating method carrying a key). The callback form of `done`
+  // keeps the ambient store active across every later hook, the handler, the serializer and `onSend` (the request-context
+  // plugin relies on the same). Other requests, reads included, are not tracked and pay nothing.
+  app.addHook("onRequest", (request, _reply, done) => {
+    const key = request.headers["idempotency-key"];
+    if (request.method === "GET" || request.method === "HEAD") return done();
+    if (typeof key !== "string" || key.length === 0) return done();
+    const tracker = createCommitTracker();
+    commitTrackers.set(request, tracker);
+    runWithCommitTracker(tracker, () => done());
+  });
+
   app.addHook("preHandler", async (request, reply) => {
     if (request.method === "GET" || request.method === "HEAD") return;
     // A route that returns a ONE-TIME SECRET (GAP-020: the wristband token) opts out: its response must never be
@@ -103,6 +129,9 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
     // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a duplicate still in flight is 409 CONFLICT.
     const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
     if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
+    // Only what commits AFTER the claim is the write the key guards (authentication may touch a session row before it).
+    const tracker = commitTrackers.get(request);
+    if (tracker) resetCommitTracker(tracker);
     pendingCaptures.set(request, { orgId, key, requestHash });
   });
 
@@ -114,10 +143,13 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       status: String(reply.statusCode),
       body: parsePayload(payload),
     };
-    if (isRetryableOutcome(reply.statusCode, response.body)) {
-      // The write did not happen: free the key so the client's same-key retry runs instead of replaying the failure.
-      // A failed release leaves the record `pending` (a retry answers 409 in flight until the TTL), the same fail-safe
-      // as a failed `complete`; it is logged, never allowed to rewrite the response.
+    const tracker = commitTrackers.get(request);
+    // No tracker to ask means no proof that nothing committed: cache (never release).
+    const provablyUncommitted = tracker !== undefined && !tracker.committed;
+    if (provablyUncommitted && isRetryableOutcome(reply.statusCode, response.body)) {
+      // Nothing of this request committed, so "retry" is true: free the key so the same-key retry runs instead of replaying
+      // the failure. A failed release leaves the record `pending` (a retry answers 409 in flight until the record's TTL), the
+      // same fail-safe as a failed `complete`; it is logged, never allowed to rewrite the response.
       try {
         await store.release(marker.orgId, marker.key, marker.requestHash);
       } catch (error) {
@@ -129,7 +161,8 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       return payload;
     }
     // BOOKKEEPING MUST NOT REWRITE THE OUTCOME (F-073, #182). By `onSend` the handler has already
-    // COMMITTED; letting a store error escape turns a write that happened into a 500 that says it
+    // COMMITTED (and a retryable-looking failure that reaches this line is cached because it did too, or because nothing can
+    // prove it did not); letting a store error escape turns a write that happened into a 500 that says it
     // did not — which is exactly what a bodiless 204 did on the production store, verified live: the
     // row was gone and the UI reported failure. Worse, the client mints a fresh key per request, so
     // the user's retry runs under a NEW key and re-executes — the mechanism that exists to prevent

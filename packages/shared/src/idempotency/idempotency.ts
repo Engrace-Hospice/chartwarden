@@ -45,10 +45,12 @@ export interface IdempotencyStore {
   putPending(organizationId: string, key: string, requestHash: string): Promise<boolean>;
   complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
   /**
-   * Drops the caller's own still-`pending` claim so the SAME key can run again. For an outcome that must not be
-   * replayed because the write did not happen (a deadlock/serialization 409, any 5xx): caching it would answer every
-   * retry with the failure for the whole TTL. Only the claimant's row goes: a row that is no longer `pending`, or whose
-   * `requestHash` is another claimant's, is left alone.
+   * Drops the caller's own still-`pending` claim so the SAME key can run again. For a failure that must not be
+   * replayed because NOTHING of the request committed (a deadlock/serialization 409, a 5xx that followed no durable write; the
+   * HTTP middleware proves that with the per-request commit tracker before it calls this): caching it would answer every
+   * retry with the failure for the whole TTL while the write never ran. A failure that followed a commit is completed, not
+   * released: re-running it would write twice. Only the claimant's row goes: a row that is no longer `pending`, or whose
+   * `requestHash` is another claimant's, is left alone. If this call fails the key stays `pending` until its TTL.
    */
   release(organizationId: string, key: string, requestHash: string): Promise<void>;
 }

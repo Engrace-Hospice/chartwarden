@@ -6,6 +6,21 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — `Idempotency-Key`: a failed request frees its key only when it committed nothing
+
+**Why.** A `5xx`, or the retryable `409 CONCURRENT_UPDATE`, used to be stored as the key's response and replayed for 24 hours,
+so a same-key retry never ran the write.
+
+- A `5xx` or `409 CONCURRENT_UPDATE` that follows NO committed write (the request failed before anything became durable) no
+  longer consumes the key: retrying with the SAME `Idempotency-Key` runs the request again.
+- If any write of the request had already committed (a post-commit step threw, a response failed to serialize, a second
+  transaction deadlocked after the first committed), the response is stored and replayed exactly as before: the retry
+  answers the same failure and does not write twice. Read the failure, check the resource, and use a new key for a new attempt.
+- While the idempotency store is unreachable (the usual companion of a database outage) the key cannot be freed; it stays
+  `pending`, and a retry answers `409` "still being processed" until the key's 24-hour record expires.
+- Not tracked: an effect outside Postgres made directly in a route (an outbound call, a queue or object-store write). Those
+  belong behind the outbox (after the commit) by the platform's convention; a route that makes one directly is not covered.
+
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
 
 **Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong
