@@ -14,6 +14,7 @@ import {
 } from "../pricing/census-daily";
 import { listContractedOrgIds } from "../pricing/contract-select";
 import type { GoLiveReader } from "../pricing/ports";
+import { CENSUS_SWEEP_INTERVAL_HOURS } from "../pricing/statement-period";
 import { type StatementStripePort, runStatementSweep } from "../pricing/statement-service";
 import { type CensusDeps, aggregateAddonForOrg, runPatientCensusForOrg } from "./census";
 import {
@@ -57,7 +58,8 @@ const M35_SCHEDULES = {
   invoiceReconciler: "0 4 * * *",
   webhookHandler: "* * * * *",
   refundExecutor: "*/5 * * * *",
-  patientCensus: "0 */6 * * *",
+  // the daily census sweep: the statement's expectation of how many days a month's census holds is derived from this interval
+  patientCensus: `0 */${CENSUS_SWEEP_INTERVAL_HOURS} * * *`,
   pricingStatement: "30 * * * *",
 } as const;
 
