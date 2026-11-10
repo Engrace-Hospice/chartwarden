@@ -2766,6 +2766,35 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       });
     });
 
+    it("a promo redemption cannot be spent on a contracted subscription, by a tenant (403) or an operator (409): the code's count stays 0 and no application is written", async () => {
+      await admin.query(
+        `INSERT INTO promo_code (stripe_coupon_id, stripe_promotion_code_id, code, kind, percent_off, duration, max_redemptions)
+         VALUES ('coupon_prc4', 'promo_prc4', 'PRC4', 'percent_off', 10, 'once', 5)`,
+      );
+      const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
+      const route = buildDrizzleM35RouteService(app.db, { platformRunner, outbox, audit });
+      // ORG_L's contracted subscription is not canceled or paused here: the refusal is about the PLAN, not about the status
+      const [sub] = await q<{ id: string; status: string }>(
+        "SELECT id, status FROM subscription WHERE organization_id=$1 ORDER BY started_at DESC LIMIT 1",
+        [ORG_L],
+      );
+      const actor = await tenantActor(ORG_L, "tenant-l-promo");
+      await expect(route.applyPromoTenant(actor, "PRC4")).rejects.toMatchObject({
+        code: "PLAN_ASSIGNED_BY_OPERATIONS",
+        statusCode: 403,
+      });
+      await expect(route.adminApplyPromo(operator, sub?.id ?? "", "PRC4")).rejects.toMatchObject({
+        code: "PROMO_NOT_APPLICABLE_TO_CONTRACTED_PLAN",
+        statusCode: 409,
+      });
+      expect(
+        await q<{ redemption_count: number }>(
+          "SELECT redemption_count FROM promo_code WHERE code='PRC4'",
+        ),
+      ).toEqual([{ redemption_count: 0 }]);
+      expect(await q("SELECT 1 FROM promo_code_application")).toHaveLength(0);
+    });
+
     it("PRC-1: a pause with an end date is over at that date though nothing resumed it (statement days, the live contract scope), and a later resume does not move it", async () => {
       const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
       const route = (iso: string) =>
