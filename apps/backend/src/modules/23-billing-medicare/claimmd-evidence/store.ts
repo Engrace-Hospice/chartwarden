@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { X12ClaimEvidence, X12SubmittedServiceLineEvidence } from "@chartwarden/x12-837-client";
+import type {
+  X12ClaimEvidence,
+  X12SubmittedServiceLineEvidence,
+} from "@chartwarden/x12-837-client";
 import { and, eq } from "drizzle-orm";
 import type { createClaimMdEvidenceCipher } from "./cipher";
 import { type ClaimMdNoticeEvidencePort, createClaimMdNoticeEvidenceStore } from "./notice-store";
@@ -105,10 +108,18 @@ export function createClaimMdSubmissionEvidenceStore(input: {
             if (evidence.submittedLines.length !== evidence.x12Claim.serviceLines.length)
               throw new Error("CLAIMMD_LINE_EVIDENCE_COUNT_CONFLICT");
             const values = evidence.submittedLines.map((line, index) => {
-              const sent: X12SubmittedServiceLineEvidence | undefined = evidence.x12Claim.serviceLines[index];
-              if (!sent || sent.position !== index + 1 || sent.revenueCode !== line.revenueCode ||
-                sent.procedureCode !== line.procedureCode || sent.serviceFrom !== line.serviceFrom ||
-                sent.serviceTo !== line.serviceTo || sent.units !== line.units || sent.chargeCents !== line.chargeCents)
+              const sent: X12SubmittedServiceLineEvidence | undefined =
+                evidence.x12Claim.serviceLines[index];
+              if (
+                !sent ||
+                sent.position !== index + 1 ||
+                sent.revenueCode !== line.revenueCode ||
+                sent.procedureCode !== line.procedureCode ||
+                sent.serviceFrom !== line.serviceFrom ||
+                sent.serviceTo !== line.serviceTo ||
+                sent.units !== line.units ||
+                sent.chargeCents !== line.chargeCents
+              )
                 throw new Error("CLAIMMD_LINE_EVIDENCE_PAYLOAD_CONFLICT");
               return {
                 evidenceId,
@@ -132,13 +143,26 @@ export function createClaimMdSubmissionEvidenceStore(input: {
               };
             });
             if (values.length) await tx.insert(L).values(values).onConflictDoNothing();
-            const stored = await tx.select().from(L).where(eq(L.evidenceId, evidenceId)).orderBy(L.linePosition);
-            if (stored.length !== values.length || stored.some((row, index) => {
-              const expected = values[index];
-              return !expected || row.internalClaimLineId !== expected.internalClaimLineId ||
-                row.linePosition !== expected.linePosition || row.lineItemControlNumber !== expected.lineItemControlNumber ||
-                row.payloadSha256 !== expected.payloadSha256 || row.chargeCents !== expected.chargeCents;
-            })) throw new Error("CLAIMMD_LINE_EVIDENCE_IMMUTABILITY_CONFLICT");
+            const stored = await tx
+              .select()
+              .from(L)
+              .where(eq(L.evidenceId, evidenceId))
+              .orderBy(L.linePosition);
+            if (
+              stored.length !== values.length ||
+              stored.some((row, index) => {
+                const expected = values[index];
+                return (
+                  !expected ||
+                  row.internalClaimLineId !== expected.internalClaimLineId ||
+                  row.linePosition !== expected.linePosition ||
+                  row.lineItemControlNumber !== expected.lineItemControlNumber ||
+                  row.payloadSha256 !== expected.payloadSha256 ||
+                  row.chargeCents !== expected.chargeCents
+                );
+              })
+            )
+              throw new Error("CLAIMMD_LINE_EVIDENCE_IMMUTABILITY_CONFLICT");
           };
           const inserted = await tx
             .insert(E)
