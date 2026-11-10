@@ -325,6 +325,14 @@ owned by M23 (it owns the D3 binding; M25 and M41 depend on M23, never the rever
 - A one-minute sweep (`claimmd-webhook-sweep`) settles receipts and publishes `m23.clearinghouse.enrollment_reported`
   (consumer M41) or `m23.clearinghouse.appeal_reported` (consumer M25), ids and one bounded vendor word only, in the same
   transaction that marks the receipt `published`. Test events are settled on receipt (`test_ack`).
+- **Key rotation (precondition).** Each stored receipt records the key id it was sealed under (`payload_key_ref`, the code
+  constant `CLAIMMD_WEBHOOK_KEY_ID`); the process holds ONE key and the sweep opens only rows under that id. A row under
+  another id is refused before any decrypt (`payload_key_mismatch`), and a receipt still unreadable 7 days after it arrived
+  goes terminal `failed` with an ops alert, because Claim.MD has its 200 and will not resend. So rotate
+  `CLAIMMD_WEBHOOK_PAYLOAD_KEY` and the key id together **only when no receipt is unsettled** (no row with `processed_at`
+  NULL that still holds a cipher; an `awaiting_entitlement` row counts, it can wait up to 90 days). While any exist the sweep
+  logs `claimmd.webhook.unsettled_under_other_key` (a count and the oldest receipt time) at warn level every minute. Settled
+  rows lose their cipher 90 days after receipt (every receipt does, settled or not) and are never decrypted again.
 
 **D8 as applied to Claim.MD: tenant resolution never trusts the payload's claims about a tenant.** An enrollment resolves
 by `prov_npi` to the one `provider_entity` with that NPI (unique platform-wide), and only when that NPI is platform-verified

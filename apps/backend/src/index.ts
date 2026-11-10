@@ -9487,6 +9487,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         },
         outbox: m23OutboxPublisher,
         log: (event, detail) => app.log.info({ claimmd: detail }, event),
+        // Counts and timestamps only: receipts still waiting under a key id other than this process's (a rotation with
+        // unsettled rows), visible every sweep before the key-fault grace runs out.
+        warn: (event, detail) => app.log.warn({ claimmd: detail }, event),
         // A receipt that went terminal `failed` is lost (Claim.MD already got 200): the ops alert sink, error level.
         onFailed: ({ usage, eventId, attempts, errorClass }) =>
           dlqPromotionSink({
