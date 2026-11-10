@@ -128,19 +128,25 @@ root's shared pieces, each AFTER the ignore line (git's last match wins). `arch:
 or timeout (an integer of 9 to 30 s: strictly above the 8 s perl alarm it is pinned with, derived from the
 same constant, because a timeout at or under the alarm fires inside Codex first and the call runs), if one of
 the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
-5 to 30 s (the Stop gate's 300 is untouched), if `.claude/settings.json` sets `disableAllHooks`, a
-`bypassPermissions` default mode, or an `env` entry for `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,
-`CW_STOP_GATE`, `CLAUDE_PROJECT_DIR`, `CW_HARNESS_ROOT_FOR_TESTS` or `BUN_OPTIONS` (a `--preload` there runs
-before the guard), if the `.claude/` and `.agents/` mirror reads as empty on either side or differs by a
+5 to 30 s, if the ledger's or the Stop gate's timeout (when one is set) is not an integer of 5 to 600 s or the
+Stop gate is `async` (it would no longer hold the turn), if `.claude/settings.json` sets `disableAllHooks`, a
+`bypassPermissions` default mode, or an `env` entry that is not an `ECC_*` or `CLAUDE_CODE_*` variable (the block
+is an ALLOW-list: `PATH`, `BASH_ENV`, `ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`, `LD_PRELOAD`,
+`DYLD_INSERT_LIBRARIES`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR` and `BUN_OPTIONS` (a `--preload` there runs before the
+guard) all fail, naming the key), or one of the named switches `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,
+`CW_STOP_GATE`, `CLAUDE_PROJECT_DIR`, `CW_HARNESS_ROOT_FOR_TESTS` or `ECC_GATEGUARD` (which the prefix would let
+through), if the `.claude/` and `.agents/` mirror reads as empty on either side or differs by a
 single byte (files are compared by SHA-256 of their bytes, not decoded text), or if `.gitignore` or
 CODEOWNERS stop covering any of this or `bunfig.toml`. `.gitignore` is judged by git, not by its text: the
 gate writes it into a throwaway repository and runs `git check-ignore --no-index -v` over the shared pieces
 (`.agents/{rules,agents,skills}`, `.codex/hooks.json`, `.claude/{settings.json,rules,agents,skills}`, the env
-template: none may be ignored) and the local state (`.agents/{plans,prds}`, `.codex/config.toml` at any depth,
-`.claude/{audit,.cache,plans,settings.local.json}`, live env files: all must be), so a later
+template, `scripts/harness/pre-tool-guard.ts`, `compliance/controls.yaml`, `.githooks/pre-commit`,
+`.github/CODEOWNERS`, `CLAUDE.md`, `AGENTS.md`: none may be ignored) and the local state (`.agents/{plans,prds}`,
+`.codex/config.toml` at any depth, `.claude/{audit,.cache,plans,settings.local.json}`, live env files including
+`.env.local` and `apps/backend/.env.local`: all must be), so a later
 `!**/.codex/config.toml`, `.agents/rules/*` or `.claude/*` line fails even though every line the text checks
-look for is still there. A CRLF `.gitignore` fails, and so does a git that cannot be run (the probe never
-passes by default).
+look for is still there. A CRLF `.gitignore` fails, and so does a git that cannot be run, hangs past 10 s or
+cannot get a temp directory (the probe reports an error and never passes by default).
 
 ## ECC settings applied by the project (`.claude/settings.json` → `env`)
 
@@ -209,32 +215,51 @@ Covered (each has a regression test in `scripts/__tests__/harness-bypasses.test.
   are **not** local.
 
 **Shell classifier limits and coverage.** `classifyBash` is a text heuristic for a cooperative agent, not a
-sandbox. It tracks `cd`, `pushd` and `..` through a command, and expands `~`, `$HOME`, `$CODEX_HOME` and
-`$PWD`. A `cd` is trusted only along an `&&` chain; after `;`, `||`, a newline, a pipe, `&` or a group
-(`( … )`) the command may still run where it started, so a relative write is judged against EVERY directory
-it could be in (at most 16, then unknown, which asks). It resolves every write target before comparing it
+sandbox. It tracks `cd`, `pushd DIR` and `..` through a command, and expands `~`, `~/…`, `$HOME`, `$CODEX_HOME`
+and `$PWD` (any other tilde prefix, `~user`, `~+`, `~-`, is an unknown directory, and so is `~` once a command
+sets `HOME`; with `HOME` unset `~` is the account's home). A `cd` is trusted only along an `&&` chain; after `;`,
+a newline, a pipe, `&` or a group (`( … )`) the command may still run where it started, and a `cd` after `||`
+may not have run at all, so a relative write is judged against EVERY directory it could be in (at most 16, then
+unknown, which asks). Anything that can move the shell and is not modelled makes the directory unknown, and a
+relative write from an unknown directory asks: `source`/`.`, an `eval` that names a `cd` or is built at run
+time, a function or `case` whose body holds a `cd`, a `pushd` that rotates or keeps the stack (`pushd`,
+`pushd +1`, `pushd -n DIR`), `popd`, any `cd` once `CDPATH` is named, and `cd -`. `env -C DIR`, `env --chdir`
+and `sudo -D` run their command in DIR, and the command lines of `find -exec`/`-ok` are judged as commands of
+their own (`-execdir` runs in a directory the guard does not know). A program name the shell would unquote
+(`\cd`, `\rm`) is the program it names. A bare file name is a secret when a file of that name exists in ANY
+directory the command may be in (and, for a program that reads files, in an unknown one). It resolves every write target before comparing it
 with the protected paths, and it treats a directory that contains a protected path as protected when the
 command is a delete, move, or tree-merge (`rm -r`, `mv`, `cp -R`, `rsync`, `tar x`, `unzip`); a recursive
 `chmod`/`chown`/`rm`, or a `find … -delete` or `-exec` that is not narrowed by `-name`/`-path`/`-regex`,
 over the whole repo root asks as well. The writers it understands are redirections, `tee`, `dd of=`,
 `sed -i` (including the GNU long-option abbreviations), `perl -i`, `find -delete/-exec`, `cp/mv/ln/install`,
-`chmod/chown -R`, `patch`, `curl -o`, `wget -O`, `sort -o`, `openssl -out`, `base64 -o` (a long output option is
-matched by any prefix its tool accepts: `sort --out`, `wget --output-d`; a prefix two options share is ambiguous and
-writes nothing), in-place
-compressors, and `git apply/am/checkout/restore/rm/mv/clean`. It judges the commands inside `$( )`,
+`chmod/chown -R`, `patch`, `curl -o` (and `--output-dir`, with `-o` or `-O`), `wget -O`/`-o`/`-a`/`-P`, `sort -o`,
+`openssl -out`, `base64 -o` (a long output option is matched by any prefix its tool accepts: `sort --out`,
+`wget --output-d`; a prefix two options share is ambiguous and writes nothing), `find -fprint/-fprint0/-fprintf/
+-fls`, the sed `w` command and `s///w` flag, in-place compressors, and
+`git apply/am/checkout/restore/rm/mv/clean/format-patch -o`. It judges the commands inside `$( )`,
 backticks and `<( )`/`>( )` as command lines, and sees through `sudo`, `env`, `builtin` and `--`. It reads
 inline interpreter code and heredoc or stdin script bodies as text, with quotes and `+` removed. It cannot
 read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
 prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
-current directory), or a recursive delete of an ANCESTOR of the repo root. Whole-tree reads that bypass
+current directory; they are judged only when that directory is itself protected), a recursive delete of an
+ANCESTOR of the repo root, or the writers it has no model for (`ditto`, `cpio -p`, `split`, compilers and
+bundlers with an output option such as `cc -o` or `tsc --outFile`, `git bundle`, `zip -O`, and any program that
+writes where its own configuration says). Whole-tree reads that bypass
 `.gitignore` (`grep -r`, `rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built
 by command substitution and agents started with approval prompts, the sandbox or hooks off. A harness
-switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, …) asks only when it is
-ASSIGNED (`VAR=… cmd`, `export`, `env`, `declare`), not when its name appears in a search pattern. Reasons
+switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, `HOME`, …) followed by `=` asks
+ANYWHERE in a command, however it is spelled (`export $(echo X=…)`, `ssh h 'X=… cmd'`, `watch 'X=… cmd'`, a value an
+assignment builds), except when the command only prints or searches (`rg`, `grep`, `ag`, `ack`, `echo`, `printf`,
+`cat`, `less`, `head`, `tail`, `wc`, `sed -n`, `git log/grep/show/diff/commit`) with nothing assigned before it, no
+redirect except `/dev/null` and its output going only to another such command or a filter: `rg CODEX_HOME= docs`
+and `echo CODEX_HOME=x` set nothing. A switch name with no `=` (`export CODEX_HOME`) sets nothing and is allowed. Reasons
 never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
 call through in Claude Code: a command over 64 KB is REFUSED before it is parsed (an ask would let padding
 turn a denied command into a prompt; put large file content in a file with the Write tool, and a heredoc patch
-that size through the `apply_patch` tool), glob matching is a two-pointer matcher with star backtracking, O(name length x wildcard tokens) over the short
+that size through the `apply_patch` tool), the text judged across a command and everything nested in it is
+budgeted (256 KB: a text nested N deep in `$( )` is judged once per level, each nearly the whole command), a
+wall-clock limit of 1 s per judging backs them (the guard judges twice from a symlinked root), glob matching is a two-pointer matcher with star backtracking, O(name length x wildcard tokens) over the short
 sample names and with no regular expression (so no exponential backtracking), brace alternatives
 (4,096) and path resolutions (16,384) are budgeted per command, and substitutions (32 per level) and judged
 command lines (300 per call) are capped; over any of those caps the answer is ask, and a deny found before
