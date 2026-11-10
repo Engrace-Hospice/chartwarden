@@ -71,7 +71,8 @@ export function FieldFrame({
 
 const inputStyle = (invalid: boolean) => ({
   width: "100%",
-  minHeight: "2.5rem",
+  // Defined once in list-chrome.css (`.wx-field`), so a stylesheet rule can change it without !important and the toolbar can read it.
+  minHeight: "var(--wx-field-control-height)",
   padding: "0.5rem 0.75rem",
   border: `1px solid ${invalid ? t.error : t.outlineVariant}`,
   borderRadius: t.radiusLg,

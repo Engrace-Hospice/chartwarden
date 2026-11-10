@@ -76,6 +76,20 @@ describe("field label, hint and error", () => {
     expect(document.activeElement).toBe(control);
   });
 
+  it("takes every control's minimum height from --wx-field-control-height, so a stylesheet rule can change it without !important", () => {
+    render(
+      <>
+        <TextField label="Name" />
+        <SelectField label="Kind" options={[{ value: "a", label: "A" }]} />
+      </>,
+    );
+    for (const control of [screen.getByLabelText("Name"), screen.getByLabelText("Kind")]) {
+      expect(control.getAttribute("style")).toContain("min-height: var(--wx-field-control-height)");
+      // The definition lives in list-chrome.css on `.wx-field`, which every kit field renders as its root.
+      expect(control.closest(".wx-field")).not.toBeNull();
+    }
+  });
+
   it("lays the label, control, hint and error out as one column under a .wx-field root", () => {
     render(<TextField label="Email" hint="We never share it" />);
     const root = document.querySelector(".wx-field") as HTMLElement;

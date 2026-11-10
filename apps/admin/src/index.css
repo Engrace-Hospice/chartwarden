@@ -237,22 +237,4 @@
     background: var(--color-primary-tint);
     text-decoration: none;
   }
-
-  /* Sign-in / organization-select cards (shell/login.tsx, organization-select.tsx): the card's heading block and the brand lockup. */
-  .wx-auth-head h1 {
-    margin: 0;
-    font-size: 1.125rem;
-    font-weight: 600;
-  }
-  .wx-auth-head p {
-    margin: 0.25rem 0 0;
-    color: var(--color-muted);
-    font-size: 0.875rem;
-  }
-  .wx-brand-lockup {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.625rem;
-    text-align: left;
-  }
 }

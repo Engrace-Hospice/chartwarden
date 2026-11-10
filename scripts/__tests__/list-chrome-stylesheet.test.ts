@@ -51,6 +51,30 @@ describe("shared list-chrome stylesheet (GAP-207)", () => {
     expect(shared).not.toContain("\n  .wx-row-title:hover");
   });
 
+  it("defines the kit control height once, and a touch select changes it without !important", () => {
+    expect(shared.match(/--wx-field-control-height:/g)).toHaveLength(2); // the default, and .wx-touch-select
+    expect(ruleBody(".wx-field,\n  .wx-list-toolbar-fields")).toContain(
+      "--wx-field-control-height: 2.5rem",
+    );
+    expect(ruleBody(".wx-list-toolbar-fields.is-bottom")).not.toContain(
+      "--wx-field-control-height",
+    );
+    const touch = ruleBody(".wx-touch-select");
+    expect(touch).toContain("--wx-field-control-height: 2.75rem");
+    expect(touch).not.toContain("!important");
+  });
+
+  it("carries the card heading and brand lockup the shared CenteredCardLayout screens use, not an app stylesheet", () => {
+    const shell = read("packages/ui/src/web/styles/app-shell.css");
+    expect(shared).toContain(".wx-auth-head h1 {");
+    expect(shell).toContain(".wx-brand-lockup {");
+    for (const app of ["web", "admin", "portal"]) {
+      const css = read(`apps/${app}/src/index.css`);
+      expect(css, `${app} copy of .wx-auth-head`).not.toContain(".wx-auth-head");
+      expect(css, `${app} copy of .wx-brand-lockup`).not.toContain(".wx-brand-lockup");
+    }
+  });
+
   it("defines no design tokens (arch:design-tokens reads them from each app)", () => {
     expect(shared).not.toMatch(/@theme|:root\s*\{|--color-[a-z-]+:\s*#/);
   });

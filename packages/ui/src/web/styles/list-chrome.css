@@ -188,6 +188,12 @@
     justify-content: flex-start;
     align-items: flex-start;
   }
+  /* The kit field control's height, defined ONCE: fields.tsx reads it as the input's min-height, and the toolbar below reads it to
+     line a button up with the input. */
+  .wx-field,
+  .wx-list-toolbar-fields {
+    --wx-field-control-height: 2.5rem;
+  }
   /* A field beside a button (`is-bottom`): the button lines up with the INPUT, not the field's label or its hint/error text,
      which stay in flow under the input and push the toolbar's next row down when it wraps. Fields top-align; the button sits in
      a `.wx-list-toolbar-action` box that reserves the label line and the field's gap (`is-unlabelled` for an sr-only label,
@@ -196,7 +202,6 @@
      the reserved height is exact, not a guess at the browser's `normal` line height. */
   .wx-list-toolbar-fields.is-bottom {
     --wx-field-label-line: 1.25rem;
-    --wx-field-control-height: 2.5rem; /* the kit input's min-height (fields.tsx) */
     align-items: flex-start;
   }
   .wx-list-toolbar-fields.is-bottom > .wx-field > :first-child {
@@ -732,10 +737,10 @@
   .wx-drawer-title-row.is-bottom {
     align-items: flex-end;
   }
-  /* A kit select that must be a 44px touch target. The kit sets its 2.5rem minimum inline, hence !important; scope it
-     to the screens that need it rather than changing the kit default. */
+  /* A kit select that must be a 44px touch target. The kit input reads its minimum height from --wx-field-control-height, so
+     a control that needs another height sets the variable on itself (scoped to the screens that need it, not the kit default). */
   .wx-touch-select {
-    min-height: 2.75rem !important;
+    --wx-field-control-height: 2.75rem;
   }
   .wx-kv {
     display: grid;
@@ -761,6 +766,17 @@
     color: var(--color-on-surface);
     font-size: 0.9375rem;
     font-weight: 700;
+  }
+  /* The heading block of a `CenteredCardLayout` card (sign in, organization select, accept invitation): title and one line under it. */
+  .wx-auth-head h1 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  .wx-auth-head p {
+    margin: 0.25rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.875rem;
   }
   /* A sub-group legend inside a card: a small subheading. */
   fieldset.wx-form-stack > legend {
