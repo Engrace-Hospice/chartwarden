@@ -18,9 +18,11 @@ import { createHmac } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { auditPlatformEvent } from "@chartwarden/audit";
-import { createDbClient } from "@chartwarden/db";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import { createWebhookPayloadCipher } from "@chartwarden/shared";
 import { registerPlatformJob, withPlatformContext } from "@chartwarden/tenancy";
+import { type SQL, sql } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -38,7 +40,9 @@ import {
   CLAIMMD_PAYLOAD_RETENTION_DAYS,
   CLAIMMD_SWEEP_BATCH,
   CLAIMMD_SWEEP_MAX_ATTEMPTS,
+  type ClaimMdRecentFailedDetail,
   type ClaimMdSweepDeps,
+  createRecentFailedAlerter,
   runClaimMdWebhookSweep,
 } from "../src/modules/23-billing-medicare/claimmd-webhook/sweep";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/events-by-m23";
@@ -869,6 +873,77 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       const beyond = new Date(grace.getTime() + 25 * 3_600_000);
       await sweep(undefined, beyond, { warn });
       expect(warns).toHaveLength(2);
+    });
+
+    // A warning count that FAILS in Postgres aborts the transaction it ran in. The counts run in savepoints, so the sweep's own
+    // settlements (the receipt published below) are kept and the sweep still answers.
+    const failingCount = (pattern: RegExp): ClaimMdSweepDeps["runner"] => {
+      const dialect = new PgDialect();
+      const wrap = (target: DbClient): DbClient =>
+        new Proxy(target, {
+          get(real, prop) {
+            if (prop === "execute") {
+              return (query: SQL) =>
+                pattern.test(dialect.sqlToQuery(query).sql)
+                  ? real.execute(sql`SELECT 1 / 0`) // a real Postgres error: the transaction (or savepoint) is aborted
+                  : real.execute(query);
+            }
+            if (prop === "transaction") {
+              return (run: (sp: DbClient) => Promise<unknown>) =>
+                real.transaction((sp) => run(wrap(sp as unknown as DbClient)));
+            }
+            const value = Reflect.get(real, prop, real);
+            return typeof value === "function" ? value.bind(real) : value;
+          },
+        });
+      return (fn) => runner((tx) => fn(wrap(tx as unknown as DbClient)));
+    };
+
+    it.each([
+      [
+        "recent-failed",
+        /processing_outcome = 'failed' AND processed_at >=/,
+        "claimmd.webhook.recent_failed_count_failed",
+      ],
+      ["other-key", /payload_key_ref IS DISTINCT FROM/, "claimmd.webhook.unsettled_count_failed"],
+    ])(
+      "a %s count that fails in Postgres keeps the sweep's settlements and says so by error class",
+      async (_label, pattern, event) => {
+        await store([enrollFor("c1", NPI_A)]);
+        const logs: Array<{ event: string; detail: Record<string, unknown> }> = [];
+        const result = await sweep(undefined, T0, {
+          runner: failingCount(pattern),
+          warn: (e, detail) => logs.push({ event: e, detail }),
+        });
+        expect(result.outcomes).toEqual({ published: 1 });
+        expect(await outcome("c1")).toMatchObject({ processing_outcome: "published" }); // not rolled back
+        expect(
+          (await outbox("m23.clearinghouse.enrollment_reported")).length,
+        ).toBeGreaterThanOrEqual(1);
+        expect(logs).toHaveLength(1);
+        expect(logs[0]?.event).toBe(event);
+        expect(Object.keys(logs[0]?.detail ?? {})).toEqual(["errorClass"]);
+        expect(JSON.stringify(logs)).not.toMatch(/c1|division/);
+      },
+    );
+
+    it("sends ONE summary through the alert sink when failed receipts first appear, not one per sweep, and keeps the warn line", async () => {
+      await store([enrollFor("s1", NPI_A)]);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      const grace = new Date(T0.getTime() + CLAIMMD_KEY_FAULT_GRACE_DAYS * DAY);
+      const sent: ClaimMdRecentFailedDetail[] = [];
+      const warns: string[] = [];
+      const onRecentFailedCount = createRecentFailedAlerter((d) => sent.push(d));
+      const run = (at: Date, extra: Partial<ClaimMdSweepDeps> = {}) =>
+        sweep(undefined, at, { onRecentFailedCount, warn: (e) => warns.push(e), ...extra });
+      await run(T0, { cipher: wrongKey }); // unreadable but inside the grace window: still pending, nothing failed, no summary
+      expect(sent).toEqual([]);
+      await run(grace, { cipher: wrongKey }); // the receipt goes terminal `failed` here
+      await run(new Date(grace.getTime() + 60_000));
+      await run(new Date(grace.getTime() + 120_000));
+      expect(sent).toEqual([{ count: 1, oldestProcessedAt: grace.toISOString(), windowHours: 24 }]);
+      expect(warns.filter((e) => e === "claimmd.webhook.recent_failed_receipts")).toHaveLength(3); // the log line stays
+      expect(JSON.stringify(sent)).not.toMatch(/s1/);
     });
 
     it("the retention clear is served by the partial received_at index of migration 1462, the failed count by 1463's", async () => {
