@@ -10,8 +10,10 @@ import {
 } from "../pricing/contract-mode";
 import { type Transition, lifetimeFromTransitions } from "../pricing/statement-inputs";
 import {
+  CENSUS_SWEEP_INTERVAL_HOURS,
   calendarMonthOf,
   daysLiveInMonth,
+  expectedCensusDays,
   liveWindowsOf,
   monthsFromThrough,
 } from "../pricing/statement-period";
@@ -573,6 +575,81 @@ describe("buildStatementValues: the figures of a statement", () => {
 
     it("an open month is never flagged on it: its days have not happened yet", () => {
       expect(closeOn(5, false)).toMatchObject({ status: "draft", needsReview: false });
+    });
+  });
+
+  describe("sparse is judged against the days a sweep COULD have observed, not the days live (a short month has no slack, and an edge day may hold no sweep)", () => {
+    /** November closed for a contract that went live at `liveFrom`, with `observed` census days. */
+    const novemberClosed = (liveFrom: string, observed: number) => {
+      const f = facts({ liveFrom: d(liveFrom) });
+      const work = planMonths(f, d("2026-12-07T00:00:00Z")).find(
+        (w) => w.period.key === "2026-11",
+      )!;
+      return {
+        work,
+        values: buildStatementValues({
+          facts: f,
+          work: { ...work, finalize: true },
+          meters: {
+            daily: Array.from({ length: observed }, () => 12),
+            staff: { count: 4, basis: "identity_filtered" as const },
+            collections: { netCents: 1_500_050, remittanceCount: 3, pendingCount: 0 },
+          },
+          priorLines: [],
+          isFirstStatement: false,
+          at: d("2026-12-07T00:00:00Z"),
+        }),
+      };
+    };
+
+    it("a go-live at 18:30 on the 27th of a 30-day month: 4 days live, but the last sweep of the 27th (18:00) had run, so 3 can be observed; 3 observed is healthy", () => {
+      const healthy = novemberClosed("2026-11-27T18:30:00Z", 3);
+      expect(healthy.work.daysLive).toBe(4);
+      expect(healthy.values.needsReview).toBe(false); // 3 of the 4 days live was 75%, below 80%: the old rule flagged a healthy census
+      expect(novemberClosed("2026-11-27T18:30:00Z", 2).values.needsReview).toBe(true); // a real gap still is
+    });
+
+    it("a 4-live-day month from midnight expects 4: one missing day is below 80% and flagged, none is not", () => {
+      const missing = novemberClosed("2026-11-27T00:00:00Z", 3);
+      expect(missing.work.daysLive).toBe(4);
+      expect(missing.values.needsReview).toBe(true);
+      expect(novemberClosed("2026-11-27T00:00:00Z", 4).values.needsReview).toBe(false);
+    });
+
+    it("a full month expects 30: 24 of 30 is exactly 80% and passes, 23 does not", () => {
+      expect(novemberClosed("2026-10-20T00:00:00Z", 24).values.needsReview).toBe(false);
+      expect(novemberClosed("2026-10-20T00:00:00Z", 23).values.needsReview).toBe(true);
+    });
+
+    it("7 of 11 days (a go-live at 08:00 on the 20th, so the 20th holds the 12:00 sweep) is sparse; 9 of 11 is not", () => {
+      const sparse = novemberClosed("2026-11-20T08:00:00Z", 7);
+      expect(sparse.work.daysLive).toBe(11);
+      expect(sparse.values.needsReview).toBe(true);
+      expect(novemberClosed("2026-11-20T08:00:00Z", 9).values.needsReview).toBe(false);
+    });
+
+    it("expectedCensusDays counts a day only when a sweep instant falls inside a live window", () => {
+      // sweeps at 00:00, 06:00, 12:00 and 18:00 UTC
+      expect(CENSUS_SWEEP_INTERVAL_HOURS).toBe(6);
+      expect(24 % CENSUS_SWEEP_INTERVAL_HOURS).toBe(0);
+      const expected = (
+        from: string,
+        to: string | null,
+        pauses: { from: string; to: string | null }[] = [],
+      ) => expectedCensusDays(NOV, live(from, to, pauses));
+      expect(expected("2026-10-01T00:00:00Z", null)).toBe(30);
+      expect(expected("2026-11-30T18:00:00Z", null)).toBe(1); // a sweep at exactly the go-live instant is inside
+      expect(expected("2026-11-30T18:00:01Z", null)).toBe(0); // go-live after the last sweep of the month: nothing can be observed
+      expect(daysLiveInMonth(NOV, live("2026-11-30T18:00:01Z"))).toBe(1); // although the day is live and is billed
+      // canceled at 05:00 on the 10th: that day still holds its 00:00 sweep; canceled at 00:00 exactly it does not
+      expect(expected("2026-10-01T00:00:00Z", "2026-11-10T05:00:00Z")).toBe(10);
+      expect(expected("2026-10-01T00:00:00Z", "2026-11-10T00:00:00Z")).toBe(9);
+      // a pause takes its days out, keeping a day that holds a sweep outside it (paused 13:00 on the 10th to 05:00 on the 12th)
+      expect(
+        expected("2026-10-01T00:00:00Z", null, [
+          { from: "2026-11-10T13:00:00Z", to: "2026-11-12T05:00:00Z" },
+        ]),
+      ).toBe(30 - 1); // only the 11th loses its census: the 10th keeps 00:00, 06:00 and 12:00, the 12th its 06:00 onwards
     });
   });
 
