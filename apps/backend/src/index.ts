@@ -374,6 +374,7 @@ import {
   AI_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
+  CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
@@ -1175,6 +1176,7 @@ import {
   buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildHetsEligibilityPort,
+  buildM23BaaRevokedConsumer,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
@@ -1249,9 +1251,13 @@ import {
   checkHeldCredentials,
 } from "./modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { createFingerprintKeyGate } from "./modules/23-billing-medicare/tenant-clearinghouse/fingerprint-key-check";
-import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
+import {
+  type ClearinghouseOutboxPort,
+  buildTenantClearinghouseOnboardingPort,
+} from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "./modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "./modules/23-billing-medicare/tenant-clearinghouse/resolver";
+import { reportRevokedResponsesPending } from "./modules/23-billing-medicare/tenant-clearinghouse/revoked-responses-alert";
 import { buildOrgRouteKeyReader } from "./modules/23-billing-medicare/tenant-clearinghouse/route-key";
 import {
   buildClearinghouseSecretCipherFromEnv,
@@ -7070,6 +7076,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 keyPrefix: "m34-clearinghouse-put",
                 scopeOf: targetTenantScopeOf,
               }),
+              // The BAA revoke is a kill switch: counted per OPERATOR across every tenant (no scopeOf: the bucket is the operator in
+              // the platform org), so one session cannot sweep the tenants. Fail-open (see CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT).
+              clearinghouseRevokeBaaRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-clearinghouse-baa-revoke",
+              }),
               service: buildDrizzleOnboardingDataService({
                 db: dbHandle.db,
                 // After a write commits the advance sweep settles the step the data satisfies (best effort).
@@ -7091,6 +7104,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 clearinghouse: buildTenantClearinghouseOnboardingPort({
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
+                  // a BAA revoke publishes `m23.tenant_clearinghouse.baa_revoked` in its own transaction (the tenant is told)
+                  outbox: m23OutboxPublisher as unknown as ClearinghouseOutboxPort,
                 }),
                 // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).
                 notices: buildExternalNoticeOnboardingPort(),
@@ -11213,6 +11228,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               ...clearinghouseUsageFor,
             }),
             payers: buildSeamMedicarePayerPort(),
+            // a revoked tenant is skipped by this pull: say so when responses may still be owed (once per org per day)
+            onRevokedSkipped: (organizationId: string) =>
+              reportRevokedResponsesPending(
+                {
+                  db: dbHandle.db,
+                  alerts: m25Alerts,
+                  log: (e) => app.log.warn({ event: e.event, code: e.code }, "revoked responses"),
+                },
+                { organizationId },
+              ),
             cursors: buildDrizzleRemittanceCursorStore(dbHandle.db),
             ingest: buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
@@ -15641,6 +15666,35 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   payload,
                   severity,
                   correlationId: cronAlertCorrelationId("m23-notice-late", alertCode, payload),
+                });
+              },
+            },
+            opsNotice: buildPlatformOpsNoticeSink({
+              webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+              log: (m) => app.log.warn(m),
+            }),
+          }),
+          // An operator's BAA revoke (ADR-0053 amendment, "build it"): the M36 alert to the tenant (rule
+          // m23.tenant_clearinghouse.baa_revoked) plus an org-less platform-ops notice on EVERY revoke. Ids, a closed code and counts only.
+          buildM23BaaRevokedConsumer({
+            alerts: {
+              dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+                const emitter = getSeam("AlertEmitter") as {
+                  emit(
+                    orgId: string,
+                    input: {
+                      eventType: string;
+                      payload: Record<string, unknown>;
+                      severity: string;
+                      correlationId: string;
+                    },
+                  ): Promise<unknown>;
+                };
+                await emitter.emit(organizationId, {
+                  eventType: alertCode,
+                  payload,
+                  severity,
+                  correlationId: cronAlertCorrelationId("m23-baa-revoked", alertCode, payload),
                 });
               },
             },

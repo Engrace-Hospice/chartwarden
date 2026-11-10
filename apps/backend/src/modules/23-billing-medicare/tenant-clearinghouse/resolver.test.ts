@@ -4,6 +4,7 @@ import {
   CH,
   InMemoryAttemptStore,
   NOT_WIRED_TRANSPORT,
+  UNBOUND_BAA_REVOKED,
   UNBOUND_BINDING,
   UNBOUND_NOT_ACTIVE,
   UNBOUND_NOT_CHOSEN,
@@ -128,10 +129,11 @@ describe("per-organization clearinghouse binding", () => {
       status: "verified",
       secret: KEY,
       baaRevokedAt: new Date("2026-11-09T12:00:00Z"),
-      baaRevokedReason: "Vendor ended the BAA, ticket SEC-42",
+      baaRevokedReasonCode: "vendor_terminated",
     });
     const binding = await runtime.binding.forOrg?.(ORG_A);
-    expect(binding).toBe(UNBOUND_NOT_ACTIVE);
+    expect(binding).toBe(UNBOUND_BAA_REVOKED); // unbound like `not_active`, but the pulls can tell the two apart
+    expect(binding?.unboundReason).toBe("baa_revoked");
     expect(binding?.vendor).toBeNull();
     expect(await runtime.usageFor(ORG_A)).toBeNull();
   });

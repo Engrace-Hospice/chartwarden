@@ -24,6 +24,8 @@ import type { OnboardingDataService, OnboardingOperator } from "./onboarding-dat
 import {
   ONBOARDING_REASON_MAX,
   ONBOARDING_REASON_MIN,
+  OnboardingBaaRevokeRequest,
+  OnboardingBaaVerifyRequest,
   OnboardingClearinghousePutRequest,
   OnboardingClearinghouseVerifyRequest,
   OnboardingLocationCreateRequest,
@@ -47,6 +49,12 @@ export interface OnboardingDataRouteDeps {
    * same oracle the tenant's own PUT is capped for). Production wires it fail-CLOSED. Absent = unlimited (tests only).
    */
   readonly clearinghousePutRateLimit?: PreHandler;
+  /**
+   * Cap on the BAA revoke: per operator (the blast radius of one session or one compromised operator, whichever tenants it targets)
+   * and per target tenant. Production wires it fail-OPEN: a stop that cannot fire while the limiter's store is down is the worse
+   * failure, and every revoke still writes its audit row and raises the tenant alert and the platform-ops notice. Absent = unlimited.
+   */
+  readonly clearinghouseRevokeBaaRateLimit?: PreHandler;
 }
 
 const READ_KEY = "tenant_onboarding_data.read_platform";
@@ -231,6 +239,9 @@ export function registerOnboardingDataRoutes(
   const CLEARINGHOUSE_PUT: readonly PreHandler[] = deps.clearinghousePutRateLimit
     ? [...CLEARINGHOUSE_WRITE, deps.clearinghousePutRateLimit]
     : CLEARINGHOUSE_WRITE;
+  const CLEARINGHOUSE_REVOKE: readonly PreHandler[] = deps.clearinghouseRevokeBaaRateLimit
+    ? [...CLEARINGHOUSE_REVOKE_BAA, deps.clearinghouseRevokeBaaRateLimit]
+    : CLEARINGHOUSE_REVOKE_BAA;
   const slugOf = (request: FastifyRequest): string =>
     parse(OrgSlugParamsSchema, request.params).orgSlug;
   const idParamsOf = (request: FastifyRequest) =>
@@ -396,33 +407,36 @@ export function registerOnboardingDataRoutes(
     { preHandler: [...CLEARINGHOUSE_VERIFY_BAA] },
     async (request) => {
       const op = operatorOf(request);
-      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      const body = parse(OnboardingBaaVerifyRequest, request.body);
+      const { reason } = splitReason(body);
       return service.verifyClearinghouseBaa(
         op,
         slugOf(request),
         reason,
         requiredRecordedAtPin(request, "BAA record"),
+        { acknowledgePreviousRevocation: body.acknowledgePreviousRevocation === true },
       );
     },
   );
 
   // POST baa/revoke — the operator revokes the vendor BAA the tenant recorded (the vendor ended it): the verification is voided and a
-  // live config leaves `active` in the same transaction as the audit row, so claims, NOE, NOTR and transfer notices are held and nothing
-  // more is sent. Its own key. Not gated on the tenant's onboarding status (a live tenant is the point). Pinned like the verification:
-  // `If-Match` is the record's recordedAt, so an operator never revokes a record it did not read. The `reason` is recorded as given on
-  // the tenant's own audit trail (which the tenant can read) and, screened, on the record: a ticket reference, never a patient. 409
-  // CLEARINGHOUSE_BAA_NOT_RECORDED / CLEARINGHOUSE_BAA_REVOKED for a record that is not there or is already revoked. No rate limit:
-  // it calls no vendor, like the verification.
+  // live config leaves `active` in the same transaction as the audit row and the tenant's announcement, so claims, NOE, NOTR and
+  // transfer notices are held and no new job or tick sends. Its own key. Not gated on the tenant's onboarding status (a live tenant is
+  // the point). Pinned like the verification: `If-Match` is the record's recordedAt, so an operator never revokes a record it did not
+  // read. NO FREE TEXT: the body is a closed `reasonCode` and a `ticketRef` (the tenant reads the audit trail, and a durable column
+  // copies both), validated here against the closed set and the ticket pattern before anything is written or audited. 409
+  // CLEARINGHOUSE_BAA_NOT_RECORDED / CLEARINGHOUSE_BAA_REVOKED for a record that is not there or is already revoked. Rate limited per
+  // operator and per target tenant (fail-open: see the dep's note).
   app.post(
     "/api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke",
-    { preHandler: [...CLEARINGHOUSE_REVOKE_BAA] },
+    { preHandler: [...CLEARINGHOUSE_REVOKE] },
     async (request) => {
       const op = operatorOf(request);
-      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      const { reasonCode, ticketRef } = parse(OnboardingBaaRevokeRequest, request.body);
       return service.revokeClearinghouseBaa(
         op,
         slugOf(request),
-        reason,
+        { reasonCode, ticketRef },
         requiredRecordedAtPin(request, "BAA record"),
       );
     },

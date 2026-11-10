@@ -59,19 +59,24 @@ export interface OnboardingClearinghousePort {
     tx: DbClient,
     scope: OnboardingWriteScope,
     expected: { readonly recordedAt: string },
+    options?: { readonly acknowledgePreviousRevocation?: boolean },
   ): Promise<OnboardingClearinghouseResult>;
   /**
-   * The operator revokes the BAA the tenant recorded (the vendor ended it): the verification is voided, a live config leaves `active`
-   * (its claims, NOE, NOTR and transfer notices are held, its acknowledgment and 835 pulls skip) and the tenant may leave the vendor
-   * though production traffic is recent. `expected.recordedAt` names the record the operator read (compared under the row lock: a 409
-   * for a record that changed since); `reason` is the operator's own text, which M23 screens and stores. The result's `detail` names
-   * the vendor and whether a live config was stopped, for the audit row.
+   * The operator revokes the BAA the tenant recorded (the vendor ended it): the verification is voided and a live config leaves `active`.
+   * No NEW job or tick starts for the tenant after the commit (the resolver binds only an active config; its claim, NOE, NOTR and
+   * transfer-notice jobs are held and its acknowledgment and 835 pulls skip, with an alert when responses may still be owed). An M41
+   * drain re-checks the binding before EACH row, so it stops at the first row after the commit; an M23 job already past its pre-flight
+   * finishes (at most one per worker slot per queue), which no re-check short of a lock on the config row could prevent. The tenant may
+   * leave the vendor although production traffic is recent. `expected.recordedAt` names the record the operator read
+   * (compared under the row lock: a 409 for a record that changed since). `input` is a CLOSED reason code and a ticket reference, which M23
+   * validates (no free text exists anywhere); the same transaction publishes `m23.tenant_clearinghouse.baa_revoked` so the tenant is told.
+   * The result's `detail` names the vendor, the code, the ticket, the record and the impact counts, for the audit row.
    */
   revokeBaa(
     tx: DbClient,
     scope: OnboardingWriteScope,
     expected: { readonly recordedAt: string },
-    reason: string,
+    input: { readonly reasonCode: string; readonly ticketRef: string },
   ): Promise<OnboardingClearinghouseResult>;
   /**
    * The operator releases every clearinghouse credential the tenant still holds except its current one (an account moved to another

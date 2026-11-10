@@ -21,6 +21,7 @@ import {
 import { createDrizzleConfigStore } from "./config-store";
 import { CREDENTIAL_REFUSAL_CODES } from "./credential-reservation";
 import type {
+  ClearinghouseActor,
   ClearinghouseConfigView,
   PutClearinghouseInput,
   RecordBaaInput,
@@ -46,6 +47,14 @@ export interface TenantClearinghouseRouteService {
   }>;
   activate(actor: M23WriteActor): Promise<ClearinghouseConfigView>;
 }
+
+/** Every request this service takes is the tenant's own: the lane is stated here, never inferred from a missing field. */
+const asTenantLane = (actor: M23WriteActor): ClearinghouseActor => ({
+  organizationId: actor.organizationId,
+  userId: actor.userId,
+  membershipId: actor.membershipId,
+  lane: "tenant",
+});
 
 export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly db: DbClient;
@@ -155,7 +164,12 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
 
     async put(actor, body, expectedVersion) {
       const result = await inOrg(actor, async (tx) => {
-        const done = await service.put(createDrizzleConfigStore(tx), actor, body, expectedVersion);
+        const done = await service.put(
+          createDrizzleConfigStore(tx),
+          asTenantLane(actor),
+          body,
+          expectedVersion,
+        );
         if (done.changedFields.length > 0) {
           await record(tx, actor, CLEARINGHOUSE_AUDIT_EVENTS.put, done.changedFields, {
             created: done.created,
@@ -173,7 +187,11 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
 
     async recordBaa(actor, body) {
       const result = await inOrg(actor, async (tx) => {
-        const done = await service.recordBaa(createDrizzleConfigStore(tx), actor, body);
+        const done = await service.recordBaa(
+          createDrizzleConfigStore(tx),
+          asTenantLane(actor),
+          body,
+        );
         if (done.changedFields.length > 0) {
           await record(tx, actor, CLEARINGHOUSE_AUDIT_EVENTS.baaRecorded, done.changedFields, {
             status: done.view.status ?? "none",
@@ -189,13 +207,13 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
     async verify(actor, body) {
       // Read + decrypt in one transaction, the vendor call with none open, the compare-and-set in another.
       const plan = await inOrg(actor, (tx) =>
-        service.prepareVerify(createDrizzleConfigStore(tx), actor, body),
+        service.prepareVerify(createDrizzleConfigStore(tx), asTenantLane(actor), body),
       );
       const outcome = await service.runProbe(plan);
       const result = await inOrg(actor, async (tx) => {
         const done = await service.completeVerify(
           createDrizzleConfigStore(tx),
-          actor,
+          asTenantLane(actor),
           plan,
           outcome,
         );
@@ -212,7 +230,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
 
     async activate(actor) {
       const view = await inOrg(actor, async (tx) => {
-        const done = await service.activate(createDrizzleConfigStore(tx), actor);
+        const done = await service.activate(createDrizzleConfigStore(tx), asTenantLane(actor));
         await record(tx, actor, CLEARINGHOUSE_AUDIT_EVENTS.activated, [], {
           status: done.status ?? "none",
         });

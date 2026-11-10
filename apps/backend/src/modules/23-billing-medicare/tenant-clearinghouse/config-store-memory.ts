@@ -9,7 +9,12 @@ export interface InMemoryConfigStore extends ConfigStore {
    * Test control: pretend the org has (or no longer has) a production submission, reserved at `reservedAt` (default: now). It counts
    * as recent while `reservedAt` is on or after the window's start (`hasRecentProductionAttempts`).
    */
-  setProductionAttempts(organizationId: string, present: boolean, reservedAt?: Date): void;
+  setProductionAttempts(
+    organizationId: string,
+    present: boolean,
+    reservedAt?: Date,
+    status?: "reserved" | "sent",
+  ): void;
   rows(): readonly ConfigRow[];
   /** Test view: the fingerprints the org holds unreleased. */
   heldFingerprints(organizationId: string): readonly string[];
@@ -31,6 +36,8 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
   const byOrg = new Map<string, ConfigRow>();
   /** Per org, when its latest production submission was reserved. */
   const withAttempts = new Map<string, Date>();
+  /** Orgs whose latest attempt is still in flight (`reserved`), as opposed to `sent`. */
+  const inFlight = new Set<string>();
   /** Mirrors migration 1435: one unreleased reservation per fingerprint across ALL organizations. */
   const reservations: Reservation[] = [];
   /** Mirrors migration 1434's partial unique index: one non-null fingerprint across ALL organizations. */
@@ -80,7 +87,11 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
         baaVerifiedByMembershipId: null,
         baaRevokedAt: null,
         baaRevokedByMembershipId: null,
-        baaRevokedReason: null,
+        baaRevokedReasonCode: null,
+        baaRevokedTicketRef: null,
+        baaLastRevokedAt: null,
+        baaLastRevokedDocumentRef: null,
+        revokedVendorLeftAt: null,
         version: 1,
         createdAt: at,
         updatedAt: at,
@@ -98,9 +109,24 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
       byOrg.set(organizationId, next);
       return next;
     },
-    async hasRecentProductionAttempts(organizationId, since) {
+    async hasRecentProductionAttempts(organizationId, since, notBefore) {
       const reservedAt = withAttempts.get(organizationId);
-      return reservedAt !== undefined && reservedAt.getTime() >= since.getTime();
+      return (
+        reservedAt !== undefined &&
+        reservedAt.getTime() >= since.getTime() &&
+        (notBefore === undefined || reservedAt.getTime() >= notBefore.getTime())
+      );
+    },
+    async countRecentProductionAttempts(organizationId, since) {
+      const reservedAt = withAttempts.get(organizationId);
+      const recent = reservedAt !== undefined && reservedAt.getTime() >= since.getTime();
+      // the in-memory model keeps one attempt per org: it is in flight while the test says so, else it was sent
+      return recent
+        ? {
+            inFlight: inFlight.has(organizationId) ? 1 : 0,
+            sent: inFlight.has(organizationId) ? 0 : 1,
+          }
+        : { inFlight: 0, sent: 0 };
     },
     async holdsCredential(organizationId, fingerprint) {
       return reservations.some(
@@ -126,9 +152,11 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
       });
       return released;
     },
-    setProductionAttempts(organizationId, present, reservedAt = now()) {
+    setProductionAttempts(organizationId, present, reservedAt = now(), status = "reserved") {
       if (present) withAttempts.set(organizationId, reservedAt);
       else withAttempts.delete(organizationId);
+      if (present && status === "reserved") inFlight.add(organizationId);
+      else inFlight.delete(organizationId);
     },
     rows: () => [...byOrg.values()],
     heldFingerprints: (organizationId) =>

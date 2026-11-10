@@ -34,6 +34,11 @@ export interface TenantClearinghouseChoice {
   readonly status: TenantClearinghouseStatus | null;
   readonly mode: TenantClearinghouseMode | null;
   readonly source: "tenant" | "platform_env" | "none";
+  /**
+   * True when a platform operator revoked the vendor BAA this configuration rests on (a revoked config is never active): the
+   * claims-billing gate then says so (`clearinghouse_baa_revoked`) instead of "not active yet". Absent = false.
+   */
+  readonly baaRevoked?: boolean;
 }
 
 /** The "nothing chosen" answer. */

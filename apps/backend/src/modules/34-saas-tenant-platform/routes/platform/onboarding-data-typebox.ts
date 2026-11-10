@@ -49,6 +49,46 @@ export const OnboardingReasonSchema = Type.Object({
   }),
 });
 
+/**
+ * Verify a tenant's BAA: the platform's usual `reason`, plus an explicit acknowledgement that is required (409
+ * CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED otherwise) when the tenant re-recorded the very document an operator revoked before.
+ */
+export const OnboardingBaaVerifyRequest = Type.Composite([
+  OnboardingReasonSchema,
+  Type.Object({
+    acknowledgePreviousRevocation: Type.Optional(
+      Type.Boolean({
+        description:
+          "Send true to verify a record whose document is the one a platform operator revoked before (the platform view's baa.previousRevocation.sameDocument says so). Without it the verify is refused with 409 CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED. The audit row records the supersession.",
+      }),
+    ),
+  }),
+]);
+
+/** The closed reasons for revoking a BAA (M23's `BAA_REVOKE_REASON_CODES`, which M34 may not import; M23 re-validates). */
+const BaaRevokeReasonCodeSchema = Type.Union([
+  Type.Literal("vendor_terminated"),
+  Type.Literal("account_closed"),
+  Type.Literal("baa_expired"),
+  Type.Literal("other"),
+]);
+
+/**
+ * Revoke a tenant's vendor BAA. NO free text: a closed reason code and the ticket the operator acts under (a tenant-readable audit
+ * row and a durable column copy these, so nothing a person types freely may reach them). There is no `reason` field on this route.
+ */
+export const OnboardingBaaRevokeRequest = Type.Object(
+  {
+    reasonCode: BaaRevokeReasonCodeSchema,
+    ticketRef: Type.String({
+      pattern: "^[A-Z][A-Z0-9]{1,9}-[0-9]{1,8}$",
+      description:
+        "The ticket the revoke was ordered under, such as SEC-42 (capital letters and digits, a dash, a number). Platform-only: the tenant's view never shows it, but the audit trail does.",
+    }),
+  },
+  { additionalProperties: false },
+);
+
 export const OnboardingResourceParamsSchema = Type.Object({
   orgSlug: Type.String({ minLength: 1, maxLength: 128 }),
   id: Type.String({ format: "uuid" }),
@@ -266,13 +306,23 @@ export const OnboardingClearinghouseViewSchema = Type.Object({
       verified: Nullable(Type.Object({ at: Iso })),
       revoked: Type.Boolean({
         description:
-          "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA.",
+          "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor.",
       }),
       revokedAt: Nullable(Iso),
-      revokedReason: Type.Optional(
+      revokedReasonCode: Nullable(BaaRevokeReasonCodeSchema),
+      revokedTicketRef: Type.Optional(
         Type.String({
           description:
-            "The operator's reason for the revoke, as recorded. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+            "The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+        }),
+      ),
+      previousRevocation: Type.Optional(
+        Type.Object({
+          at: Iso,
+          sameDocument: Type.Boolean({
+            description:
+              "True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation.",
+          }),
         }),
       ),
     }),

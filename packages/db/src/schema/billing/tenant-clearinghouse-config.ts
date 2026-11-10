@@ -42,11 +42,18 @@ export const tenantClearinghouseConfig = pgTable(
     baaRecordedByMembershipId: uuid("baa_recorded_by_membership_id"),
     baaVerifiedAt: timestamp("baa_verified_at", { withTimezone: true }),
     baaVerifiedByMembershipId: uuid("baa_verified_by_membership_id"),
-    // Migration 1468: a platform operator's revoke of the recorded BAA (the vendor ended it). All three or none; a revoked record
-    // holds no verification, and recording a new BAA clears them. The reason is operator text, never returned to the tenant's view.
+    // Migration 1468: a platform operator's revoke of the recorded BAA (the vendor ended it). All four or none; a revoked record holds no
+    // verification, and the tenant clears it by recording a new BAA or leaving the vendor. NO free text: a closed reason code and a
+    // ticket reference. Written only by the config store (the DB guard trigger needs its transaction-local setting).
     baaRevokedAt: timestamp("baa_revoked_at", { withTimezone: true }),
     baaRevokedByMembershipId: uuid("baa_revoked_by_membership_id"),
-    baaRevokedReason: text("baa_revoked_reason"),
+    baaRevokedReasonCode: text("baa_revoked_reason_code"),
+    baaRevokedTicketRef: text("baa_revoked_ticket_ref"),
+    // The history of the last revocation (survives a re-record and a vendor change; platform view only) and when the tenant left a
+    // revoked vendor (the vendor / mode lock counts only attempts reserved at or after it).
+    baaLastRevokedAt: timestamp("baa_last_revoked_at", { withTimezone: true }),
+    baaLastRevokedDocumentRef: text("baa_last_revoked_document_ref"),
+    revokedVendorLeftAt: timestamp("revoked_vendor_left_at", { withTimezone: true }),
     setByMembershipId: uuid("set_by_membership_id").notNull(),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

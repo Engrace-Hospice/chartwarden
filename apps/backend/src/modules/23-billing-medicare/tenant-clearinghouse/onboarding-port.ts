@@ -17,6 +17,7 @@ import { createDrizzleConfigStore } from "./config-store";
 import type {
   ClearinghouseActor,
   ClearinghouseConfigView,
+  RevokeBaaInput,
   VerifyPlan as ServiceVerifyPlan,
   TenantClearinghouseService,
 } from "./service";
@@ -30,9 +31,25 @@ const actorFor = (scope: OnboardingWriteScope): ClearinghouseActor => ({
   lane: "platform",
 });
 
+/** The catalog-validating outbox publisher (callerModule m23): the revoke announces itself in its own transaction. */
+export interface ClearinghouseOutboxPort {
+  publish(
+    tx: DbClient,
+    input: {
+      readonly eventName: string;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+      readonly payload: Record<string, unknown>;
+    },
+  ): Promise<void>;
+}
+
 export function buildTenantClearinghouseOnboardingPort(deps: {
   readonly db: DbClient;
   readonly service: TenantClearinghouseService;
+  /** Required for a revoke: a fact the tenant must be told of is not written without its announcement (typed 503 when absent). */
+  readonly outbox?: ClearinghouseOutboxPort;
 }): OnboardingClearinghousePort {
   const { db, service } = deps;
 
@@ -111,10 +128,17 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
       });
     },
 
-    async verifyBaa(tx, scope, expected) {
+    async verifyBaa(tx, scope, expected, options) {
       await assertTxScopedToOrg(tx, scope.organizationId);
-      const view = await service.verifyBaa(createDrizzleConfigStore(tx), actorFor(scope), expected);
-      // The audit row names the record that was verified (a screened document reference and a date: never patient data).
+      const view = await service.verifyBaa(
+        createDrizzleConfigStore(tx),
+        actorFor(scope),
+        expected,
+        options,
+      );
+      // The audit row names the record that was verified (a screened document reference and a date: never patient data), and says
+      // when the operator verified a document that was revoked before (the earlier revocation's time): a knowing supersession.
+      const previous = view.baa?.previousRevocation;
       return withId(tx, scope, view, {
         detail: {
           baaVerified: view.baa?.verified !== null && view.baa?.verified !== undefined,
@@ -125,25 +149,55 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
                 baaRecordedAt: view.baa.recordedAt,
               }
             : {}),
+          ...(previous?.sameDocument
+            ? { supersededRevocation: true, previousRevocationAt: previous.at }
+            : {}),
         },
       });
     },
 
-    async revokeBaa(tx, scope, expected, reason) {
+    async revokeBaa(tx, scope, expected, input) {
       await assertTxScopedToOrg(tx, scope.organizationId);
-      const { view, wasActive } = await service.revokeBaa(
+      const { outbox } = deps;
+      if (!outbox) {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_OUTBOX_UNBOUND",
+          "the outbox is not bound: a BAA revoke that the tenant must be told of cannot be recorded",
+          503,
+        );
+      }
+      const result = await service.revokeBaa(
         createDrizzleConfigStore(tx),
         actorFor(scope),
         expected,
-        reason,
+        input as RevokeBaaInput,
       );
-      // The audit row names the vendor, the record revoked and whether a live config was stopped: ids, codes and a screened document
-      // reference, never anything else. The operator's reason is already on the row's `context.reason` (M34 `write`).
+      // The tenant's announcement commits or rolls back with the revoke (ids, a closed code and counts only: no ticket, no text).
+      await outbox.publish(tx, {
+        eventName: "m23.tenant_clearinghouse.baa_revoked",
+        organizationId: scope.organizationId,
+        aggregateKind: "tenant_clearinghouse_config",
+        aggregateId: result.configId,
+        payload: {
+          clearinghouseConfigId: result.configId,
+          vendor: result.vendor,
+          reasonCode: result.reasonCode,
+          wasActive: result.wasActive,
+          ...result.impact,
+        },
+      });
+      const { view } = result;
+      // The platform audit row: the vendor, the closed code, the ticket, the record revoked, what it stopped and what it leaves owed.
+      // Ids, codes, counts and a screened document reference: nothing a person typed beyond the ticket reference.
       return withId(tx, scope, view, {
         detail: {
           baaRevoked: true,
-          wasActive,
-          ...(view.vendor ? { vendor: view.vendor } : {}),
+          wasActive: result.wasActive,
+          vendor: result.vendor,
+          reasonCode: result.reasonCode,
+          ticketRef: view.baa?.revokedTicketRef ?? "",
+          credentialCleared: result.credentialCleared,
+          ...result.impact,
           ...(view.baa
             ? { baaDocumentRef: view.baa.documentRef, baaRecordedAt: view.baa.recordedAt }
             : {}),

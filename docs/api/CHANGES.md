@@ -10,29 +10,44 @@ its full description there. Newest first.
 
 **New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke` revokes the vendor BAA a tenant recorded for its
 own Stedi or Claim.MD account (the vendor ended the agreement). Platform ops only
-(`tenant_clearinghouse.revoke_baa_platform`, a fresh step-up, an `Idempotency-Key`, a `reason` of 8-500 characters with no SSN- or
-MBI-shaped identifier; an AI actor is refused). `If-Match` is required and is the `baa.recordedAt` of the record the operator read
-(428 without it, 422 if malformed, 409 `CLEARINGHOUSE_BAA_CHANGED` if the tenant has recorded another since). Not limited to a tenant
-that is still onboarding. The reason is recorded as given on the tenant's own audit trail, which the tenant can read: give a ticket
-reference only.
+(`tenant_clearinghouse.revoke_baa_platform`, a fresh step-up, an `Idempotency-Key`; an AI actor is refused). `If-Match` is required
+and is the `baa.recordedAt` of the record the operator read (428 without it, 422 if malformed, 409 `CLEARINGHOUSE_BAA_CHANGED` if the
+tenant has recorded another since). Not limited to a tenant that is still onboarding. At most 10 revokes per operator (across every
+tenant) and 20 in all per ten minutes, then 429.
 
-**What it does.** In one transaction it records who and why, voids the BAA's verification, and takes a live config out of `active`
-(to `verified`, as re-recording a changed BAA does). The tenant's claims, NOE, NOTR and transfer notices are then held (not failed)
-and its acknowledgment and 835 pulls skip, until the tenant records a new BAA, an operator verifies it and the tenant activates the
-config again. It is not an expiry: a BAA still never ends by itself, and no vendor signal reaches ChartWarden.
+**No free text.** The body is `{"reasonCode": "vendor_terminated" | "account_closed" | "baa_expired" | "other", "ticketRef":
+"SEC-42"}`; the ticket must match `^[A-Z][A-Z0-9]{1,9}-\d{1,8}$`. There is no `reason` field and an unknown field is a 422. Both
+values are recorded as given on the tenant's own audit trail, which the tenant can read: the ticket is a reference, never a name.
+
+**What it does.** In one transaction it records who and why, voids the BAA's verification, takes a live config out of `active` (to
+`verified`, as re-recording a changed BAA does), writes the audit row and tells the tenant (an alert to its billing, compliance and
+org administrators with counts of attempts still in flight, attempts sent in the response window and queued work; and a platform-ops
+notice). If the audit row or the announcement cannot be written, nothing is revoked. It never touches the credential. The tenant's
+claims, NOE, NOTR and transfer notices are then held, and new claims and eligibility work is refused with 402
+`clearinghouse_baa_revoked` (a new reason beside `clearinghouse_not_active`); its acknowledgment and 835 pulls skip, with a once-a-day alert while responses may still be
+owed. No new job or tick starts after the commit; a job already past its pre-flight finishes. It is not an expiry: a BAA still never
+ends by itself, and no vendor signal reaches ChartWarden.
 
 **New errors, all 409.** `CLEARINGHOUSE_BAA_REVOKED` — on the revoke of a BAA that is already revoked, on `baa/verify`, and on
-`POST /api/v1/tenant/clearinghouse/activate` while the revocation stands; `CLEARINGHOUSE_BAA_NOT_RECORDED` (existing) when there is
-no BAA to revoke. A tenant clears a revocation only by recording a new BAA (`POST /api/v1/tenant/clearinghouse/baa`, which now also
-accepts re-recording the identical document after a revocation); it starts again at unverified.
+`POST /api/v1/tenant/clearinghouse/activate` while the revocation stands; `CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED` — on `baa/verify`
+of a record whose document is the one that was revoked before, unless the request carries `acknowledgePreviousRevocation: true`;
+`CLEARINGHOUSE_BAA_NOT_RECORDED` (existing) when there is no BAA to revoke. 503 `CLEARINGHOUSE_OUTBOX_UNBOUND` if the outbox is not
+bound.
+
+**Clearing it.** The tenant clears a revocation by recording a new BAA (`POST /api/v1/tenant/clearinghouse/baa`, which now also
+accepts re-recording the identical document; it starts again at unverified) or by leaving the vendor (a vendor change, or
+`outside`). A same-vendor mode change keeps it.
 
 **The vendor lock has one exception.** While the BAA is revoked, `PUT /api/v1/tenant/clearinghouse` no longer answers
 `CLEARINGHOUSE_VENDOR_LOCKED`: the tenant may change vendor or mode, or switch to `outside`, although production traffic is recent.
-The operator's PUT gets no such exception (and stays onboarding-only). Switching away means the old vendor's late acknowledgments and
-remittances are no longer pulled for the tenant (they stay with the vendor).
+Once it has left the revoked vendor, that vendor's attempts no longer lock the next config either (a tenant that picked the wrong next
+vendor can move on); the new config's own traffic locks as ever. The operator's PUT gets no such exception (and stays
+onboarding-only). Switching away means the old vendor's late acknowledgments and remittances are no longer pulled for the tenant (they
+stay with the vendor).
 
-**View.** The clearinghouse view's `baa` object gains `revoked` (boolean) and `revokedAt` (timestamp or null) on both the tenant
-and the platform routes, and `revokedReason` on the platform routes only.
+**View.** The clearinghouse view's `baa` object gains `revoked` (boolean), `revokedAt` (timestamp or null) and `revokedReasonCode` (the
+closed code or null) on both the tenant and the platform routes; `revokedTicketRef` and `previousRevocation` (`at`, `sameDocument`)
+appear on the platform routes only.
 
 ---
 
