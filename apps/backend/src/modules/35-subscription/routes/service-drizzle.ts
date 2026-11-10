@@ -1051,6 +1051,11 @@ export function buildDrizzleM35RouteService(
           .orderBy(desc(S.startedAt))
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
+        // a contracted plan's statements ignore promos, so a redemption here would be spent for nothing
+        refuseContractedPlan(
+          await loadPlan(tx, sub.planId),
+          "a tenant cannot apply a promo to a contracted subscription",
+        );
         if (sub.status !== "active" && sub.status !== "trialing") {
           throw new ConflictError("subscription is not in a promo-eligible state");
         }
