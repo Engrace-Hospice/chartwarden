@@ -62,7 +62,7 @@ export async function sendWrite<R extends WriteResponse>(
   call: (idempotencyKey: string, stampedAt: string) => Promise<R>,
 ): Promise<SettledWrite<R>> {
   const { key, stampedAt } = keeper.attemptFor(fingerprint);
-  const settled = await settleWrite(call(key, stampedAt));
+  const settled = await settleWrite(Promise.resolve().then(() => call(key, stampedAt)));
   if (settled.status === "unreachable") {
     keeper.unanswered();
     return settled;

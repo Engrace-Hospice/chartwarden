@@ -90,6 +90,19 @@ describe("sendWrite keeps one Idempotency-Key per user intent", () => {
     expect(keys[2]).not.toBe(keys[0]);
   });
 
+  it("classifies a synchronous call failure as unreachable and keeps the key", async () => {
+    const keeper = createIdempotencyKeeper(counter());
+    const keys: string[] = [];
+    const failSynchronously = (key: string): Promise<never> => {
+      keys.push(key);
+      throw new TypeError("Failed before a promise was returned");
+    };
+
+    expect((await sendWrite(keeper, "same", failSynchronously)).status).toBe("unreachable");
+    expect((await sendWrite(keeper, "same", failSynchronously)).status).toBe("unreachable");
+    expect(keys[1]).toBe(keys[0]);
+  });
+
   it("any answer renews the key: after a success the next write is a new intent, and a refusal is not replayed from cache", async () => {
     const keeper = createIdempotencyKeeper(counter());
     const keys: string[] = [];

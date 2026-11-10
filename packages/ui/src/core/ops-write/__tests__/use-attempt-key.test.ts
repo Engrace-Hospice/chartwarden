@@ -10,7 +10,7 @@ import {
   keepsKey,
   registerHeldKeys,
 } from "../idempotency-key";
-import { createAttemptKey, sharedAttemptKeys } from "../use-attempt-key";
+import { NO_ANSWER, createAttemptKey, sharedAttemptKeys } from "../use-attempt-key";
 
 const GATEWAY_PAGE = "<html>Bad gateway</html>";
 const IN_FLIGHT_MESSAGE = "Idempotency-Key request is still being processed";
@@ -169,10 +169,22 @@ describe("createAttemptKey: intents", () => {
   it("holds at most MAX_TRACKED_INTENTS intents: the oldest is forgotten past the cap", () => {
     const attempt = createAttemptKey(counter(), () => T0);
     const first = attempt.keyFor("intent-0");
-    for (let n = 1; n <= MAX_TRACKED_INTENTS; n++) attempt.keyFor(`intent-${n}`);
+    attempt.settle(NO_ANSWER, undefined, "intent-0");
+    for (let n = 1; n <= MAX_TRACKED_INTENTS; n++) {
+      attempt.keyFor(`intent-${n}`);
+      attempt.settle(NO_ANSWER, undefined, `intent-${n}`);
+    }
 
     expect(attempt.keyFor("intent-0")).not.toBe(first);
     expect(attempt.keyFor(`intent-${MAX_TRACKED_INTENTS}`)).toBe(`key-${MAX_TRACKED_INTENTS + 1}`);
+  });
+
+  it("never evicts an attempt whose request is still in flight", () => {
+    const attempt = createAttemptKey(counter(), () => T0);
+    const first = attempt.keyFor("intent-0");
+    for (let n = 1; n <= MAX_TRACKED_INTENTS; n++) attempt.keyFor(`intent-${n}`);
+
+    expect(attempt.keyFor("intent-0")).toBe(first);
   });
 
   it("clear() forgets every intent", () => {

@@ -35,6 +35,7 @@ import {
   keyIdleTooLong,
   keyPastMaxAge,
   newIdempotencyKey,
+  opaqueIdempotencyIntent,
 } from "../ops-write/idempotency-key";
 
 /** Methods that mutate state: the ones the backend's `requireIdempotencyKey` guard can gate (TASK-020). */
@@ -76,18 +77,7 @@ interface TrackedIntent {
  * cyrb53, a non-cryptographic 53-bit string hash: crypto.subtle is unavailable in an insecure context, and the server's own request hash
  * is the backstop (a collision would only share a key between two intents, which the server answers 409 IDEMPOTENCY_CONFLICT).
  */
-function digest(text: string): string {
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (let index = 0; index < text.length; index++) {
-    const code = text.charCodeAt(index);
-    h1 = Math.imul(h1 ^ code, 2654435761);
-    h2 = Math.imul(h2 ^ code, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return `${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}.${text.length.toString(36)}`;
-}
+const digest = (text: string): string => opaqueIdempotencyIntent(text, "");
 
 /**
  * The body text, or null when it is past the size cap or cannot be read in time. It reads chunk by chunk and gives up at the first chunk

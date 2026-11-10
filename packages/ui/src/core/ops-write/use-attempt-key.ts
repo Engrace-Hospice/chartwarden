@@ -19,6 +19,7 @@ import {
   isInFlightDuplicate,
   keepsKey,
   newIdempotencyKey,
+  opaqueIdempotencyIntent,
   registerHeldKeys,
 } from "./idempotency-key";
 import type { WriteResponse } from "./send-write";
@@ -56,30 +57,46 @@ export function createAttemptKey(
   newKey: () => string = newIdempotencyKey,
   now: () => number = Date.now,
 ): AttemptKey {
-  // One keeper per intent that has not been answered yet; insertion order is age, so the first entry is the oldest.
-  const held = new Map<string, IdempotencyKeeper>();
+  interface HeldIntent {
+    readonly keeper: IdempotencyKeeper;
+    active: number;
+  }
+  // Only opaque salted digests are retained: a caller's fingerprint may contain clinical text. Insertion order is age.
+  const salt = newIdempotencyKey();
+  const intentKey = (fingerprint: string): string => opaqueIdempotencyIntent(fingerprint, salt);
+  const held = new Map<string, HeldIntent>();
   let last: string | null = null;
 
-  function attemptFor(fingerprint: string): IdempotencyAttempt {
-    let keeper = held.get(fingerprint);
-    if (keeper === undefined) {
-      keeper = createIdempotencyKeeper(newKey, now);
-      held.set(fingerprint, keeper);
-      const oldest = held.keys().next().value;
-      if (held.size > MAX_TRACKED_INTENTS && oldest !== undefined) held.delete(oldest);
+  function evictOldestIdle(): void {
+    for (const [key, intent] of held) {
+      if (held.size <= MAX_TRACKED_INTENTS) return;
+      if (intent.active === 0) held.delete(key);
     }
-    last = fingerprint;
-    return keeper.attemptFor(fingerprint);
   }
 
-  function settle(status: number, body?: unknown, fingerprint: string | null = last): void {
-    const keeper = fingerprint === null ? undefined : held.get(fingerprint);
-    if (fingerprint === null || keeper === undefined) return;
+  function attemptFor(fingerprint: string): IdempotencyAttempt {
+    const key = intentKey(fingerprint);
+    let intent = held.get(key);
+    if (intent === undefined) {
+      intent = { keeper: createIdempotencyKeeper(newKey, now), active: 0 };
+      held.set(key, intent);
+    }
+    intent.active += 1;
+    last = key;
+    evictOldestIdle();
+    return intent.keeper.attemptFor(key);
+  }
+
+  function settle(status: number, body?: unknown, fingerprint?: string): void {
+    const key = fingerprint === undefined ? last : intentKey(fingerprint);
+    const intent = key === null ? undefined : held.get(key);
+    if (key === null || intent === undefined) return;
+    intent.active = Math.max(0, intent.active - 1);
     if (status !== NO_ANSWER && !keepsKey(status, body)) {
-      keeper.settled();
-      held.delete(fingerprint);
+      intent.keeper.settled();
+      held.delete(key);
     } else if (status === NO_ANSWER || !isInFlightDuplicate(status, body)) {
-      keeper.unanswered();
+      intent.keeper.unanswered();
     }
   }
 
@@ -87,8 +104,9 @@ export function createAttemptKey(
     keyFor: (fingerprint) => attemptFor(fingerprint).key,
     attemptFor,
     settle,
-    forget(fingerprint = last ?? undefined) {
-      if (fingerprint !== undefined) held.delete(fingerprint);
+    forget(fingerprint) {
+      const key = fingerprint === undefined ? last : intentKey(fingerprint);
+      if (key !== null) held.delete(key);
     },
     async run<R extends WriteResponse>(
       fingerprint: string,

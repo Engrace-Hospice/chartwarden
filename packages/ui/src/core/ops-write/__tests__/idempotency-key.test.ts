@@ -14,12 +14,25 @@ import {
   keyIdleTooLong,
   keyPastMaxAge,
   newIdempotencyKey,
+  opaqueIdempotencyIntent,
 } from "../idempotency-key";
 
 const LEGACY_IN_FLIGHT = {
   error: { code: "CONFLICT", message: "Idempotency-Key request is still being processed" },
 };
 const GATEWAY_5XX = 502;
+
+describe("opaqueIdempotencyIntent", () => {
+  it("keeps clinical source text out of retained intent keys while preserving equality semantics", () => {
+    const source = "Dyspnea at rest";
+    const first = opaqueIdempotencyIntent(source, "table-a");
+
+    expect(first).not.toContain(source);
+    expect(opaqueIdempotencyIntent(source, "table-a")).toBe(first);
+    expect(opaqueIdempotencyIntent(`${source}!`, "table-a")).not.toBe(first);
+    expect(opaqueIdempotencyIntent(source, "table-b")).not.toBe(first);
+  });
+});
 
 describe("isGatewayPage", () => {
   it("is a 5xx whose body is not the API error envelope", () => {
