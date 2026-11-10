@@ -55,24 +55,31 @@ export interface ClaimMdSweepDeps {
   readonly now?: () => Date;
   /** Ids and outcome words only. */
   readonly log?: (event: string, detail: Record<string, unknown>) => void;
+  /** Warn level, counts and timestamps only: `claimmd.webhook.unsettled_under_other_key` (see below). Falls back to `log`. */
+  readonly warn?: (event: string, detail: Record<string, unknown>) => void;
   /**
    * A receipt went terminal `failed`: Claim.MD already has its 200 and will not resend, so the event is lost unless an
    * operator acts. Bound to the ops alert sink (error level). Ids and the error class only, never the payload.
+   * Called AFTER the sweep's transaction has committed (never inside it, so a rollback cannot repeat an alert and the sink
+   * cannot fail a row), and a sink that throws is logged and swallowed: the row's terminal state is already durable.
    */
-  readonly onFailed?: (detail: {
-    readonly usage: string;
-    readonly eventId: string;
-    readonly attempts: number;
-    readonly errorClass: string;
-  }) => void;
+  readonly onFailed?: (detail: ClaimMdFailedDetail) => void;
   /**
    * Payloads this sweep could not decrypt: a key/config fault (a wrong CLAIMMD_WEBHOOK_PAYLOAD_KEY), not a bad row, so
-   * no attempt is spent and the rows wait for the next sweep. Raised once per sweep with the count, never per row.
+   * no attempt is spent and the rows wait for the next sweep. Raised once per sweep with the count, never per row, after
+   * the transaction commits; a throwing sink is logged and swallowed.
    */
   readonly onUndecryptable?: (detail: {
     readonly count: number;
     readonly errorClass: string;
   }) => void;
+}
+
+export interface ClaimMdFailedDetail {
+  readonly usage: string;
+  readonly eventId: string;
+  readonly attempts: number;
+  readonly errorClass: string;
 }
 
 export const CLAIMMD_WEBHOOK_SWEEP_QUEUE = "claimmd-webhook-sweep";
@@ -340,9 +347,10 @@ async function recordFailure(
  * Past the retention window (CLAIMMD_PAYLOAD_RETENTION_DAYS after `received_at`), for EVERY receipt, processed or not:
  * close out an entitlement wait, fail a row that never settled (a key fault or an entitlement read that never
  * recovered; alerted, because Claim.MD will not resend), then clear the cipher. The cipher is never kept longer for
- * being unprocessed: a stuck row must not hold PHI-bearing ciphertext indefinitely.
+ * being unprocessed: a stuck row must not hold PHI-bearing ciphertext indefinitely. Resolves the alerts for the rows it
+ * failed; the caller raises them once the transaction has committed.
  */
-async function applyRetention(deps: ClaimMdSweepDeps, tx: DbClient, now: Date): Promise<void> {
+async function applyRetention(tx: DbClient, now: Date): Promise<readonly ClaimMdFailedDetail[]> {
   const cutoff = new Date(now.getTime() - CLAIMMD_PAYLOAD_RETENTION_DAYS * DAY_MS);
   await tx.execute(sql`
     UPDATE claimmd_webhook_event SET processing_outcome = 'expired_not_entitled', processed_at = ${now}
@@ -358,18 +366,49 @@ async function applyRetention(deps: ClaimMdSweepDeps, tx: DbClient, now: Date): 
       last_error_class: string | null;
     }[];
   };
-  for (const r of unsettled.rows) {
-    deps.onFailed?.({
-      usage: r.usage,
-      eventId: r.event_id,
-      attempts: r.attempt_count,
-      errorClass: r.last_error_class ?? "unsettled",
-    });
-  }
-  // ponytail: no index on received_at for this scan; the set that still holds a cipher is at most the retention window.
+  // The clear is a range scan of claimmd_webhook_event_cipher_age_ix (1462, partial: only rows that still hold a cipher, by
+  // received_at), so it reads just the rows it is about to change.
   await tx.execute(sql`
     UPDATE claimmd_webhook_event SET payload_cipher = NULL, payload_key_ref = NULL, payload_cleared_at = ${now}
     WHERE payload_cipher IS NOT NULL AND received_at < ${cutoff}`);
+  return unsettled.rows.map((r) => ({
+    usage: r.usage,
+    eventId: r.event_id,
+    attempts: r.attempt_count,
+    errorClass: r.last_error_class ?? "unsettled",
+  }));
+}
+
+/**
+ * Receipts still waiting (processed_at NULL, cipher held) that are sealed under a key id other than this process's: rotation
+ * with unsettled rows. Counts and the oldest receipt time only. They go `payload_key_mismatch` and then terminal `failed`
+ * CLAIMMD_KEY_FAULT_GRACE_DAYS after receipt, and Claim.MD will not resend, so ops needs to see them BEFORE that.
+ */
+async function unsettledUnderOtherKey(
+  tx: DbClient,
+  keyId: string,
+): Promise<{ readonly count: number; readonly oldestReceivedAt: string | null }> {
+  const row = await one<{ n: number | string; oldest: Date | string | null }>(
+    tx,
+    sql`SELECT count(*) AS n, min(received_at) AS oldest FROM claimmd_webhook_event
+        WHERE processed_at IS NULL AND payload_cipher IS NOT NULL AND payload_key_ref IS DISTINCT FROM ${keyId}`,
+  );
+  return {
+    count: Number(row?.n ?? 0),
+    oldestReceivedAt: row?.oldest ? new Date(row.oldest).toISOString() : null,
+  };
+}
+
+/** Raises a sink call after commit. A sink that throws must neither fail the sweep nor undo a durable row: it is logged by name. */
+function notify(deps: ClaimMdSweepDeps, sink: string, call: () => void): void {
+  try {
+    call();
+  } catch (err) {
+    deps.log?.("claimmd.webhook.alert_sink_failed", {
+      sink,
+      errorClass: (err as Error | undefined)?.name ?? "Error",
+    });
+  }
 }
 
 export interface ClaimMdSweepResult {
@@ -381,8 +420,10 @@ export interface ClaimMdSweepResult {
 export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<ClaimMdSweepResult> {
   const now = (deps.now ?? (() => new Date()))();
   const recheckBefore = new Date(now.getTime() - CLAIMMD_ENTITLEMENT_RECHECK_MINUTES * 60_000);
-  return deps.runner(async (tx) => {
-    await applyRetention(deps, tx, now);
+  // Alerts are COLLECTED inside the transaction and raised after it commits: a sink call inside would fire before the rows are
+  // durable (a rollback would then repeat it on the next sweep) and a throwing sink would be caught as a ROW failure.
+  const swept = await deps.runner(async (tx) => {
+    const failed: ClaimMdFailedDetail[] = [...(await applyRetention(tx, now))];
     // Fresh receipts first: a row that already failed (a key fault, an entitlement read error) sorts after every row that
     // has not, so a backlog of unreadable receipts can never fill the batch and starve new ones.
     const pending = (
@@ -412,7 +453,7 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
           undecryptableClass = settled.errorClass;
           // Out of grace: terminal `failed`. No attempt was spent on it, and Claim.MD will not resend: alert it by id.
           if (reported === "failed") {
-            deps.onFailed?.({
+            failed.push({
               usage: row.usage,
               eventId: row.event_id,
               attempts: 0,
@@ -424,7 +465,7 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
         const failedClass = await recordFailure(tx, row, err, now);
         outcome = failedClass === null ? "retry" : "failed";
         if (failedClass !== null) {
-          deps.onFailed?.({
+          failed.push({
             usage: row.usage,
             eventId: row.event_id,
             attempts: CLAIMMD_SWEEP_MAX_ATTEMPTS,
@@ -437,11 +478,30 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
         deps.log?.("claimmd.webhook.settled", { usage: row.usage, eventId: row.event_id, outcome });
       }
     }
-    const undecryptable =
-      (outcomes.payload_undecryptable ?? 0) + (outcomes.payload_key_mismatch ?? 0);
-    if (undecryptable > 0) {
-      deps.onUndecryptable?.({ count: undecryptable, errorClass: undecryptableClass });
-    }
-    return { seen: pending.length, outcomes };
+    const otherKey = await unsettledUnderOtherKey(tx, deps.cipher.keyId);
+    const result: ClaimMdSweepResult = { seen: pending.length, outcomes };
+    return { result, failed, undecryptableClass, otherKey };
   });
+
+  // The transaction has committed: every row's state is durable. Raise the alerts; none of them can change a row now.
+  const { result, failed, undecryptableClass, otherKey } = swept;
+  for (const detail of failed) notify(deps, "onFailed", () => deps.onFailed?.(detail));
+  const undecryptable =
+    (result.outcomes.payload_undecryptable ?? 0) + (result.outcomes.payload_key_mismatch ?? 0);
+  if (undecryptable > 0) {
+    notify(deps, "onUndecryptable", () =>
+      deps.onUndecryptable?.({ count: undecryptable, errorClass: undecryptableClass }),
+    );
+  }
+  if (otherKey.count > 0) {
+    // Rotation with unsettled receipts: visible every sweep, before CLAIMMD_KEY_FAULT_GRACE_DAYS runs out for the oldest.
+    notify(deps, "warn", () =>
+      (deps.warn ?? deps.log)?.("claimmd.webhook.unsettled_under_other_key", {
+        count: otherKey.count,
+        oldestReceivedAt: otherKey.oldestReceivedAt,
+        graceDays: CLAIMMD_KEY_FAULT_GRACE_DAYS,
+      }),
+    );
+  }
+  return result;
 }
