@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  NOT_A_CALL,
   classifyStatement,
   createCommitTracker,
   createConnectionTxState,
@@ -455,6 +456,22 @@ describe("createDbClient is the only place a pg pool is built", () => {
         ),
       )
       .map((file) => file.slice(ROOT.length + 1));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("the keywords the call rule skips are not function names in this schema", () => {
+  // `filter (`, `over (`, `range (` ... are keywords before a parenthesis, not calls. Postgres lets a user function carry such a
+  // name, and an unqualified bare call to it would be read as the keyword and hidden. No migration may define one.
+  const MIGRATIONS = join(__dirname, "..", "migrations");
+  const DEFINES = new RegExp(
+    `create\\s+(?:or\\s+replace\\s+)?function\\s+(?:[a-z_]+\\.)?"?(${[...NOT_A_CALL].join("|")})"?\\s*\\(`,
+    "i",
+  );
+  it("no migration creates a function named after one of them", () => {
+    const offenders = readdirSync(MIGRATIONS)
+      .filter((name) => name.endsWith(".sql"))
+      .filter((name) => DEFINES.test(readFileSync(join(MIGRATIONS, name), "utf8")));
     expect(offenders).toEqual([]);
   });
 });

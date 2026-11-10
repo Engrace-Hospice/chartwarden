@@ -193,8 +193,10 @@ const READ_ONLY_CALLS: ReadonlySet<string> = new Set([
     "hashtextextended",
   ],
 ]);
-// Words that are followed by a parenthesis without being a call.
-const NOT_A_CALL: ReadonlySet<string> = new Set([
+// Words that are followed by a parenthesis without being a call. RESIDUAL: Postgres lets a user function carry some of these names
+// (`filter`, `range`, `rows`, `over`, `partition`, `within`, `at`, `set`, `by`), and an UNQUALIFIED bare call to one is read as the
+// keyword. `no migration defines a function named like one` (commit-tracker.test.ts) keeps that from being true here.
+export const NOT_A_CALL: ReadonlySet<string> = new Set([
   ...[
     "in",
     "exists",
@@ -419,21 +421,25 @@ function trackAnswer(
   run: (args: unknown[]) => unknown,
   settle: SettleWrite,
 ): unknown {
-  const callback = args[args.length - 1];
-  if (typeof callback === "function") {
-    const wrapped = (error: unknown, ...rest: unknown[]) => {
-      settle(!isServerRefusal(error));
-      (callback as (...a: unknown[]) => void)(error, ...rest);
-    };
-    return run([...args.slice(0, -1), wrapped]);
-  }
+  const last = args[args.length - 1];
+  const callbackForm = typeof last === "function";
+  const sent = callbackForm
+    ? [
+        ...args.slice(0, -1),
+        (error: unknown, ...rest: unknown[]) => {
+          settle(!isServerRefusal(error));
+          (last as (...a: unknown[]) => void)(error, ...rest);
+        },
+      ]
+    : args;
   let result: unknown;
   try {
-    result = run(args);
+    result = run(sent);
   } catch (error) {
-    settle(!isServerRefusal(error));
+    settle(!isServerRefusal(error)); // thrown before anything was sent: counted, not trusted
     throw error;
   }
+  if (callbackForm) return result;
   if (typeof (result as { then?: unknown } | null | undefined)?.then !== "function") {
     settle(true);
     return result;
