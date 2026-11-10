@@ -7,6 +7,16 @@ export * as schema from "./schema/index";
 export * from "./organization-settings/index";
 // AUTH-T01 (ADR-0033) — the production pooled pg + Drizzle client factory (M1 infra; injected at boot).
 export * from "./client";
+// Per-request "did a write COMMIT" tracker over the pool (the idempotency middleware's release rule).
+export {
+  type CommitTracker,
+  createCommitTracker,
+  currentCommitTracker,
+  instrumentPoolForCommits,
+  mayHaveCommitted,
+  resetCommitTracker,
+  runWithCommitTracker,
+} from "./commit-tracker";
 // F-022 (#55) — business-rule constraint registry: what a UNIQUE index means to a CALLER, declared
 // beside the index itself, so a `23505` on it can answer 409 instead of a bare 500.
 export * from "./business-rules";

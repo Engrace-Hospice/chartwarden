@@ -43,6 +43,11 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   dosespotPrescriberEnrolled: "m34.tenant_onboarding.dosespot_prescriber_enrolled",
   /** A platform operator verified the BAA the tenant recorded for its own vendor account (a live tenant too: not status-gated). */
   clearinghouseBaaVerified: "m34.tenant_onboarding.clearinghouse_baa_verified",
+  /**
+   * A platform operator revoked the BAA the tenant recorded (the vendor ended it; not status-gated). The row names the operator, the
+   * tenant, the reason as given, the vendor, the record's document reference and `recordedAt`, and whether a live config was stopped.
+   */
+  clearinghouseBaaRevoked: "m34.tenant_onboarding.clearinghouse_baa_revoked",
   /** A platform operator released the clearinghouse credentials a tenant still held, except its current one (not status-gated). */
   clearinghouseCredentialsReleased: "m34.tenant_onboarding.clearinghouse_credentials_released",
   /**

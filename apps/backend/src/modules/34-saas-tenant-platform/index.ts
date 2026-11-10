@@ -334,6 +334,8 @@ export function mountTenantPlatformRoutes(
       dosespotVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
       /** Per-target-tenant cap on the clearinghouse `PUT` (its 409 is an account-in-use oracle); fail-closed in production. */
       clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-operator (across tenants) cap on the BAA revoke, a kill switch; fail-open in production (the audit row and alerts still fire). */
+      clearinghouseRevokeBaaRateLimit?: (request: never, reply: never) => Promise<void>;
     };
     public?: {
       service?: _SignupIntentRouteService;
@@ -395,6 +397,12 @@ export function mountTenantPlatformRoutes(
         : {}),
       ...(services.onboardingData.clearinghousePutRateLimit
         ? { clearinghousePutRateLimit: services.onboardingData.clearinghousePutRateLimit as never }
+        : {}),
+      ...(services.onboardingData.clearinghouseRevokeBaaRateLimit
+        ? {
+            clearinghouseRevokeBaaRateLimit: services.onboardingData
+              .clearinghouseRevokeBaaRateLimit as never,
+          }
         : {}),
     });
     // Tenant onboarding slice 4 (ADR-0111): the same service, the DoseSpot lane.

@@ -10,7 +10,8 @@
 // middleware that wraps this helper is wired too.
 import { createHash, createHmac } from "node:crypto";
 import {
-  ConflictError,
+  ChartWardenError,
+  ERROR_CODES,
   IdempotencyConflictError,
   IdempotencyKeyStaleError,
 } from "@chartwarden/types";
@@ -104,7 +105,12 @@ export interface IdempotentResponse {
 
 /** A stored idempotency record: in-flight (`pending`) or finished (`complete`). */
 export type IdempotencyRecord =
-  | { readonly state: "pending"; readonly requestHash: string }
+  | {
+      readonly state: "pending";
+      readonly requestHash: string;
+      /** How long the claim has been pending, by the store's own clock; absent when the store cannot say (treated as young). */
+      readonly pendingForMs?: number;
+    }
   | {
       readonly state: "complete";
       readonly requestHash: string;
@@ -123,10 +129,12 @@ export interface IdempotencyStore {
   putPending(organizationId: string, key: string, requestHash: string): Promise<boolean>;
   complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
   /**
-   * Drops the caller's own still-`pending` claim so the SAME key can run again. For an outcome that must not be
-   * replayed because the write did not happen (a deadlock/serialization 409, any 5xx): caching it would answer every
-   * retry with the failure for the whole TTL. Only the claimant's row goes: a row that is no longer `pending`, or whose
-   * `requestHash` is another claimant's, is left alone.
+   * Drops the caller's own still-`pending` claim so the SAME key can run again. For a failure that must not be
+   * replayed because NOTHING of the request committed (a deadlock/serialization 409, a 5xx that followed no durable write; the
+   * HTTP middleware proves that with the per-request commit tracker before it calls this): caching it would answer every
+   * retry with the failure for the whole TTL while the write never ran. A failure that followed a commit is completed, not
+   * released: re-running it would write twice. Only the claimant's row goes: a row that is no longer `pending`, or whose
+   * `requestHash` is another claimant's, is left alone. If this call fails the key stays `pending` until its TTL.
    */
   release(organizationId: string, key: string, requestHash: string): Promise<void>;
 }
@@ -134,10 +142,18 @@ export interface IdempotencyStore {
 /** The one `Idempotency-Key`-reused-with-a-different-body error (409 IDEMPOTENCY_CONFLICT, SEC-025). */
 export { IdempotencyConflictError };
 
-/** Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 CONFLICT. */
-export class IdempotencyInFlightError extends ConflictError {
+/**
+ * Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 IDEMPOTENCY_IN_FLIGHT. Its own code,
+ * not the plain CONFLICT: a client must be able to tell "your first request is still running, retry with the same key" from a
+ * business-rule 409, because renewing the key on this answer would write twice.
+ */
+export class IdempotencyInFlightError extends ChartWardenError {
   constructor(readonly key: string) {
-    super("Idempotency-Key request is still being processed");
+    super(
+      "IDEMPOTENCY_IN_FLIGHT",
+      "Idempotency-Key request is still being processed",
+      ERROR_CODES.IDEMPOTENCY_IN_FLIGHT,
+    );
     this.name = "IdempotencyInFlightError";
   }
 }
@@ -146,10 +162,33 @@ export class IdempotencyInFlightError extends ConflictError {
 export { IdempotencyKeyStaleError };
 
 /**
- * Replay a stored record: its response when complete; a conflict on a different body; in flight otherwise. A fingerprint written
- * under ANOTHER server key (a rotated secret) is not a different body: it is refused as stale, so the client does not hunt for one,
- * and nothing can say whether the first request took effect. A record stored before the keyed hash (24 h TTL) still matches the same
- * request through `legacyHash`, so a retry across the deploy replays instead of re-executing.
+ * How long a claim may stay `pending` before a duplicate is told the key is STUCK rather than in flight: the longest a request
+ * handler is meant to run plus a wide margin. Nothing in the platform runs a handler for more than a minute or two (database
+ * statements, outbound calls and the proxy all time out well inside that; report and export builds run as queued jobs), so a
+ * claim still pending after fifteen minutes belongs to a process that died after claiming it, or to a request whose outcome
+ * could not be recorded. Far under the 24 hour record TTL, which is how long a client would otherwise loop on IN_FLIGHT.
+ */
+export const IDEMPOTENCY_PENDING_MAX_AGE_MS = 15 * 60 * 1000;
+
+/**
+ * Thrown when a duplicate finds the first request still `pending` after IDEMPOTENCY_PENDING_MAX_AGE_MS — 409
+ * IDEMPOTENCY_KEY_STUCK. The first request's outcome is unknown (it may have been applied), so the client is told not to retry
+ * with this key and to read the resource to find out. The row is never reclaimed, released or re-run by this path.
+ */
+export class IdempotencyKeyStuckError extends ChartWardenError {
+  constructor(readonly key: string) {
+    super(
+      "IDEMPOTENCY_KEY_STUCK",
+      "The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this key: read the resource to see whether the change was applied, and use a new key only if it was not.",
+      ERROR_CODES.IDEMPOTENCY_KEY_STUCK,
+    );
+    this.name = "IdempotencyKeyStuckError";
+  }
+}
+
+/**
+ * Replay a stored record: its response when complete; a conflict or stale-key error on a mismatched fingerprint; stuck or in
+ * flight otherwise. Legacy plain hashes remain replayable during the bounded migration arm.
  */
 function replay(
   record: IdempotencyRecord,
@@ -163,6 +202,8 @@ function replay(
       : new IdempotencyConflictError();
   }
   if (record.state === "complete") return record.response;
+  if ((record.pendingForMs ?? 0) > IDEMPOTENCY_PENDING_MAX_AGE_MS)
+    throw new IdempotencyKeyStuckError(key);
   throw new IdempotencyInFlightError(key);
 }
 
@@ -171,7 +212,8 @@ function replay(
  * now owns the key and must run the handler (then `store.complete` it); otherwise resolves the cached
  * response to replay. Throws {@link IdempotencyConflictError} for a different body,
  * {@link IdempotencyKeyStaleError} for a record under another server key, and
- * {@link IdempotencyInFlightError} while the first request is still pending. The claim (`putPending`) is the
+ * {@link IdempotencyInFlightError} while the first request is still pending, and {@link IdempotencyKeyStuckError} once it has been
+ * pending for longer than IDEMPOTENCY_PENDING_MAX_AGE_MS. The claim (`putPending`) is the
  * serialization point (GAP-007): a caller that loses it never runs the handler — it reloads the winner's
  * record, and a record that vanished in between is reported in flight so the client retries.
  */

@@ -23,6 +23,7 @@ import {
   validateTenantSlug,
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { screenFreeText, screenNames } from "../free-text";
 import {
   DekRotateRequest,
   OffboardTenantRequest,
@@ -140,6 +141,10 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(ProvisionTenantRequest, request.body);
+      screenNames({
+        legalBusinessName: body.legalBusinessName,
+        firstAdminFullName: body.firstAdminFullName,
+      });
       // ADR-0049 D3: the host label follows the rules the database enforces, refused here with an actionable reason.
       const checked = body.slug === undefined ? null : validateTenantSlug(body.slug);
       if (checked && !checked.ok) {
@@ -185,6 +190,7 @@ export function registerTenantPlatformRoutes(
       // not the raw Better Auth user id.
       const { membershipId } = writeActorOf(request);
       const body = parse(StatusTransitionRequest, request.body);
+      screenFreeText({ transitionReason: body.transitionReason }); // stored on the status event a tenant can read
       const res = await service.transitionStatus(orgSlugOf(request), membershipId, {
         toStatus: body.toStatus,
         transitionReason: body.transitionReason,
@@ -221,6 +227,7 @@ export function registerTenantPlatformRoutes(
       // membershipId (not userId) — same reasoning as the status-transition route above.
       const { membershipId } = writeActorOf(request);
       const body = parse(OffboardTenantRequest, request.body);
+      screenFreeText({ transitionReason: body.transitionReason });
       const res = await service.offboardTenant(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
         exportPurpose: body.exportPurpose,
@@ -236,6 +243,7 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(ShredTenantRequest, request.body);
+      screenFreeText({ transitionReason: body.transitionReason });
       const res = await service.requestShred(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
         destructionCertificateId: body.destructionCertificateId,
@@ -251,6 +259,8 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(DekRotateRequest, request.body);
+      // `reason` is accepted and DISCARDED: requestDekRotate enqueues the job without it. A change that stores it must screen it
+      // (screenFreeText), like the transition reasons above.
       const res = await service.requestDekRotate(orgSlugOf(request), membershipId, {
         reason: body.reason,
       });

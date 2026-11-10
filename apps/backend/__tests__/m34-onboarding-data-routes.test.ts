@@ -58,6 +58,9 @@ interface Call {
   readonly expectedVersion?: number | undefined;
   /** The BAA verification's pin (the `baa.recordedAt` the operator read, its If-Match); a withdrawal's may be null (none sent). */
   readonly expected?: { readonly recordedAt: string | null };
+  /** The BAA revoke's closed request (a reason code and a ticket reference); the verify's explicit acknowledgement. */
+  readonly input?: { readonly reasonCode: string; readonly ticketRef: string };
+  readonly options?: { readonly acknowledgePreviousRevocation?: boolean };
   /** `withdrawNoticeExternalFiling`: which notice (NOE / NOTR) and its id. */
   readonly noticeKind?: "noe" | "notr";
   readonly noticeId?: string;
@@ -123,9 +126,19 @@ function recordingService(calls: Call[]): OnboardingDataService {
       orgSlug: string,
       reason: string,
       expected: { recordedAt: string },
+      options?: { acknowledgePreviousRevocation?: boolean },
     ) => {
-      calls.push({ method: "verifyClearinghouseBaa", op, orgSlug, reason, expected });
+      calls.push({ method: "verifyClearinghouseBaa", op, orgSlug, reason, expected, options });
       return { status: "verified", baa: { verified: { at: "2026-11-06T00:00:00.000Z" } } };
+    },
+    revokeClearinghouseBaa: async (
+      op: OnboardingOperator,
+      orgSlug: string,
+      input: { reasonCode: string; ticketRef: string },
+      expected: { recordedAt: string },
+    ) => {
+      calls.push({ method: "revokeClearinghouseBaa", op, orgSlug, input, expected });
+      return { status: "verified", baa: { verified: null, revoked: true } };
     },
     releaseClearinghouseCredentials: async (
       op: OnboardingOperator,
@@ -171,8 +184,25 @@ const GRANTS = {
         "tenant_clearinghouse.read_platform",
         "tenant_clearinghouse.write_platform",
         "tenant_clearinghouse.verify_baa_platform",
+        "tenant_clearinghouse.revoke_baa_platform",
         "tenant_clearinghouse.release_credential_platform",
         "tenant_notice_filing.withdraw_platform",
+      ],
+    },
+  ],
+};
+/** An operator who may verify a tenant's BAA but may NOT revoke it: the two are separate keys. */
+const VERIFIER_ONLY = {
+  orgId: PLATFORM_ORG,
+  userId: "verifier-only-user",
+  grants: [
+    {
+      roleKey: "platform_ops",
+      enabled: true,
+      expiresAt: null,
+      permissionKeys: [
+        "tenant_clearinghouse.read_platform",
+        "tenant_clearinghouse.verify_baa_platform",
       ],
     },
   ],
@@ -195,6 +225,9 @@ function makeServer(
   calls: Call[],
   clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>,
   clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>,
+  /** Replaces single service methods (a refusal the real service raises, which the recording stub never does). */
+  serviceOverride: Partial<OnboardingDataService> = {},
+  clearinghouseRevokeBaaRateLimit?: (request: never, reply: never) => Promise<void>,
 ) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
@@ -204,6 +237,7 @@ function makeServer(
       // a platform role that is NOT platform_ops: holds the keys, fails the predicate
       { ...GRANTS, userId: "support-user" },
       WRITER_ONLY,
+      VERIFIER_ONLY,
     ]).store,
   );
   const reg = createPredicateRegistry();
@@ -213,9 +247,10 @@ function makeServer(
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   mountTenantPlatformRoutes(app, {} as DbClient, {
     onboardingData: {
-      service: recordingService(calls),
+      service: { ...recordingService(calls), ...serviceOverride },
       ...(clearinghouseVerifyRateLimit ? { clearinghouseVerifyRateLimit } : {}),
       ...(clearinghousePutRateLimit ? { clearinghousePutRateLimit } : {}),
+      ...(clearinghouseRevokeBaaRateLimit ? { clearinghouseRevokeBaaRateLimit } : {}),
     },
   });
   return app;
@@ -320,6 +355,11 @@ describe("write guards (every write route)", () => {
       method: "POST",
       url: `${URL_BASE}/clearinghouse/baa/verify`,
       payload: { reason: "ticket CHG-1" },
+    },
+    {
+      method: "POST",
+      url: `${URL_BASE}/clearinghouse/baa/revoke`,
+      payload: { reasonCode: "other", ticketRef: "SEC-1" },
     },
     {
       method: "POST",
@@ -451,6 +491,24 @@ describe("reason normalisation", () => {
     const res = await post(app, "Customer\u200b request,\n\t\u202eticket\u0000   CHG-1234");
     expect(res.statusCode, res.body).toBe(201);
     expect(calls[0]?.reason).toBe("Customer request, ticket CHG-1234");
+    await app.close();
+  });
+
+  it("screens the reason as typed, before the control strip: a control character between digits is a separator, not padding", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    // Synthetic area-900 digits. Stripped first, "900123456\u00017" is an unbroken ten-digit run, which the screen lets through
+    // on purpose (NPIs, phone numbers); as typed it is nine digits and a stray one.
+    const res = await post(app, "verified with patient 900123456\u00017 by phone");
+    expect(res.statusCode, res.body).toBe(422);
+    expect(res.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(res.body).not.toContain("900123456");
+    expect(calls).toEqual([]); // refused before the service
+    // and a run of control characters longer than the screen's separator window hides nothing once it is stripped
+    const padded = `verified patient 900${"\u0001".repeat(12)}12${"\u0001".repeat(12)}3456 by phone`;
+    expect((await post(app, padded)).json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    // a plain ten-digit ticket number is still a plain number
+    expect((await post(app, "ticket 9001234567 opened by phone")).statusCode).toBe(201);
     await app.close();
   });
 
@@ -603,7 +661,178 @@ describe("clearinghouse routes", () => {
     expect(calls.map((c) => c.method)).toEqual(["verifyClearinghouseBaa"]);
     expect(calls[0]).toMatchObject({ orgSlug: "tenant-b", reason: "ticket CHG-1" });
     expect(calls[0]?.op.userId).toBe(OPERATOR_USER);
+    // the acknowledgement is the operator's explicit word: absent means false, and only a literal true is carried as true
+    expect(calls[0]?.options).toEqual({ acknowledgePreviousRevocation: false });
+    calls.length = 0;
+    expect(
+      (await post(fresh(), { reason: "ticket CHG-1", acknowledgePreviousRevocation: true }))
+        .statusCode,
+    ).toBe(200);
+    expect(calls[0]?.options).toEqual({ acknowledgePreviousRevocation: true });
+    expect(
+      (await post(fresh(), { reason: "ticket CHG-1", acknowledgePreviousRevocation: "yes" }))
+        .statusCode,
+    ).toBe(422);
     await app.close();
+  });
+
+  const REVOKE_BODY = { reasonCode: "vendor_terminated", ticketRef: "SEC-42" };
+
+  it("baa/revoke is its own key: an operator who may verify the BAA may not revoke it; the operator, the closed request and the pin are carried", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const post = (headers: Record<string, string>, payload: object = REVOKE_BODY) =>
+      app.inject({
+        method: "POST",
+        url: `${URL_BASE}/clearinghouse/baa/revoke`,
+        headers: { "if-match": BAA_PIN_HEADER, ...headers },
+        payload,
+      });
+    const verifierOnly = await post({ ...fresh(), "x-test-user": "verifier-only-user" });
+    expect(verifierOnly.statusCode).toBe(403);
+    expect(calls).toEqual([]);
+    expect((await post(fresh(), {})).statusCode).toBe(422); // the closed request is required
+    const ok = await post(fresh());
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ baa: { revoked: true } });
+    expect(calls.map((c) => c.method)).toEqual(["revokeClearinghouseBaa"]);
+    expect(calls[0]).toMatchObject({
+      orgSlug: "tenant-b",
+      input: REVOKE_BODY,
+      expected: { recordedAt: BAA_PIN },
+    });
+    expect(calls[0]?.op.userId).toBe(OPERATOR_USER);
+    await app.close();
+  });
+
+  it("baa/revoke is pinned to the record the operator read: If-Match is required (428) and must be a real timestamp (422)", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const post = (headers: Record<string, string>) =>
+      app.inject({
+        method: "POST",
+        url: `${URL_BASE}/clearinghouse/baa/revoke`,
+        headers: { ...fresh(), ...headers },
+        payload: REVOKE_BODY,
+      });
+
+    const missing = await post({});
+    expect(missing.statusCode).toBe(428);
+    expect(missing.json().error?.code ?? missing.json().code).toBe("IF_MATCH_REQUIRED");
+    for (const bad of ['"3"', '"yesterday"', '"2026-11-06"', '"2026-02-30T00:00:00.000Z"']) {
+      expect((await post({ "if-match": bad })).statusCode, bad).toBe(422);
+    }
+    expect(calls).toEqual([]); // none of them reached the service
+
+    for (const header of [
+      BAA_PIN_HEADER,
+      `W/${BAA_PIN_HEADER}`,
+      BAA_PIN_HEADER.replaceAll('"', ""),
+    ]) {
+      calls.length = 0;
+      expect((await post({ "if-match": header })).statusCode, header).toBe(200);
+      expect(calls[0]).toMatchObject({ expected: { recordedAt: BAA_PIN } });
+    }
+    await app.close();
+  });
+
+  it("baa/revoke takes NO free text: a reason outside the closed set, a ticket that is not a ticket, and any other field are a 422 before the service runs", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const post = (payload: object) =>
+      app.inject({
+        method: "POST",
+        url: `${URL_BASE}/clearinghouse/baa/revoke`,
+        headers: { "if-match": BAA_PIN_HEADER, ...fresh() },
+        payload,
+      });
+    const bad: object[] = [
+      // the old free-text request
+      { reason: "Vendor ended the BAA, ticket SEC-42" },
+      { ...REVOKE_BODY, reason: "Patient John Smith DOB 04/12/1941 phone 555-123-4567 BAA ended" },
+      { reasonCode: "Vendor ended the BAA", ticketRef: "SEC-42" },
+      { reasonCode: "terminated", ticketRef: "SEC-42" },
+      { reasonCode: "other" },
+      { ticketRef: "SEC-42" },
+      { reasonCode: "other", ticketRef: "sec-42" },
+      { reasonCode: "other", ticketRef: "SEC-42 John Smith DOB 04/12/1941" },
+      { reasonCode: "other", ticketRef: "SEC-42\nphone 555-123-4567" },
+      { reasonCode: "other", ticketRef: "X".repeat(40) },
+    ];
+    for (const payload of bad) {
+      expect((await post(payload)).statusCode, JSON.stringify(payload)).toBe(422);
+    }
+    expect(calls).toEqual([]);
+    for (const reasonCode of ["vendor_terminated", "account_closed", "baa_expired", "other"]) {
+      expect((await post({ reasonCode, ticketRef: "A1-12345678" })).statusCode, reasonCode).toBe(
+        200,
+      );
+    }
+    await app.close();
+  });
+
+  it("baa/revoke answers a refusal of the service in the standard error envelope with its own code and status", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls, undefined, undefined, {
+      revokeClearinghouseBaa: async () => {
+        throw new ChartWardenError("CLEARINGHOUSE_BAA_REVOKED", "already revoked", 409);
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `${URL_BASE}/clearinghouse/baa/revoke`,
+      headers: { "if-match": BAA_PIN_HEADER, ...fresh() },
+      payload: REVOKE_BODY,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatchObject({ code: "CLEARINGHOUSE_BAA_REVOKED" });
+    expect(res.json()).not.toHaveProperty("status", "verified");
+    await app.close();
+  });
+
+  describe("baa/revoke is rate limited per operator, across tenants", () => {
+    const limiter = (
+      store = createInMemoryRateLimitStore(),
+      failMode: "open" | "closed" = "open",
+    ) =>
+      createRouteRateLimit({
+        store,
+        // no scopeOf: the bucket is the operator in the platform org, so it counts every tenant the operator revokes
+        limit: { perUser: 2, perOrg: 3, windowMs: 60_000, failMode },
+        keyPrefix: "m34-clearinghouse-baa-revoke",
+      }) as (request: never, reply: never) => Promise<void>;
+    const revokeOn = (app: ReturnType<typeof makeServer>, slug: string, headers = fresh()) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/platform/tenants/${slug}/clearinghouse/baa/revoke`,
+        headers: { "if-match": BAA_PIN_HEADER, ...headers },
+        payload: REVOKE_BODY,
+      });
+
+    it("one operator cannot sweep tenants: past the cap, whichever tenant, it is a 429 and the service is not reached", async () => {
+      const calls: Call[] = [];
+      const app = makeServer(calls, undefined, undefined, {}, limiter());
+      expect((await revokeOn(app, "tenant-a")).statusCode).toBe(200);
+      expect((await revokeOn(app, "tenant-b")).statusCode).toBe(200);
+      const third = await revokeOn(app, "tenant-c");
+      expect(third.statusCode).toBe(429);
+      expect(third.headers["retry-after"]).toBeDefined();
+      expect(calls.map((c) => c.orgSlug)).toEqual(["tenant-a", "tenant-b"]);
+      await app.close();
+    });
+
+    it("fails OPEN when the limiter's store is down: the stop still works (and is still audited and announced)", async () => {
+      const calls: Call[] = [];
+      const down = {
+        increment: async () => {
+          throw new Error("store down");
+        },
+      } as unknown as ReturnType<typeof createInMemoryRateLimitStore>;
+      const app = makeServer(calls, undefined, undefined, {}, limiter(down, "open"));
+      expect((await revokeOn(app, "tenant-a")).statusCode).toBe(200);
+      expect(calls).toHaveLength(1);
+      await app.close();
+    });
   });
 
   it("baa/verify is pinned to the record the operator read: If-Match (the record's recordedAt) is required and must be a real timestamp (re-review M1)", async () => {
@@ -902,7 +1131,18 @@ function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } 
       },
     }),
     // a write also voids a pending go-live attestation (`voidPendingGoLiveForDataChange`): the stub has none to revoke
-    update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
+    update: (table: unknown) => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => {
+            if (table === schema.tenantGoLiveAttestation) {
+              trace.push("update:tenant_go_live_attestation");
+            }
+            return [];
+          },
+        }),
+      }),
+    }),
     // `set_config('app.org_id' | 'app.user_id', …)` and the onboarding advisory lock
     execute: async (query: { queryChunks?: unknown[] }) => {
       trace.push(`exec:${JSON.stringify(query.queryChunks ?? query)}`);
@@ -1145,6 +1385,14 @@ describe("service: the clearinghouse choice", () => {
         seen.push({ method: "verifyBaa", expected });
         return { resourceId: CONFIG_ID, view: { status: "verified", baa: { verified: {} } } };
       },
+      revokeBaa: async (_tx: unknown, _scope: unknown, expected: unknown, input: unknown) => {
+        seen.push({ method: "revokeBaa", expected, body: input });
+        return {
+          resourceId: CONFIG_ID,
+          view: { status: "verified", baa: { verified: null, revoked: true } },
+          detail: { baaRevoked: true, wasActive: true, vendor: "claimmd" },
+        };
+      },
       releaseCredentials: async (_tx, _scope, reason) => {
         seen.push({ method: "releaseCredentials", body: reason });
         return {
@@ -1192,6 +1440,49 @@ describe("service: the clearinghouse choice", () => {
     });
     expect(JSON.stringify(inserts[0]?.values)).not.toContain(SECRET);
     expect(settled).toEqual([TARGET_ORG]);
+  });
+
+  it("does not void a pending go-live attestation for idempotent clearinghouse writes", async () => {
+    const putDb = stubDb("onboarding");
+    const noOpPut = fakePort({
+      put: async () => ({
+        resourceId: CONFIG_ID,
+        created: false,
+        view: { vendor: "claimmd", hasSecret: true },
+        changedFields: [],
+      }),
+    });
+    const putService = buildDrizzleOnboardingDataService({
+      db: putDb.db,
+      resolveTenant,
+      clearinghouse: noOpPut.port,
+    });
+    await putService.putClearinghouse(
+      OPERATOR,
+      "tenant-b",
+      { vendor: "claimmd", mode: "test" },
+      "ticket CHG-1",
+      4,
+    );
+    expect(putDb.trace).not.toContain("update:tenant_go_live_attestation");
+
+    const verifyDb = stubDb("active");
+    const noOpVerify = fakePort({
+      verifyBaa: async () => ({
+        resourceId: CONFIG_ID,
+        view: { status: "verified", baa: { verified: {} } },
+        dataChanged: false,
+      }),
+    });
+    const verifyService = buildDrizzleOnboardingDataService({
+      db: verifyDb.db,
+      resolveTenant,
+      clearinghouse: noOpVerify.port,
+    });
+    await verifyService.verifyClearinghouseBaa(OPERATOR, "tenant-b", "ticket CHG-7", {
+      recordedAt: BAA_PIN,
+    });
+    expect(verifyDb.trace).not.toContain("update:tenant_go_live_attestation");
   });
 
   it("verify audits how it was verified and the test outcome and settles the wizard step", async () => {
@@ -1381,6 +1672,99 @@ describe("service: the clearinghouse choice", () => {
         }),
       });
     }
+  });
+
+  it("the BAA revoke is audited with operator, org, the closed code, the ticket and the vendor, and is NOT refused for a live tenant (a live tenant is the point)", async () => {
+    for (const status of ["onboarding", "active"]) {
+      const { db, inserts } = stubDb(status);
+      const { port, seen } = fakePort();
+      const settled: string[] = [];
+      const service = buildDrizzleOnboardingDataService({
+        db,
+        resolveTenant,
+        clearinghouse: port,
+        settleOnboarding: async (org) => void settled.push(org),
+      });
+      await expect(
+        service.revokeClearinghouseBaa(
+          OPERATOR,
+          "tenant-b",
+          { reasonCode: "vendor_terminated", ticketRef: "SEC-42" },
+          { recordedAt: BAA_PIN },
+        ),
+      ).resolves.toMatchObject({ status: "verified", baa: { revoked: true } });
+      expect(
+        seen.map((x) => x.method),
+        status,
+      ).toEqual(["revokeBaa"]);
+      // the pin and the closed request reach M23, which compares the pin under the row lock and validates the request
+      expect(seen[0], status).toMatchObject({
+        expected: { recordedAt: BAA_PIN },
+        body: { reasonCode: "vendor_terminated", ticketRef: "SEC-42" },
+      });
+      expect(inserts, status).toHaveLength(1);
+      expect(inserts[0]?.values, status).toMatchObject({
+        eventType: ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseBaaRevoked,
+        resourceId: CONFIG_ID,
+        outcome: "success",
+        organizationId: TARGET_ORG,
+        actorUserId: OPERATOR.userId,
+        context: expect.objectContaining({
+          // built here from the two validated request fields: the only "reason" text this audit row can hold
+          reason: "baa_revoked:vendor_terminated:SEC-42",
+          targetOrganizationId: TARGET_ORG,
+          operatorMembershipId: MEMBERSHIP,
+          baaRevoked: true,
+          wasActive: true,
+          vendor: "claimmd",
+        }),
+      });
+    }
+  });
+
+  it("a revoke request that skipped the route's schema is refused before ANY audit row: no caller text can reach a write_failed row", async () => {
+    const { db, inserts } = stubDb("active");
+    const { port, seen } = fakePort();
+    const service = buildDrizzleOnboardingDataService({ db, resolveTenant, clearinghouse: port });
+    const SENTENCE = "Patient John Smith DOB 04/12/1941 phone 555-123-4567 BAA ended";
+    for (const input of [
+      { reasonCode: SENTENCE, ticketRef: "SEC-42" },
+      { reasonCode: "other", ticketRef: SENTENCE },
+      { reasonCode: "other", ticketRef: "sec-42" },
+    ]) {
+      await expect(
+        service.revokeClearinghouseBaa(OPERATOR, "tenant-b", input, { recordedAt: BAA_PIN }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "VALIDATION_FAILED" });
+    }
+    expect(inserts).toEqual([]); // nothing audited, so nothing to carry the text
+    expect(seen).toEqual([]); // and M23 was never reached
+  });
+
+  it("a refused BAA revoke leaves a write_failed audit row with its code and changes nothing else", async () => {
+    const { db, inserts } = stubDb("active");
+    const { port } = fakePort({
+      revokeBaa: async () => {
+        throw new ChartWardenError("CLEARINGHOUSE_BAA_REVOKED", "already revoked", 409);
+      },
+    });
+    const service = buildDrizzleOnboardingDataService({ db, resolveTenant, clearinghouse: port });
+    await expect(
+      service.revokeClearinghouseBaa(
+        OPERATOR,
+        "tenant-b",
+        { reasonCode: "other", ticketRef: "SEC-42" },
+        { recordedAt: BAA_PIN },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: "CLEARINGHOUSE_BAA_REVOKED" });
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]?.values).toMatchObject({
+      eventType: ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
+      context: expect.objectContaining({
+        errorCode: "CLEARINGHOUSE_BAA_REVOKED",
+        // a refused revoke records the same built string: there is no caller-supplied text to store in a write_failed row
+        reason: "baa_revoked:other:SEC-42",
+      }),
+    });
   });
 
   it("the credential release is audited with operator, org, reason and the count, and is NOT refused for a live tenant", async () => {

@@ -304,6 +304,7 @@ export const ClaimsBillingDenyReasonLit = Type.Union([
   Type.Literal("clearinghouse_not_chosen"),
   Type.Literal("clearinghouse_outside"),
   Type.Literal("clearinghouse_not_active"),
+  Type.Literal("clearinghouse_baa_revoked"),
   Type.Literal("never_purchased"),
   Type.Literal("lapsed"),
   Type.Literal("subscription_suspended"),

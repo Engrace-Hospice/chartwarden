@@ -39,6 +39,17 @@ export interface DlqPromotionEvent {
 export type OnDlqPromotion = (event: DlqPromotionEvent) => void;
 
 /**
+ * The log line for one promotion. A promotion that is not a retried job (a summary, a key fault) carries no attempt count, and the
+ * line then omits the clause instead of saying "after ? attempt(s)"; with a count the text is exactly what it always was.
+ */
+export function formatDlqPromotion(event: DlqPromotionEvent): string {
+  const org = event.organizationId ? ` org=${event.organizationId}` : "";
+  const job = event.jobId ? ` job=${event.jobId}` : "";
+  const attempts = event.attempts === undefined ? "" : ` after ${event.attempts} attempt(s)`;
+  return `🚨 DLQ promotion [${event.source}]${org}${job}${attempts}: ${event.error}`;
+}
+
+/**
  * The default sink: an always-on structured, greppable `console.error` line (the task's explicit
  * "log-based alert" fallback), plus an optional best-effort webhook POST when `webhookUrl` is
  * configured. The webhook never blocks or throws into the caller — delivery failure is itself only
@@ -53,11 +64,7 @@ export function buildDlqPromotionSink(opts?: {
   const webhookUrl = opts?.webhookUrl;
   const doFetch = opts?.fetchImpl ?? fetch;
   return (event: DlqPromotionEvent) => {
-    log(
-      `🚨 DLQ promotion [${event.source}]${event.organizationId ? ` org=${event.organizationId}` : ""}${
-        event.jobId ? ` job=${event.jobId}` : ""
-      } after ${event.attempts ?? "?"} attempt(s): ${event.error}`,
-    );
+    log(formatDlqPromotion(event));
     if (!webhookUrl) return;
     doFetch(webhookUrl, {
       method: "POST",

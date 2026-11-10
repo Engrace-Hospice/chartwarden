@@ -14,8 +14,9 @@ export const CLAIMMD_WEBHOOK_PAYLOAD_KEY_ENV = "CLAIMMD_WEBHOOK_PAYLOAD_KEY";
  * The id stamped on every sealed receipt (`payload_key_ref`); the sweep opens only rows sealed under THIS id and refuses any other
  * before decrypting (outcome `payload_key_mismatch`, terminal `failed` after CLAIMMD_KEY_FAULT_GRACE_DAYS). The process holds one
  * key, so to rotate, change this id and CLAIMMD_WEBHOOK_PAYLOAD_KEY together, and only once no receipt is unsettled (processed_at
- * NULL with a cipher): rows sealed under the old id are never decrypted again. Settled rows lose their cipher at 90 days anyway.
- * (CW-AC-05B)
+ * NULL with a cipher; an `awaiting_entitlement` row counts): rows sealed under the old id are never decrypted again, and while
+ * any exist the sweep warns every minute (`claimmd.webhook.unsettled_under_other_key`, counts only). Settled rows lose their
+ * cipher at 90 days anyway. (CW-AC-05B, ADR-0053 amendment "Key rotation")
  */
 export const CLAIMMD_WEBHOOK_KEY_ID = "claimmd-webhook-v1";
 

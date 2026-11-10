@@ -4,11 +4,15 @@
 // to M1/M2. M34 reaches them through this port (the composition root binds `bootstrap/org-profile.ts`, the
 // `org-spine-facts.ts` precedent), never through the table. The validators here are the authority on what is accepted.
 import { organizationSettingsReader } from "@chartwarden/db";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { isValidTimeZone } from "@chartwarden/shared/dates";
 import { ChartWardenError } from "@chartwarden/types";
 import { Value } from "@sinclair/typebox/value";
 
 export const DISPLAY_NAME_MAX = 200;
+/** An organisation name is a name, not a note about what was checked: the shared screen's default advice does not fit it. */
+export const DISPLAY_NAME_PHI_REFUSAL =
+  "displayName must not contain a patient identifier number (a Social Security or Medicare number); an organisation name is a name, not a record.";
 
 export interface OrgProfile {
   readonly displayName: string;
@@ -53,6 +57,8 @@ export function validateDisplayName(value: unknown): string {
       `displayName must be 1 to ${DISPLAY_NAME_MAX} characters`,
     );
   }
+  // Typed by an operator (or the org's own admin) into the tenant-visible profile: no place for a patient identifier.
+  assertNoPatientIdentifier("displayName", name, DISPLAY_NAME_PHI_REFUSAL);
   return name;
 }
 

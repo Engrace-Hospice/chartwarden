@@ -26,7 +26,7 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type {
@@ -126,6 +126,20 @@ export interface OnboardingDataService extends DoseSpotLaneMethods {
     op: OnboardingOperator,
     orgSlug: string,
     reason: string,
+    expected: { readonly recordedAt: string },
+    options?: { readonly acknowledgePreviousRevocation?: boolean },
+  ): Promise<unknown>;
+  /**
+   * The operator revokes the vendor BAA the tenant recorded (the vendor ended it): the verification is voided and a live config leaves
+   * `active` in the same transaction as the audit row and the tenant's announcement. NOT gated on the tenant's onboarding status (the
+   * whole point is a live tenant). `expected` is the `baa.recordedAt` the operator read: a record that changed since is a 409. The
+   * request is a CLOSED reason code and a ticket reference (M23 validates both): the audit row's `reason` is built here from them,
+   * so no caller-supplied free text exists to be stored, in the record, the audit row or a `write_failed` row.
+   */
+  revokeClearinghouseBaa(
+    op: OnboardingOperator,
+    orgSlug: string,
+    input: { readonly reasonCode: string; readonly ticketRef: string },
     expected: { readonly recordedAt: string },
   ): Promise<unknown>;
   /**
@@ -261,6 +275,8 @@ interface WriteResult<T> {
    * is exactly as it was.
    */
   readonly noChange?: boolean;
+  /** False for a successful idempotent retry that changed no onboarding evidence. */
+  readonly dataChanged?: boolean;
   /** Non-sensitive facts for the audit row (counts, codes, kinds). */
   readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }
@@ -387,7 +403,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           const done = await run(tx, target);
           // A pending go-live attestation said this data was ready: the write makes that stale, so it is voided in the same
           // transaction (the attestation and the write commit or roll back together).
-          if (!done.noChange) {
+          if (!done.noChange && done.dataChanged !== false) {
             await voidPendingGoLiveForDataChange(tx, {
               organizationId: target.organizationId,
               revokedByUserId: op.userId,
@@ -578,6 +594,14 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
   }
 
   const CLEARINGHOUSE_KIND = "tenant_clearinghouse_config";
+  /** The closed reasons and the ticket shape of a BAA revoke (M23's own set, which M34 may not import; M23 validates again). */
+  const BAA_REVOKE_REASON_CODES: ReadonlySet<string> = new Set([
+    "vendor_terminated",
+    "account_closed",
+    "baa_expired",
+    "other",
+  ]);
+  const BAA_REVOKE_TICKET = /^[A-Z][A-Z0-9]{1,9}-\d{1,8}$/;
 
   return {
     listProviderEntities: (op, orgSlug) =>
@@ -675,6 +699,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           return {
             value: { created: done.created === true, view: done.view },
             resourceId: done.resourceId,
+            dataChanged: done.changedFields?.length !== 0,
             ...(done.changedFields ? { changedFields: done.changedFields } : {}),
           };
         },
@@ -711,7 +736,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       return settleStepAfter(organizationId, result);
     },
 
-    verifyClearinghouseBaa: (op, orgSlug, reason, expected) =>
+    verifyClearinghouseBaa: (op, orgSlug, reason, expected, options) =>
       write(
         op,
         orgSlug,
@@ -726,6 +751,48 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             tx,
             scopeOf(op, t.organizationId),
             expected,
+            options,
+          );
+          return {
+            value: done.view,
+            resourceId: done.resourceId,
+            dataChanged: done.dataChanged,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      ),
+
+    revokeClearinghouseBaa: async (op, orgSlug, input, expected) => {
+      // The audit row's `reason` is built from these two values, so they are checked HERE too (the route did, M23 will): a caller that
+      // skipped the route's schema must never get its text into a `write_failed` row, which is written before M23 sees the request.
+      if (
+        !BAA_REVOKE_REASON_CODES.has(input.reasonCode) ||
+        !BAA_REVOKE_TICKET.test(input.ticketRef)
+      ) {
+        throw new ValidationError("request validation failed", [
+          {
+            field: BAA_REVOKE_REASON_CODES.has(input.reasonCode) ? "ticketRef" : "reasonCode",
+            code: "INVALID",
+            message: "a closed reasonCode and a ticketRef such as SEC-42 are required",
+          },
+        ]);
+      }
+      return write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.clearinghouseBaaRevoked,
+          resourceKind: CLEARINGHOUSE_KIND,
+          // built from the two request fields the route already validated against a closed set and a pattern: never caller text
+          reason: `baa_revoked:${input.reasonCode}:${input.ticketRef}`,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await clearinghousePort().revokeBaa(
+            tx,
+            scopeOf(op, t.organizationId),
+            expected,
+            input,
           );
           return {
             value: done.view,
@@ -733,7 +800,8 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             ...(done.detail ? { detail: done.detail } : {}),
           };
         },
-      ),
+      );
+    },
 
     releaseClearinghouseCredentials: (op, orgSlug, reason) =>
       write(

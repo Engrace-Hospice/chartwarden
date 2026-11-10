@@ -3047,6 +3047,13 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // Owner decision "build it" (2026-11-09): revoking the vendor BAA a tenant recorded (see the M34 module's permission-keys.ts).
+  "tenant_clearinghouse.revoke_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "revoke_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
   // Owner decision 2026-11-08: releasing the clearinghouse credentials a tenant still holds (see the M34 module's permission-keys.ts).
   "tenant_clearinghouse.release_credential_platform": {
     resource: "tenant_clearinghouse",

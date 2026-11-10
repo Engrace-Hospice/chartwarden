@@ -6,11 +6,58 @@ its full description there. Newest first.
 
 ---
 
-## 2026-11-09 — The clearinghouse vendor lock ends; the platform PUT is rate limited
+## 2026-11-09 — A platform operator can revoke a tenant's vendor BAA; the tenant can then leave the vendor
+
+**New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke` revokes the vendor BAA a tenant recorded for its
+own Stedi or Claim.MD account (the vendor ended the agreement). Platform ops only
+(`tenant_clearinghouse.revoke_baa_platform`, a fresh step-up, an `Idempotency-Key`; an AI actor is refused). `If-Match` is required
+and is the `baa.recordedAt` of the record the operator read (428 without it, 422 if malformed, 409 `CLEARINGHOUSE_BAA_CHANGED` if the
+tenant has recorded another since). Not limited to a tenant that is still onboarding. At most 10 revokes per operator (across every
+tenant) and 20 in all per ten minutes, then 429.
+
+**No free text.** The body is `{"reasonCode": "vendor_terminated" | "account_closed" | "baa_expired" | "other", "ticketRef":
+"SEC-42"}`; the ticket must match `^[A-Z][A-Z0-9]{1,9}-\d{1,8}$`. There is no `reason` field and an unknown field is a 422. Both
+values are recorded as given on the tenant's own audit trail, which the tenant can read: the ticket is a reference, never a name.
+
+**What it does.** In one transaction it records who and why, voids the BAA's verification, takes a live config out of `active` (to
+`verified`, as re-recording a changed BAA does), writes the audit row and tells the tenant (an alert to its billing, compliance and
+org administrators with counts of attempts still in flight, attempts sent in the response window and queued work; and a platform-ops
+notice). If the audit row or the announcement cannot be written, nothing is revoked. It never touches the credential. The tenant's
+claims, NOE, NOTR and transfer notices are then held, and new claims and eligibility work is refused with 402
+`clearinghouse_baa_revoked` (a new reason beside `clearinghouse_not_active`); its acknowledgment and 835 pulls skip, with a once-a-day alert while responses may still be
+owed. No new job or tick starts after the commit; a job already past its pre-flight finishes. It is not an expiry: a BAA still never
+ends by itself, and no vendor signal reaches ChartWarden.
+
+**New errors, all 409.** `CLEARINGHOUSE_BAA_REVOKED` — on the revoke of a BAA that is already revoked, on `baa/verify`, and on
+`POST /api/v1/tenant/clearinghouse/activate` while the revocation stands; `CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED` — on `baa/verify`
+of a record whose document is the one that was revoked before, unless the request carries `acknowledgePreviousRevocation: true`;
+`CLEARINGHOUSE_BAA_NOT_RECORDED` (existing) when there is no BAA to revoke. 503 `CLEARINGHOUSE_OUTBOX_UNBOUND` if the outbox is not
+bound.
+
+**Clearing it.** The tenant clears a revocation by recording a new BAA (`POST /api/v1/tenant/clearinghouse/baa`, which now also
+accepts re-recording the identical document; it starts again at unverified) or by leaving the vendor (a vendor change, or
+`outside`). A same-vendor mode change keeps it.
+
+**The vendor lock has one exception.** While the BAA is revoked, `PUT /api/v1/tenant/clearinghouse` no longer answers
+`CLEARINGHOUSE_VENDOR_LOCKED`: the tenant may change vendor or mode, or switch to `outside`, although production traffic is recent.
+Once it has left the revoked vendor, that vendor's attempts no longer lock the next config either (a tenant that picked the wrong next
+vendor can move on); the new config's own traffic locks as ever. The operator's PUT gets no such exception (and stays
+onboarding-only). Switching away means the old vendor's late acknowledgments and remittances are no longer pulled for the tenant (they
+stay with the vendor).
+
+**View.** The clearinghouse view's `baa` object gains `revoked` (boolean), `revokedAt` (timestamp or null) and `revokedReasonCode` (the
+closed code or null) on both the tenant and the platform routes; `revokedTicketRef` and `previousRevocation` (`at`, `sameDocument`)
+appear on the platform routes only.
+
+---
+
+## 2026-11-09 — The clearinghouse vendor lock has a 90-day window; the platform PUT is rate limited
 
 **Vendor and mode lock.** `PUT /api/v1/tenant/clearinghouse` (and the operator's onboarding PUT) answer 409
-`CLEARINGHOUSE_VENDOR_LOCKED` only while the organization has a production submission in flight or sent one in the last
-90 days (the same window as the credential release). Before, one production claim locked vendor and mode for good.
+`CLEARINGHOUSE_VENDOR_LOCKED` while the organization has any production attempt in flight (reserved) or sent in the last 90 days
+(the same window as the credential release). Before, one production claim locked vendor and mode for good; now they can be changed
+again only after 90 days with no production attempt. An organization that sends continuously stays locked for as long as it does,
+and there is no operator override. Test-mode, released and voided attempts do not lock.
 
 **Rate limit.** `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` now allows 10 saves a minute per operator and 30 per
 tenant, counted per target tenant, and answers 429 beyond that (503 when the limiter's store is unavailable), as the tenant's own
@@ -35,6 +82,73 @@ never the name of the organization an account moved to.
 
 ---
 
+## 2026-11-09 — More operator free-text fields refuse a patient identifier (`422 EVIDENCE_LOOKS_LIKE_PHI`)
+
+**Why.** Text typed by an operator and stored on a row a tenant can read, or copied into the audit trail, is no place for a patient.
+Some fields were screened and some were not.
+
+- These fields are now refused with `422 EVIDENCE_LOOKS_LIKE_PHI` (the same code, status and envelope as the fields that were already
+  screened; the error names the field and never echoes the value) when they hold an SSN- or MBI-shaped value:
+  - platform: the tenant status-transition, offboard and shred `transitionReason`; the feature-flag `rationale` and every string
+    (and object key) inside the flag `value`; the signup-intent rejection `rejectionReason`; the oversized-export `approvalReason`;
+    the onboarding-template `title` and `description`; the provision `legalBusinessName` and `firstAdminFullName` and the qualify
+    `firstAdminFullName`; the onboarding-data `reason` (it is now screened as typed, before control characters are stripped);
+  - tenant: the support-consent grant `grantReason` and `revocationReason`, the tenant-export `justification`, the DSAR request
+    `requestorIdentityVerificationEvidence` and the DSAR denial `narrative`, the onboarding org-profile `displayName` (both surfaces);
+  - public: the self-serve signup `legalBusinessName`;
+  - M35: the refund `reasonDetail`, the refund-denial `reason`, and the plan `name` and `description` (create and update).
+  A flag `value` nested deeper than 8 levels, with more than 500 strings or more than 20,000 characters is refused with `422
+  VALIDATION_FAILED` rather than left partly unscreened.
+- Accepted and NOT stored, so not screened: the DEK-rotation `reason`, the support-session close `note` and the DSAR extension
+  `reason`. Closing a session is always permitted and is never refused for its note.
+- Wizard and onboarding text that is stored now has zero-width and bidi format characters removed (U+200B, U+200E/F, U+202A-E,
+  U+2060-4, U+2066-9, U+FEFF), as it already had control characters; U+200C and U+200D are kept.
+- The screen itself is stricter: a nine-digit value is no longer excused because a bare number sits near it ("SSN 900 123 456, 5 days"),
+  a long run of spaces between groups no longer hides it, and the refusal text now says to cite documents by title or ticket number and
+  that long ids and UUIDs can also trip the check. If a legitimate note is refused, cite the document by its title.
+- Not screened, on purpose: an unbroken run of ten to twelve digits (NPIs, phone numbers, ticket numbers).
+
+## 2026-11-09 — New error codes `IDEMPOTENCY_IN_FLIGHT` and `IDEMPOTENCY_KEY_STUCK`
+
+**Why.** A duplicate that arrived while the first request with the same `Idempotency-Key` was still running was answered as a
+plain `409` with code `CONFLICT`, the same code a business-rule refusal carries. A client that reads any 409 as "this key is
+spent, mint a new one" would then start a second write while the first was still in progress. And if the first request never
+finished (its process died after claiming the key), the same answer repeated for 24 hours.
+
+- `IDEMPOTENCY_IN_FLIGHT` replaces `CONFLICT` for that answer. The status is still `409`, the body is the standard error envelope
+  (`{ "error": { "code", "message", "correlationId", "documentationUrl" } }`) and the message is unchanged ("Idempotency-Key
+  request is still being processed"). Only the `code` value changed, from `CONFLICT`.
+- **How to handle it.** Treat it as "your first request is still running": keep the SAME `Idempotency-Key`, wait, and retry with
+  the same key and body. Do not mint a new key. Once the first request finishes the retry replays its stored response (or, if
+  that request failed before committing anything, runs again). Do this for at most 15 minutes.
+- `IDEMPOTENCY_KEY_STUCK` (new, `409`, same envelope) is what a duplicate gets once the first request has been pending for more
+  than 15 minutes. Its outcome is UNKNOWN: it may have been applied. **Do not retry with this key, and do not assume it failed.**
+  Read the resource to see whether the change is there; use a new key only if it is not. The server never reclaims or re-runs
+  the stuck row.
+- The other idempotency 409 is unchanged: `IDEMPOTENCY_CONFLICT` is the same key sent with a different body (a client bug; do
+  not retry). A business-rule `409 CONFLICT` still means the request itself was refused.
+- Clients that matched on `409` + `CONFLICT` for the in-flight situation must match `IDEMPOTENCY_IN_FLIGHT` instead.
+
+## 2026-11-09 — `Idempotency-Key`: a failed request frees its key only when it committed nothing
+
+**Why.** A `5xx`, or the retryable `409 CONCURRENT_UPDATE`, used to be stored as the key's response and replayed for 24 hours,
+so a same-key retry never ran the write.
+
+- A `5xx` or `409 CONCURRENT_UPDATE` that provably committed nothing (the request failed before anything became durable) no
+  longer consumes the key: retrying with the SAME `Idempotency-Key` runs the request again.
+- If any write of the request had already committed, or may have, or was still in progress when the response was built (a
+  post-commit step threw, a response failed to serialize, a second transaction deadlocked after the first committed, a
+  transaction was still running when a sibling failed), the response is stored and replayed exactly as before: the retry
+  answers the same failure and does not write twice. Read the failure, check the resource, and use a new key for a new attempt.
+- The `409 CONCURRENT_UPDATE` text no longer says "nothing was saved". It now reads "This step conflicted with another change in
+  progress and was not applied. An earlier step of the same request may have been applied: check the current state before
+  retrying." The code and the status are unchanged. A request can run several transactions; only the one the database aborted is
+  known not to have applied, so check the resource before you retry.
+- While the idempotency store is unreachable (the usual companion of a database outage) the key cannot be freed; it stays
+  `pending`: a retry answers `409 IDEMPOTENCY_IN_FLIGHT` for up to 15 minutes and `409 IDEMPOTENCY_KEY_STUCK` after that (read the
+  resource; do not retry with the key), until the key's 24-hour record expires.
+- Not tracked: an effect outside Postgres made directly in a route (an outbound call, a queue or object-store write). Those
+  belong behind the outbox (after the commit) by the platform's convention; a route that makes one directly is not covered.
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
 
 **Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong
@@ -73,7 +187,8 @@ change what the existing routes refuse.
   and `/revoke` (the `ccn_registered` step's data) also revoke a pending go-live attestation in the same transaction, like every
   other write to the onboarding data. An operator's void records their user (a membership is recorded only when it is the
   user's own active membership of that organization).
-- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE` ("retry it"; nothing was saved), not a 500.
+- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE`, not a 500. (Its text was reworded on
+  2026-11-09: see the `Idempotency-Key` note above.)
 - Go-live approval takes the exclusive onboarding lock before it reads anything and judges the attestation as it is under that
   lock; activation re-checks that the attester is still the assigned officer (`409 GO_LIVE_ATTESTATION_STALE`).
 - A session on an organization that is not `active` (created, suspended, closed or unknown) is confined to an exact list of

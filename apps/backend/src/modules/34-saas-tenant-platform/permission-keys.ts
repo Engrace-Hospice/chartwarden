@@ -388,6 +388,16 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // Owner decision "build it" (2026-11-09, migration 1468): revoking the vendor BAA a tenant recorded (the vendor ended it) is its own
+  // permission key, held by platform_ops like the verification's. The revoke voids the verification and takes a live config out of
+  // service; the route also needs a fresh step-up, a human actor, a recorded reason and the BAA record's recordedAt as If-Match. Not
+  // limited to an onboarding tenant: a live tenant is the point.
+  "tenant_clearinghouse.revoke_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "revoke_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
   // Owner decision 2026-11-08 (migration 1435): a credential a tenant sealed stays reserved to it, through a switch to `outside` and a
   // rotation, until a platform operator releases it (an account moved to another organization). Its own key, bound to platform_ops;
   // the route also needs a fresh step-up, a human actor and a recorded reason. Not limited to an onboarding tenant.
