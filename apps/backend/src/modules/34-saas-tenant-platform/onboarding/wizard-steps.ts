@@ -191,8 +191,11 @@ export function createStepOperations(now: () => Date) {
     }
     const at = now();
     const bag = await ctx.store.getCompletionEvidence(task.id);
-    const { attestation: _a, skip: _s, ...rest } = bag as Record<string, unknown>;
+    const { attestation: _a, skip: skipRecord, ...rest } = bag as Record<string, unknown>;
     const history = Array.isArray(rest.reopened) ? (rest.reopened as unknown[]) : [];
+    // What the skip record said about who and when goes into the history with the rationale and the actor kind, as an attestation's
+    // attester and time do: the record itself is dropped with the re-open.
+    const skipped = (skipRecord ?? {}) as { skippedByMembershipId?: unknown; skippedAt?: unknown };
     const updated = await ctx.store.updateTask(task.id, task.status, {
       status: "in_progress",
       completedAt: null,
@@ -218,7 +221,12 @@ export function createStepOperations(now: () => Date) {
               attestedByMembershipId: task.attestedByMembershipId,
               attestedAt: task.attestedAt?.toISOString() ?? null,
               ...(task.skipRationale
-                ? { skipRationale: task.skipRationale, skippedByActorKind: task.skippedByActorKind }
+                ? {
+                    skipRationale: task.skipRationale,
+                    skippedByActorKind: task.skippedByActorKind,
+                    skippedByMembershipId: skipped.skippedByMembershipId,
+                    skippedAt: skipped.skippedAt,
+                  }
                 : {}),
             },
           },

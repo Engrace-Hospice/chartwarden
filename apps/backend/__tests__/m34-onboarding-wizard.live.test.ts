@@ -3798,23 +3798,21 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     });
   });
 
-  describe("slice 7 (7K) review round: an operator's skip does not void, and a skip waits for go-live approval's lock", () => {
+  describe("slice 7 (7K) review round: an operator's skip does not void, and a step write waits for go-live approval's lock", () => {
     const ORG_N = "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c01";
     const T_N = "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c02";
+    // One tenant per case: each case ends with go-live approval having made its tenant live.
     const LOCK_TENANTS = [
-      {
-        who: "tenant",
-        org: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c11",
-        tenant: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c12",
-        slug: "wiz-n1",
-      },
-      {
-        who: "operator",
-        org: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c21",
-        tenant: "eeeeeeee-eeee-4eee-8eee-eeeeeeee7c22",
-        slug: "wiz-n2",
-      },
-    ] as const;
+      { name: "tenant skip", who: "tenant", write: "skip", n: 1 },
+      { name: "operator skip", who: "operator", write: "skip", n: 2 },
+      { name: "tenant re-open", who: "tenant", write: "reopen", n: 3 },
+      { name: "operator re-open", who: "operator", write: "reopen", n: 4 },
+    ].map((c) => ({
+      ...c,
+      org: `eeeeeeee-eeee-4eee-8eee-eeeeeeee7c${c.n}1`,
+      tenant: `eeeeeeee-eeee-4eee-8eee-eeeeeeee7c${c.n}2`,
+      slug: `wiz-n${c.n}`,
+    }));
     const RATIONALE = "We bill our payers through our own clearinghouse";
     let officerN: TenantActor;
     const admins: Record<string, TenantActor> = {};
@@ -3849,7 +3847,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
         [T_N, officerN.membershipId],
       );
-      for (const { who, org, tenant, slug } of LOCK_TENANTS) {
+      for (const { name, org, tenant, slug } of LOCK_TENANTS) {
         await seed(org, tenant, slug, [
           "mac_configured",
           "payer_enrollment",
@@ -3857,7 +3855,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           "sample_data_loaded",
           "go_live_checklist_complete",
         ]);
-        admins[who] = await person(org, `admin-${slug}`, ["org_admin"]);
+        admins[name] = await person(org, `admin-${slug}`, ["org_admin"]);
       }
     }, 60_000);
 
@@ -3881,20 +3879,17 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       ).toBe("ONBOARDING_STEP_NOT_TENANT_SKIPPABLE");
     });
 
-    /** Holds go-live approval's EXCLUSIVE onboarding lock on its own connection, the way `goLiveApprove` does as its first statement. */
-    async function holdApprovalLock(org: string) {
-      const holder = new Client({ connectionString: DB_URL });
-      await holder.connect();
-      await holder.query("BEGIN");
-      await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))", [
-        `tenant-onboarding:${org}`,
-      ]);
-      return holder;
-    }
-    const waitingOnTheLock = async (): Promise<boolean> => {
+    /** The lock go-live approval takes exclusive as its first statement: this tenant's onboarding key, as `tenant-onboarding-lock.ts` hashes it. */
+    const lockKey = (org: string) => `tenant-onboarding:${org}`;
+    /** True once a SHARED request on THIS tenant's key, in this database, is waiting: another waiter on the cluster does not count. */
+    const waitingOnTheLock = async (org: string): Promise<boolean> => {
       for (let attempt = 0; attempt < 100; attempt += 1) {
         const { rows } = await admin.query(
-          "SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted",
+          `SELECT count(*)::int AS n FROM pg_locks
+            WHERE locktype = 'advisory' AND NOT granted AND mode = 'ShareLock'
+              AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+              AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1::text, 0)`,
+          [lockKey(org)],
         );
         if (rows[0].n > 0) return true;
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -3903,17 +3898,35 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     };
 
     it.each(LOCK_TENANTS)(
-      "the $who's skip waits behind go-live approval's exclusive lock, then finds the tenant live and answers 409 TENANT_NOT_ONBOARDING",
-      async ({ who, org, tenant, slug }) => {
+      "the $name waits behind go-live approval's exclusive lock, then finds the tenant live and answers 409 TENANT_NOT_ONBOARDING",
+      async ({ name, who, write, org, tenant, slug }) => {
         const macId = await taskId(tenant, "mac_configured");
-        const holder = await holdApprovalLock(org);
+        const ccnId = await taskId(tenant, "ccn_registered");
+        const reopenReason = "the number was entered wrongly";
+        const attempt = () => {
+          if (write === "skip") {
+            return who === "tenant"
+              ? wizard(false).tenantSkip(admins[name] as TenantActor, org, macId, RATIONALE)
+              : wizard(false).skipPlatform(slug, macId, OPS, RATIONALE);
+          }
+          return who === "tenant"
+            ? wizard(false).reopenTask(admins[name] as TenantActor, org, ccnId, reopenReason)
+            : wizard(false).reopenPlatform(slug, ccnId, OPS, reopenReason);
+        };
+        const untouched = async () => {
+          expect(await statusOf(tenant, "mac_configured")).toBe("pending");
+          expect(await statusOf(tenant, "ccn_registered")).toBe("done");
+        };
+        // Go-live approval's exclusive lock, held on its own connection; cleanup always runs, whatever fails before the commit.
+        const holder = new Client({ connectionString: DB_URL });
         try {
+          await holder.connect();
+          await holder.query("BEGIN");
+          await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))", [
+            lockKey(org),
+          ]);
           let finished = false;
-          const skipping = (
-            who === "tenant"
-              ? wizard(false).tenantSkip(admins[who] as TenantActor, org, macId, RATIONALE)
-              : wizard(false).skipPlatform(slug, macId, OPS, RATIONALE)
-          )
+          const waiting = attempt()
             .then(
               () => null,
               (error: unknown) => error,
@@ -3921,22 +3934,22 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
             .finally(() => {
               finished = true;
             });
-          expect(await waitingOnTheLock(), "the skip must be waiting for the lock").toBe(true);
+          expect(await waitingOnTheLock(org), "the write must be waiting for the lock").toBe(true);
           expect(finished).toBe(false);
-          expect(await statusOf(tenant, "mac_configured")).toBe("pending");
-          // the approval commits: the tenant is live when the skip finally reads it
+          await untouched();
+          // the approval commits: the tenant is live when the write finally reads it
           await holder.query("UPDATE tenant_account SET status='active' WHERE id=$1", [tenant]);
           await holder.query("COMMIT");
-          const error = await skipping;
+          const error = await waiting;
           expect(error).toBeInstanceOf(ChartWardenError);
           expect([
             (error as ChartWardenError).code,
             (error as ChartWardenError).statusCode,
           ]).toEqual(["TENANT_NOT_ONBOARDING", 409]);
-          expect(await statusOf(tenant, "mac_configured")).toBe("pending");
+          await untouched();
         } finally {
           await holder.query("ROLLBACK").catch(() => undefined);
-          await holder.end();
+          await holder.end().catch(() => undefined);
         }
       },
       30_000,

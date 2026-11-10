@@ -422,88 +422,202 @@ describe("tenant skip: it voids a pending go-live attestation; an operator's and
   });
 });
 
-describe("a skip is one transaction under the shared onboarding lock, as the org-profile write is", () => {
-  /** A runner whose stores record the order of the store calls a transaction makes. */
-  function recordingRunner(calls: string[]) {
+describe("every step write is one transaction under the shared onboarding lock, as the org-profile write is", () => {
+  type Wizard = ReturnType<typeof createOnboardingWizard>;
+  type Runner = ReturnType<typeof createMemoryWizardRunner>;
+  const spy = <S extends object>(store: S, calls: string[]): S =>
+    new Proxy(store, {
+      get(target, property, receiver) {
+        const value = Reflect.get(target, property, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          calls.push(String(property));
+          return value.apply(target, args);
+        };
+      },
+    });
+  /** A runner over the memory store, with every transaction's store wrapped by `wrap`. */
+  function runnerWith(wrap: <S extends object>(store: S) => S): Runner {
     const base = createMemoryWizardRunner(state);
-    const record = <S extends object>(store: S): S =>
-      new Proxy(store, {
-        get(target, property, receiver) {
-          const value = Reflect.get(target, property, receiver);
-          if (typeof value !== "function") return value;
-          return (...args: unknown[]) => {
-            calls.push(String(property));
-            return value.apply(target, args);
-          };
-        },
-      });
     return {
-      inTenant: (who: TenantActor, org: string, fn: Parameters<typeof base.inTenant>[2]) =>
-        base.inTenant(who, org, (store) => fn(record(store))),
-      inPlatform: (reason: string, fn: Parameters<typeof base.inPlatform>[1], user?: string) =>
-        base.inPlatform(reason, (store) => fn(record(store)), user),
-    } as ReturnType<typeof createMemoryWizardRunner>;
+      inTenant: (who: TenantActor, org: string, fn: Parameters<Runner["inTenant"]>[2]) =>
+        base.inTenant(who, org, (store) => fn(wrap(store))),
+      inPlatform: (reason: string, fn: Parameters<Runner["inPlatform"]>[1], user?: string) =>
+        base.inPlatform(reason, (store) => fn(wrap(store)), user),
+    } as Runner;
   }
-  const withRunner = (calls: string[]) =>
+  const wizardOver = (runner: Runner, choice?: "outside" | "vendor" | "none"): Wizard =>
     createOnboardingWizard({
-      runner: recordingRunner(calls),
+      runner,
       orgProfile: createMemoryOrgProfile(state),
       activateOrganization: async () => undefined,
+      ...(choice ? { clearinghouseChoice: async () => choice } : {}),
       warn: () => undefined,
       now: () => NOW,
     });
+  const recording = (calls: string[]): Wizard =>
+    wizardOver(runnerWith((store) => spy(store, calls)));
+  /** Go-live approval commits while the write waits for the lock: the lock request itself flips the tenant to active. */
+  const approvalCommitsWhileWaiting = (): Wizard =>
+    wizardOver(
+      runnerWith((store) => ({
+        ...store,
+        lockOnboardingShared: async () => {
+          state.tenants = state.tenants.map((t) => ({ ...t, status: "active" }));
+        },
+      })),
+    );
 
-  const lockBeforeEverythingElse = (calls: string[], later: string[]) => {
+  const mac = () => taskOf("mac_configured").id;
+  const ccn = () => taskOf("ccn_registered").id; // settled in beforeEach: the one a re-open can act on
+  const TENANT_WRITES: [string, (w: Wizard) => Promise<unknown>][] = [
+    ["skip", (w) => w.tenantSkip(ADMIN, ORG, mac(), RATIONALE)],
+    ["start", (w) => w.startTask(ADMIN, ORG, mac())],
+    ["block", (w) => w.blockTask(ADMIN, ORG, mac(), "waiting for the MAC to reply")],
+    ["attest", (w) => w.attestTask(ADMIN, ORG, mac(), { evidenceNote: "credential on file" })],
+    ["re-open", (w) => w.reopenTask(ADMIN, ORG, ccn(), "the number was entered wrongly")],
+  ];
+  const PLATFORM_WRITES: [string, (w: Wizard) => Promise<unknown>][] = [
+    ["skip", (w) => w.skipPlatform("acme", mac(), OPS, RATIONALE)],
+    [
+      "attest",
+      (w) =>
+        w.attestPlatform("acme", mac(), OPS, {
+          evidenceNote: "credential on file",
+          reason: "the customer sent it to us",
+        }),
+    ],
+    ["re-open", (w) => w.reopenPlatform("acme", ccn(), OPS, "the number was entered wrongly")],
+  ];
+
+  /** One shared lock, taken before the tenant's status, tasks or attestations are read (only the platform's slug lookup may precede it). */
+  const lockedFirst = (calls: string[]) => {
     const lock = calls.indexOf("lockOnboardingShared");
     expect(lock).toBeGreaterThanOrEqual(0);
-    // the tenant's status, tasks and attestations are read and written only after the lock is held
+    expect(calls.slice(0, lock).filter((c) => c !== "loadTenant")).toEqual([]);
     expect(calls.lastIndexOf("loadTenant")).toBeGreaterThan(lock);
-    for (const call of later) expect(calls.indexOf(call), call).toBeGreaterThan(lock);
+    expect(calls.indexOf("listTasks")).toBeGreaterThan(lock);
+    expect(calls.indexOf("updateTask")).toBeGreaterThan(lock);
     expect(calls.filter((c) => c === "lockOnboardingShared")).toHaveLength(1);
     expect(calls).not.toContain("lockOnboardingExclusive");
   };
 
-  it("the tenant's skip takes the shared lock before it reads the tenant, the task or the attestation", async () => {
-    const calls: string[] = [];
-    await withRunner(calls).tenantSkip(ADMIN, ORG, taskOf("mac_configured").id, RATIONALE);
-    expect(calls[0]).toBe("lockOnboardingShared");
-    lockBeforeEverythingElse(calls, ["listTasks", "updateTask", "voidPendingGoLiveForDataChange"]);
-  });
+  it.each(TENANT_WRITES)(
+    "the tenant's %s takes the lock before it reads anything",
+    async (_name, run) => {
+      const calls: string[] = [];
+      await run(recording(calls));
+      expect(calls[0]).toBe("lockOnboardingShared");
+      lockedFirst(calls);
+    },
+  );
 
-  it("the operator's skip takes it too, and judges the tenant's status again under it", async () => {
-    const calls: string[] = [];
-    await withRunner(calls).skipPlatform("acme", taskOf("mac_configured").id, OPS, RATIONALE);
-    lockBeforeEverythingElse(calls, ["listTasks", "updateTask"]);
-    expect(calls).not.toContain("voidPendingGoLiveForDataChange");
-  });
+  it.each(PLATFORM_WRITES)(
+    "the operator's %s takes it too, and judges the tenant's status again under it",
+    async (_name, run) => {
+      const calls: string[] = [];
+      await run(recording(calls));
+      lockedFirst(calls);
+    },
+  );
 
-  it("a skip answers 409 TENANT_NOT_ONBOARDING for a tenant that went live while it waited for the lock", async () => {
-    const base = createMemoryWizardRunner(state);
-    // the approval commits between the lock request and the status read: model it as the lock itself flipping the status
-    const runner = {
-      inTenant: (who: TenantActor, org: string, fn: Parameters<typeof base.inTenant>[2]) =>
-        base.inTenant(who, org, (store) =>
-          fn({
-            ...store,
-            lockOnboardingShared: async () => {
-              state.tenants = state.tenants.map((t) => ({ ...t, status: "active" }));
-            },
-          }),
-        ),
-      inPlatform: base.inPlatform,
-    } as ReturnType<typeof createMemoryWizardRunner>;
-    const wizardUnderLock = createOnboardingWizard({
-      runner,
-      orgProfile: createMemoryOrgProfile(state),
-      activateOrganization: async () => undefined,
-      warn: () => undefined,
-      now: () => NOW,
-    });
-    const refused = await refusal(
-      wizardUnderLock.tenantSkip(ADMIN, ORG, taskOf("mac_configured").id, RATIONALE),
+  it("the tenant's skip voids a pending attestation after the lock, the operator's never does", async () => {
+    const calls: string[] = [];
+    await TENANT_WRITES[0]?.[1](recording(calls));
+    expect(calls.indexOf("voidPendingGoLiveForDataChange")).toBeGreaterThan(
+      calls.indexOf("lockOnboardingShared"),
     );
-    expect(refused).toEqual({ code: "TENANT_NOT_ONBOARDING", status: 409 });
+    state.tasks = state.tasks.map((t) =>
+      t.templateKey === "mac_configured"
+        ? { ...t, status: "pending" as const, completionEvidence: {} }
+        : t,
+    );
+    const operatorCalls: string[] = [];
+    await PLATFORM_WRITES[0]?.[1](recording(operatorCalls));
+    expect(operatorCalls).not.toContain("voidPendingGoLiveForDataChange");
+  });
+
+  it.each([
+    ...TENANT_WRITES.map(([name, run]) => [`tenant ${name}`, run] as const),
+    ...PLATFORM_WRITES.map(([name, run]) => [`operator ${name}`, run] as const),
+  ])(
+    "the %s answers 409 TENANT_NOT_ONBOARDING for a tenant that went live while it waited for the lock, and changes nothing",
+    async (_name, run) => {
+      const before = JSON.stringify(state.tasks);
+      expect(await refusal(run(approvalCommitsWhileWaiting()))).toEqual({
+        code: "TENANT_NOT_ONBOARDING",
+        status: 409,
+      });
+      expect(JSON.stringify(state.tasks)).toBe(before);
+    },
+  );
+
+  it("a re-open cannot put a step back in progress on a tenant approval just made live (the status and the attestations are one read under the lock)", async () => {
+    state.goLive = [
+      {
+        id: "att-1",
+        organizationId: ORG,
+        tenantAccountId: TENANT,
+        status: "pending",
+        attestedByMembershipId: "co-m",
+        attestedByUserId: "co-u",
+        attestedAt: NOW,
+        attestationNote: null,
+        approvedByMembershipId: null,
+        approvedByUserId: null,
+        approvedAt: null,
+        approvalReason: null,
+        revokedByMembershipId: null,
+        revokedByUserId: null,
+        revokedAt: null,
+        revokeReason: null,
+      },
+    ];
+    // approval commits under its exclusive lock: the attestation is approved and the tenant active
+    const approved = wizardOver(
+      runnerWith((store) => ({
+        ...store,
+        lockOnboardingShared: async () => {
+          state.tenants = state.tenants.map((t) => ({ ...t, status: "active" }));
+          state.goLive = state.goLive.map((g) => ({ ...g, status: "approved" as const }));
+        },
+      })),
+    );
+    expect(
+      (await refusal(approved.reopenTask(ADMIN, ORG, ccn(), "the number was entered wrongly")))
+        .code,
+    ).toBe("TENANT_NOT_ONBOARDING");
+    expect(statusOf("ccn_registered")).toBe("done");
+  });
+
+  it("the clearinghouse sync takes the lock first too, and leaves a tenant that went live alone", async () => {
+    settle("account_created", "ccn_registered");
+    const calls: string[] = [];
+    await wizardOver(
+      runnerWith((store) => spy(store, calls)),
+      "outside",
+    ).syncClearinghouseSteps(ORG);
+    expect(calls[0]).toBe("lockOnboardingShared");
+    expect(statusOf("mac_configured")).toBe("skipped");
+
+    state.tasks = state.tasks.map((t) => ({
+      ...t,
+      status: "pending" as const,
+      completionEvidence: {},
+    }));
+    settle("account_created", "ccn_registered");
+    const live = wizardOver(
+      runnerWith((store) => ({
+        ...store,
+        lockOnboardingShared: async () => {
+          state.tenants = state.tenants.map((t) => ({ ...t, status: "active" }));
+        },
+      })),
+      "outside",
+    );
+    await live.syncClearinghouseSteps(ORG);
     expect(statusOf("mac_configured")).toBe("pending");
+    expect(statusOf("payer_enrollment")).toBe("pending");
   });
 });
 
@@ -533,7 +647,7 @@ describe("reopening a tenant skip", () => {
     expect((await skip(ADMIN, "mac_configured")).status).toBe("skipped");
   });
 
-  it("the history of a re-opened skip says who skipped it: the tenant, an operator or the system", async () => {
+  it("the history of a re-opened skip says who skipped it and when: the tenant or an operator", async () => {
     await skip(ADMIN, "mac_configured");
     await wizard().skipPlatform("acme", taskOf("payer_enrollment").id, OPS, "customer asked us");
     for (const key of ["mac_configured", "payer_enrollment"]) {
@@ -542,8 +656,18 @@ describe("reopening a tenant skip", () => {
     const previousOf = (key: string) =>
       (taskOf(key).completionEvidence.reopened as { previous: Record<string, unknown> }[])[0]
         ?.previous;
-    expect(previousOf("mac_configured")).toMatchObject({ skippedByActorKind: "tenant" });
-    expect(previousOf("payer_enrollment")).toMatchObject({ skippedByActorKind: "platform_ops" });
+    // the history keeps the kind, the member and the time of the skip, as an attestation's keeps its attester and time
+    expect(previousOf("mac_configured")).toMatchObject({
+      status: "skipped",
+      skippedByActorKind: "tenant",
+      skippedByMembershipId: "admin-m",
+      skippedAt: NOW.toISOString(),
+    });
+    expect(previousOf("payer_enrollment")).toMatchObject({
+      skippedByActorKind: "platform_ops",
+      skippedByMembershipId: "ops-m",
+      skippedAt: NOW.toISOString(),
+    });
     // a step that was attested, not skipped, carries no skip kind
     settle("dosespot_kickoff_initiated");
     await wizard().reopenPlatform(
@@ -559,6 +683,33 @@ describe("reopening a tenant skip", () => {
         }[]
       )[0]?.previous,
     ).not.toHaveProperty("skippedByActorKind");
+  });
+
+  it("the history of a re-opened system skip says system: the clearinghouse sync skips for `outside` and re-opens for `vendor`", async () => {
+    settle("account_created", "ccn_registered");
+    const sync = (choice: "outside" | "vendor") =>
+      createOnboardingWizard({
+        runner: createMemoryWizardRunner(state),
+        orgProfile: createMemoryOrgProfile(state),
+        activateOrganization: async () => undefined,
+        clearinghouseChoice: async () => choice,
+        warn: () => undefined,
+        now: () => NOW,
+      }).syncClearinghouseSteps(ORG);
+    await sync("outside");
+    expect(statusOf("mac_configured")).toBe("skipped");
+    await sync("vendor");
+    expect(statusOf("mac_configured")).toBe("in_progress");
+    const reopened = taskOf("mac_configured").completionEvidence.reopened as {
+      previous: Record<string, unknown>;
+    }[];
+    expect(reopened[0]?.previous).toMatchObject({
+      status: "skipped",
+      skipRationale: "bills outside ChartWarden",
+      skippedByActorKind: "system",
+      skippedByMembershipId: "system",
+      skippedAt: NOW.toISOString(),
+    });
   });
 
   it("is refused 409 GO_LIVE_PENDING while a go-live attestation is pending", async () => {

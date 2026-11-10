@@ -164,6 +164,8 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       }
     }
     await deps.runner.inTenant(SYSTEM_TENANT_ACTOR, organizationId, async (store) => {
+      // The status is read under the shared lock, so a go-live approval that committed first leaves the steps alone.
+      await store.lockOnboardingShared(organizationId);
       let ctx = await load(store, { organizationId });
       if (ctx.tenant.status !== ONBOARDING_STATUS) return;
       for (const key of OUTSIDE_BILLING_STEP_KEYS) {
@@ -239,10 +241,13 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     deps.runner.inTenant(actor, organizationId, async (store) =>
       fn(await load(store, { organizationId })),
     );
-  // A skip changes onboarding data, so it holds the SHARED onboarding lock from before it reads the tenant's status, as the org-profile
-  // write does: go-live approval takes the same lock exclusive as its first statement, so a skip either commits before the approval
-  // judges the tenant or finds it live and answers 409 TENANT_NOT_ONBOARDING. The order is that lock, then the task row, then the
-  // attestation row (the void), then the go-live task row; the approval takes the lock first and the rows after, so the two cannot cycle.
+  // The writes that read the tenant's status and then change a step (skip, attest, re-open, start, block, on either surface, and the
+  // clearinghouse sync) hold the SHARED onboarding lock from before that read, as the org-profile write does: go-live approval takes the
+  // same lock exclusive as its first statement, so such a write either commits before the approval judges the tenant or finds it live and
+  // answers 409 TENANT_NOT_ONBOARDING. The order is that lock, then the task row, then the attestation row (the tenant skip's void), then
+  // the go-live task row; the approval takes the lock first and the rows after, so the two cannot cycle. The writers that void a pending
+  // attestation from outside this file (the BAA register, the M2 provider-entity, location and name writes, the NPI verification) and the
+  // officer assignment, the go-live attestation and the go-live revoke below are not under it.
   const platformLocked = <T>(
     reason: string,
     orgSlug: string,
@@ -324,7 +329,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     attestPlatform: async (orgSlug, taskId, actor, input) =>
       (
         await changed(
-          await platform(
+          await platformLocked(
             "platform-ops onboarding attest",
             orgSlug,
             async (ctx) => stepResult(ctx, await attest(ctx, actor, taskId, input)),
@@ -438,21 +443,21 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     startTask: async (actor, organizationId, taskId) =>
       (
         await changed(
-          await tenantTx(actor, organizationId, async (ctx) =>
+          await tenantTxLocked(actor, organizationId, async (ctx) =>
             tenantStepResult(ctx, await start(ctx, actor, taskId), actor),
           ),
         )
       ).view,
     blockTask: async (actor, organizationId, taskId, reason) =>
       (
-        await tenantTx(actor, organizationId, async (ctx) =>
+        await tenantTxLocked(actor, organizationId, async (ctx) =>
           tenantStepResult(ctx, await block(ctx, actor, taskId, reason), actor),
         )
       ).view,
     attestTask: async (actor, organizationId, taskId, input) =>
       (
         await changed(
-          await tenantTx(actor, organizationId, async (ctx) =>
+          await tenantTxLocked(actor, organizationId, async (ctx) =>
             tenantStepResult(ctx, await attest(ctx, actor, taskId, input), actor),
           ),
         )
