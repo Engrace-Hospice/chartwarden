@@ -68,9 +68,14 @@ export function createAttemptKey(
   let last: string | null = null;
 
   function evictOldestIdle(): void {
+    let idle = 0;
+    for (const intent of held.values()) if (intent.active === 0) idle += 1;
     for (const [key, intent] of held) {
-      if (held.size <= MAX_TRACKED_INTENTS) return;
-      if (intent.active === 0) held.delete(key);
+      if (idle <= MAX_TRACKED_INTENTS) return;
+      if (intent.active === 0) {
+        held.delete(key);
+        idle -= 1;
+      }
     }
   }
 
@@ -98,6 +103,7 @@ export function createAttemptKey(
     } else if (status === NO_ANSWER || !isInFlightDuplicate(status, body)) {
       intent.keeper.unanswered();
     }
+    evictOldestIdle();
   }
 
   return {

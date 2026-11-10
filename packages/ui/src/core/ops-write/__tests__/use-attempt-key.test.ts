@@ -187,6 +187,19 @@ describe("createAttemptKey: intents", () => {
     expect(attempt.keyFor("intent-0")).toBe(first);
   });
 
+  it("returns a concurrent burst to the idle-intent bound as its requests settle", () => {
+    const attempt = createAttemptKey(counter(), () => T0);
+    const keys = Array.from({ length: MAX_TRACKED_INTENTS + 1 }, (_, n) =>
+      attempt.keyFor(`intent-${n}`),
+    );
+
+    for (let n = 0; n <= MAX_TRACKED_INTENTS; n++)
+      attempt.settle(NO_ANSWER, undefined, `intent-${n}`);
+
+    expect(attempt.keyFor("intent-0")).not.toBe(keys[0]);
+    expect(attempt.keyFor(`intent-${MAX_TRACKED_INTENTS}`)).toBe(keys[MAX_TRACKED_INTENTS]);
+  });
+
   it("clear() forgets every intent", () => {
     const attempt = createAttemptKey(counter(), () => T0);
     const first = attempt.keyFor("a");
