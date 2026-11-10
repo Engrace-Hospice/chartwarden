@@ -6,6 +6,20 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — Onboarding-step catalog writes name their operator; the notice list moves behind the notice key
+
+- `POST /api/v1/platform/onboarding-templates` now requires an `Idempotency-Key` header and a `reason` (8-500 characters after
+  whitespace is collapsed, screened for patient identifiers), refuses an AI actor, and leaves one `m34.onboarding_template.upserted`
+  audit event naming the operator, the reason and the step. The step catalog is shown in every tenant's wizard.
+- `GET /api/v1/platform/tenants/{orgSlug}/notice-filings` is gated on `tenant_notice_filing.withdraw_platform` (the notice-filing
+  key), no longer on `tenant_onboarding_data.read_platform`: a notice id with its dates identifies a patient's record. Its audit row
+  records the number of NOEs and NOTRs shown, never which.
+- `POST /api/v1/platform/tenants/{orgSlug}/go-live/approve` answers `409 GO_LIVE_APPROVER_WROTE_BAA` for an operator who UPLOADED the
+  signed agreement of the governing BAA, as well as one who recorded or last changed the record. A document whose content was
+  destroyed (a tombstone) no longer counts as a filed agreement.
+
+---
+
 ## 2026-11-08 — Releasing a tenant's earlier clearinghouse credentials
 
 **New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release` frees every clearinghouse credential a

@@ -7,9 +7,16 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 // `tenant_lifecycle_platform_ops` ABAC predicate; the write route additionally requires §6 step-up.
 // The catalog is platform-shared/org-less, so reads run under `withPlatformContext` (F03/F09, audited)
 // in prod. Mirrors the M22 route-plugin shape.
-import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
+import {
+  type PreHandler,
+  actorOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
+import { splitReason } from "./onboarding-data-typebox";
 import {
   OnboardingTemplateListQuerySchema,
   UpsertOnboardingTemplateRequest,
@@ -33,6 +40,17 @@ const ABAC_WRITE = requireAbac(
   "tenant_lifecycle_platform_ops",
 ) as PreHandler;
 const STEPUP_WRITE = requireStepUp("onboarding_template.write") as PreHandler;
+/**
+ * The catalog is shown in every tenant's wizard, so a change is a named operator's decision like every other ops write: a fresh step-up,
+ * no AI principal, and an Idempotency-Key (a retry replays, it does not write twice).
+ */
+const WRITE_GUARDS: PreHandler[] = [
+  WRITE,
+  ABAC_WRITE,
+  STEPUP_WRITE,
+  rejectAiActor("AI principals cannot change the onboarding-step catalog") as PreHandler,
+  requireIdempotencyKey() as PreHandler,
+];
 
 /** Register the §4.1 platform-ops onboarding-template catalog routes. */
 export function registerOnboardingTemplateRoutes(
@@ -52,19 +70,22 @@ export function registerOnboardingTemplateRoutes(
     },
   );
 
-  // 2 — add/edit a NON-canonical template (step-up; canonical=true is migration-only). §4.1.
+  // 2 — add/edit a NON-canonical template (step-up, a reason, an Idempotency-Key, no AI principal; canonical=true is migration-only).
+  // The operator is named on the audit row and on the row-level audit trail. §4.1.
   app.post(
     "/api/v1/platform/onboarding-templates",
-    { preHandler: [WRITE, ABAC_WRITE, STEPUP_WRITE] },
+    { preHandler: WRITE_GUARDS },
     async (request, reply) => {
-      const { userId } = actorOf(request);
-      const body = parse(UpsertOnboardingTemplateRequest, request.body);
-      const res = await service.upsertOnboardingTemplate(userId, {
-        key: body.key,
-        title: body.title,
-        description: body.description ?? null,
-        canonicalOrder: body.canonicalOrder,
-        isCanonical: body.isCanonical ?? false,
+      const operator = writeActorOf(request);
+      const { reason, fields } = splitReason(parse(UpsertOnboardingTemplateRequest, request.body));
+      const res = await service.upsertOnboardingTemplate(operator.userId, {
+        key: fields.key,
+        title: fields.title,
+        description: fields.description ?? null,
+        canonicalOrder: fields.canonicalOrder,
+        isCanonical: fields.isCanonical ?? false,
+        reason,
+        operatorMembershipId: operator.membershipId,
       });
       return reply.code(201).send(res);
     },

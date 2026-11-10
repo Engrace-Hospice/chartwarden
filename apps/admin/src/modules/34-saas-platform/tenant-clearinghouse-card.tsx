@@ -23,7 +23,7 @@ import { ReleaseCredentials } from "./onboarding/clearinghouse-release";
 import { SwitchToVendor } from "./onboarding/clearinghouse-switch";
 import { ContractModeBanner } from "./onboarding/contract-mode-banner";
 import { ModeUnconfirmedNotice } from "./onboarding/mode-unconfirmed-notice";
-import { releaseDraftKey } from "./onboarding/permissions";
+import { ONBOARDING_KEYS, releaseDraftKey, useCan } from "./onboarding/permissions";
 import { useLoad } from "./onboarding/use-load";
 import { isOnboardingOpen } from "./onboarding/wizard-model";
 import { cap } from "./saas-status";
@@ -49,6 +49,8 @@ function Body({
   returnedFromStepUp: boolean;
 }): JSX.Element {
   const client = useApiClient();
+  // The list of notice records is a PHI path (a notice id with its dates identifies a patient's record): it is behind the notice key.
+  const mayListFilings = useCan(ONBOARDING_KEYS.noticeWithdraw);
   const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
   // What the last release freed, reported outside the actions row; any next action on the card clears it.
   const [released, setReleased] = useState<number | null>(null);
@@ -153,9 +155,11 @@ function Body({
           onReleased={setReleased}
           restoredReason={restoredReason}
         />
-        <Button tone="secondary" size="sm" onClick={onOpenFilings}>
-          Notices filed outside ChartWarden
-        </Button>
+        {mayListFilings ? (
+          <Button tone="secondary" size="sm" onClick={onOpenFilings}>
+            Notices filed outside ChartWarden
+          </Button>
+        ) : null}
       </div>
       {/* always mounted, so a screen reader announces the text when it appears */}
       <output className="wx-row-sub" aria-live="polite">

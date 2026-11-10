@@ -40,7 +40,7 @@ import {
   OnboardingProviderEntityPatchRequest,
   OnboardingReasonSchema,
   OnboardingResourceParamsSchema,
-  normalizeReason,
+  splitReason,
 } from "./onboarding-data-typebox";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
 
@@ -115,6 +115,16 @@ const CLEARINGHOUSE_RELEASE: readonly PreHandler[] = [
   requireIdempotencyKey(),
 ];
 
+/**
+ * The list of a tenant's "filed outside ChartWarden" notices is NOT behind the generic onboarding read key: each row is a unique NOE / NOTR
+ * record id with its window and filing dates for one of the tenant's patients, an identifier under 45 CFR 164.514(b)(2). It takes the
+ * notice-filing key family's only key, the withdraw key: whoever may withdraw a record may see the list it is withdrawn from.
+ */
+const NOTICE_FILINGS_READ: readonly PreHandler[] = [
+  P(NOTICE_WITHDRAW_KEY),
+  OPS(NOTICE_WITHDRAW_KEY),
+];
+
 const NOTICE_WITHDRAW: readonly PreHandler[] = [
   P(NOTICE_WITHDRAW_KEY),
   OPS(NOTICE_WITHDRAW_KEY),
@@ -166,28 +176,6 @@ function operatorOf(request: FastifyRequest): OnboardingOperator {
       ...(ctx?.userAgent ? { userAgent: ctx.userAgent } : {}),
     },
   };
-}
-
-/**
- * The body without its `reason`, plus the reason normalised and checked. `minLength` counts the spaces and invisible
- * characters a padded reason is made of, so the NORMALISED length is what is enforced: a reason of "abcd    " is a 422,
- * not an audit row, and what reaches the tenant-visible audit trail has no control or format characters in it.
- */
-function splitReason<B extends { reason: string }>(
-  body: B,
-): { reason: string; fields: Omit<B, "reason"> } {
-  const { reason, ...fields } = body;
-  const normalized = normalizeReason(reason);
-  if (normalized.length < ONBOARDING_REASON_MIN || normalized.length > ONBOARDING_REASON_MAX) {
-    throw new ValidationError("request validation failed", [
-      {
-        field: "reason",
-        code: "INVALID",
-        message: `reason must be ${ONBOARDING_REASON_MIN}-${ONBOARDING_REASON_MAX} characters after whitespace is collapsed and control characters are removed`,
-      },
-    ]);
-  }
-  return { reason: normalized, fields };
 }
 
 /**
@@ -477,10 +465,12 @@ export function registerOnboardingDataRoutes(
   );
 
   // GET notice-filings — what the tenant recorded as filed outside ChartWarden (the withdraw drawer's list; each row carries the
-  // `recordedAt` the withdrawal pins). A read of notice metadata behind the onboarding read key; the withdrawal keeps its own key.
+  // `recordedAt` the withdrawal pins). A PHI path (a notice id with its dates identifies a patient's record), so it is behind the
+  // notice-filing key (`tenant_notice_filing.withdraw_platform`), not the generic onboarding read key; the audit row records the kinds
+  // and counts of what was shown, never which records.
   app.get(
     "/api/v1/platform/tenants/:orgSlug/notice-filings",
-    { preHandler: [...READ] },
+    { preHandler: [...NOTICE_FILINGS_READ] },
     async (request) => service.listNoticeFilings(operatorOf(request), slugOf(request)),
   );
 

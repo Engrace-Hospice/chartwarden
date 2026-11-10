@@ -171,6 +171,9 @@ export interface SignupIntentView {
   readonly tenantAccountId: string | null;
 }
 
+/** The audit event an operator's change to the onboarding-step catalog leaves (the operator, the reason and the step; platform-wide, no tenant). */
+export const ONBOARDING_TEMPLATE_UPSERTED_EVENT = "m34.onboarding_template.upserted";
+
 // ── platform-tenant BAA register (§3.8 / D11) ──
 export interface BaaRecordView {
   readonly id: string;
@@ -381,6 +384,10 @@ export interface TenantPlatformRouteService {
       description: string | null;
       canonicalOrder: number;
       isCanonical: boolean;
+      /** Why the operator changes the catalog (normalised and screened by the route); recorded on the audit row beside the operator. */
+      reason: string;
+      /** The operator's membership, recorded on the audit row (null where the session carries none). */
+      operatorMembershipId: string | null;
     },
   ): Promise<OnboardingTemplateView>;
   // ── support sessions (§4.1; F01/D8/D16) ──

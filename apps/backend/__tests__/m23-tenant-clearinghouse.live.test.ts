@@ -1824,6 +1824,16 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       for (const admission of admissions) expect(res.body).not.toContain(admission);
       expect(res.body).not.toContain(elsewhere);
 
+      // the read's audit row says which KINDS and how many were shown, never which records (a notice id with its dates is an identifier)
+      const read = await q<{ context: Record<string, unknown> }>(
+        `SELECT context FROM audit_event
+          WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.data_read' AND resource_kind='notice_filing'
+          ORDER BY created_at DESC LIMIT 1`,
+        [ORG_H],
+      );
+      expect(read[0]?.context).toMatchObject({ count: 3, noeCount: 2, notrCount: 1 });
+      expect(JSON.stringify(read[0]?.context)).not.toContain(newest);
+
       // the list's `recordedAt` is exactly the pin the withdrawal accepts: the drawer needs nothing else
       const pin = body.items[0]?.recordedAt as string;
       const done = await withdraw("notr", newest, { slug: "ch-h", pin });
@@ -1850,7 +1860,12 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       );
       expect(reads).toHaveLength(1);
       expect(reads[0]).toMatchObject({ actor_user_id: OPERATOR, outcome: "success" });
-      expect(reads[0]?.context).toMatchObject({ count: 0, targetOrgSlug: "ch-f" });
+      expect(reads[0]?.context).toMatchObject({
+        count: 0,
+        noeCount: 0,
+        notrCount: 0,
+        targetOrgSlug: "ch-f",
+      });
 
       const asTenantAdmin = await server.inject({
         method: "GET",

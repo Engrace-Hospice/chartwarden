@@ -188,6 +188,19 @@ const GRANTS = {
     },
   ],
 };
+/** An operator who holds the generic onboarding read key but NOT the notice-filing key: the list of notice records is behind the latter. */
+const READER_WITHOUT_NOTICE_KEY = {
+  orgId: PLATFORM_ORG,
+  userId: "reader-no-notice-user",
+  grants: [
+    {
+      roleKey: "platform_ops",
+      enabled: true,
+      expiresAt: null,
+      permissionKeys: ["tenant_onboarding_data.read_platform"],
+    },
+  ],
+};
 /** An operator who may set up a tenant's clearinghouse but may NOT verify its BAA (the two duties are separable keys). */
 const WRITER_ONLY = {
   orgId: PLATFORM_ORG,
@@ -233,6 +246,7 @@ function makeServer(
       { ...GRANTS, userId: "support-user" },
       WRITER_ONLY,
       PRICING_OPERATOR,
+      READER_WITHOUT_NOTICE_KEY,
     ]).store,
   );
   const reg = createPredicateRegistry();
@@ -911,6 +925,27 @@ describe("notice-filings read (the withdraw drawer's list)", () => {
     expect(keyless.statusCode).toBe(403);
     expect(calls.map((c) => c.method)).toEqual(["listNoticeFilings"]);
     expect(calls[0]?.orgSlug).toBe("tenant-b");
+    await app.close();
+  });
+
+  it("is behind the notice-filing key, not the generic onboarding read key: an operator holding only the read key is refused (403)", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const url = `${URL_BASE}/notice-filings`;
+    const readerOnly = await app.inject({
+      method: "GET",
+      url,
+      headers: { ...OPS, "x-test-user": "reader-no-notice-user" },
+    });
+    expect(readerOnly.statusCode).toBe(403);
+    // the generic onboarding reads are still open to that operator: only the notice list moved
+    const members = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/members`,
+      headers: { ...OPS, "x-test-user": "reader-no-notice-user" },
+    });
+    expect(members.statusCode).toBe(200);
+    expect(calls.map((c) => c.method)).toEqual(["listMembers"]);
     await app.close();
   });
 });

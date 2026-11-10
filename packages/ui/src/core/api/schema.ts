@@ -21640,7 +21640,7 @@ export interface paths {
         /** Platform onboarding-template catalog (cursor-paginated) */
         get: operations["getApiV1PlatformOnboardingtemplates"];
         put?: never;
-        /** Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing */
+        /** Add/edit a NON-canonical onboarding template (the step catalog every tenant's wizard shows): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing, and canonical is migration-only (the database refuses the platform credential a canonical row too). onboarding_template.write + the tenant_lifecycle_platform_ops predicate + a fresh step-up; an Idempotency-Key and a `reason` (8-500 characters, screened for patient identifiers) are required, an AI actor is refused. The audit trail names the operator: the row-level trail by actor, and one m34.onboarding_template.upserted event with the operator, the reason and the step */
         post: operations["postApiV1PlatformOnboardingtemplates"];
         delete?: never;
         options?: never;
@@ -22069,7 +22069,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
+        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON) and must not have recorded, last changed or uploaded the signed agreement of the governing BAA (409 GO_LIVE_APPROVER_WROTE_BAA), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
         post: operations["postApiV1PlatformTenantsByOrgSlugGoliveApprove"];
         delete?: never;
         options?: never;
@@ -22205,7 +22205,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope, not gated on its onboarding status. tenant_onboarding_data.read_platform + the platform_ops role */
+        /** The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope (the row names the operator and the count of NOEs and NOTRs shown, never which records), not gated on its onboarding status. A notice id with its dates identifies a patient's record, so this read takes the notice-filing key, not the generic onboarding read key: tenant_notice_filing.withdraw_platform + the platform_ops role */
         get: operations["getApiV1PlatformTenantsByOrgSlugNoticefilings"];
         put?: never;
         post?: never;
@@ -96022,7 +96022,10 @@ export interface operations {
     postApiV1PlatformOnboardingtemplates: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -96035,6 +96038,8 @@ export interface operations {
                     canonicalOrder: number;
                     /** @constant */
                     isCanonical?: false;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
                 };
             };
         };

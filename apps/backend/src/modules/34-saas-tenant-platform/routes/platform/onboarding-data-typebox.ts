@@ -4,7 +4,7 @@
 // `org-admin-typebox`, which M34 may import) plus the platform-only `reason`, so the two surfaces cannot drift;
 // the views are re-exported unchanged. Named `*-typebox` so the table-ownership heuristic never reads it as a
 // Drizzle import.
-import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "@chartwarden/types";
+import { EXTERNAL_NOTICE_FILING_LIST_CAP, ValidationError } from "@chartwarden/types";
 import { type TSchema, Type } from "@sinclair/typebox";
 import { TENANT_BAA_MAX_BYTES } from "../../../../bootstrap/onboarding-baa-document-port";
 import {
@@ -41,6 +41,28 @@ export function normalizeReason(raw: string): string {
   // identifier screen as every other wizard free text (judged AFTER the strip, so zero-width padding cannot split a value).
   assertNoPatientIdentifier("reason", reason);
   return reason;
+}
+
+/**
+ * The body without its `reason`, plus the reason normalised and checked. `minLength` counts the spaces and invisible
+ * characters a padded reason is made of, so the NORMALISED length is what is enforced: a reason of "abcd    " is a 422,
+ * not an audit row, and what reaches the tenant-visible audit trail has no control or format characters in it.
+ */
+export function splitReason<B extends { reason: string }>(
+  body: B,
+): { reason: string; fields: Omit<B, "reason"> } {
+  const { reason, ...fields } = body;
+  const normalized = normalizeReason(reason);
+  if (normalized.length < ONBOARDING_REASON_MIN || normalized.length > ONBOARDING_REASON_MAX) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "reason",
+        code: "INVALID",
+        message: `reason must be ${ONBOARDING_REASON_MIN}-${ONBOARDING_REASON_MAX} characters after whitespace is collapsed and control characters are removed`,
+      },
+    ]);
+  }
+  return { reason: normalized, fields };
 }
 
 export const OnboardingReasonSchema = Type.Object({

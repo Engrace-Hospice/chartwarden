@@ -97,6 +97,8 @@ function headerAuth(request: FastifyRequest): void {
   if (request.headers["x-step-up"] === "fresh") {
     request.context.attributes.stepUpRecent = true;
   }
+  const kind = request.headers["x-actor-kind"];
+  if (typeof kind === "string") request.context.attributes.actorKind = kind;
 }
 
 const ORG = "org_a";
@@ -922,6 +924,15 @@ describe("M34-saas-tenant-platform-inject — key-ring metadata (§3.5)", () => 
 });
 
 // ── platform-ops: onboarding-templates.ts (2 routes) ─────────────────────────────────────────────────
+// The catalog is shown in every tenant's wizard, so a write is a named operator's decision: a fresh step-up, an Idempotency-Key, a
+// reason (screened for patient identifiers) and no AI principal.
+let templateKeySeq = 0;
+const TEMPLATE_WRITE_HEADERS = () => ({
+  ...PLATFORM_OPS_STEPUP,
+  "idempotency-key": `tmpl-${++templateKeySeq}`,
+});
+const TEMPLATE_REASON = "Add a staff training step, ticket CHG-6001";
+
 describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () => {
   it("lists then adds a non-canonical template", async () => {
     const { app } = makeServer();
@@ -936,8 +947,13 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     const write = await app.inject({
       method: "POST",
       url: "/api/v1/platform/onboarding-templates",
-      headers: PLATFORM_OPS_STEPUP,
-      payload: { key: "custom_step", title: "Custom Onboarding Step", canonicalOrder: 5 },
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "custom_step",
+        title: "Custom Onboarding Step",
+        canonicalOrder: 5,
+        reason: TEMPLATE_REASON,
+      },
     });
     expect(write.statusCode).toBe(201);
     expect(write.json().key).toBe("custom_step");
@@ -946,8 +962,13 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     const edit = await app.inject({
       method: "POST",
       url: "/api/v1/platform/onboarding-templates",
-      headers: PLATFORM_OPS_STEPUP,
-      payload: { key: "custom_step", title: "Custom step, renamed", canonicalOrder: 6 },
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "custom_step",
+        title: "Custom step, renamed",
+        canonicalOrder: 6,
+        reason: TEMPLATE_REASON,
+      },
     });
     expect(edit.statusCode).toBe(201);
     expect(edit.json()).toMatchObject({ title: "Custom step, renamed", isCanonical: false });
@@ -956,8 +977,14 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     const promote = await app.inject({
       method: "POST",
       url: "/api/v1/platform/onboarding-templates",
-      headers: PLATFORM_OPS_STEPUP,
-      payload: { key: "custom_step", title: "Promoted", canonicalOrder: 6, isCanonical: true },
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "custom_step",
+        title: "Promoted",
+        canonicalOrder: 6,
+        isCanonical: true,
+        reason: TEMPLATE_REASON,
+      },
     });
     expect(promote.statusCode).toBe(422);
 
@@ -969,8 +996,13 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/platform/onboarding-templates",
-      headers: PLATFORM_OPS_STEPUP,
-      payload: { key: "baa_executed", title: "Hijacked", canonicalOrder: 99 },
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "baa_executed",
+        title: "Hijacked",
+        canonicalOrder: 99,
+        reason: TEMPLATE_REASON,
+      },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("ONBOARDING_TEMPLATE_CANONICAL");
@@ -983,6 +1015,69 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
       list.json().items as { key: string; title: string; isCanonical: boolean }[]
     ).find((t) => t.key === "baa_executed");
     expect(canonical).toMatchObject({ title: "BAA executed", isCanonical: true });
+    await app.close();
+  });
+
+  it("names its operator like every other ops write: a reason is required, screened for a patient identifier, and an Idempotency-Key", async () => {
+    const { app } = makeServer();
+    const post = (headers: Record<string, string>, payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/platform/onboarding-templates",
+        headers,
+        payload,
+      });
+    const base = { key: "custom_step", title: "Custom step", canonicalOrder: 5 };
+    // no reason
+    expect((await post(TEMPLATE_WRITE_HEADERS(), base)).statusCode).toBe(422);
+    // a reason too short once whitespace is collapsed
+    expect((await post(TEMPLATE_WRITE_HEADERS(), { ...base, reason: "abc     " })).statusCode).toBe(
+      422,
+    );
+    // a reason that carries a patient identifier (a synthetic SSN from the allowed ranges: area 000)
+    const phi = await post(TEMPLATE_WRITE_HEADERS(), {
+      ...base,
+      reason: "Add the step the customer asked for, SSN 000-12-3456",
+    });
+    expect(phi.statusCode).toBe(422);
+    // no Idempotency-Key
+    const noKey = await post(PLATFORM_OPS_STEPUP, { ...base, reason: TEMPLATE_REASON });
+    expect(noKey.statusCode).toBeGreaterThanOrEqual(400);
+    expect(noKey.statusCode).toBeLessThan(500);
+    // and nothing was written by any of them
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS,
+    });
+    expect((list.json().items as { key: string }[]).some((t) => t.key === "custom_step")).toBe(
+      false,
+    );
+    await app.close();
+  });
+
+  it("refuses an AI principal and a caller with no fresh step-up", async () => {
+    const { app } = makeServer();
+    const payload = {
+      key: "custom_step",
+      title: "Custom step",
+      canonicalOrder: 5,
+      reason: TEMPLATE_REASON,
+    };
+    const ai = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: { ...TEMPLATE_WRITE_HEADERS(), "x-actor-kind": "ai_agent" },
+      payload,
+    });
+    expect(ai.statusCode).toBe(403);
+    const stale = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: { ...PLATFORM_OPS, "idempotency-key": "tmpl-stale" },
+      payload,
+    });
+    expect(stale.statusCode).toBe(403);
     await app.close();
   });
 });

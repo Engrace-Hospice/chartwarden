@@ -13,6 +13,7 @@ import { ValidationError } from "@chartwarden/types";
 // `transitionReason`; provision/offboard/shred/dek-rotate carry the §4.2 inputs the worker job consumes.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { OnboardingReasonSchema } from "./onboarding-data-typebox";
 import type {
   BaaRecordView as ServiceBaaRecordView,
   BaaRegisterListItem as ServiceBaaRegisterListItem,
@@ -153,6 +154,8 @@ export const UpsertOnboardingTemplateRequest = Type.Object({
   canonicalOrder: Type.Integer({ minimum: 0, maximum: 1000 }),
   // `is_canonical=true` is migration-only (§4.1); the route refuses to set it (literal false).
   isCanonical: Type.Optional(Type.Literal(false)),
+  // The step catalog is shown in EVERY tenant's wizard: a change to it names its operator and says why (screened for patient identifiers).
+  reason: OnboardingReasonSchema.properties.reason,
 });
 
 // §4.1 — support sessions (F01/D8/D16). Start references a consent grant (the actor + org are server-
