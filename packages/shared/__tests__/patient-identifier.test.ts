@@ -29,6 +29,29 @@ describe("looksLikeSsn: separators the first rule missed", () => {
     ["zero-width padding", "900\u200b-12\u200b-3456"],
     ["bidi override padding", "900\u202e 12\u202e 3456"],
     ["inside a sentence", "the customer read out 900 - 12 - 3456 over the phone"],
+    // symbols and every other non-letter, non-number character between the groups
+    ["pipes in a table cell", "| 900 | 12 | 3456 |"],
+    ["pipes", "900|12|3456"],
+    ["plus", "900+12+3456"],
+    ["equals", "900=12=3456"],
+    ["tilde", "900~12~3456"],
+    ["dollar", "900$12$3456"],
+    ["caret", "900^12^3456"],
+    ["tabs", "900\t12\t3456"],
+    ["newlines", "900\n12\n3456"],
+    ["a control character", "900\u000012\u00003456"],
+    ["a long run of separators", "900 --- - 12 - 3456"],
+    ["emoji separators", "900\u{1F600}12\u{1F600}3456"],
+    // nine digits grouped in threes, standing alone
+    ["3-3-3 spaces", "900 123 456"],
+    ["3-3-3 dashes", "900-123-456"],
+    ["3-3-3 in a sentence", "the number was 900 123 456, confirmed"],
+    // digits of another script (Arabic-Indic): they are not folded by NFKD
+    ["Arabic-Indic digits", "\u0669\u0660\u0660-\u0661\u0662-\u0663\u0664\u0665\u0666"],
+    [
+      "Arabic-Indic digits, spaced",
+      "\u0669 \u0660 \u0660 \u0661 \u0662 \u0663 \u0664 \u0665 \u0666",
+    ],
   ])("flags %s", (_label, text) => {
     expect(looksLikeSsn(text)).toBe(true);
     expect(looksLikePatientIdentifier(text)).toBe(true);
@@ -40,7 +63,9 @@ describe("looksLikeSsn: separators the first rule missed", () => {
     ["a date range", "term 2026-11-09 - 2027-11-08"],
     ["a timestamp", "logged at 2026-11-09T12:30:45Z"],
     ["an amount with cents", "refund of $1,234,567.89 approved"],
-    ["a large amount", "volume 123,456,789 units"],
+    ["a large amount with a longer chain of groups", "volume 1,234,567,890 units"],
+    ["a dotted four-group address", "from 192.168.001.020"],
+    ["a thirteen digit run", "ref 9001234567890"],
     ["a dashed phone number", "call 555-123-4567"],
     ["a parenthesised phone number", "reached them on (555) 123-4567"],
     ["a spaced phone number with country code", "+1 555 123 4567"],
@@ -54,6 +79,21 @@ describe("looksLikeSsn: separators the first rule missed", () => {
     ["empty", ""],
   ])("does not flag %s", (_label, text) => {
     expect(looksLikeSsn(text)).toBe(false);
+  });
+});
+
+// The screen errs toward refusing. These are NOT patient identifiers but are refused on purpose (documented in the file header):
+// the operator cites the ticket or document by name instead.
+describe("known false positives (refused on purpose)", () => {
+  it.each([
+    ["a ZIP+4", "office at 78701-1234"],
+    ["a nine-digit number with a decimal point", "rate 12345.6789"],
+    ["a dotted version shaped 3.2.4", "build 100.10.1000"],
+    ["nine single digits in a list", "steps 1, 2, 3, 4, 5, 6, 7, 8, 9"],
+    ["a standalone number grouped in threes", "volume 123,456,789 units"],
+    ["a nine-digit ticket number", "ticket 123456789"],
+  ])("refuses %s", (_label, text) => {
+    expect(looksLikeSsn(text)).toBe(true);
   });
 });
 
