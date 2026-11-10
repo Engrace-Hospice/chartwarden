@@ -60,9 +60,11 @@ function request(method: string, url: string, template?: string | null): Fastify
   } as unknown as FastifyRequest;
 }
 
+/** `created` is the one confined stage the billing-step pairs are open to; `suspended` stands for every other confined status. */
 const hook = (
   preActivation: boolean | (() => Promise<boolean>),
   activeOrganizationId: string | null = ORG,
+  stage: "created" | "suspended" | "no-created-reader" = "created",
 ) =>
   createSessionAuthenticate({
     getSnapshot: async () => ({
@@ -73,11 +75,36 @@ const hook = (
     getResolver: () => resolver,
     organizationStage: {
       isConfined: typeof preActivation === "boolean" ? async () => preActivation : preActivation,
+      ...(stage === "no-created-reader" ? {} : { isCreated: async () => stage === "created" }),
     },
   });
 
-const may = (method: string, template: string | undefined, rawUrl = template ?? "") =>
-  preActivationMayCall({ method, routeTemplate: template, rawUrl });
+const may = (
+  method: string,
+  template: string | undefined,
+  rawUrl = template ?? "",
+  organizationCreated?: boolean,
+) =>
+  preActivationMayCall({
+    method,
+    routeTemplate: template,
+    rawUrl,
+    ...(organizationCreated === undefined ? {} : { organizationCreated }),
+  });
+
+/** The ten pairs the billing steps need (7A): open only while the organization is `created`. */
+const BILLING_STEP_PAIRS = [
+  ["GET", "/api/v1/tenant/clearinghouse"],
+  ["PUT", "/api/v1/tenant/clearinghouse"],
+  ["POST", "/api/v1/tenant/clearinghouse/baa"],
+  ["POST", "/api/v1/tenant/clearinghouse/verify"],
+  ["POST", "/api/v1/tenant/clearinghouse/activate"],
+  ["GET", "/api/v1/subscription/pricing"],
+  ["GET", "/api/v1/billing/mac-credentials"],
+  ["GET", "/api/v1/billing/mac-credentials/:providerEntityId"],
+  ["POST", "/api/v1/billing/mac-credentials"],
+  ["POST", "/api/v1/billing/mac-credentials/:providerEntityId/test"],
+] as const;
 
 describe("preActivationMayCall: exact METHOD + route template pairs", () => {
   it.each([
@@ -99,17 +126,6 @@ describe("preActivationMayCall: exact METHOD + route template pairs", () => {
     ["GET", "/api/v1/tenant/account"],
     ["GET", "/api/v1/tenant/baa"],
     ["POST", "/api/v1/tenant/baa/:id/attest"],
-    // 7A: the billing steps (clearinghouse choice, MAC credential, the plan the tenant reads)
-    ["GET", "/api/v1/tenant/clearinghouse"],
-    ["PUT", "/api/v1/tenant/clearinghouse"],
-    ["POST", "/api/v1/tenant/clearinghouse/baa"],
-    ["POST", "/api/v1/tenant/clearinghouse/verify"],
-    ["POST", "/api/v1/tenant/clearinghouse/activate"],
-    ["GET", "/api/v1/subscription/pricing"],
-    ["GET", "/api/v1/billing/mac-credentials"],
-    ["GET", "/api/v1/billing/mac-credentials/:providerEntityId"],
-    ["POST", "/api/v1/billing/mac-credentials"],
-    ["POST", "/api/v1/billing/mac-credentials/:providerEntityId/test"],
     ["GET", "/api/v1/orgs/:id/members"],
     ["POST", "/api/v1/orgs/:id/invitations"],
     ["GET", "/api/v1/locations"],
@@ -121,6 +137,15 @@ describe("preActivationMayCall: exact METHOD + route template pairs", () => {
   ])("allows %s %s", (method, template) => {
     expect(may(method, template)).toBe(true);
   });
+
+  it.each(BILLING_STEP_PAIRS)(
+    "7A: %s %s is open to a `created` organization and to nothing else (no stage given: refused)",
+    (method, template) => {
+      expect(may(method, template, template, true)).toBe(true);
+      expect(may(method, template, template, false)).toBe(false);
+      expect(may(method, template)).toBe(false); // fail closed when the caller did not say the stage
+    },
+  );
 
   it.each([
     // the review's findings: roots that exposed tenant-wide exports, consent grants, staff, credentials and user provisioning
@@ -271,6 +296,48 @@ describe("authenticate on a not-yet-live organization", () => {
     }
   });
 
+  it("lets a `created` organization reach the billing steps, org-bound as usual", async () => {
+    for (const [method, template] of BILLING_STEP_PAIRS) {
+      const req = request(method, template.replace(":providerEntityId", "abc"), template);
+      await expect(hook(true)(req), `${method} ${template}`).resolves.toBeUndefined();
+      expect(req.context.organizationId).toBe(ORG);
+    }
+  });
+
+  it("refuses the billing steps to any other confined stage (suspended, closed, unknown): the wizard routes stay open to them", async () => {
+    for (const [method, template] of BILLING_STEP_PAIRS) {
+      await expect(
+        hook(true, ORG, "suspended")(request(method, template, template)),
+        `${method} ${template}`,
+      ).rejects.toMatchObject({ code: "ORGANIZATION_ONBOARDING", statusCode: 403 });
+    }
+    await expect(
+      hook(true, ORG, "suspended")(request("GET", "/api/v1/tenant/onboarding")),
+    ).resolves.toBeUndefined();
+  });
+
+  it("refuses the billing steps when the reader cannot say whether the organization is `created` (fail closed)", async () => {
+    const [method, template] = BILLING_STEP_PAIRS[0];
+    await expect(
+      hook(true, ORG, "no-created-reader")(request(method, template, template)),
+    ).rejects.toMatchObject({ code: "ORGANIZATION_ONBOARDING" });
+  });
+
+  it("does not ask whether the organization is `created` for a route that does not need it", async () => {
+    const isCreated = vi.fn(async () => true);
+    const authenticate = createSessionAuthenticate({
+      getSnapshot: async () => ({
+        sessionId: "session-1",
+        userId: actor.userId,
+        activeOrganizationId: ORG,
+      }),
+      getResolver: () => resolver,
+      organizationStage: { isConfined: async () => true, isCreated },
+    });
+    await authenticate(request("GET", "/api/v1/tenant/onboarding"));
+    expect(isCreated).not.toHaveBeenCalled();
+  });
+
   it("refuses a request that matched no route (no template) rather than trusting its path", async () => {
     await expect(
       hook(true)(request("GET", "/api/v1/tenant/onboarding", null)),
@@ -324,6 +391,20 @@ describe("createOrganizationStageReader", () => {
     expect(await reader.isConfined(ORG)).toBe(true); // still cached
     reader.invalidate(ORG);
     expect(await reader.isConfined(ORG)).toBe(false);
+  });
+
+  it("says `created` only for a created organization (one status read serves both questions), and invalidate resets it", async () => {
+    let status: "created" | "active" | "suspended" | "closed" | null = "created";
+    const read = vi.fn(async () => status);
+    const reader = createOrganizationStageReader(read, { ttlMs: 60_000 });
+    expect(await reader.isCreated(ORG)).toBe(true);
+    expect(await reader.isConfined(ORG)).toBe(true);
+    expect(read).toHaveBeenCalledTimes(1);
+    for (const other of ["active", "suspended", "closed", null] as const) {
+      status = other;
+      reader.invalidate(ORG);
+      expect(await reader.isCreated(ORG), String(other)).toBe(false);
+    }
   });
 
   it("confines anything but `active`, suspended, closed and unknown included (security L1: it used to fail open for those)", async () => {

@@ -15,9 +15,12 @@ import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { UpsertMacCredentialBodySchema } from "../src/modules/23-billing-medicare/routes/billing-typebox";
 import { registerMacCredentialRoutes } from "../src/modules/23-billing-medicare/routes/mac-credentials.routes";
+import { buildMacOnboardingCredentialPort } from "../src/modules/23-billing-medicare/routes/onboarding-credential-port";
 import { buildDrizzleM23ReadService } from "../src/modules/23-billing-medicare/routes/read-service-drizzle";
 import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/routes/write-service-drizzle";
+import { OnboardingMacCredentialUpsertRequest } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -173,5 +176,88 @@ describe("the MAC credential upsert screens baaRecordRef", () => {
       ],
     });
     expect(touched).toEqual([]);
+  });
+
+  describe("submitterId, tradingPartnerId and clientId refuse a separator-formed SSN shape (7A security review L4)", () => {
+    const FIELDS = ["submitterId", "tradingPartnerId", "clientId"] as const;
+    // synthetic: area 900 is never issued
+    const SSN_FORMS = [
+      "900-11-2222",
+      "900 11 2222",
+      "900.11.2222",
+      "id 900-11-2222 x",
+      "９００-１１-２２２２",
+    ];
+
+    it.each(FIELDS.flatMap((field) => SSN_FORMS.map((value) => [field, value] as const)))(
+      "%s = %j is a 422 EVIDENCE_LOOKS_LIKE_PHI that never echoes it, and nothing is read or written",
+      async (field, value) => {
+        const res = await post(app, { ...BODY, [field]: value });
+
+        expect(res.statusCode, res.body).toBe(422);
+        expect(res.json().error.details).toEqual([
+          expect.objectContaining({ field, code: "EVIDENCE_LOOKS_LIKE_PHI" }),
+        ]);
+        expect(res.body).not.toContain(value);
+        expect(res.body).not.toMatch(/Expected string to match/); // a person's message, not a regular expression
+        expect(touched).toEqual([]);
+      },
+    );
+
+    it.each(FIELDS)(
+      "%s keeps plain digit strings and ordinary identifiers: they reach the database",
+      async (field) => {
+        for (const value of [
+          "900112222",
+          "SUB-1",
+          "TP 99",
+          "chartwarden-dev-client",
+          "1234-56-7890",
+        ]) {
+          touched.length = 0;
+          const res = await post(app, { ...BODY, [field]: value });
+          expect(res.statusCode, `${field}=${value}: ${res.body}`).not.toBe(422);
+          expect(touched, value).toContain("select");
+        }
+      },
+    );
+
+    it("the operator lane's port refuses it by the same rule (the body is parsed with M23's schema there)", async () => {
+      const port = buildMacOnboardingCredentialPort({
+        writeService: { upsertMacCredentialOnTx: async () => ({}) as never },
+        readService: { listMacCredentials: async () => ({ items: [] }) as never },
+      });
+      await expect(
+        port.upsert(
+          {} as never,
+          {
+            organizationId: ORG,
+            operatorUserId: USER,
+            operatorMembershipId: MEMBERSHIP,
+            operatorRoles: ["platform_ops"],
+            stepUpRecent: true,
+            request: {},
+          },
+          { ...BODY, clientId: "900-11-2222" },
+          undefined,
+        ),
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        details: [expect.objectContaining({ field: "clientId", code: "EVIDENCE_LOOKS_LIKE_PHI" })],
+      });
+    });
+
+    it("the published operator schema carries the very same pattern as M23's", () => {
+      for (const field of FIELDS) {
+        const m23 = (
+          UpsertMacCredentialBodySchema.properties as Record<string, { pattern?: string }>
+        )[field];
+        const m34 = (
+          OnboardingMacCredentialUpsertRequest.properties as Record<string, { pattern?: string }>
+        )[field];
+        expect(m23?.pattern, field).toBeTypeOf("string");
+        expect(m34?.pattern, field).toBe(m23?.pattern);
+      }
+    });
   });
 });

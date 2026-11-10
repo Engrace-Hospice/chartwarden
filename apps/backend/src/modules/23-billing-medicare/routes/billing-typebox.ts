@@ -163,12 +163,38 @@ export const CheckEligibilityBodySchema = Type.Object({
 });
 
 // ── MAC-credential upsert body (clientSecret is write-only; encrypted at the boundary) ──────────────────
+/**
+ * The MAC submitter id, trading partner id and client id are identifiers the MAC issues, typed by a person, stored, returned and kept in
+ * the row audit trail: a social security number pasted into one would land in an immutable log. A separator-formed SSN shape (###-##-####,
+ * ### ## ####, ###.##.####, any dash, ASCII or fullwidth digits) anywhere in the text is refused; a plain digit string and any other
+ * identifier stay allowed (a real id can be nine digits). The pattern is a negative lookahead, so it has no `u` flag to lose and runs the
+ * same under TypeBox's `Value.Check` and Fastify's Ajv. The routes check it first with a person's message (`refuseSsnShapedIdentifiers`).
+ */
+export const MAC_IDENTIFIER_SSN_SHAPE = String.raw`(?<![0-9\uFF10-\uFF19])[0-9\uFF10-\uFF19]{3}[\s.\-\u2010-\u2015\u2212\uFF0D\uFF0E][0-9\uFF10-\uFF19]{2}[\s.\-\u2010-\u2015\u2212\uFF0D\uFF0E][0-9\uFF10-\uFF19]{4}(?![0-9\uFF10-\uFF19])`;
+export const MAC_IDENTIFIER_PATTERN = `^(?![\\s\\S]*${MAC_IDENTIFIER_SSN_SHAPE})`;
+const MAC_IDENTIFIER_NOTE =
+  "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.";
 export const UpsertMacCredentialBodySchema = Type.Object({
   providerEntityId: uuid(),
   macJurisdiction: lit(MAC_JURISDICTION),
-  submitterId: Type.String({ minLength: 1, maxLength: 64 }),
-  tradingPartnerId: Type.String({ minLength: 1, maxLength: 64 }),
-  clientId: Type.String({ minLength: 1, maxLength: 256 }),
+  submitterId: Type.String({
+    minLength: 1,
+    maxLength: 64,
+    pattern: MAC_IDENTIFIER_PATTERN,
+    description: MAC_IDENTIFIER_NOTE,
+  }),
+  tradingPartnerId: Type.String({
+    minLength: 1,
+    maxLength: 64,
+    pattern: MAC_IDENTIFIER_PATTERN,
+    description: MAC_IDENTIFIER_NOTE,
+  }),
+  clientId: Type.String({
+    minLength: 1,
+    maxLength: 256,
+    pattern: MAC_IDENTIFIER_PATTERN,
+    description: MAC_IDENTIFIER_NOTE,
+  }),
   clientSecret: Type.String({ minLength: 1, maxLength: 4096 }),
   baaRecordRef: Type.Optional(
     Type.String({

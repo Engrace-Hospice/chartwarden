@@ -380,6 +380,7 @@ import {
   EMERGENCY_ROUTE_RATE_LIMIT,
   HELP_REQUEST_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+  MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
@@ -4216,10 +4217,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       "M23_CLAIMMD_NOTICE_UPLOAD_ENABLED is not true: this organization's own Claim.MD account cannot send its NOE / NOTR (the upload is refused NOT_WIRED and the notice is not filed); set the flag before its CMS deadlines matter",
     );
   };
+  // A tenant may activate its clearinghouse during onboarding, before go-live approval; the send path itself refuses an organization
+  // that is not live (7A security review L1), so activation alone is never what lets a claim go out. Its own cached reader, not the
+  // authenticate hook's: workers resolve bindings too, and an activation shows here within the 5 s cache TTL (a hold, never a send).
+  const clearinghouseOrganizationStage = dbHandle
+    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
+    : undefined;
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
         cipher: clearinghouseSecretCipher,
+        ...(clearinghouseOrganizationStage
+          ? {
+              isOrganizationLive: async (organizationId: string) =>
+                !(await clearinghouseOrganizationStage.isConfined(organizationId)),
+            }
+          : {}),
         attempts: createDrizzleAttemptStore(dbHandle.db),
         platformBinding: platformClearinghouseBinding,
         fallbackOrgIds: clearinghouseFallback.orgIds,
@@ -7664,6 +7677,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   store: rateLimitStore ?? createInMemoryRateLimitStore(),
                   limit: CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
                   keyPrefix: "m23-clearinghouse-put",
+                }),
+                // The MAC portal check is a gateway call per request and a created organization can reach it: capped, and closed.
+                macCredentialTestRateLimit: createRouteRateLimit({
+                  store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                  limit: MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
+                  keyPrefix: "m23-mac-credential-test",
                 }),
                 tenantClearinghouseService: buildDrizzleTenantClearinghouseRouteService({
                   db: dbHandle.db,

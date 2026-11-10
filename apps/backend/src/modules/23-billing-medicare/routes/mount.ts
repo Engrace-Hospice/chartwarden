@@ -124,7 +124,13 @@ export function mountM23Routes(
   if (services.sequestrationService) {
     registerSequestrationPolicyRoutes(app, { sequestrationService: services.sequestrationService });
   }
-  registerMacCredentialRoutes(app, { readService, writeService });
+  registerMacCredentialRoutes(app, {
+    readService,
+    writeService,
+    ...(services.macCredentialTestRateLimit
+      ? { testRateLimit: services.macCredentialTestRateLimit as never }
+      : {}),
+  });
   // Migration 1269 — the tenant-entered EDI profile (submitter + receiver parties of the 837I interchange).
   if (services.ediProfileService) {
     registerEdiProfileRoutes(app, { ediProfileService: services.ediProfileService });
