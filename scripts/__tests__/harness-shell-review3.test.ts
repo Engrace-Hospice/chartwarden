@@ -266,3 +266,96 @@ describe("6 — a destructive command over the whole repo root", () => {
     expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });
+
+describe("8 — GNU sed takes any unambiguous prefix of --in-place", () => {
+  it.each([
+    "sed --in-p s/a/b/ .claude/settings.json",
+    "sed --in s/a/b/ .claude/settings.json",
+    "sed --i s/a/b/ .claude/settings.json",
+    "sed --in-place s/a/b/ .claude/settings.json",
+    "sed --in-place=.bak s/a/b/ .claude/settings.json",
+    "sed --in=.bak s/a/b/ compliance/controls.yaml",
+    "sed -i.bak s/a/b/ .claude/settings.json",
+    "sed -ni s/a/b/ .claude/settings.json",
+    "sed -n --in-pl s/x/y/ compliance/controls.yaml",
+    "find .claude -exec sed --in-p s/a/b/ {} +",
+    "cd compliance && sed --in s/a/b/ controls.yaml",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "sed -n 1,5p .claude/settings.json",
+    "sed --quiet 1,5p compliance/controls.yaml",
+    "sed --expression=s/a/b/ compliance/controls.yaml",
+    "sed -n --regexp-extended s/a/b/p compliance/controls.yaml",
+    "sed -E s/a/b/ .claude/settings.json",
+    "sed --in-place s/a/b/ src/x.ts",
+    "sed --in s/a/b/ apps/web/src/x.ts",
+    "sed -i.bak s/a/b/ docs/README.md",
+    "sed s/a/b/ .claude/settings.json > /tmp/out.json",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});
+
+describe("11 — writers outside the supported list, onto a protected path", () => {
+  it.each([
+    "curl -o scripts/harness/pre-tool-guard.ts https://example.com/x",
+    "curl --output scripts/harness/pre-tool-guard.ts https://example.com/x",
+    "curl -sSfLo compliance/controls.yaml https://example.com/x",
+    "curl -oscripts/harness/pre-tool-guard.ts https://example.com/x",
+    "curl https://example.com/x -o .githooks/pre-commit",
+    "cd compliance && curl -o controls.yaml https://example.com/x",
+    "wget -O scripts/harness/pre-tool-guard.ts https://example.com/x",
+    "wget -qO .githooks/pre-commit https://example.com/x",
+    "wget --output-document=compliance/controls.yaml https://example.com/x",
+    "wget --output-document compliance/controls.yaml https://example.com/x",
+    "wget -o .claude/rules/phi-and-secrets.md https://example.com/x",
+    "sort -o compliance/controls.yaml /tmp/x",
+    "sort /tmp/x -o compliance/controls.yaml",
+    "sort --output=compliance/controls.yaml /tmp/x",
+    "sort -ocompliance/controls.yaml /tmp/x",
+    "sort -u -o scripts/harness/patterns.ts scripts/harness/patterns.ts",
+    "openssl enc -d -aes-256-cbc -in /tmp/x -out scripts/harness/pre-tool-guard.ts",
+    "openssl req -new -nodes -keyout .githooks/pre-commit -out /tmp/csr",
+    "base64 -d -i /tmp/x -o scripts/harness/pre-tool-guard.ts",
+    "base64 --decode --input /tmp/x --output scripts/harness/pre-tool-guard.ts",
+    "gzip -f scripts/harness/patterns.ts",
+    "gzip compliance/controls.yaml",
+    "gunzip compliance/controls.yaml.gz",
+    "bzip2 -f compliance/controls.yaml",
+    "xz -f compliance/controls.yaml",
+    "xz -d .claude/settings.json.xz",
+    "zstd -f scripts/harness/patterns.ts",
+    "cd compliance && gzip -f controls.yaml",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "curl -o /tmp/x https://example.com/x",
+    "curl -sSfL -o /tmp/x https://api.example.com/x",
+    "curl -s https://api.example.com/x",
+    "curl -o node_modules/.cache/x https://example.com/x",
+    "curl -o docs/compliance/x.md https://example.com/x",
+    "wget -O /tmp/x https://example.com/x",
+    "wget -qO- https://example.com/x",
+    "sort -o /tmp/sorted.txt /tmp/x",
+    "sort -u -o out.txt in.txt",
+    "sort scripts/harness/patterns.ts | uniq -c",
+    "openssl enc -d -in /tmp/x -out /tmp/y",
+    "openssl rand -hex 16",
+    "openssl req -new -nodes -keyout /tmp/k -out /tmp/csr",
+    "base64 -d -i /tmp/x -o /tmp/y",
+    "base64 < /tmp/x",
+    "gzip -c scripts/harness/patterns.ts > /tmp/p.gz",
+    "gzip -dc compliance/x.gz",
+    "gzip -t compliance/x.gz",
+    "gzip -l compliance/x.gz",
+    "xz --stdout compliance/controls.yaml > /tmp/c.xz",
+    "gzip -f apps/web/dist/x.js",
+    "gzip -k docs/big.log",
+    "bzip2 -k /tmp/x",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});

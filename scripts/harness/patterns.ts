@@ -1472,9 +1472,15 @@ const RG_SHORT_FLAGS = /^-[A-Za-z.]+$/;
 /** `-ec`, `-xc`: a short cluster with `c` after its first letter (a bare `-c` is matched on its own). */
 const isShortClusterWithC = (arg: string): boolean =>
   arg.startsWith("-") && !arg.includes("-", 1) && arg.indexOf("c", 2) >= 2;
-/** `sed -i`, `-ni`, `-i.bak`: the leading run of letters holds an `i`. */
+/** GNU getopt takes any unambiguous prefix of a long option, and `--in-place` is the only sed option that starts `--i`. */
+function isLongInPlace(arg: string): boolean {
+  if (!arg.startsWith("--i")) return false;
+  const eq = arg.indexOf("=");
+  return "in-place".startsWith(arg.slice(2, eq < 0 ? undefined : eq));
+}
+/** `sed -i`, `-ni`, `-i.bak`, `--in-place`, `--in-p`: edits its files where they are. */
 const isInPlace = (arg: string): boolean =>
-  (/^-([A-Za-z]*)/.exec(arg)?.[1] ?? "").includes("i") || arg.startsWith("--in-place");
+  (/^-([A-Za-z]*)/.exec(arg)?.[1] ?? "").includes("i") || isLongInPlace(arg);
 const FIND_WRITER = /^(rm|truncate|mv|cp|tee|chmod|chown|shred|unlink|ln|install|touch|dd|rsync)$/;
 
 /** Destination and sources of cp/mv/ln/install/rsync, honouring `-t DIR` / `--target-directory=DIR`. */
@@ -1566,6 +1572,61 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
   return extract ? [wt(flagValue("-C", "--directory") ?? ".", true, true)] : [];
 }
 
+/**
+ * The values of one option: `-o FILE`, `-oFILE`, `-sSo FILE` (a letter in a cluster takes the rest of the word,
+ * or the next word), `--output FILE` and `--output=FILE`. One pass over the arguments.
+ */
+function optionValues(args: readonly string[], short: string, long: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k] ?? "";
+    let value: string | undefined;
+    if (a.startsWith("--")) {
+      const eq = a.indexOf("=");
+      if (long.includes(a.slice(2, eq < 0 ? undefined : eq)))
+        value = eq < 0 ? args[++k] : a.slice(eq + 1);
+    } else if (a.startsWith("-")) {
+      for (let p = 1; p < a.length && /[A-Za-z]/.test(a[p] as string); p++) {
+        if (a[p] !== short) continue;
+        value = p + 1 < a.length ? a.slice(p + 1) : args[++k];
+        break;
+      }
+    }
+    if (value) out.push(value);
+  }
+  return out;
+}
+
+/** Programs that write the file an option names: `curl -o`, `wget -O`/`-o`, `sort -o`, `base64 -o`. */
+const OUTPUT_OPTIONS: ReadonlyMap<
+  string,
+  ReadonlyArray<readonly [string, readonly string[]]>
+> = new Map([
+  ["curl", [["o", ["output"]]]],
+  [
+    "wget",
+    [
+      ["O", ["output-document"]],
+      ["o", ["output-file"]],
+      ["a", ["append-output"]],
+    ],
+  ],
+  ["sort", [["o", ["output"]]]],
+  ["base64", [["o", ["output"]]]],
+]);
+
+/** Compressors that replace their input with the compressed (or decompressed) file unless told to print it. */
+const COMPRESSOR =
+  /^(gzip|gunzip|bzip2|bunzip2|xz|unxz|lzma|unlzma|zstd|unzstd|compress|uncompress)$/;
+const COMPRESSED_SUFFIX = /\.(gz|bz2|xz|lzma|zst|Z)$/;
+const COMPRESSOR_READ_ONLY = new Set(["--stdout", "--to-stdout", "--test", "--list"]);
+
+function compressorWrites(args: readonly string[], files: readonly string[]): WriteTarget[] {
+  if (args.some((a) => COMPRESSOR_READ_ONLY.has(a) || clusterHas(a, "ctl"))) return [];
+  // `gunzip x.gz` writes `x`: name both, since a protected FILE is matched by its exact name.
+  return files.flatMap((f) => [wt(f), wt(f.replace(COMPRESSED_SUFFIX, ""))]);
+}
+
 /** Every path one simple command writes, deletes, moves or re-modes (redirections are added by the caller). */
 function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   const files = fileArgs(args);
@@ -1589,6 +1650,18 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
     return args.some(isInPlace) ? files.map((f) => wt(f)) : [];
   }
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
+  const outputOptions = OUTPUT_OPTIONS.get(prog);
+  if (outputOptions) {
+    return outputOptions
+      .flatMap(([short, long]) => optionValues(args, short, long))
+      .map((f) => wt(f));
+  }
+  if (prog === "openssl") {
+    return args.flatMap((a, k) =>
+      (a === "-out" || a === "-keyout") && args[k + 1] ? [wt(args[k + 1] as string)] : [],
+    );
+  }
+  if (COMPRESSOR.test(prog)) return compressorWrites(args, files);
   if (prog === "find") return findWrites(args);
   return /^(tar|unzip)$/.test(prog) ? unpackWrites(prog, args) : [];
 }
