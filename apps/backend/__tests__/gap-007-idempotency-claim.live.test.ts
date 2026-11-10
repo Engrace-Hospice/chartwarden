@@ -16,6 +16,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import type { IdempotencyStore } from "@chartwarden/shared";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { sql } from "drizzle-orm";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -224,6 +226,113 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       const replayFresh = await post("/open", "http-expiry");
       expect(replayFresh.json()).toEqual(fresh.json());
       expect(handlerRuns).toBe(2);
+    });
+  });
+
+  // A retryable failure is released ONLY when the request committed nothing. Real pool (createDbClient's commit tracker),
+  // real transactions (withOrgContext), real idempotency_key rows. The unit-level cases are in idempotency-commit-tracker.test.ts.
+  describe("a retryable failure frees the key only if nothing committed (real transactions)", () => {
+    let app: FastifyInstance;
+    let runs = 0;
+    let mode: "commit-then-500" | "rollback-then-500" | "commit-then-deadlock" | "read-then-503" =
+      "commit-then-500";
+
+    const probeRows = async () =>
+      Number((await admin.query("SELECT count(*)::int AS n FROM idem_probe")).rows[0].n);
+    const insertProbe = (tx: unknown, n: number) =>
+      (tx as { execute: (q: unknown) => Promise<unknown> }).execute(
+        sql`INSERT INTO idem_probe (n) VALUES (${n})`,
+      );
+
+    beforeAll(async () => {
+      await admin.query("CREATE TABLE idem_probe (id serial PRIMARY KEY, n int NOT NULL)");
+      await admin.query("GRANT ALL ON idem_probe TO chartwarden_app");
+      await admin.query("GRANT USAGE ON SEQUENCE idem_probe_id_seq TO chartwarden_app");
+      app = Fastify();
+      app.decorateRequest("context", undefined as never);
+      app.addHook("onRequest", async (request) => {
+        (request as unknown as { context: unknown }).context = { organizationId: ORG_A };
+      });
+      applyErrorHandler(app);
+      applyIdempotency(app, store);
+      app.post("/probe", async (_req, reply) => {
+        runs += 1;
+        const scope = { organizationId: ORG_A, userId: "" };
+        if (mode === "read-then-503") {
+          await withOrgContext(handle.db, scope, (tx) =>
+            (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(sql`SELECT 1`),
+          ); // a guard-style read transaction: it COMMITs, but writes nothing
+          return reply.code(503).send({ error: { code: "DEGRADED" } });
+        }
+        if (mode === "rollback-then-500") {
+          await withOrgContext(handle.db, scope, async (tx) => {
+            await insertProbe(tx, runs);
+            throw new Error("failed inside the transaction"); // rolled back
+          });
+        }
+        await withOrgContext(handle.db, scope, (tx) => insertProbe(tx, runs)); // COMMITS
+        if (mode === "commit-then-deadlock") {
+          throw Object.assign(new Error("deadlock detected"), { code: "40P01", severity: "ERROR" });
+        }
+        throw new Error("post-commit step failed");
+      });
+      await app.ready();
+    });
+    afterAll(async () => {
+      await app?.close();
+    });
+
+    const post = (key: string) =>
+      app.inject({
+        method: "POST",
+        url: "/probe",
+        headers: { "idempotency-key": key },
+        payload: { a: 1 },
+      });
+
+    it("a COMMITTED write followed by a 500: cached and replayed, the row is written once", async () => {
+      mode = "commit-then-500";
+      runs = 0;
+      const before = await probeRows();
+      expect((await post("live-commit-500")).statusCode).toBe(500);
+      expect((await post("live-commit-500")).statusCode).toBe(500);
+      expect(runs).toBe(1);
+      expect(await probeRows()).toBe(before + 1);
+      expect(await rowFor(ORG_A, "live-commit-500")).toMatchObject([
+        { state: "complete", status: "500" },
+      ]);
+    });
+
+    it("a COMMITTED write followed by a 409 CONCURRENT_UPDATE from a second transaction: cached", async () => {
+      mode = "commit-then-deadlock";
+      runs = 0;
+      const before = await probeRows();
+      const first = await post("live-commit-deadlock");
+      expect(first.statusCode).toBe(409);
+      expect(first.json().error.code).toBe("CONCURRENT_UPDATE");
+      expect((await post("live-commit-deadlock")).statusCode).toBe(409);
+      expect(runs).toBe(1);
+      expect(await probeRows()).toBe(before + 1);
+    });
+
+    it("a write that ROLLED BACK, then a 500: the key is released and the retry runs", async () => {
+      mode = "rollback-then-500";
+      runs = 0;
+      const before = await probeRows();
+      expect((await post("live-rollback-500")).statusCode).toBe(500);
+      expect(await rowFor(ORG_A, "live-rollback-500")).toEqual([]); // released
+      expect(await probeRows()).toBe(before); // nothing was durable
+      expect((await post("live-rollback-500")).statusCode).toBe(500);
+      expect(runs).toBe(2); // the retry ran (and rolled back again)
+    });
+
+    it("a read-only transaction (a guard's) followed by a 503: released, it never counted as a commit", async () => {
+      mode = "read-then-503";
+      runs = 0;
+      expect((await post("live-read-503")).statusCode).toBe(503);
+      expect(await rowFor(ORG_A, "live-read-503")).toEqual([]);
+      expect((await post("live-read-503")).statusCode).toBe(503);
+      expect(runs).toBe(2);
     });
   });
 });
