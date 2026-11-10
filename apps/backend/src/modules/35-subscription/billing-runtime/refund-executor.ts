@@ -32,6 +32,7 @@ import {
 } from "@chartwarden/subscription-billing";
 import type { OrgId, StripeApiCallAuditId } from "@chartwarden/types";
 import { and, asc, eq, gte, like, lt, sql } from "drizzle-orm";
+import { safeErrorMessage } from "../../../bootstrap/redact-database-error";
 import type { PlatformRunner, WriteOutboxPort } from "../routes/service-drizzle";
 
 const REFUND_SWEEP_LIMIT = 25;
@@ -306,6 +307,9 @@ export async function runRefundExecutionSweep(
           }),
           mirror,
           nowMs: () => (deps.now ?? (() => new Date()))().getTime(),
+          // the failure text lands in stripe_api_call_audit.error_text, the failed-call payload and refund.stripe_failure_code: a database
+          // error from the mirror or the audit write must not carry its bound values into any of them
+          describeError: (error) => safeErrorMessage(error, { bare: true }),
         },
         event,
       );
