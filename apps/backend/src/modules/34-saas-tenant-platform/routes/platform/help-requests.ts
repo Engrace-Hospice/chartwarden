@@ -38,7 +38,7 @@ const ABAC_CLOSE = requireAbac(
 const NO_AI = rejectAiActor("AI principals cannot resolve help requests") as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 
-/** `?status=open,approved` -> the statuses; empty means every status (the schema already refused anything else). */
+/** `?status=open,approved` -> the statuses; empty means the service's default, the live ones (the schema already refused anything else). */
 const statusesOf = (raw: string | undefined): HelpRequestStatus[] =>
   raw ? (raw.split(",") as HelpRequestStatus[]) : [];
 

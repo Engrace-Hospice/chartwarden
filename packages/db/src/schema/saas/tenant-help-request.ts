@@ -28,6 +28,11 @@ export type TenantHelpRequestStatus = (typeof TENANT_HELP_REQUEST_STATUSES)[numb
 export const TENANT_HELP_REQUEST_CLOSER_KINDS = ["tenant", "platform_ops", "system"] as const;
 export type TenantHelpRequestCloserKind = (typeof TENANT_HELP_REQUEST_CLOSER_KINDS)[number];
 
+/** How long a closed request's message and note are kept; after it the sweep replaces the message with {@link TENANT_HELP_REQUEST_PURGED_MESSAGE}. */
+export const TENANT_HELP_REQUEST_TEXT_RETENTION_DAYS = 90;
+/** What a purged message reads as (migration 1483's guard trigger accepts exactly this text). */
+export const TENANT_HELP_REQUEST_PURGED_MESSAGE = "[removed after 90 days]";
+
 /** The live statuses: the ones the unique index admits one of per tenant account. */
 export const TENANT_HELP_REQUEST_LIVE_STATUSES = ["open", "approved"] as const;
 
@@ -64,6 +69,9 @@ export const tenantHelpRequest = pgTable(
     closedAt: timestamp("closed_at", { withTimezone: true }),
     // The operator's tenant-visible note on a Resolve (btrim 8..500, PHI-screened by the service); only an operator writes one.
     closeNote: text("close_note"),
+    // Migration 1483: stamped when the retention sweep replaced a closed request's message with the placeholder (90 days after it
+    // closed). The guard trigger lets a closed request change in exactly this one way.
+    messagePurgedAt: timestamp("message_purged_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -80,6 +88,14 @@ export const tenantHelpRequest = pgTable(
     ),
     orgIdx: index("tenant_help_request_org_ix").on(t.organizationId),
     grantIdx: index("tenant_help_request_grant_ix").on(t.supportConsentGrantId),
+    // Migration 1483: one request per consent grant.
+    grantUnique: uniqueIndex("tenant_help_request_grant_uq")
+      .on(t.supportConsentGrantId)
+      .where(sql`support_consent_grant_id IS NOT NULL`),
+    // Migration 1483: the retention sweep's scan (closed requests whose text is still there, oldest first).
+    purgeIdx: index("tenant_help_request_purge_ix")
+      .on(t.closedAt)
+      .where(sql`message_purged_at IS NULL AND status IN ('resolved', 'cancelled')`),
     statusIdx: index("tenant_help_request_status_ix").on(t.status, t.requestedAt.desc()),
   }),
 );

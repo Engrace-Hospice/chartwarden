@@ -31,6 +31,8 @@ export interface HelpRequestRow {
   readonly closedByUserId: string | null;
   readonly closedAt: Date | null;
   readonly closeNote: string | null;
+  /** Stamped when the retention sweep replaced the message with the placeholder (migration 1483); null while the text is kept. */
+  readonly messagePurgedAt: Date | null;
 }
 
 /** The inbox row: the request plus the tenant it belongs to (read on the platform lane only). */
@@ -85,6 +87,12 @@ export interface HelpRequestStore {
   // ── tenant lane (RLS scopes every statement to the member's organization) ──
   /** The organization's one tenant account id, or null. */
   tenantAccountIdOf(organizationId: string): Promise<string | null>;
+  /** Whether the session's membership is an ACTIVE membership of this organization held by this user (the file policy's own test). */
+  isActiveMember(member: {
+    readonly membershipId: string;
+    readonly userId: string;
+    readonly organizationId: string;
+  }): Promise<boolean>;
   /** Whether `userId` is ChartWarden platform staff (the wizard's `m34_platform_role_holders` read). */
   isPlatformStaff(userId: string): Promise<boolean>;
   /** Whether `key` names an onboarding step (retired ones too: a request filed against one still resolves). */
@@ -102,10 +110,20 @@ export interface HelpRequestStore {
   markApproved(id: string, approval: HelpApproval): Promise<HelpRequestRow | null>;
 
   // ── both lanes ──
-  /** One request by id, locked for the rest of the transaction; null when it does not exist (or RLS hides it). */
+  /**
+   * One request by id, locked for the rest of the transaction; null when it does not exist (or RLS hides it). LOCK ORDER, on every
+   * path that ends or revokes consent: the grant row first, then the request row. (Piece 7S's revoke marks the grant before it calls
+   * the linked-request port, so it takes them in that order too; two people ending the same consent at once then queue instead of
+   * deadlocking.) A request with no grant locks only itself.
+   */
   findForUpdate(id: string): Promise<HelpRequestRow | null>;
   /** Apply an ending; null when the row is no longer in `closing.from`. */
   markClosed(id: string, closing: HelpClosing): Promise<HelpRequestRow | null>;
+  /**
+   * Run `hook` once this unit of work has COMMITTED (never if it rolls back): for what must not outlive a rollback, such as an alert
+   * (the alert engine opens its own transaction). A hook is best-effort and owns its own error handling; the runner awaits it.
+   */
+  afterCommit(hook: () => Promise<void>): void;
   /** The grants behind some requests, by id. */
   grantsById(grantIds: readonly string[]): Promise<ReadonlyMap<string, HelpGrantRow>>;
   /**
@@ -129,6 +147,12 @@ export interface HelpRequestStore {
   cancelStaleOpen(olderThan: Date, at: Date): Promise<number>;
   /** Resolve every `approved` request whose grant is expired or revoked as of `at`, closed by the system; the number resolved. */
   resolveGrantEnded(at: Date): Promise<number>;
+  /**
+   * Replace the message of every closed request that closed more than `retentionDays` ago with the placeholder, clear its note and
+   * stamp `message_purged_at`; the number purged. The database judges the age by its own clock (the guard trigger of migration 1483),
+   * so a sweep and the trigger can never disagree at the edge.
+   */
+  purgeClosedText(retentionDays: number, at: Date): Promise<number>;
 }
 
 export interface LinkedRequestDefaults {

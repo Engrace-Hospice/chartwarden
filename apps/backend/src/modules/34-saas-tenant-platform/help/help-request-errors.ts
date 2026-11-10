@@ -16,6 +16,8 @@ export const M34_HELP_REQUEST_ERROR_STATUS = {
   HELP_REQUEST_ENDED: 409,
   /** `stepKey` names no onboarding step: the key is free text a member typed, so it is checked against the real steps. */
   HELP_REQUEST_STEP_UNKNOWN: 422,
+  /** A message or note that is not storable text (NUL or a broken surrogate pair) or is not 8..1000 (note 8..500) characters once cleaned. */
+  HELP_REQUEST_TEXT_INVALID: 422,
 } as const;
 
 export type M34HelpRequestErrorCode = keyof typeof M34_HELP_REQUEST_ERROR_STATUS;

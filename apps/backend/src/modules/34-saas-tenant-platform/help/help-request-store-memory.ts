@@ -39,6 +39,8 @@ export interface MemoryHelpState {
   readonly grants: Map<string, HelpGrantRow>;
   /** Users the staff check answers true for (ChartWarden platform staff). */
   readonly staffUserIds: Set<string>;
+  /** Membership ids that are NOT active (suspended or removed): every other membership counts as active. */
+  readonly inactiveMembershipIds: Set<string>;
   /** The onboarding step keys a request may name. */
   readonly stepKeys: Set<string>;
   now: () => Date;
@@ -60,12 +62,13 @@ export function createMemoryHelpState(now: () => Date = () => new Date()): Memor
     tenants: new Map([[tenant.organizationId, tenant]]),
     grants: new Map(),
     staffUserIds: new Set(),
+    inactiveMembershipIds: new Set(),
     stepKeys: new Set(["mac_configured", "payer_enrollment", "dosespot_kickoff_initiated"]),
     now,
   };
 }
 
-const { TENANT_HELP_REQUEST_LIVE_IDX } = schema;
+const { TENANT_HELP_REQUEST_LIVE_IDX, TENANT_HELP_REQUEST_PURGED_MESSAGE: PURGED_MESSAGE } = schema;
 const LIVE: ReadonlySet<HelpRequestStatus> = new Set(["open", "approved"]);
 
 /** Newest first, by the keyset the SQL orders on: (requested_at DESC, id DESC). */
@@ -80,6 +83,7 @@ const beforeCursor = (row: HelpRequestRow, after: HelpPageAfter | null): boolean
 function createStore(
   state: MemoryHelpState,
   scope: { organizationId: string | null },
+  afterCommit: Array<() => Promise<void>>,
 ): HelpRequestStore {
   const visible = (row: HelpRequestRow | undefined): HelpRequestRow | null =>
     row && (scope.organizationId === null || row.organizationId === scope.organizationId)
@@ -136,6 +140,9 @@ function createStore(
     async tenantAccountIdOf(organizationId) {
       return state.tenants.get(organizationId)?.tenantAccountId ?? null;
     },
+    async isActiveMember(member) {
+      return !state.inactiveMembershipIds.has(member.membershipId);
+    },
     async isPlatformStaff(userId) {
       return state.staffUserIds.has(userId);
     },
@@ -191,6 +198,7 @@ function createStore(
         closedByUserId: null,
         closedAt: null,
         closeNote: null,
+        messagePurgedAt: null,
       });
     },
     async markApproved(id, approval: HelpApproval) {
@@ -209,6 +217,9 @@ function createStore(
     },
     async markClosed(id, closing) {
       return close(id, closing);
+    },
+    afterCommit: (hook) => {
+      afterCommit.push(hook);
     },
     async grantsById(grantIds) {
       return new Map(
@@ -246,6 +257,18 @@ function createStore(
       }
       return n;
     },
+    async purgeClosedText(retentionDays, at) {
+      const cutoff = at.getTime() - retentionDays * 86_400_000;
+      let n = 0;
+      for (const r of state.requests.values()) {
+        const closed = r.status === "resolved" || r.status === "cancelled";
+        if (closed && r.messagePurgedAt === null && r.closedAt && r.closedAt.getTime() <= cutoff) {
+          put({ ...r, message: PURGED_MESSAGE, closeNote: null, messagePurgedAt: at });
+          n += 1;
+        }
+      }
+      return n;
+    },
     async resolveGrantEnded(at) {
       let n = 0;
       for (const r of state.requests.values()) {
@@ -275,8 +298,18 @@ const systemEnding = (
 
 /** The runner over the memory state: the member's lane sees only their organization's rows, the platform lane sees all. */
 export function createMemoryHelpRequestRunner(state: MemoryHelpState): HelpRequestRunner {
+  const run = async <T>(
+    scope: { organizationId: string | null },
+    fn: (store: HelpRequestStore) => Promise<T>,
+  ): Promise<T> => {
+    const hooks: Array<() => Promise<void>> = [];
+    const result = await fn(createStore(state, scope, hooks));
+    // a unit of work that threw never reaches here: its hooks are dropped, as a rolled-back transaction's are
+    for (const hook of hooks) await hook();
+    return result;
+  };
   return {
-    asMember: (ctx, fn) => fn(createStore(state, { organizationId: ctx.organizationId })),
-    asPlatform: (_ctx, fn) => fn(createStore(state, { organizationId: null })),
+    asMember: (ctx, fn) => run({ organizationId: ctx.organizationId }, fn),
+    asPlatform: (_ctx, fn) => run({ organizationId: null }, fn),
   };
 }

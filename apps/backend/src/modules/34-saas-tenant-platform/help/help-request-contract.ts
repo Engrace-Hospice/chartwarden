@@ -124,13 +124,17 @@ export interface ResolveHelpRequestInput {
 }
 
 export interface PlatformHelpRequestFilter {
+  /** The statuses to list; EMPTY means the live ones (open and approved): the inbox is not a permanent copy of every message ever sent. */
   readonly statuses: readonly HelpRequestStatus[];
   readonly tenantAccountId?: string;
 }
 
 /** `actor` is always the route's `writeActorOf(request)`: the organization, user and membership come from the session, never the body. */
 export interface HelpRequestService {
-  /** The tenant's own requests. Un-audited and pollable (every 60 s and on focus). */
+  /**
+   * The tenant's own requests. Un-audited and pollable (every 60 s and on focus). A page of ended requests is at most 20 rows (each
+   * row with a consent grant costs one session-summary read); `limit` above that is answered with 20 and the cursor continues.
+   */
   listForTenant(
     actor: WriteActor,
     cursor: string | undefined,
@@ -153,7 +157,11 @@ export interface HelpRequestService {
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<PlatformHelpRequestView>>;
-  /** The operator ends help: closes sessions `manual`, revokes the grant, records the tenant-visible note. */
+  /**
+   * The operator ends help: revokes the grant and closes its open sessions through the revoke cascade (close reason `grant_revoked`,
+   * the cascade's one reason for every source), and records the tenant-visible note. An `open` request (no grant yet) is resolved
+   * with the note and nothing else.
+   */
   resolve(
     actor: WriteActor,
     helpRequestId: string,

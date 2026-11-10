@@ -41,11 +41,23 @@ export interface IssueAssistGrantInput {
   readonly hours: number;
   /** `grant_reason`, e.g. `help request <id>`: ids only, never the member's message. */
   readonly reason: string;
+  /**
+   * Additive (7S): the help request the grant answers, carried on `m34.support_consent_grant.issued` as `helpRequestId`
+   * (null when absent). 7B passes the request id it has just created or is approving.
+   */
+  readonly helpRequestId?: string | null;
 }
 
 export interface IssueAssistGrantResult {
   readonly grantId: string;
   readonly expiresAt: Date;
+  /**
+   * Additive (7B): what must happen only once the caller's transaction has COMMITTED, typically the operators' "consent issued"
+   * alert. The alert engine opens its own transaction, so an alert emitted inside the caller's would outlive a rollback and name a
+   * grant that no longer exists (the help request's approval can still fail after the grant is issued). An implementation that
+   * emits an alert returns it here instead of emitting inline; the caller runs it after commit, best-effort. Absent: nothing to run.
+   */
+  readonly afterCommit?: () => Promise<void>;
 }
 
 /**
@@ -67,6 +79,11 @@ export interface RevokeGrantAndCloseSessionsInput {
   /** `revocation_reason`: ids and codes only. */
   readonly reason: string;
   readonly source: GrantRevocationSource;
+  /**
+   * Additive (7S): the acting user, handed to `LinkedHelpRequestPort.resolveForRevokedGrant` as `closedByUserId` (the contract's
+   * port wants a user while the input names a membership; an operator's membership is not a user). Null / absent for the system.
+   */
+  readonly closedByUserId?: string | null;
 }
 
 export interface RevokeGrantAndCloseSessionsResult {

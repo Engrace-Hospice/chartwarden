@@ -6,7 +6,6 @@
 // sweep). M34 owns every table touched here except the M1 spine read of the organization's slug, which the table-ownership gate
 // sanctions. Migration 1482 holds the rules the database owns (the column grants, the pinned policies, the state CHECKs and the guard
 // trigger); this file holds none of its own.
-import { PLATFORM_GRANTABLE_ROLE_KEYS } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import type { LinkedHelpRequestPort } from "@chartwarden/saas-tenant-platform";
 import {
@@ -16,6 +15,7 @@ import {
   withPlatformContext,
 } from "@chartwarden/tenancy";
 import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
+import { readIsPlatformStaff } from "../onboarding/platform-staff-reader";
 import type { PlatformHelpRequestFilter } from "./help-request-contract";
 import type {
   HelpGrantRow,
@@ -67,6 +67,7 @@ const toRow = (r: HelpRequestRecord): HelpRequestRow => ({
   closedByUserId: r.closedByUserId,
   closedAt: r.closedAt,
   closeNote: r.closeNote,
+  messagePurgedAt: r.messagePurgedAt,
 });
 
 /** `(requested_at, id) < cursor`: the rows after the last one the client saw, in (requested_at DESC, id DESC) order. */
@@ -78,6 +79,7 @@ const afterCursor = (after: HelpPageAfter | null) =>
 export function createDrizzleHelpRequestStore(
   tx: DbClient,
   now: () => Date = () => new Date(),
+  afterCommit: Array<() => Promise<void>> = [],
 ): HelpRequestStore {
   const columns = { ...getTableColumns(R), cursorTs: cursorTsOf };
 
@@ -98,16 +100,24 @@ export function createDrizzleHelpRequestStore(
       return row?.id ?? null;
     },
 
-    // The wizard's question (`wizard-store-drizzle.ts` `isPlatformStaff`): SECURITY DEFINER holder read, platform-owned roles only.
-    async isPlatformStaff(userId) {
-      const holders = await tx.execute<{ user_id: string }>(
-        sql`SELECT user_id FROM m34_platform_role_holders(ARRAY[${sql.join(
-          PLATFORM_GRANTABLE_ROLE_KEYS.map((key) => sql`${key}`),
-          sql`, `,
-        )}]::text[]) WHERE user_id = ${userId}::uuid`,
-      );
-      return holders.rows.length > 0;
+    async isActiveMember(member) {
+      const [row] = await tx
+        .select({ id: schema.memberships.id })
+        .from(schema.memberships)
+        .where(
+          and(
+            eq(schema.memberships.id, member.membershipId),
+            eq(schema.memberships.userId, member.userId),
+            eq(schema.memberships.organizationId, member.organizationId),
+            eq(schema.memberships.status, "active"),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
     },
+
+    // The wizard's question too: SECURITY DEFINER holder read, platform-owned roles only.
+    isPlatformStaff: (userId) => readIsPlatformStaff(tx, userId),
 
     async stepKeyExists(key) {
       const [row] = await tx
@@ -177,10 +187,18 @@ export function createDrizzleHelpRequestStore(
     },
 
     // Under RLS `FOR UPDATE` only sees rows the UPDATE policy admits (a live request), so an ended request is read plainly: the
-    // service answers it without writing.
+    // service answers it without writing. LOCK ORDER: the consent grant first, then the request (the port's contract): 7S's revoke
+    // marks the grant before it resolves the request, so two people ending the same consent at once queue, never deadlock.
     async findForUpdate(id) {
       const row = await byId(id);
       if (!row || (row.status !== "open" && row.status !== "approved")) return row;
+      if (row.supportConsentGrantId) {
+        await tx
+          .select({ id: GRANT.id })
+          .from(GRANT)
+          .where(eq(GRANT.id, row.supportConsentGrantId))
+          .for("update");
+      }
       await tx.select({ id: R.id }).from(R).where(eq(R.id, id)).for("update");
       return byId(id);
     },
@@ -200,6 +218,10 @@ export function createDrizzleHelpRequestStore(
         .where(and(eq(R.id, id), eq(R.status, closing.from)))
         .returning({ id: R.id });
       return updated.length > 0 ? byId(id) : null;
+    },
+
+    afterCommit: (hook) => {
+      afterCommit.push(hook);
     },
 
     async grantsById(grantIds): Promise<ReadonlyMap<string, HelpGrantRow>> {
@@ -271,6 +293,19 @@ export function createDrizzleHelpRequestStore(
         .where(and(eq(R.status, "open"), sql`${R.requestedAt} < ${olderThan}`))
         .returning({ id: R.id });
       return cancelled.length;
+    },
+
+    async purgeClosedText(retentionDays, at) {
+      // The age is judged by the database's clock, the same `now()` the guard trigger (migration 1483) reads, so the sweep never
+      // selects a row the trigger would refuse.
+      const purged = await tx.execute<{ id: string }>(sql`
+        UPDATE tenant_help_request
+           SET message = ${schema.TENANT_HELP_REQUEST_PURGED_MESSAGE}, close_note = NULL, message_purged_at = ${at}, updated_at = ${at}
+         WHERE status IN ('resolved', 'cancelled')
+           AND message_purged_at IS NULL
+           AND closed_at <= now() - make_interval(days => ${retentionDays})
+        RETURNING id`);
+      return purged.rows.length;
     },
 
     async resolveGrantEnded(at) {
@@ -346,31 +381,41 @@ export function createDrizzleHelpRequestRunner(
   deps: DrizzleHelpRequestRunnerDeps,
 ): HelpRequestRunner {
   const now = deps.now ?? (() => new Date());
+  /** After the transaction COMMITTED, run what was registered for after it (each hook is best-effort and owns its errors). */
+  const runAfterCommit = async (hooks: readonly (() => Promise<void>)[]): Promise<void> => {
+    for (const hook of hooks) await hook();
+  };
   return {
-    asMember<T>(
+    async asMember<T>(
       ctx: { readonly organizationId: string; readonly userId: string },
       fn: (store: HelpRequestStore) => Promise<T>,
     ): Promise<T> {
-      return withOrgContext<DbClient, T>(
+      const hooks: Array<() => Promise<void>> = [];
+      const result = await withOrgContext<DbClient, T>(
         deps.db,
         { organizationId: ctx.organizationId, userId: ctx.userId },
-        (tx) => fn(createDrizzleHelpRequestStore(tx, now)),
+        (tx) => fn(createDrizzleHelpRequestStore(tx, now, hooks)),
       );
+      await runAfterCommit(hooks);
+      return result;
     },
-    asPlatform<T>(
+    async asPlatform<T>(
       ctx: { readonly userId: string | null; readonly reason: string },
       fn: (store: HelpRequestStore) => Promise<T>,
     ): Promise<T> {
-      return withPlatformContext<DbClient, T>(
+      const hooks: Array<() => Promise<void>> = [];
+      const result = await withPlatformContext<DbClient, T>(
         deps.platformDb,
         { jobId: deps.platformJobId, reason: ctx.reason, crossTenant: true },
         deps.auditBypass,
         async (tx) => {
           // The platform transaction acts for this operator: the row-audit trigger then names the person, not a NULL actor.
           await tx.execute(sql`SELECT set_config('app.user_id', ${ctx.userId ?? ""}, true)`);
-          return fn(createDrizzleHelpRequestStore(tx, now));
+          return fn(createDrizzleHelpRequestStore(tx, now, hooks));
         },
       );
+      await runAfterCommit(hooks);
+      return result;
     },
   };
 }
