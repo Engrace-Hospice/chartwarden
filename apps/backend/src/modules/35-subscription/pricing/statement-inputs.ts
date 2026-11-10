@@ -191,8 +191,9 @@ export async function loadContractFacts(
 /**
  * The same for EVERY org that has a contract in scope, in the one transaction the caller already holds: the sweep's single platform
  * read (every platform runner call is an audited cross-tenant bypass, so the hourly sweep asks once, not twice per org). An org that is
- * not live is left out. An org whose own data is refused (a contract on a plan with no prices) maps to null instead of failing every
- * other org's read: the per-org path reads it again and raises the real error where the sweep logs it. Reads only; the per-org write
+ * not live is left out. Each org is read in a SAVEPOINT and whatever fails there (an aborted-statement database error, a domain refusal
+ * such as a contract on a plan with no prices, a JS error on odd data) maps that org to null instead of failing every other org's read:
+ * the per-org path reads it again and raises the real error where the sweep logs it with the org's id. Reads only; the per-org write
  * path re-reads under its own lock.
  */
 export async function loadContractFactsByOrg(
@@ -208,10 +209,12 @@ export async function loadContractFactsByOrg(
   const facts = new Map<string, ContractFacts[] | null>();
   for (const [organizationId, records] of byOrg) {
     try {
-      const orgFacts = await factsOfRecords(tx, goLive, organizationId, records, at);
+      const orgFacts = await tx.transaction((savepoint) =>
+        factsOfRecords(savepoint as unknown as WriteTx, goLive, organizationId, records, at),
+      );
       if (orgFacts.length > 0) facts.set(organizationId, orgFacts);
-    } catch (error) {
-      if (!(error instanceof ChartWardenError)) throw error; // a database error aborted the transaction: nothing after it can be read
+    } catch {
+      // not swallowed: the per-org path (runStatementsForOrg without preloaded facts) repeats this read and throws, and the fan-out logs it
       facts.set(organizationId, null);
     }
   }

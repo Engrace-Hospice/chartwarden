@@ -175,6 +175,28 @@ describe("runStatementSweep: platform transactions are audited bypasses", () => 
     expect(vi.mocked(loadContractFacts)).toHaveBeenCalledTimes(1);
   });
 
+  it("one org that could not be read does not stop the others: they are still processed, and only that org is reported", async () => {
+    const h = harness();
+    vi.mocked(loadContractFactsByOrg).mockResolvedValue(
+      new Map<string, ContractFacts[] | null>([
+        ["broken", null],
+        ["settled-1", [canceledAndSettled("settled-1")]],
+        ["settled-2", [canceledAndSettled("settled-2")]],
+      ]),
+    );
+    vi.mocked(loadContractFacts).mockRejectedValue(new TypeError("odd data"));
+
+    const failure = await runStatementSweep(h.deps).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect((failure as AggregateError).errors).toHaveLength(1);
+    expect(h.netReads.sort()).toEqual(["settled-1", "settled-2"]); // both healthy orgs were processed
+    expect(h.log).toHaveBeenCalledTimes(1);
+    expect(h.log.mock.calls[0]?.[1]).toMatchObject({ organizationId: "broken" });
+  });
+
   it("runStatementsForOrg given the facts opens no platform transaction when there is nothing to write", async () => {
     const h = harness();
     const outcomes = await runStatementsForOrg(h.deps, "settled-1", [
