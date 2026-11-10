@@ -99,7 +99,14 @@ const lockOrgStatements = (tx: WriteTx, organizationId: string) =>
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m35-statement:${organizationId}`}::text, 0))`,
   );
 
-/** M25's collections for the whole range the run may touch, by payment month: ONE call, read under the org's RLS before the write. */
+/**
+ * M25's collections for the whole range the run may touch, by payment month: ONE call, read under the org's RLS before the write.
+ * The figures are the ORG's, and every contract of the org is offered the same month: that is only correct while two contracts of one
+ * org never have live days in the same month. It holds today: a contract is signed only while the tenant is provisioning or
+ * onboarding (TENANT_NOT_ONBOARDING otherwise), the tenant lifecycle graph has no edge back into `onboarding` (only `provisioned`,
+ * from `provisioning`), and a month with no live day reads no collections (a settlement month). If a way back to onboarding is ever
+ * added, scope the collections to each contract's live period here before it ships.
+ */
 async function readCollectionsByMonth(
   deps: StatementDeps,
   organizationId: string,
