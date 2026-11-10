@@ -1623,17 +1623,29 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
 }
 
 /**
- * The values of one option: `-o FILE`, `-oFILE`, `-sSo FILE` (a letter in a cluster takes the rest of the word,
- * or the next word), `--output FILE` and `--output=FILE`. One pass over the arguments.
+ * A long option and the fewest characters of it (after `--`) that GNU getopt still reads as it: the shortest
+ * prefix no other option of the same tool starts with. A shorter prefix is ambiguous and the tool refuses it.
  */
-function optionValues(args: readonly string[], short: string, long: readonly string[]): string[] {
+type LongOption = readonly [name: string, minChars: number];
+
+/**
+ * The values of one option: `-o FILE`, `-oFILE`, `-sSo FILE` (a letter in a cluster takes the rest of the word,
+ * or the next word), `--output FILE`, `--output=FILE` and an unambiguous abbreviation of it (`--out FILE`).
+ * One pass over the arguments.
+ */
+function optionValues(
+  args: readonly string[],
+  short: string,
+  long: readonly LongOption[],
+): string[] {
   const out: string[] = [];
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
     let value: string | undefined;
     if (a.startsWith("--")) {
       const eq = a.indexOf("=");
-      if (long.includes(a.slice(2, eq < 0 ? undefined : eq)))
+      const given = a.slice(2, eq < 0 ? undefined : eq);
+      if (long.some(([name, min]) => given.length >= min && name.startsWith(given)))
         value = eq < 0 ? args[++k] : a.slice(eq + 1);
     } else if (a.startsWith("-")) {
       for (let p = 1; p < a.length && /[A-Za-z]/.test(a[p] as string); p++) {
@@ -1647,22 +1659,26 @@ function optionValues(args: readonly string[], short: string, long: readonly str
   return out;
 }
 
-/** Programs that write the file an option names: `curl -o`, `wget -O`/`-o`, `sort -o`, `base64 -o`. */
+/**
+ * Programs that write the file an option names: `curl -o`, `wget -O`/`-o`/`-a`, `sort -o`, `base64 -o`, each with
+ * its short letter and its long spelling. curl's `--output` shares every shorter prefix with `--output-dir`, and
+ * wget's `--output-document` and `--output-file` share `--output-`, so those are ambiguous until the last letter.
+ */
 const OUTPUT_OPTIONS: ReadonlyMap<
   string,
-  ReadonlyArray<readonly [string, readonly string[]]>
+  ReadonlyArray<readonly [string, readonly LongOption[]]>
 > = new Map([
-  ["curl", [["o", ["output"]]]],
+  ["curl", [["o", [["output", 6]]]]],
   [
     "wget",
     [
-      ["O", ["output-document"]],
-      ["o", ["output-file"]],
-      ["a", ["append-output"]],
+      ["O", [["output-document", 8]]],
+      ["o", [["output-file", 8]]],
+      ["a", [["append-output", 2]]],
     ],
   ],
-  ["sort", [["o", ["output"]]]],
-  ["base64", [["o", ["output"]]]],
+  ["sort", [["o", [["output", 1]]]]],
+  ["base64", [["o", [["output", 1]]]]],
 ]);
 
 /** Compressors that replace their input with the compressed (or decompressed) file unless told to print it. */

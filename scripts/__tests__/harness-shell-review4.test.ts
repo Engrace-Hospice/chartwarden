@@ -190,3 +190,41 @@ describe("a whole-tree read is judged from every directory the command may be ru
     expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });
+
+// GNU getopt reads any unambiguous prefix of a long option as the option, so `sort --o FILE` writes FILE as
+// `sort --output FILE` does. A prefix two options of the same tool share is ambiguous (the tool refuses it), so it
+// writes nothing: wget's `--output-document` and `--output-file`, curl's `--output` and `--output-dir`.
+describe("an abbreviated long output option writes its file as the full spelling does", () => {
+  it.each([
+    "sort --out=compliance/controls.yaml /tmp/x",
+    "sort --o compliance/controls.yaml /tmp/x",
+    "sort --ou compliance/controls.yaml /tmp/x",
+    "sort --output=compliance/controls.yaml /tmp/x",
+    "wget --output-d compliance/controls.yaml https://example.com/x",
+    "wget --output-doc=compliance/controls.yaml https://example.com/x",
+    "wget --output-document=compliance/controls.yaml https://example.com/x",
+    "wget --output-f compliance/controls.yaml https://example.com/x",
+    "wget --ap compliance/controls.yaml https://example.com/x",
+    "base64 --out compliance/controls.yaml -i /tmp/x",
+    "base64 --o compliance/controls.yaml -i /tmp/x",
+    "curl --output compliance/controls.yaml https://example.com/x",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "sort -o /tmp/x /tmp/y",
+    "sort --out=/tmp/x /tmp/y",
+    "sort --reverse /tmp/y",
+    "sort --ou /tmp/x /tmp/y",
+    "wget -qO- https://example.com/x",
+    "wget --output-d /tmp/x https://example.com/x",
+    "wget --output compliance/controls.yaml https://example.com/x",
+    "wget --output- compliance/controls.yaml https://example.com/x",
+    "curl -o /tmp/x https://example.com/x",
+    "curl --out compliance/controls.yaml https://example.com/x",
+    "curl --output-dir compliance https://example.com/x",
+    "base64 -i /tmp/x",
+  ])("allows the everyday or ambiguous %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});
