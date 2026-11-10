@@ -11,7 +11,9 @@
 // unauthenticated routes (no org scope to key on). A first request records a `pending`
 // lock then captures its response on the way out (onSend) and marks it `complete`. A replay
 // with the SAME body returns the cached response; a DIFFERENT body is a 409
-// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 CONFLICT.
+// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 CONFLICT. A response that says the write did not
+// happen and should be retried (a 5xx, or the deadlock/serialization 409 CONCURRENT_UPDATE) is NOT cached: the claim is
+// released instead, so a same-key retry runs the write rather than replaying the failure for the whole TTL.
 import {
   type IdempotencyRecord,
   type IdempotencyStore,
