@@ -22,8 +22,9 @@
 // claim, and also whenever there is no tracker to ask or the ambient one is not this request's (the async context was lost, so
 // its writes were not seen). A SELECT that calls a function counts as a write unless the function is a known read-only
 // builtin. Released, the same key runs again once the store is reachable; if the release itself fails (a database outage that
-// caused the 5xx usually breaks it too) the key stays `pending` and a retry answers 409 in flight until the record's 24h TTL ends. What the tracker cannot see (an outbound call, a queue or object-store
-// write made directly in a route) is not counted: those belong behind the outbox, after the commit.
+// caused the 5xx usually breaks it too) the key stays `pending` and a retry answers 409 in flight until the record's 24h TTL
+// ends. What the tracker cannot see (an outbound call, a queue or object-store write made directly in a route) is not counted:
+// those belong behind the outbox, after the commit.
 import {
   createCommitTracker,
   currentCommitTracker,
