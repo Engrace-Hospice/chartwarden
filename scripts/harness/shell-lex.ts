@@ -627,9 +627,12 @@ function commandFollows(text: string, from: number): boolean {
 
 const count = (text: string, ch: string): number => text.split(ch).length - 1;
 
-/** Drop a leading `(`/`{`, and trailing `)`/`}` that close a group opened elsewhere (not `$(date)` or `{a,b}`). */
+/** `function name` of `function name { … }` and `function name() { … }`: bash and zsh's way to define a function. */
+const FUNCTION_HEADER = /^\s*function\s+[^\s(){};&|<>]+/;
+
+/** Drop a function header, a leading `(`/`{`, and trailing `)`/`}` that close a group opened elsewhere (not `$(date)` or `{a,b}`). */
 function ungroup(segment: string): string {
-  const t = segment.replace(/^[\s({]+/, "");
+  const t = segment.replace(FUNCTION_HEADER, "").replace(/^[\s({]+/, "");
   let paren = count(t, ")") - count(t, "(");
   let brace = count(t, "}") - count(t, "{");
   let end = t.length;

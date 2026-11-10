@@ -1179,6 +1179,15 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
     const v = classifySegment(part.text, parsed, ctx, here);
     if (v) verdicts.push(v);
+    // `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot
+    // name. The literal rest of the word is judged as the program it would be (a deny stands), and a human decides.
+    // A word that is one substitution and nothing else, with no arguments, is the `eval "$(ssh-agent -s)"` idiom.
+    const guess = dynamicName(parsed.prog) ? withoutExpansions(parsed.prog) : null;
+    if (guess !== null && (guess !== "" || parsed.args.length > 0)) {
+      const named =
+        guess === "" ? null : classifySegment(part.text, { ...parsed, prog: guess }, ctx, here);
+      verdicts.push(named ?? ask(DYNAMIC_PROGRAM_REASON));
+    }
     // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`, `find -exec …`.
     if (parsed.prog === "eval") {
       verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
@@ -2103,6 +2112,9 @@ function namesFileIn(
   return false;
 }
 
+/** A host or user@host word built by an expansion: `$(echo h)`, `` `echo h` ``, `$HOST`, `${HOST}`. */
+const DYNAMIC_HOST = /\$\(|`|\$\{?[A-Za-z_]/;
+
 // A secret file named by something the guard cannot evaluate: `cat $(printf '.%s' env)`.
 const FILE_READER =
   /^(cat|head|tail|less|more|sed|awk|gawk|grep|egrep|fgrep|base64|xxd|od|strings|tac|nl|bat|hexdump|cut|sort|diff)$/;
@@ -2120,6 +2132,16 @@ const VALUE_FLAGS: ReadonlyMap<string, RegExp> = new Map([
 const DYNAMIC_WORD = /\$\(|`|\$\{[^}]*[^A-Za-z0-9_}]/;
 const DYNAMIC_PART = /\$\([^()]*\)|`[^`]*`|\$\{[^{}]*\}/g;
 const MAX_MASK_PASSES = 5;
+
+/** The word with every `$( )`, backtick pair and `${ }` taken out: what is written literally. */
+function withoutExpansions(word: string): string {
+  let rest = word;
+  for (let i = 0; i < MAX_MASK_PASSES; i++) rest = rest.replace(DYNAMIC_PART, "");
+  return rest;
+}
+
+const DYNAMIC_PROGRAM_REASON =
+  "The command's name is built by a substitution or an expansion, so the guard cannot tell which program runs. Name the program. A human decides.";
 
 /** Is the FILE NAME part of this word built by an expansion (so the guard cannot know which file it is)? */
 function dynamicName(word: string): boolean {
@@ -2500,6 +2522,11 @@ function classifySegment(
         (target ?? "").replace(/^[^/]*@/, ""),
       );
     const host = m?.[1] ?? "";
+    if (prog === "ssh" && target !== undefined && DYNAMIC_HOST.test(target)) {
+      return ask(
+        "`ssh` to a host that a variable or command substitution builds, so the guard cannot tell whether it is production. Name the host.",
+      );
+    }
     if (host && !isLocalHost(host)) {
       return ask(
         `Remote access to \`${echo(host)}\`. Production hosts hold PHI; confirm this is intended and that no PHI will enter the session.`,
