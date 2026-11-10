@@ -209,7 +209,7 @@ export async function runPatientCensusForOrg(
     }).catch((auditErr) =>
       deps.log?.("m35.patient-census audit failed", {
         organizationId,
-        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        err: auditErr,
       }),
     );
     throw err;
