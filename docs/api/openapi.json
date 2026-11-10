@@ -50924,6 +50924,7 @@
                     "membershipId",
                     "displayName",
                     "roles",
+                    "providerEntityIds",
                     "locationIds",
                     "orgWidePatientScope",
                     "isAdmin",
@@ -50974,6 +50975,12 @@
                       ]
                     },
                     "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "providerEntityIds": {
                       "type": "array",
                       "items": {
                         "type": "string"
@@ -81379,6 +81386,160 @@
         }
       }
     },
+    "/api/v1/billing/claims/in-doubt-submissions": {
+      "get": {
+        "operationId": "getApiV1BillingClaimsIndoubtsubmissions",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Submission-first, tenant/provider-scoped M23 transport uncertainty queue. Each row is an actual durable claim submission attempt with outcome in doubt; the request may have reached the payer. Lower-bound counts describe the loaded page only; no retry is offered.",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "hasMore",
+                    "nextCursor",
+                    "count"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "submissionId",
+                          "attemptIndex",
+                          "claimId",
+                          "claimControlNumber",
+                          "providerEntityId",
+                          "reasonCode",
+                          "occurredAt",
+                          "status",
+                          "payer"
+                        ],
+                        "properties": {
+                          "submissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "attemptIndex": {
+                            "type": "integer"
+                          },
+                          "claimId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimControlNumber": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "status": {
+                            "const": "in_doubt",
+                            "type": "string"
+                          },
+                          "payer": {
+                            "const": "Medicare",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "lower_bound",
+                          "type": "string"
+                        },
+                        "value": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/clearinghouse-attempts/resolve": {
       "post": {
         "operationId": "postApiV1BillingClearinghouseattemptsResolve",
@@ -85612,6 +85773,160 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/submissions/in-doubt": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialSubmissionsIndoubt",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Submission-first M41 transport uncertainty queue. Enforces provider and patient caseload scope; the request may have reached the payer. Lower-bound counts describe loaded authorized rows only; no retry is offered.",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "hasMore",
+                    "nextCursor",
+                    "count"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "submissionId",
+                          "claimId",
+                          "claimControlNumber",
+                          "providerEntityId",
+                          "attemptCount",
+                          "reasonCode",
+                          "occurredAt",
+                          "status",
+                          "payer"
+                        ],
+                        "properties": {
+                          "submissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimControlNumber": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "attemptCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "status": {
+                            "const": "in_doubt",
+                            "type": "string"
+                          },
+                          "payer": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "lower_bound",
+                          "type": "string"
+                        },
+                        "value": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -94169,6 +94484,1547 @@
                           },
                           "amountCents": {
                             "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/operations/investigations": {
+      "get": {
+        "operationId": "getApiV1BillingOperationsInvestigations",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "List tenant/provider-authorized M23/M41 operational investigations with per-owner source revalidation and lower-bound page counts",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "investigating",
+                  "type": "string"
+                },
+                {
+                  "const": "waiting_external",
+                  "type": "string"
+                },
+                {
+                  "const": "resolved",
+                  "type": "string"
+                },
+                {
+                  "const": "closed",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "assigned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "me",
+                  "type": "string"
+                },
+                {
+                  "const": "unassigned",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore",
+                    "count",
+                    "countScope"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "providerEntityId",
+                          "sourceModule",
+                          "sourceRecordId",
+                          "sourceAttemptId",
+                          "sourceIdentity",
+                          "sourceReasonCode",
+                          "sourceOccurredAt",
+                          "status",
+                          "resolutionOutcome",
+                          "assignedToMembershipId",
+                          "createdByMembershipId",
+                          "createdAt",
+                          "updatedAt",
+                          "closedAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "sourceModule": {
+                            "anyOf": [
+                              {
+                                "const": "M23",
+                                "type": "string"
+                              },
+                              {
+                                "const": "M41",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sourceRecordId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "sourceAttemptId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "sourceIdentity": {
+                            "type": "string"
+                          },
+                          "sourceReasonCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceOccurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "investigating",
+                                "type": "string"
+                              },
+                              {
+                                "const": "waiting_external",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resolutionOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assignedToMembershipId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdByMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "lower_bound",
+                          "type": "string"
+                        },
+                        "value": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "countScope": {
+                      "const": "authorized loaded cases",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BillingOperationsInvestigations",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Open an audited read-only investigation for an exact authorized M23/M41 in-doubt submission attempt",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "providerEntityId",
+                    "sourceModule",
+                    "sourceRecordId",
+                    "sourceAttemptId",
+                    "sourceIdentity",
+                    "sourceReasonCode",
+                    "sourceOccurredAt",
+                    "status",
+                    "resolutionOutcome",
+                    "assignedToMembershipId",
+                    "createdByMembershipId",
+                    "createdAt",
+                    "updatedAt",
+                    "closedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceModule": {
+                      "anyOf": [
+                        {
+                          "const": "M23",
+                          "type": "string"
+                        },
+                        {
+                          "const": "M41",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sourceRecordId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceAttemptId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceIdentity": {
+                      "type": "string"
+                    },
+                    "sourceReasonCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceOccurredAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "investigating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "waiting_external",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "resolutionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedToMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "sourceModule",
+                  "submissionId"
+                ],
+                "properties": {
+                  "sourceModule": {
+                    "anyOf": [
+                      {
+                        "const": "M23",
+                        "type": "string"
+                      },
+                      {
+                        "const": "M41",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "submissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/operations/investigations/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingOperationsInvestigationsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Read one tenant/provider-scoped investigation, revalidated against its M23/M41 source, notes, and append-only history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "investigation",
+                    "source",
+                    "history",
+                    "notes"
+                  ],
+                  "properties": {
+                    "investigation": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "organizationId",
+                        "providerEntityId",
+                        "sourceModule",
+                        "sourceRecordId",
+                        "sourceAttemptId",
+                        "sourceIdentity",
+                        "sourceReasonCode",
+                        "sourceOccurredAt",
+                        "status",
+                        "resolutionOutcome",
+                        "assignedToMembershipId",
+                        "createdByMembershipId",
+                        "createdAt",
+                        "updatedAt",
+                        "closedAt",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "sourceModule": {
+                          "anyOf": [
+                            {
+                              "const": "M23",
+                              "type": "string"
+                            },
+                            {
+                              "const": "M41",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sourceRecordId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "sourceAttemptId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "sourceIdentity": {
+                          "type": "string"
+                        },
+                        "sourceReasonCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "sourceOccurredAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "investigating",
+                              "type": "string"
+                            },
+                            {
+                              "const": "waiting_external",
+                              "type": "string"
+                            },
+                            {
+                              "const": "resolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "closed",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "resolutionOutcome": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assignedToMembershipId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdByMembershipId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "source": {
+                      "type": "object",
+                      "required": [
+                        "sourceModule",
+                        "submissionId",
+                        "claimId",
+                        "providerEntityId",
+                        "attempt",
+                        "reference",
+                        "payer",
+                        "reasonCode",
+                        "occurredAt",
+                        "sourceHref"
+                      ],
+                      "properties": {
+                        "sourceModule": {
+                          "anyOf": [
+                            {
+                              "const": "M23",
+                              "type": "string"
+                            },
+                            {
+                              "const": "M41",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "submissionId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "claimId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "attempt": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "reference": {
+                          "type": "string"
+                        },
+                        "payer": {
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "occurredAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "sourceHref": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "event_type",
+                          "actor_membership_id",
+                          "previous_status",
+                          "new_status",
+                          "from_assignee_membership_id",
+                          "to_assignee_membership_id",
+                          "reason",
+                          "correlation_id",
+                          "occurredAt"
+                        ],
+                        "properties": {
+                          "event_type": {
+                            "type": "string"
+                          },
+                          "actor_membership_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "previous_status": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "new_status": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "from_assignee_membership_id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "to_assignee_membership_id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correlation_id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "notes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "authorMembershipId",
+                          "body",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "authorMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/operations/investigations/{id}/assignment": {
+      "post": {
+        "operationId": "postApiV1BillingOperationsInvestigationsByIdAssignment",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Assign or unassign an eligible investigator using an optimistic version and audited reason",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "providerEntityId",
+                    "sourceModule",
+                    "sourceRecordId",
+                    "sourceAttemptId",
+                    "sourceIdentity",
+                    "sourceReasonCode",
+                    "sourceOccurredAt",
+                    "status",
+                    "resolutionOutcome",
+                    "assignedToMembershipId",
+                    "createdByMembershipId",
+                    "createdAt",
+                    "updatedAt",
+                    "closedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceModule": {
+                      "anyOf": [
+                        {
+                          "const": "M23",
+                          "type": "string"
+                        },
+                        {
+                          "const": "M41",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sourceRecordId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceAttemptId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceIdentity": {
+                      "type": "string"
+                    },
+                    "sourceReasonCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceOccurredAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "investigating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "waiting_external",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "resolutionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedToMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "assignedToMembershipId",
+                  "version",
+                  "reason"
+                ],
+                "properties": {
+                  "assignedToMembershipId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "version": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/operations/investigations/{id}/notes": {
+      "post": {
+        "operationId": "postApiV1BillingOperationsInvestigationsByIdNotes",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append a bounded non-source-mutating operational investigation note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "authorMembershipId",
+                    "body",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "authorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/operations/investigations/{id}/transitions": {
+      "post": {
+        "operationId": "postApiV1BillingOperationsInvestigationsByIdTransitions",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append an audited operational status transition; resolution requires its separate permission and never resolves source submission uncertainty",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "providerEntityId",
+                    "sourceModule",
+                    "sourceRecordId",
+                    "sourceAttemptId",
+                    "sourceIdentity",
+                    "sourceReasonCode",
+                    "sourceOccurredAt",
+                    "status",
+                    "resolutionOutcome",
+                    "assignedToMembershipId",
+                    "createdByMembershipId",
+                    "createdAt",
+                    "updatedAt",
+                    "closedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceModule": {
+                      "anyOf": [
+                        {
+                          "const": "M23",
+                          "type": "string"
+                        },
+                        {
+                          "const": "M41",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sourceRecordId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceAttemptId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceIdentity": {
+                      "type": "string"
+                    },
+                    "sourceReasonCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceOccurredAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "investigating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "waiting_external",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "resolutionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedToMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "status",
+                  "version",
+                  "reason"
+                ],
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "investigating",
+                        "type": "string"
+                      },
+                      {
+                        "const": "waiting_external",
+                        "type": "string"
+                      },
+                      {
+                        "const": "resolved",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "version": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "verified_no_action_required",
+                        "type": "string"
+                      },
+                      {
+                        "const": "referred_to_source_workflow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "waiting_for_external_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "duplicate_investigation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unable_to_resolve",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/operations/investigations/investigators": {
+      "get": {
+        "operationId": "getApiV1BillingOperationsInvestigationsInvestigators",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "List active, provider-authorized investigators with Billing Operations triage permission",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceModule",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "M23",
+                  "type": "string"
+                },
+                {
+                  "const": "M41",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "displayName"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
                           }
                         }
                       }
@@ -290251,6 +292107,15 @@
         "parameters": [
           {
             "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
             "in": "query",
             "required": false,
             "schema": {

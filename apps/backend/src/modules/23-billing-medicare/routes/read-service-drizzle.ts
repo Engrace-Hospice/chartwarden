@@ -50,6 +50,8 @@ import type {
   ClaimSummaryView,
   ClaimValidationOverviewView,
   EligibilityCheckView,
+  InDoubtSubmissionFilter,
+  InDoubtSubmissionView,
   M23ReadRouteService,
   MacCredentialView,
   MetricsFilter,
@@ -366,6 +368,130 @@ export function buildDrizzleM23ReadService(
   };
 
   return {
+    async listInDoubtSubmissions(actor, filter: InDoubtSubmissionFilter, cursor, limit) {
+      const size = Math.min(Math.max(limit ?? 30, 1), 100);
+      const after = decodeKeysetCursor(actor.organizationId, cursor, "instant");
+      return read(actor, async (tx) => {
+        const S = schema.claimSubmission;
+        const C = schema.claim;
+        const rows = await tx
+          .select({
+            submissionId: S.id,
+            attemptIndex: S.attemptIndex,
+            claimId: C.id,
+            claimControlNumber: C.claimControlNumber,
+            providerEntityId: S.providerEntityId,
+            reasonCode: S.dispatchReasonCode,
+            occurredAt: S.dispatchStartedAt,
+            createdAt: S.createdAt,
+            sortTs: sql<string>`${S.dispatchStartedAt}::text`,
+          })
+          .from(S)
+          .innerJoin(
+            C,
+            and(
+              eq(C.id, S.claimId),
+              eq(C.organizationId, actor.organizationId),
+              eq(C.providerEntityId, S.providerEntityId),
+            ),
+          )
+          .where(
+            and(
+              eq(S.organizationId, actor.organizationId),
+              eq(S.kind, "claim_837i"),
+              eq(S.dispatchState, "in_doubt"),
+              filter.providerEntityId ? eq(S.providerEntityId, filter.providerEntityId) : undefined,
+              filter.providerEntityScope
+                ? filter.providerEntityScope.length
+                  ? inArray(C.providerEntityId, [...filter.providerEntityScope])
+                  : sql`false`
+                : undefined,
+              after
+                ? sql`(${S.dispatchStartedAt}, ${S.id}) < (${after.a}::timestamptz, ${after.id}::uuid)`
+                : undefined,
+            ),
+          )
+          .orderBy(desc(S.dispatchStartedAt), desc(S.id))
+          .limit(size + 1);
+        const hasMore = rows.length > size;
+        const kept = hasMore ? rows.slice(0, size) : rows;
+        const last = kept.at(-1);
+        const items: InDoubtSubmissionView[] = kept.map((row) => ({
+          submissionId: row.submissionId,
+          attemptIndex: row.attemptIndex,
+          claimId: row.claimId,
+          claimControlNumber: row.claimControlNumber,
+          providerEntityId: row.providerEntityId,
+          reasonCode: row.reasonCode,
+          occurredAt: isoReq(row.occurredAt ?? row.createdAt),
+          status: "in_doubt",
+          payer: "Medicare",
+        }));
+        return {
+          items,
+          hasMore,
+          nextCursor:
+            hasMore && last
+              ? encodeCursor(actor.organizationId, { a: last.sortTs, id: last.submissionId })
+              : null,
+          count: { kind: "lower_bound", value: items.length },
+        } satisfies CursorPage<InDoubtSubmissionView> & {
+          count: { kind: "lower_bound"; value: number };
+        };
+      });
+    },
+    async getInDoubtSubmission(actor, submissionId) {
+      return read(actor, async (tx) => {
+        const S = schema.claimSubmission;
+        const C = schema.claim;
+        const [row] = await tx
+          .select({
+            submissionId: S.id,
+            attemptIndex: S.attemptIndex,
+            claimId: C.id,
+            claimControlNumber: C.claimControlNumber,
+            providerEntityId: S.providerEntityId,
+            reasonCode: S.dispatchReasonCode,
+            occurredAt: S.dispatchStartedAt,
+            createdAt: S.createdAt,
+          })
+          .from(S)
+          .innerJoin(
+            C,
+            and(
+              eq(C.id, S.claimId),
+              eq(C.organizationId, actor.organizationId),
+              eq(C.providerEntityId, S.providerEntityId),
+            ),
+          )
+          .where(
+            and(
+              eq(S.id, submissionId),
+              eq(S.organizationId, actor.organizationId),
+              eq(S.kind, "claim_837i"),
+              eq(S.dispatchState, "in_doubt"),
+              actor.providerEntityScope
+                ? actor.providerEntityScope.length
+                  ? inArray(C.providerEntityId, [...actor.providerEntityScope])
+                  : sql`false`
+                : undefined,
+            ),
+          )
+          .limit(1);
+        if (!row) throw new NotFoundError("in-doubt submission not found");
+        return {
+          submissionId: row.submissionId,
+          attemptIndex: row.attemptIndex,
+          claimId: row.claimId,
+          claimControlNumber: row.claimControlNumber,
+          providerEntityId: row.providerEntityId,
+          reasonCode: row.reasonCode,
+          occurredAt: isoReq(row.occurredAt ?? row.createdAt),
+          status: "in_doubt",
+          payer: "Medicare",
+        } satisfies InDoubtSubmissionView;
+      });
+    },
     async listClaims(actor, filter: ClaimListFilter, cursor, limit) {
       const pageOf = (from: string | undefined) =>
         read(actor, (tx) =>
@@ -407,10 +533,18 @@ export function buildDrizzleM23ReadService(
         items.push(...decorated.filter((c) => c.attention?.flags.includes(flag)));
         from = page.nextCursor ?? undefined;
         if (!page.hasMore || !from) {
-          return { items: await withValidation(actor, items), nextCursor: null, hasMore: false };
+          return {
+            items: await withValidation(actor, items),
+            nextCursor: null,
+            hasMore: false,
+          };
         }
         if (items.length >= wanted || scanned >= ATTENTION_SCAN_MAX_CLAIMS) {
-          return { items: await withValidation(actor, items), nextCursor: from, hasMore: true };
+          return {
+            items: await withValidation(actor, items),
+            nextCursor: from,
+            hasMore: true,
+          };
         }
       }
     },

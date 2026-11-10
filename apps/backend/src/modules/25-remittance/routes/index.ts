@@ -56,6 +56,7 @@ import type { AdrReadinessService } from "./adr-readiness-service";
 import type { AdrService } from "./adr-service";
 import type { AuditRequestService } from "./audit-request-service";
 import type { BeneficiaryAppealService } from "./beneficiary-appeal-service";
+import type { BillingOperationsInvestigationService } from "./billing-operations-investigations";
 import type { CaseViewService } from "./case-view-service";
 import type { DenialRouteService } from "./denial-route-service";
 import type { LaterTierService } from "./later-tier-service";
@@ -83,6 +84,7 @@ export interface M25RouteServices {
   readonly ingestService?: M25IngestService;
   /** Optional tenant-scoped read-only consumer for encrypted Claim.MD staging details. */
   readonly claimMdEraReviewService?: ClaimMdEraReviewService;
+  readonly billingOperationsInvestigationService?: BillingOperationsInvestigationService;
   /** ADR intake + MAC rules (milestone 2a); the ADR routes mount only when supplied. */
   readonly adrService?: AdrService;
   /** Non-response routing + MAC reopenings (milestone 3); the routes mount only when both are supplied. */

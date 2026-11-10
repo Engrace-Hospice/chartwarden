@@ -95,6 +95,31 @@ export const ClaimListQuerySchema = Type.Object(
   },
   { additionalProperties: false },
 );
+export const InDoubtSubmissionListQuerySchema = Type.Object(
+  {
+    providerEntityId: uuid(),
+    ...pageQuery({ max: 100 }),
+  },
+  { additionalProperties: false },
+);
+export const InDoubtSubmissionListResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      submissionId: uuid(),
+      claimId: uuid(),
+      claimControlNumber: Type.String(),
+      providerEntityId: uuid(),
+      attemptCount: Type.Integer({ minimum: 0 }),
+      reasonCode: Type.Union([Type.String(), Type.Null()]),
+      occurredAt: Type.String({ format: "date-time" }),
+      status: Type.Literal("in_doubt"),
+      payer: Type.String(),
+    }),
+  ),
+  hasMore: Type.Boolean(),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  count: Type.Object({ kind: Type.Literal("lower_bound"), value: Type.Integer({ minimum: 0 }) }),
+});
 export const PlanListQuerySchema = Type.Object(
   { providerEntityId: uuid() },
   { additionalProperties: false },

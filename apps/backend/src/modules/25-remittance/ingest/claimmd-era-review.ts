@@ -559,6 +559,7 @@ export interface ClaimMdEraReviewService {
     actor: M25ReadActor,
     filters: {
       providerEntityId?: string;
+      locationId?: string;
       state?: string;
       payer?: string;
       fromDate?: string;
@@ -1310,6 +1311,7 @@ export function buildDrizzleClaimMdEraReviewService(
           actor.providerEntityScope,
           filters.providerEntityId,
         ),
+        filters.locationId ? eq(STAGE.locationId, filters.locationId) : undefined,
         filters.state ? eq(STAGE.state, filters.state) : undefined,
         from ? gte(STAGE.createdAt, from) : undefined,
         to ? lt(STAGE.createdAt, new Date(to.getTime() + 86_400_000)) : undefined,

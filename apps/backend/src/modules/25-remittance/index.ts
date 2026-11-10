@@ -75,6 +75,12 @@ export {
   type ClaimMdEraRecoveryRequest,
 } from "./ingest/claimmd-era-recovery";
 export { registerClaimMdEraReviewRoutes } from "./routes/claimmd-era-review.routes";
+export {
+  BillingOperationsInvestigationService,
+  type BillingInvestigationPorts,
+  type BillingInvestigationSource,
+  type BillingInvestigationActor,
+} from "./routes/billing-operations-investigations";
 
 // Milestone 8a-1 - advisory ADR documentation readiness: the deny-stubbed assistant port (no M32 import) and the AI
 // prohibited-zone boot validator (run in the composition root's db-present onReady hook).

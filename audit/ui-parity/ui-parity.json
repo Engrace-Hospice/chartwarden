@@ -1648,6 +1648,14 @@
       "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
+      "id": "billing.operations",
+      "path": "/billing/operations",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
       "id": "billing.ar-dashboard",
       "path": "/billing",
       "permission": "billing.claim.read_ar_dashboard"

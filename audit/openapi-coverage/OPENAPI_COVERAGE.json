@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1973,
-    "enriched": 1973,
+    "routes": 1979,
+    "enriched": 1979,
     "deficit": 0,
-    "mutating": 1125,
+    "mutating": 1127,
     "mutatingNoBody": 1,
-    "gets": 795,
+    "gets": 799,
     "getsNoResponse": 9
   },
   "modules": [
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 97,
-      "enriched": 97,
+      "routes": 98,
+      "enriched": 98,
       "deficit": 0,
       "mutating": 49,
       "mutatingNoBody": 0,
-      "gets": 46,
+      "gets": 47,
       "getsNoResponse": 0
     },
     {
@@ -241,12 +241,12 @@
     },
     {
       "module": "25-remittance",
-      "routes": 168,
-      "enriched": 168,
+      "routes": 175,
+      "enriched": 175,
       "deficit": 0,
-      "mutating": 109,
+      "mutating": 113,
       "mutatingNoBody": 0,
-      "gets": 56,
+      "gets": 59,
       "getsNoResponse": 0
     },
     {
@@ -351,12 +351,12 @@
     },
     {
       "module": "36-messaging",
-      "routes": 215,
-      "enriched": 215,
+      "routes": 212,
+      "enriched": 212,
       "deficit": 0,
-      "mutating": 107,
+      "mutating": 105,
       "mutatingNoBody": 0,
-      "gets": 90,
+      "gets": 89,
       "getsNoResponse": 1
     },
     {
@@ -401,12 +401,12 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 27,
-      "enriched": 27,
+      "routes": 28,
+      "enriched": 28,
       "deficit": 0,
       "mutating": 17,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {

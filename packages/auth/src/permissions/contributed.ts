@@ -3466,6 +3466,30 @@ export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIO
  * keys are reached only by the `m25.system_principal` (architecture §17), not the user-facing gateway.
  */
 export const M25_CONTRIBUTED_PERMISSIONS = {
+  "billing.operations.read": {
+    resource: "billing_operations_investigation",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "billing.operations.triage": {
+    resource: "billing_operations_investigation",
+    action: "triage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "billing.operations.assign": {
+    resource: "billing_operations_investigation",
+    action: "assign",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "billing.operations.resolve": {
+    resource: "billing_operations_investigation",
+    action: "resolve",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
   // --- remittance surface ---
   "remittance.read": {
     resource: "remittance_advice",

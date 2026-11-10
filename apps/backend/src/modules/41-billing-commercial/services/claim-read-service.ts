@@ -5,7 +5,7 @@ import { schema } from "@chartwarden/db";
 import { ROUTE_FORMATS, decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { isBlocking } from "../domain/rules";
 import { assertPatientReachable, assertProviderInScope, assertRowReachable } from "./scope-guard";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
@@ -99,6 +99,39 @@ export interface PayerPlanView {
 }
 
 export interface CommercialClaimReadService {
+  getInDoubtSubmission(
+    actor: ReadActor,
+    submissionId: string,
+  ): Promise<{
+    submissionId: string;
+    claimId: string;
+    claimControlNumber: string;
+    providerEntityId: string;
+    attemptCount: number;
+    reasonCode: string | null;
+    occurredAt: string;
+    status: "in_doubt";
+    payer: string;
+  }>;
+  listInDoubtSubmissions(
+    actor: ReadActor,
+    filter: { providerEntityId: string; cursor?: string; limit?: number },
+  ): Promise<{
+    items: readonly {
+      submissionId: string;
+      claimId: string;
+      claimControlNumber: string;
+      providerEntityId: string;
+      attemptCount: number;
+      reasonCode: string | null;
+      occurredAt: string;
+      status: "in_doubt";
+      payer: string;
+    }[];
+    hasMore: boolean;
+    nextCursor: string | null;
+    count: { kind: "lower_bound"; value: number };
+  }>;
   listClaims(
     actor: ReadActor,
     filter: ClaimListFilter,
@@ -142,6 +175,120 @@ export function buildCommercialClaimReadService(
   const inOrg = <T>(actor: ReadActor, fn: (tx: CommercialTx) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
   return {
+    async getInDoubtSubmission(actor, submissionId) {
+      const S = schema.commercialSubmissions;
+      const C = schema.commercialClaims;
+      const [row] = await inOrg(actor, (tx) =>
+        tx
+          .select({
+            submission: S,
+            claim: C,
+            planName: schema.commercialPayerPlan.planName,
+          })
+          .from(S)
+          .innerJoin(
+            C,
+            and(
+              eq(C.id, S.claimId),
+              eq(C.organizationId, actor.organizationId),
+              eq(C.providerEntityId, S.providerEntityId),
+            ),
+          )
+          .innerJoin(schema.commercialPayerPlan, eq(schema.commercialPayerPlan.id, C.planId))
+          .where(
+            and(
+              eq(S.id, submissionId),
+              eq(S.organizationId, actor.organizationId),
+              eq(S.status, "in_doubt"),
+            ),
+          )
+          .limit(1),
+      );
+      if (!row) throw new NotFoundError("in-doubt submission not found");
+      assertProviderInScope(actor, row.submission.providerEntityId);
+      await assertPatientReachable(actor, seams.caseload, row.claim.patientId);
+      return {
+        submissionId: row.submission.id,
+        claimId: row.claim.id,
+        claimControlNumber: row.claim.claimControlNumber,
+        providerEntityId: row.submission.providerEntityId,
+        attemptCount: row.submission.attemptCount,
+        reasonCode: row.submission.lastFailureCode,
+        occurredAt: row.submission.updatedAt.toISOString(),
+        status: "in_doubt",
+        payer: row.planName,
+      };
+    },
+    async listInDoubtSubmissions(actor, f) {
+      assertProviderInScope(actor, f.providerEntityId);
+      const limit = Math.min(Math.max(f.limit ?? 30, 1), 100);
+      const S = schema.commercialSubmissions;
+      const C = schema.commercialClaims;
+      const after = decodeCursor(actor.organizationId, f.cursor, isQueueCursor);
+      const scanCap = 500;
+      const scanned = await inOrg(actor, (tx) =>
+        tx
+          .select({
+            submission: S,
+            claim: C,
+            planName: schema.commercialPayerPlan.planName,
+            ts: sql<string>`${S.updatedAt}::text`,
+          })
+          .from(S)
+          .innerJoin(
+            C,
+            and(
+              eq(C.id, S.claimId),
+              eq(C.organizationId, actor.organizationId),
+              eq(C.providerEntityId, S.providerEntityId),
+            ),
+          )
+          .innerJoin(schema.commercialPayerPlan, eq(schema.commercialPayerPlan.id, C.planId))
+          .where(
+            and(
+              eq(S.organizationId, actor.organizationId),
+              eq(S.providerEntityId, f.providerEntityId),
+              eq(S.status, "in_doubt"),
+              after
+                ? sql`(${S.updatedAt}, ${S.id}) < (${after.ts}::timestamptz, ${after.id}::uuid)`
+                : undefined,
+            ),
+          )
+          .orderBy(desc(S.updatedAt), desc(S.id))
+          .limit(scanCap),
+      );
+      const visible: typeof scanned = [];
+      for (const row of scanned) {
+        try {
+          await assertPatientReachable(actor, seams.caseload, row.claim.patientId);
+        } catch (error) {
+          if (error instanceof NotFoundError) continue;
+          throw error;
+        }
+        visible.push(row);
+        if (visible.length > limit) break;
+      }
+      const hitScanCap = scanned.length === scanCap;
+      const hasMore = visible.length > limit || hitScanCap;
+      const items = visible.slice(0, limit).map(({ submission, claim, planName }) => ({
+        submissionId: submission.id,
+        claimId: claim.id,
+        claimControlNumber: claim.claimControlNumber,
+        providerEntityId: submission.providerEntityId,
+        attemptCount: submission.attemptCount,
+        reasonCode: submission.lastFailureCode,
+        occurredAt: submission.updatedAt.toISOString(),
+        status: "in_doubt" as const,
+        payer: planName,
+      }));
+      const last =
+        visible.length > limit ? visible[limit - 1] : hitScanCap ? scanned.at(-1) : visible.at(-1);
+      const nextCursor =
+        hasMore && last
+          ? encodeCursor(actor.organizationId, { ts: last.ts, id: last.submission.id })
+          : null;
+      return { items, hasMore, nextCursor, count: { kind: "lower_bound", value: items.length } };
+    },
     async listClaims(actor, f) {
       assertProviderInScope(actor, f.providerEntityId);
       const limit = f.limit ?? QUEUE_PAGE_DEFAULT;

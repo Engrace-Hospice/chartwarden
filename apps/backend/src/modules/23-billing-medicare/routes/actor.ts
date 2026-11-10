@@ -11,7 +11,10 @@ import {
 import type { FastifyRequest } from "fastify";
 
 /** What an M23 read service needs of the route actor. */
-export type M23ReadActor = Pick<RouteActor, "organizationId" | "userId" | "roles">;
+export type M23ReadActor = Pick<RouteActor, "organizationId" | "userId" | "roles"> & {
+  /** Server-derived ABAC restriction; undefined means the existing org-wide billing role applies. */
+  readonly providerEntityScope?: readonly string[];
+};
 
 /** What an M23 write service needs: the authoring membership, step-up, actor kind and request envelope. */
 export interface M23WriteActor

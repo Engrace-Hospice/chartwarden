@@ -36,6 +36,8 @@ import {
   AuthorizationListQuerySchema,
   ClaimListQuerySchema,
   IdParamsSchema,
+  InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema,
   OverrideBodySchema,
   OverrideParamsSchema,
   PlanListQuerySchema,
@@ -166,6 +168,22 @@ export function registerCommercialBillingRoutes(
     async (request) => {
       const q = parse(ClaimListQuerySchema, request.query);
       return reads.listClaims(readActor(request), q);
+    },
+  );
+
+  app.get(
+    "/api/v1/billing/commercial/submissions/in-doubt",
+    {
+      preHandler: [READ, SCOPE("commercial_billing.read", providerFromQuery)],
+      schema: {
+        querystring: InDoubtSubmissionListQuerySchema,
+        response: { 200: InDoubtSubmissionListResponseSchema },
+      },
+      config: { auditRead: { resourceKind: "commercial_claim", list: true } },
+    },
+    async (request) => {
+      const q = parse(InDoubtSubmissionListQuerySchema, request.query);
+      return reads.listInDoubtSubmissions(readActor(request), q);
     },
   );
 

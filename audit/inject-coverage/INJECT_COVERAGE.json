@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1961,
-    "coveredRoutes": 1961,
-    "directRoutesReferenced": 1780
+    "routes": 1967,
+    "coveredRoutes": 1967,
+    "directRoutesReferenced": 1787
   },
   "modules": [
     {
@@ -39,7 +39,6 @@
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
-        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
@@ -395,7 +394,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 97,
+      "routes": 98,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
@@ -423,9 +422,10 @@
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
+        "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 69
+      "directRoutesReferenced": 70
     },
     {
       "module": "24-billing-medicaid",
@@ -440,7 +440,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 168,
+      "routes": 175,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
@@ -457,10 +457,11 @@
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",
+        "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 148
+      "directRoutesReferenced": 154
     },
     {
       "module": "26-cap",
@@ -574,7 +575,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 215,
+      "routes": 212,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -601,7 +602,6 @@
         "apps/backend/__tests__/m36-clinical-link.live.test.ts",
         "apps/backend/__tests__/m36-death-board-routes.test.ts",
         "apps/backend/__tests__/m36-death-board.live.test.ts",
-        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-delivery-target.live.test.ts",
         "apps/backend/__tests__/m36-delivery-target.test.ts",
@@ -715,9 +715,7 @@
       "routes": 25,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
-        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
         "apps/backend/__tests__/mdm-routes.test.ts"
       ],
@@ -725,7 +723,7 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 27,
+      "routes": 28,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",

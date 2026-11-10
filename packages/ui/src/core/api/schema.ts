@@ -6290,6 +6290,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claims/in-doubt-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission-first, tenant/provider-scoped M23 transport uncertainty queue. Each row is an actual durable claim submission attempt with outcome in doubt; the request may have reached the payer. Lower-bound counts describe the loaded page only; no retry is offered. */
+        get: operations["getApiV1BillingClaimsIndoubtsubmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/clearinghouse-attempts/resolve": {
         parameters: {
             query?: never;
@@ -6734,6 +6751,23 @@ export interface paths {
         patch: operations["patchApiV1BillingCommercialPayerplansByIdEligibilitypolicy"];
         trace?: never;
     };
+    "/api/v1/billing/commercial/submissions/in-doubt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission-first M41 transport uncertainty queue. Enforces provider and patient caseload scope; the request may have reached the payer. Lower-bound counts describe loaded authorized rows only; no retry is offered. */
+        get: operations["getApiV1BillingCommercialSubmissionsIndoubt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/dde-items": {
         parameters: {
             query?: never;
@@ -7119,6 +7153,109 @@ export interface paths {
         };
         /** Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38) */
         get: operations["getApiV1BillingMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tenant/provider-authorized M23/M41 operational investigations with per-owner source revalidation and lower-bound page counts */
+        get: operations["getApiV1BillingOperationsInvestigations"];
+        put?: never;
+        /** Open an audited read-only investigation for an exact authorized M23/M41 in-doubt submission attempt */
+        post: operations["postApiV1BillingOperationsInvestigations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one tenant/provider-scoped investigation, revalidated against its M23/M41 source, notes, and append-only history */
+        get: operations["getApiV1BillingOperationsInvestigationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign or unassign an eligible investigator using an optimistic version and audited reason */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdAssignment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a bounded non-source-mutating operational investigation note */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdNotes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append an audited operational status transition; resolution requires its separate permission and never resolves source submission uncertainty */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdTransitions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/investigators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active, provider-authorized investigators with Billing Operations triage permission */
+        get: operations["getApiV1BillingOperationsInvestigationsInvestigators"];
         put?: never;
         post?: never;
         delete?: never;
@@ -42379,6 +42516,7 @@ export interface operations {
                         membershipId: string | null;
                         displayName: string | null;
                         roles: string[];
+                        providerEntityIds: string[];
                         locationIds: string[];
                         orgWidePatientScope: boolean;
                         isAdmin: boolean;
@@ -48263,6 +48401,57 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingClaimsIndoubtsubmissions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            submissionId: string;
+                            attemptIndex: number;
+                            /** Format: uuid */
+                            claimId: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** @constant */
+                            status: "in_doubt";
+                            /** @constant */
+                            payer: "Medicare";
+                        }[];
+                        hasMore: boolean;
+                        nextCursor: string | null;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BillingClearinghouseattemptsResolve: {
         parameters: {
             query?: never;
@@ -49527,6 +49716,56 @@ export interface operations {
                         payerId: string;
                         eligibilityStalenessPolicy: "warn" | "block";
                         eligibilityMaxAgeDays: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialSubmissionsIndoubt: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            submissionId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            attemptCount: number;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** @constant */
+                            status: "in_doubt";
+                            payer: string;
+                        }[];
+                        hasMore: boolean;
+                        nextCursor: string | null;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
                     };
                 };
             };
@@ -51088,6 +51327,420 @@ export interface operations {
                             key: string;
                             count: number;
                             amountCents: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigations: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+                status?: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                assigned?: "me" | "unassigned";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            sourceRecordId: string;
+                            /** Format: uuid */
+                            sourceAttemptId: string;
+                            sourceIdentity: string;
+                            sourceReasonCode: string | null;
+                            /** Format: date-time */
+                            sourceOccurredAt: string;
+                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                            resolutionOutcome: string | null;
+                            assignedToMembershipId: string | null;
+                            /** Format: uuid */
+                            createdByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                            closedAt: string | null;
+                            version: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
+                        /** @constant */
+                        countScope: "authorized loaded cases";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    sourceModule: "M23" | "M41";
+                    /** Format: uuid */
+                    submissionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        investigation: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            sourceRecordId: string;
+                            /** Format: uuid */
+                            sourceAttemptId: string;
+                            sourceIdentity: string;
+                            sourceReasonCode: string | null;
+                            /** Format: date-time */
+                            sourceOccurredAt: string;
+                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                            resolutionOutcome: string | null;
+                            assignedToMembershipId: string | null;
+                            /** Format: uuid */
+                            createdByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                            closedAt: string | null;
+                            version: number;
+                        };
+                        source: {
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            submissionId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            attempt: number;
+                            reference: string;
+                            payer: string;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            sourceHref: string;
+                        };
+                        history: {
+                            event_type: string;
+                            /** Format: uuid */
+                            actor_membership_id: string;
+                            previous_status: string | null;
+                            new_status: string | null;
+                            from_assignee_membership_id: string | null;
+                            to_assignee_membership_id: string | null;
+                            reason: string | null;
+                            correlation_id: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                        }[];
+                        notes: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            authorMembershipId: string;
+                            body: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdAssignment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assignedToMembershipId: string | null;
+                    version: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdNotes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        body: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdTransitions: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "investigating" | "waiting_external" | "resolved" | "closed";
+                    version: number;
+                    reason: string;
+                    outcome?: "verified_no_action_required" | "referred_to_source_workflow" | "waiting_for_external_confirmation" | "duplicate_investigation" | "unable_to_resolve";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigationsInvestigators: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                sourceModule: "M23" | "M41";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            membershipId: string;
+                            displayName: string;
                         }[];
                     };
                 };
@@ -102381,6 +103034,7 @@ export interface operations {
         parameters: {
             query?: {
                 providerEntityId?: string;
+                locationId?: string;
                 state?: string;
                 payer?: string;
                 fromDate?: string;

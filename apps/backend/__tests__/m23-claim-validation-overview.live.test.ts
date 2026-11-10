@@ -142,6 +142,61 @@ describe.skipIf(!DB_URL)("M23 claim validation overview - LIVE Postgres", () => 
     expect(outcomes).toEqual(["all_pass", "failures_present", null]);
   });
 
+  it("reads in-doubt submissions first and applies tenant/provider scope before paging", async () => {
+    const claimA = await claim(ORG_A, PE_1);
+    const claimB = await claim(ORG_B, PE_1);
+    const controlNumbers = await admin.query(
+      "SELECT id, claim_control_number FROM claim WHERE id = ANY($1::uuid[])",
+      [[claimA, claimB]],
+    );
+    for (const row of controlNumbers.rows)
+      await admin.query(
+        `INSERT INTO claim_submission (organization_id,provider_entity_id,kind,claim_id,claim_control_number,attempt_index,
+        dispatch_state,dispatch_token,dispatch_started_at,dispatch_reason_code)
+       VALUES ($1,$2,'claim_837i',$3,$4,1,'in_doubt',$5,'2026-01-01T00:00:00Z','TRANSPORT_OUTCOME_UNKNOWN')`,
+        [row.id === claimA ? ORG_A : ORG_B, PE_1, row.id, row.claim_control_number, uuid()],
+      );
+    for (let i = 0; i < 60; i += 1) await claim(ORG_A, PE_1);
+    const ordinary = await svc().listClaims(
+      actor(ORG_A),
+      { providerEntityId: PE_1, providerEntityScope: [PE_1] },
+      undefined,
+      30,
+    );
+    expect(ordinary.items.some((row) => row.claimId === claimA)).toBe(false);
+    const controlA = controlNumbers.rows.find((row) => row.id === claimA)
+      ?.claim_control_number as string;
+    const secondAttempt = uuid();
+    await admin.query(
+      `INSERT INTO claim_submission (id,organization_id,provider_entity_id,kind,claim_id,claim_control_number,attempt_index,
+        dispatch_state,dispatch_token,dispatch_started_at,dispatch_reason_code)
+       VALUES ($1,$2,$3,'claim_837i',$4,$5,2,'in_doubt',$6,'2026-01-01T00:00:00Z','TRANSPORT_OUTCOME_UNKNOWN')`,
+      [secondAttempt, ORG_A, PE_1, claimA, controlA, uuid()],
+    );
+    const page = await svc().listInDoubtSubmissions(
+      actor(ORG_A),
+      { providerEntityScope: [PE_1] },
+      undefined,
+      1,
+    );
+    expect(page.items).toHaveLength(1);
+    expect(page.hasMore).toBe(true);
+    expect(page.items[0]?.status).toBe("in_doubt");
+    expect(page.items[0]?.reasonCode).toBe("TRANSPORT_OUTCOME_UNKNOWN");
+    const next = await svc().listInDoubtSubmissions(
+      actor(ORG_A),
+      { providerEntityScope: [PE_1] },
+      page.nextCursor,
+      1,
+    );
+    const bothPages = [...page.items, ...next.items];
+    const attemptIds = bothPages.map((row) => row.submissionId);
+    expect(attemptIds).toHaveLength(2);
+    expect(new Set(attemptIds).size).toBe(2);
+    expect(attemptIds).toContain(secondAttempt);
+    expect(bothPages.every((row) => row.claimId === claimA)).toBe(true);
+  });
+
   it("uses the (claim_id, started_at) index for the lateral lookup", async () => {
     await admin.query("SET enable_seqscan = off");
     const { rows } = await admin.query(

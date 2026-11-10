@@ -499,6 +499,8 @@ import {
   CreateRuleConfigBodySchema,
   HospicePeriodsQuerySchema as M23HospicePeriodsQuerySchema,
   HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
+  InDoubtSubmissionListQuerySchema as M23InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M23InDoubtSubmissionListResponseSchema,
   RhcCarryOverSchema as M23RhcCarryOverSchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
@@ -681,6 +683,19 @@ import {
   BeneficiaryAppealViewSchema as M25BeneficiaryAppealViewSchema,
   ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
+import {
+  BillingOperationsInvestigationAssignmentSchema as M25BillingInvestigationAssignmentSchema,
+  BillingOperationsInvestigationDetailSchema as M25BillingInvestigationDetailSchema,
+  BillingOperationsInvestigationListQuerySchema as M25BillingInvestigationListQuerySchema,
+  BillingOperationsInvestigationListSchema as M25BillingInvestigationListSchema,
+  BillingOperationsInvestigationNoteResultSchema as M25BillingInvestigationNoteResultSchema,
+  BillingOperationsInvestigationNoteSchema as M25BillingInvestigationNoteSchema,
+  BillingOperationsInvestigationSchema as M25BillingInvestigationSchema,
+  BillingOperationsInvestigationSourceSchema as M25BillingInvestigationSourceSchema,
+  BillingOperationsInvestigationTransitionSchema as M25BillingInvestigationTransitionSchema,
+  BillingOperationsInvestigatorQuerySchema as M25BillingInvestigatorQuerySchema,
+  BillingOperationsInvestigatorsSchema as M25BillingInvestigatorsSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/billing-operations-investigations";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import { DenialCaseViewSchema as M25DenialCaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
@@ -997,6 +1012,8 @@ import {
   ClaimListQuerySchema as M41ClaimListQuerySchema,
   ClaimListResponseSchema as M41ClaimListResponseSchema,
   CommercialClaimViewSchema as M41ClaimViewSchema,
+  InDoubtSubmissionListQuerySchema as M41InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M41InDoubtSubmissionListResponseSchema,
   OverrideBodySchema as M41OverrideBodySchema,
   OverrideResponseSchema as M41OverrideResponseSchema,
   PayerPlanListResponseSchema as M41PayerPlanListResponseSchema,
@@ -9046,6 +9063,51 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // M25 Remittance & Denials — FULL enrichment (all 31 routes). Later Object.assign wins, so this
 // supersedes the earlier partial M25 block and drives the module's unenriched deficit to 0.
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/billing/operations/investigations": {
+    summary:
+      "List tenant/provider-authorized M23/M41 operational investigations with per-owner source revalidation and lower-bound page counts",
+    query: M25BillingInvestigationListQuerySchema,
+    response: M25BillingInvestigationListSchema,
+  },
+  "POST /api/v1/billing/operations/investigations": {
+    summary:
+      "Open an audited read-only investigation for an exact authorized M23/M41 in-doubt submission attempt",
+    body: M25BillingInvestigationSourceSchema,
+    response: M25BillingInvestigationSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "GET /api/v1/billing/operations/investigations/investigators": {
+    summary:
+      "List active, provider-authorized investigators with Billing Operations triage permission",
+    query: M25BillingInvestigatorQuerySchema,
+    response: M25BillingInvestigatorsSchema,
+  },
+  "GET /api/v1/billing/operations/investigations/:id": {
+    summary:
+      "Read one tenant/provider-scoped investigation, revalidated against its M23/M41 source, notes, and append-only history",
+    response: M25BillingInvestigationDetailSchema,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/assignment": {
+    summary:
+      "Assign or unassign an eligible investigator using an optimistic version and audited reason",
+    body: M25BillingInvestigationAssignmentSchema,
+    response: M25BillingInvestigationSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/notes": {
+    summary: "Append a bounded non-source-mutating operational investigation note",
+    body: M25BillingInvestigationNoteSchema,
+    response: M25BillingInvestigationNoteResultSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/transitions": {
+    summary:
+      "Append an audited operational status transition; resolution requires its separate permission and never resolves source submission uncertainty",
+    body: M25BillingInvestigationTransitionSchema,
+    response: M25BillingInvestigationSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
   "GET /api/v1/remittance/claimmd-era": {
     summary:
       "Tenant- and provider-scoped aggregate list of Claim.MD ERA stages for nonposting review",
@@ -13660,6 +13722,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: ClaimListQuerySchema,
     response: M23ClaimListResponse,
   },
+  "GET /api/v1/billing/claims/in-doubt-submissions": {
+    summary:
+      "Submission-first, tenant/provider-scoped M23 transport uncertainty queue. Each row is an actual durable claim submission attempt with outcome in doubt; the request may have reached the payer. Lower-bound counts describe the loaded page only; no retry is offered.",
+    query: M23InDoubtSubmissionListQuerySchema,
+    response: M23InDoubtSubmissionListResponseSchema,
+  },
   "GET /api/v1/billing/claims/:id": {
     summary:
       "Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3)",
@@ -15463,6 +15531,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). Keyset paging: `limit` (default 50, max 100) and an opaque `cursor`; `nextCursor` is null on the last page. A page may hold fewer than `limit` rows (and even none) when claims outside the caseload were skipped; keep following `nextCursor`. Ids, dates, plan name and money only",
     query: M41ClaimListQuerySchema,
     response: M41ClaimListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/submissions/in-doubt": {
+    summary:
+      "Submission-first M41 transport uncertainty queue. Enforces provider and patient caseload scope; the request may have reached the payer. Lower-bound counts describe loaded authorized rows only; no retry is offered.",
+    query: M41InDoubtSubmissionListQuerySchema,
+    response: M41InDoubtSubmissionListResponseSchema,
   },
   "GET /api/v1/billing/commercial/payer-plans": {
     summary:

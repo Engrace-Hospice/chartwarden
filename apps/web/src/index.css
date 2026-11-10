@@ -4160,3 +4160,37 @@
   display: flex;
   justify-content: flex-end;
 }
+
+/* Billing Operations: keep the wide data table for desktop and replace it with readable work items on phones. */
+.billing-operations-mobile-list {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.billing-operations-mobile-item {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: var(--color-surface-lowest);
+}
+.billing-operations-mobile-item h2,
+.billing-operations-mobile-item p {
+  margin: 0;
+}
+.billing-operations-mobile-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+@media (max-width: 720px) {
+  .billing-operations-desktop-list {
+    display: none;
+  }
+  .billing-operations-mobile-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+}

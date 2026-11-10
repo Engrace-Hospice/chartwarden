@@ -1015,6 +1015,9 @@ exports.MODULES = [
       "remittance_line",
       "remittance_remark",
       "remittance_service_line",
+      "billing_operations_investigation",
+      "billing_operations_investigation_event",
+      "billing_operations_investigation_note",
     ],
   },
   {

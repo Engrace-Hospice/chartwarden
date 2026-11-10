@@ -64,6 +64,7 @@ function setup(
           eraId: "synthetic-era",
           fileIndex: 0,
           transactionSetControlNumber: "0001",
+          sourceDigest: "a".repeat(64),
           state: "held",
           holdReason: "DELIVERY_PREPARED",
           possibleDuplicate: false,
@@ -273,6 +274,23 @@ describe("Claim.MD ERA review route authorization", () => {
     expect(service.list).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG, providerEntityScope: [PROVIDER_A] }),
       expect.objectContaining({ payer: "synthetic", fromDate: "2026-10-01", toDate: "2026-10-31" }),
+      undefined,
+      expect.any(Number),
+    );
+    await app.close();
+  });
+
+  it("passes location narrowing to the M25 stage owner while retaining server-derived provider scope", async () => {
+    const { app, service } = setup({ permission: true });
+    const locationId = "40000000-0000-4000-8000-000000000004";
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/remittance/claimmd-era?providerEntityId=${PROVIDER_A}&locationId=${locationId}`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(service.list).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG, providerEntityScope: [PROVIDER_A] }),
+      expect.objectContaining({ providerEntityId: PROVIDER_A, locationId }),
       undefined,
       expect.any(Number),
     );
