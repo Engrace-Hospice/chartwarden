@@ -28,6 +28,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { PatientCensusReader, PatientCounterProvider } from "@chartwarden/types";
 import { and, countDistinct, desc, eq, max } from "drizzle-orm";
 import { addonIsLive, latestClaimsBillingAddon } from "../addon/entitlement";
+import { currentSubscriptionOrder } from "../routes/current-subscription";
 import { previousUsageWindow, usageWindowFor } from "./jobs";
 
 const PAP = schema.patientActivePeriod;
@@ -70,7 +71,7 @@ export async function latestSubscriptionWindow(
     })
     .from(S)
     .where(eq(S.organizationId, organizationId))
-    .orderBy(desc(S.startedAt))
+    .orderBy(...currentSubscriptionOrder())
     .limit(1);
   return row ?? null;
 }

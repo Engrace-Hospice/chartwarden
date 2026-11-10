@@ -2,8 +2,9 @@
 // tenant's subscription does before it writes: read the row under a lock, then refuse a transition its status does not allow.
 import { schema } from "@chartwarden/db";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { WriteTx } from "../pricing/ports";
+import { findOtherLiveSubscriptionId } from "./current-subscription";
 
 type SubRow = typeof schema.subscriptionRow.$inferSelect;
 
@@ -96,24 +97,33 @@ export async function lockSubscription(tx: WriteTx, subscriptionId: string): Pro
   return sub;
 }
 
+/** The stable code of the 409 a resume answers when the organization already has another live subscription (see {@link refuseWhenOtherLive}). */
+export const SUBSCRIPTION_OTHER_LIVE_EXISTS = "SUBSCRIPTION_OTHER_LIVE_EXISTS";
+
 /**
- * The organization's NEWEST subscription (`ORDER BY started_at DESC LIMIT 1`), read `FOR UPDATE` in the caller's org-scoped transaction, or
- * null. It is the row every M35 lifecycle path acts on (the org-lifecycle consumer, the tenant resume, the hourly pause-resume sweep): an
- * older, superseded subscription is never a candidate, and a path that reads this row under the lock finishes before another judges it.
+ * Refuse to resume a paused subscription while another subscription of its organization is live: `subscription_org_active_uq` allows one,
+ * and the unique index would answer a raw 500. A typed 409 (standard envelope, no ids): the operator cancels or pauses the other one by id,
+ * and the hourly sweep resumes this one on its next tick (or it is resumed by hand).
  */
-export async function lockNewestSubscription(
+export async function refuseWhenOtherLive(
   tx: WriteTx,
-  organizationId: string,
-): Promise<SubRow | null> {
-  const S = schema.subscriptionRow;
-  const [sub] = await tx
-    .select()
-    .from(S)
-    .where(eq(S.organizationId, organizationId))
-    .orderBy(desc(S.startedAt))
-    .limit(1)
-    .for("update");
-  return sub ?? null;
+  sub: Pick<SubRow, "id" | "organizationId">,
+): Promise<void> {
+  if ((await findOtherLiveSubscriptionId(tx, sub)) === null) return;
+  throw conflict(
+    SUBSCRIPTION_OTHER_LIVE_EXISTS,
+    "the organization already has another live subscription; cancel or pause it first, then resume this one",
+  );
+}
+
+/** A canceled subscription is final: a typed 409 (the tenant's resume refuses it before anything else; `verb` completes "it cannot be ..."). */
+export function refuseCanceledIsFinal(sub: Pick<SubRow, "status">, verb: string): void {
+  if (sub.status === "canceled") {
+    throw conflict(
+      "SUBSCRIPTION_CANCELED",
+      `a canceled subscription is final; it cannot be ${verb}`,
+    );
+  }
 }
 
 /**
@@ -130,12 +140,7 @@ export function refuseAdminTransition(sub: Pick<SubRow, "status">, action: Admin
     );
   }
   if (action === "resume") return;
-  if (sub.status === "canceled") {
-    throw conflict(
-      "SUBSCRIPTION_CANCELED",
-      `a canceled subscription is final; it cannot be ${action === "pause" ? "paused" : "canceled"} again`,
-    );
-  }
+  refuseCanceledIsFinal(sub, `${action === "pause" ? "paused" : "canceled"} again`);
   if (action === "pause" && sub.status === "paused") {
     throw conflict("SUBSCRIPTION_ALREADY_PAUSED", "the subscription is already paused");
   }

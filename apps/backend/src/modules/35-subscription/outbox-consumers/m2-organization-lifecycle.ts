@@ -57,11 +57,8 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { isPauseLapsed } from "../pricing/contract-select";
-import {
-  ORG_SUSPENDED_REASON_CODE,
-  PAUSE_LAPSED_REASON_CODE,
-  lockNewestSubscription,
-} from "../routes/admin-transition";
+import { ORG_SUSPENDED_REASON_CODE, PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
+import { lockNewestSubscription } from "../routes/current-subscription";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 
 const S = schema.subscriptionRow;

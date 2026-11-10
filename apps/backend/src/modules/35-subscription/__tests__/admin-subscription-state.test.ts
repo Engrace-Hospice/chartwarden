@@ -13,6 +13,7 @@ import { buildDrizzleM35RouteService } from "../routes/service-drizzle";
 
 const SUBSCRIPTION_ID = "5b000000-0000-4000-8000-000000000001";
 const ORG_ID = "a1000000-0000-4000-8000-0000000000a1";
+const OTHER_LIVE_ID = "5b000000-0000-4000-8000-0000000000ff";
 const operator: M35WriteActor = {
   organizationId: "00000000-0000-4000-8000-000000000000",
   userId: "0a000000-0000-4000-8000-000000000001",
@@ -26,6 +27,7 @@ function recordingTx(
   status: string,
   extra: Record<string, unknown> = {},
   onLock: () => void = () => undefined,
+  otherLive = false,
 ) {
   const writes: string[] = [];
   const inserted: Record<string, unknown>[] = [];
@@ -49,7 +51,10 @@ function recordingTx(
     return proxy;
   };
   const tx = {
-    select: () => chain([row]),
+    // `select()` with no argument reads whole rows (the subscription, its plan); `select({ id })` is the one-live-per-org check (and the
+    // dunning-stage lookup, which only reads `stage`): another live subscription exists only when the test says so
+    select: (fields?: unknown) =>
+      chain(fields ? (otherLive ? [{ id: OTHER_LIVE_ID }] : []) : [row]),
     insert: () => {
       writes.push("insert");
       const rows = chain([]) as { values: (v: Record<string, unknown>) => unknown };
@@ -84,8 +89,9 @@ function serviceOver(
   now?: () => Date,
   rowExtra: Record<string, unknown> = {},
   onLock: () => void = () => undefined,
+  otherLive = false,
 ) {
-  const recorded = recordingTx(status, rowExtra, onLock);
+  const recorded = recordingTx(status, rowExtra, onLock, otherLive);
   const audited: PlatformAuditEntry[] = [];
   let runnerCalls = 0;
   const platformRunner: PlatformRunner = async (fn) => {
@@ -126,6 +132,33 @@ describe("admin pause / resume / cancel refuse a transition the status does not 
     expect(failure).toMatchObject({ code, statusCode: 409 });
     expect(t.writes).toEqual([]);
     expect(t.audited).toEqual([]);
+  });
+});
+
+describe("admin resume of a paused subscription whose organization already has another live subscription", () => {
+  it("is a typed 409 SUBSCRIPTION_OTHER_LIVE_EXISTS (never the raw unique-index failure), and writes, audits and announces nothing", async () => {
+    const t = serviceOver("paused", true, undefined, {}, undefined, true);
+
+    const failure = await run(t.service, "resume").then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(failure).toBeInstanceOf(ChartWardenError);
+    expect(failure).toMatchObject({ code: "SUBSCRIPTION_OTHER_LIVE_EXISTS", statusCode: 409 });
+    expect((failure as Error).message).not.toContain(OTHER_LIVE_ID); // no ids in the envelope
+    expect(t.writes).toEqual([]);
+    expect(t.audited).toEqual([]);
+  });
+
+  it("resumes normally when no other subscription is live", async () => {
+    const t = serviceOver("paused");
+
+    // (the view of the double's junk plan row may not build: the writes are what is under test)
+    await run(t.service, "resume").catch(() => undefined);
+
+    expect(t.updated).toHaveLength(1);
+    expect(t.audited).toHaveLength(1);
   });
 });
 

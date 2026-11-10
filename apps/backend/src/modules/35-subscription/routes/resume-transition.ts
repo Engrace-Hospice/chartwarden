@@ -1,15 +1,20 @@
 // apps/backend/src/modules/35-subscription/routes/resume-transition.ts — what a `paused` -> `active` resume writes, whoever resumes it.
 //
-// Two writers resume a paused subscription of an operator's making: the operator's own resume (service-drizzle.ts `adminResumeSubscription`,
-// on the platform runner, audited by operator) and the hourly sweep that resumes a pause whose end date has passed (billing-runtime/
-// pause-resume.ts, org-scoped, no operator). They differ in WHO and WHEN (the sweep dates its ledger row at the pause's own end date), not
-// in WHAT is written: the same columns, the same ledger shape, the same `m35.subscription.resumed` event. These three builders are that
-// shared part, so the two paths cannot drift apart.
+// FOUR writers resume a paused subscription, and they do not all use these builders:
+//   - the operator's own resume (service-drizzle.ts `adminResumeSubscription`, on the platform runner, audited by operator): columns, ledger
+//     row and event, all three builders;
+//   - the hourly sweep that resumes a pause whose end date has passed (billing-runtime/pause-resume.ts, org-scoped, no operator): all three
+//     builders, with the ledger row dated at the pause's own end date instead of the sweep's instant;
+//   - the tenant's own resume of a non-contracted subscription (service-drizzle.ts `resumeSubscription`): the event builder only. It writes
+//     its own columns (it also clears a cancel schedule) and, as it always has, no ledger row;
+//   - the org-lifecycle consumer's `.activated` branch (outbox-consumers/m2-organization-lifecycle.ts): hand-writes the same columns, a
+//     ledger row of its own (reason org_activated_by_platform_admin) and the same event, without these builders.
+// The three builders are what the first two share, so those two cannot drift apart; the same event name is the one every resume announces.
 import type { schema } from "@chartwarden/db";
 
 type SubRow = typeof schema.subscriptionRow.$inferSelect;
 
-/** The only event a resume announces (the operator's resume and the sweep publish it; nothing else is emitted for a resume). */
+/** The only event a resume announces (all four writers publish it; nothing else is emitted for a resume). */
 export const SUBSCRIPTION_RESUMED_EVENT = "m35.subscription.resumed";
 
 /** The `subscription` columns a resume writes: back to `active`, the pause's own timestamps cleared. */

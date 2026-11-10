@@ -13,8 +13,12 @@ import type { DbClient } from "@chartwarden/db";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
-import type { M35JobDeps } from "../billing-runtime/jobs";
-import { runPauseResumeForOrg, runPauseResumeSweep } from "../billing-runtime/pause-resume";
+import type { M35JobDeps, PauseBlockedEvent } from "../billing-runtime/jobs";
+import {
+  type PauseResumeDeps,
+  runPauseResumeForOrg,
+  runPauseResumeSweep,
+} from "../billing-runtime/pause-resume";
 import { buildM35OrgLifecycleConsumer } from "../outbox-consumers/m2-organization-lifecycle";
 import { ORG_SUSPENDED_REASON_CODE, PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
 
@@ -51,7 +55,15 @@ const lapsedPause = (over: Partial<SubState> = {}): SubState => ({
 const render = (c: SQL) => new PgDialect().sqlToQuery(c);
 
 /** One org's subscriptions (given oldest first, to prove the sweep does not rely on heap order) behind a recording transaction. */
-function world(initial: SubState | SubState[], opts: { loseRace?: boolean; now?: Date } = {}) {
+function world(
+  initial: SubState | SubState[],
+  opts: {
+    loseRace?: boolean;
+    now?: Date;
+    /** Runs when a `FOR UPDATE` read is issued, before it answers: what another writer commits while this one waits for the lock. */
+    onLock?: (rows: SubState[]) => SubState[];
+  } = {},
+) {
   let rows = Array.isArray(initial) ? [...initial] : [initial];
   const log = {
     wheres: [] as SQL[],
@@ -63,19 +75,29 @@ function world(initial: SubState | SubState[], opts: { loseRace?: boolean; now?:
     updatedIds: [] as string[],
     ledger: [] as Record<string, unknown>[],
     transactions: [] as number[],
+    executes: [] as { text: string; params: unknown[] }[],
+    /** What the transaction did, in order: `set lock_timeout`, `lock` (a FOR UPDATE read), `plain read`. */
+    sequence: [] as string[],
   };
   /** A select's tail: `.orderBy()` sorts (only `started_at desc` is modelled), `.limit(n)` cuts, `.for("update")` records the lock. */
   const readOf = (base: () => SubState[]) => {
     let newestFirst = false;
+    let idTiebreak = false;
     let max: number | undefined;
     const result = () => {
       const sorted = newestFirst
-        ? [...base()].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+        ? [...base()].sort(
+            (a, b) =>
+              b.startedAt.getTime() - a.startedAt.getTime() ||
+              (idTiebreak ? b.id.localeCompare(a.id) : 0),
+          )
         : base();
       return max === undefined ? sorted : sorted.slice(0, max);
     };
     const forUpdate = (mode: unknown) => {
       log.locks.push(mode);
+      log.sequence.push("lock");
+      if (opts.onLock) rows = opts.onLock(rows);
       return Promise.resolve(result());
     };
     const query = {
@@ -83,11 +105,13 @@ function world(initial: SubState | SubState[], opts: { loseRace?: boolean; now?:
         const texts = columns.map((c) => render(c).sql);
         log.orderings.push(texts.join(", "));
         newestFirst = texts.some((t) => t.includes('"started_at" desc'));
+        idTiebreak = texts.some((t) => t.includes('"id" desc'));
         return query;
       },
       limit: (n: number) => {
         log.limits.push(n);
         max = n;
+        log.sequence.push("read");
         return Object.assign(Promise.resolve(result()), { for: forUpdate });
       },
       for: forUpdate,
@@ -95,17 +119,30 @@ function world(initial: SubState | SubState[], opts: { loseRace?: boolean; now?:
     return query;
   };
   const tx = {
-    execute: async () => undefined,
+    execute: async (q: SQL) => {
+      const { sql: text, params } = render(q);
+      log.executes.push({ text, params });
+      if (text.includes("lock_timeout")) log.sequence.push("set lock_timeout");
+    },
     // Two reads, told apart by the predicate each renders: the one-live-per-org check (names `id <> ...`) and the read of the org's rows.
     select: () => ({
       from: () => ({
         where: (c: SQL) => {
           log.wheres.push(c);
           const { sql: text, params } = render(c);
-          if (text.includes('"id" <> $'))
+          if (text.includes('"id" <> $')) {
+            // evaluate the RENDERED predicate: `organization_id = $1 and id <> $2 and status not in ($3, $4, ...)`
+            expect(text).toContain('"status" not in (');
+            const [org, excluded, ...excludedStatuses] = params;
             return readOf(() =>
-              rows.filter((r) => r.id !== params[1] && !["canceled", "paused"].includes(r.status)),
+              rows.filter(
+                (r) =>
+                  r.organizationId === org &&
+                  r.id !== excluded &&
+                  !excludedStatuses.includes(r.status),
+              ),
             );
+          }
           return readOf(() => rows);
         },
       }),
@@ -144,14 +181,14 @@ function world(initial: SubState | SubState[], opts: { loseRace?: boolean; now?:
   return { db, log, state: (id: string = SUB) => rows.find((r) => r.id === id) as SubState };
 }
 
-function deps(db: DbClient, over: Partial<M35JobDeps> = {}) {
+function deps(db: DbClient, over: Partial<PauseResumeDeps> = {}) {
   const published: Record<string, unknown>[] = [];
   const outbox = {
     publish: vi.fn(async (_tx: unknown, input: Record<string, unknown>) => {
       published.push(input);
     }),
   };
-  const jobs: M35JobDeps = {
+  const jobs: PauseResumeDeps = {
     db,
     platformRunner: (async () => {
       throw new Error("the sweep must not open a platform transaction");
@@ -201,14 +238,18 @@ describe("the sweep resumes a lapsed operator pause", () => {
     ]);
   });
 
-  it("reads the org's NEWEST subscription (ORDER BY started_at DESC LIMIT 1) under a row lock, and the write carries the lapse predicate", async () => {
+  it("reads the org's NEWEST subscription (ORDER BY started_at DESC, id DESC LIMIT 1) plainly, then again under a row lock, and the write carries the lapse predicate", async () => {
     const w = world(lapsedPause());
     await runPauseResumeForOrg(deps(w.db).jobs, ORG);
 
-    expect(w.log.locks).toEqual(["update"]);
-    expect(w.log.limits[0]).toBe(1); // (the second limit, if any, is the one-live-per-org check)
-    expect(w.log.orderings).toHaveLength(1);
-    expect(w.log.orderings[0]).toContain('"started_at" desc');
+    // the plain read, then the locked re-read (the second limit(1), if any, is the one-live-per-org check)
+    expect(w.log.orderings).toHaveLength(2);
+    for (const ordering of w.log.orderings) {
+      expect(ordering).toContain('"started_at" desc');
+      expect(ordering).toContain('"id" desc');
+    }
+    expect(w.log.limits.slice(0, 2)).toEqual([1, 1]);
+    expect(w.log.locks).toEqual(["update"]); // only the second read locks
     expect(render(w.log.wheres[0] as SQL).sql).toContain('"organization_id" = $');
     // the write is guarded: the row, still `paused`, its date still passed
     const { sql: text, params } = render(w.log.guards[0] as SQL);
@@ -247,17 +288,19 @@ describe("the sweep resumes a lapsed operator pause", () => {
     }
   });
 
-  it("a lapsed pause under a NEWER subscription is never resurrected, whatever the newer one is (canceled, active, paused open-ended): nothing is written and nothing is logged", async () => {
-    const lapsed = lapsedPause({
-      id: "5b000000-0000-4000-8000-000000000020",
-      startedAt: new Date("2026-09-01T00:00:00Z"),
-    });
-    for (const status of ["canceled", "active", "trialing", "suspended"]) {
+  it.each(["canceled", "active", "trialing", "suspended", "paused (open-ended)"])(
+    "a lapsed pause under a NEWER %s subscription is never resurrected: nothing is written and nothing is logged",
+    async (kind) => {
+      const lapsed = lapsedPause({
+        id: "5b000000-0000-4000-8000-000000000020",
+        startedAt: new Date("2026-09-01T00:00:00Z"),
+      });
+      const openEnded = kind === "paused (open-ended)";
       const newer = lapsedPause({
-        id: `5b000000-0000-4000-8000-0000000000${status.length}1`,
-        status,
-        pausedAt: null,
-        pausedUntil: null,
+        id: "5b000000-0000-4000-8000-000000000021",
+        status: openEnded ? "paused" : kind,
+        pausedAt: openEnded ? PAUSED_AT : null,
+        pausedUntil: null, // an org suspension's pause: open-ended
         startedAt: new Date("2026-11-01T00:00:00Z"),
       });
       const w = world([lapsed, newer]);
@@ -267,10 +310,78 @@ describe("the sweep resumes a lapsed operator pause", () => {
       expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0);
 
       expect(w.state(lapsed.id).status).toBe("paused");
+      expect(w.state(newer.id).status).toBe(openEnded ? "paused" : kind);
       expect(w.log.updates).toEqual([]);
       expect(w.log.ledger).toEqual([]);
       expect(published).toEqual([]);
       expect(logged).toEqual([]);
+    },
+  );
+
+  it("two subscriptions that START at the same instant: the higher id is the current one for the sweep, whatever order the rows come in (ORDER BY started_at DESC, id DESC)", async () => {
+    const same = new Date("2026-10-01T00:00:00Z");
+    const low = lapsedPause({ id: "5b000000-0000-4000-8000-0000000000a0", startedAt: same });
+    const high = lapsedPause({ id: "5b000000-0000-4000-8000-0000000000b0", startedAt: same });
+    for (const rows of [
+      [low, high],
+      [high, low],
+    ]) {
+      const w = world(rows);
+
+      expect(await runPauseResumeForOrg(deps(w.db).jobs, ORG)).toBe(1);
+
+      expect(w.log.updatedIds).toEqual([high.id]);
+      expect(w.log.orderings[0]).toContain('"started_at" desc');
+      expect(w.log.orderings[0]).toContain('"id" desc');
+    }
+  });
+
+  it("a org whose newest subscription is NOT a lapsed pause takes no row lock and sets no lock timeout (the read is plain)", async () => {
+    for (const row of [
+      lapsedPause({ status: "active", pausedAt: null, pausedUntil: null }),
+      lapsedPause({ pausedUntil: null }), // open-ended
+      lapsedPause({ pausedUntil: new Date("2026-12-25T00:00:00Z") }), // date ahead
+    ]) {
+      const w = world(row);
+
+      expect(await runPauseResumeForOrg(deps(w.db).jobs, ORG)).toBe(0);
+
+      expect(w.log.locks).toEqual([]);
+      expect(w.log.executes.some((e) => e.text.includes("lock_timeout"))).toBe(false);
+    }
+  });
+
+  it("a lapsed pause is locked (FOR UPDATE) under a short lock timeout: waiting longer than it fails that org's run instead of stalling the sweep", async () => {
+    const w = world(lapsedPause());
+
+    await runPauseResumeForOrg(deps(w.db, { lockTimeoutMs: 1234 }).jobs, ORG);
+
+    expect(w.log.locks).toEqual(["update"]);
+    const timeout = w.log.executes.find((e) => e.text.includes("lock_timeout"));
+    expect(timeout?.params).toContain("1234");
+    // the order: a plain read, THEN the timeout, THEN the locking read (the timeout bounds the lock wait, so it must be set before it)
+    expect(w.log.sequence.slice(0, 4)).toEqual(["read", "set lock_timeout", "read", "lock"]);
+    expect(timeout?.text).toContain("set_config('lock_timeout'");
+    // the timeout is transaction-local (the third argument): it cannot leak into the pooled connection's next use
+    expect(timeout?.text).toMatch(/, true\)/);
+  });
+
+  it("the row is re-checked after the lock: a pause another writer resumed (or re-paused open-ended) while this one waited is left alone", async () => {
+    for (const moved of [
+      { status: "active", pausedAt: null, pausedUntil: null }, // an operator resumed it
+      { pausedUntil: null }, // the suspension consumer made it open-ended
+    ]) {
+      const w = world(lapsedPause(), {
+        onLock: (rows) => rows.map((r) => ({ ...r, ...moved })),
+      });
+      const { jobs, published } = deps(w.db);
+
+      expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0);
+
+      expect(w.log.locks).toEqual(["update"]);
+      expect(w.log.updates).toEqual([]);
+      expect(w.log.ledger).toEqual([]);
+      expect(published).toEqual([]);
     }
   });
 
@@ -318,30 +429,155 @@ describe("the sweep resumes a lapsed operator pause", () => {
     expect(published).toEqual([]);
   });
 
-  it("leaves the newest pause alone when an OLDER subscription of the org is live (resuming it would break one-live-per-org), logging it ONCE per row, not every hour", async () => {
-    const older = lapsedPause({
-      id: "5b000000-0000-4000-8000-000000000030",
-      status: "active",
-      pausedAt: null,
-      pausedUntil: null,
-      startedAt: new Date("2026-09-01T00:00:00Z"),
-    });
-    const newest = lapsedPause({
-      id: "5b000000-0000-4000-8000-000000000031",
-      startedAt: new Date("2026-11-01T00:00:00Z"),
-    });
-    const w = world([older, newest]);
-    const logged: Record<string, unknown>[] = [];
-    const { jobs, published } = deps(w.db, { log: (_m, detail) => void logged.push(detail) });
+  describe("the newest pause beside an OLDER live subscription cannot be resumed (it would break one-live-per-org): it is made visible", () => {
+    const HOUR_MS = 3_600_000;
+    const olderLive = (id: string) =>
+      lapsedPause({
+        id,
+        status: "active",
+        pausedAt: null,
+        pausedUntil: null,
+        startedAt: new Date("2026-09-01T00:00:00Z"),
+      });
+    const blockedWorld = (olderId: string, newestId: string) =>
+      world([
+        olderLive(olderId),
+        lapsedPause({ id: newestId, startedAt: new Date("2026-11-01T00:00:00Z") }),
+      ]);
+    const at = (hours: number) => () => new Date(NOW.getTime() + hours * HOUR_MS);
 
-    expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0);
-    expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0); // the next hour
-    expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0); // and the next
+    it("writes nothing, and alerts operators (log and the ops alert) at most once per DAY per subscription, not every hour", async () => {
+      const newestId = "5b000000-0000-4000-8000-000000000030";
+      const w = blockedWorld("5b000000-0000-4000-8000-00000000002f", newestId);
+      const logged: Record<string, unknown>[] = [];
+      const alerts: Record<string, unknown>[] = [];
+      const run = (hours: number) =>
+        runPauseResumeForOrg(
+          deps(w.db, {
+            now: at(hours),
+            log: (_m, detail) => void logged.push(detail),
+            onPauseBlocked: (e) => void alerts.push({ ...e }),
+          }).jobs,
+          ORG,
+        );
 
-    expect(w.state(newest.id).status).toBe("paused");
-    expect(w.log.updates).toEqual([]);
-    expect(published).toEqual([]);
-    expect(logged).toEqual([{ organizationId: ORG, subscriptionId: newest.id }]); // once
+      expect(await run(0)).toBe(0);
+      expect(await run(1)).toBe(0); // the next hour
+      expect(await run(23)).toBe(0); // still the same day
+      expect(alerts).toEqual([
+        {
+          organizationId: ORG,
+          subscriptionId: newestId,
+          olderLiveSubscriptionId: "5b000000-0000-4000-8000-00000000002f",
+        },
+      ]);
+      expect(logged).toHaveLength(1);
+
+      expect(await run(25)).toBe(0); // a day later: reported again
+      expect(alerts).toHaveLength(2);
+      expect(logged).toHaveLength(2);
+
+      expect(w.state(newestId).status).toBe("paused");
+      expect(w.log.updates).toEqual([]);
+      expect(w.log.ledger).toEqual([]);
+    });
+
+    it("forgets a subscription once it is no longer blocked, so blocked again it is reported at once", async () => {
+      const newestId = "5b000000-0000-4000-8000-000000000040";
+      const olderId = "5b000000-0000-4000-8000-00000000003f";
+      const alerts: Record<string, unknown>[] = [];
+      const hook = { onPauseBlocked: (e: PauseBlockedEvent) => void alerts.push({ ...e }) };
+
+      await runPauseResumeForOrg(deps(blockedWorld(olderId, newestId).db, hook).jobs, ORG);
+      expect(alerts).toHaveLength(1);
+      // the operator cancels the older one: the next sweep resumes the newest, which clears its report
+      const unblocked = world([
+        { ...olderLive(olderId), status: "canceled" },
+        lapsedPause({ id: newestId, startedAt: new Date("2026-11-01T00:00:00Z") }),
+      ]);
+      expect(await runPauseResumeForOrg(deps(unblocked.db, hook).jobs, ORG)).toBe(1);
+      expect(alerts).toHaveLength(1);
+      // blocked again an hour later (same subscription): a new report, not suppressed by the old one
+      await runPauseResumeForOrg(
+        deps(blockedWorld(olderId, newestId).db, { ...hook, now: at(1) }).jobs,
+        ORG,
+      );
+      expect(alerts).toHaveLength(2);
+    });
+
+    it("a failing alert sink never fails the org's run: the failure is logged with the ids and the run still returns", async () => {
+      const w = blockedWorld(
+        "5b000000-0000-4000-8000-00000000006f",
+        "5b000000-0000-4000-8000-000000000060",
+      );
+      const logged: [string, Record<string, unknown>][] = [];
+      const { jobs } = deps(w.db, {
+        log: (m, detail) => void logged.push([m, detail]),
+        onPauseBlocked: () => {
+          throw new Error("webhook down");
+        },
+      });
+
+      expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0);
+
+      expect(logged.map(([m]) => m)).toEqual([
+        "m35 lapsed pause not resumed: an older subscription of the organization is live",
+        "m35 blocked-pause alert failed",
+      ]);
+      expect(logged[1]?.[1]).toMatchObject({
+        organizationId: ORG,
+        subscriptionId: "5b000000-0000-4000-8000-000000000060",
+      });
+    });
+
+    it("the sweep forgets the reports of organizations it no longer visits (suspended, closed), so one that returns is reported at once", async () => {
+      const newestId = "5b000000-0000-4000-8000-000000000070";
+      const olderId = "5b000000-0000-4000-8000-00000000006e";
+      const alerts: unknown[] = [];
+      const sweep = (orgs: string[]) =>
+        runPauseResumeSweep(
+          deps(blockedWorld(olderId, newestId).db, {
+            listOrgs: async () => orgs.map((organizationId) => ({ organizationId })),
+            onPauseBlocked: (e) => void alerts.push(e),
+          }).jobs,
+        );
+
+      await sweep([ORG]);
+      expect(alerts).toHaveLength(1);
+      await sweep([ORG]); // visited again within the day: not re-reported
+      expect(alerts).toHaveLength(1);
+      await sweep([]); // the org is no longer listed (suspended): its report is forgotten
+      await sweep([ORG]); // listed again: blocked, reported at once
+      expect(alerts).toHaveLength(2);
+    });
+
+    it("looks for the other live subscription with a predicate that excludes canceled and paused ones only", async () => {
+      const newestId = "5b000000-0000-4000-8000-000000000050";
+      // an older PAUSED one and an older CANCELED one are not live: the newest is resumed
+      const w = world([
+        lapsedPause({
+          id: "5b000000-0000-4000-8000-00000000004e",
+          startedAt: new Date("2026-08-01T00:00:00Z"),
+        }),
+        { ...olderLive("5b000000-0000-4000-8000-00000000004f"), status: "canceled" },
+        lapsedPause({ id: newestId, startedAt: new Date("2026-11-01T00:00:00Z") }),
+      ]);
+
+      expect(await runPauseResumeForOrg(deps(w.db).jobs, ORG)).toBe(1);
+
+      expect(w.log.updatedIds).toEqual([newestId]);
+      // and every other status counts as live: the pause is left alone
+      for (const status of ["trialing", "active", "past_due", "at_risk", "suspended"]) {
+        const blocked = world([
+          { ...olderLive("5b000000-0000-4000-8000-00000000005f"), status },
+          lapsedPause({
+            id: "5b000000-0000-4000-8000-000000000051",
+            startedAt: new Date("2026-11-01T00:00:00Z"),
+          }),
+        ]);
+        expect(await runPauseResumeForOrg(deps(blocked.db).jobs, ORG)).toBe(0);
+      }
+    });
   });
 
   it("is idempotent: a second run finds nothing to do and publishes nothing more", async () => {

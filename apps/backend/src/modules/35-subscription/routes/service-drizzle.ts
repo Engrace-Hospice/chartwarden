@@ -42,13 +42,15 @@ import {
 export type { PlatformRunner, WriteTx };
 import {
   PLATFORM_PAUSE_REASON_CODE,
-  lockNewestSubscription,
   lockSubscription,
   parsePauseEnd,
   pausedUntilDetail,
   refuseAdminTransition,
+  refuseCanceledIsFinal,
   refuseUnlessFuture,
+  refuseWhenOtherLive,
 } from "./admin-transition";
+import { currentSubscriptionOrder, lockNewestSubscription } from "./current-subscription";
 import { redeemPromoInTx } from "./promo-redemption";
 import { resumedColumns, resumedEventIntent, resumedLedgerRow } from "./resume-transition";
 import type {
@@ -603,7 +605,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (!sub) return null;
         const plan = await loadPlan(tx, sub.planId);
@@ -702,7 +704,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
         const meters = await tx.select().from(PMTR).where(eq(PMTR.planId, sub.planId));
@@ -782,7 +784,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (!sub) {
           return {
@@ -921,7 +923,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
         const fromPlan = await loadPlan(tx, sub.planId);
@@ -978,7 +980,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
         // A contracted subscription is ended by ChartWarden operations (its contract has a term and bills by the days live), never by the tenant.
@@ -1025,9 +1027,14 @@ export function buildDrizzleM35RouteService(
           await loadPlan(tx, sub.planId),
           "a tenant cannot resume a contracted subscription",
         );
+        // A canceled subscription is final, whatever flag is still set on it (dunning drives a row to `canceled` without clearing
+        // `cancel_at_period_end`): refused before anything else, so the flag is not flipped and nothing is written.
+        refuseCanceledIsFinal(sub, "resumed");
         // Neither paused nor scheduled to cancel: there is nothing to resume, and nothing is written or announced (the operator's resume
         // refuses the same way). A subscription scheduled to cancel at period end is "resumed" by clearing the schedule.
         if (sub.status !== "paused" && !sub.cancelAtPeriodEnd) refuseAdminTransition(sub, "resume");
+        // one live subscription per organization: a typed 409 here, not the unique index's raw failure
+        if (sub.status === "paused") await refuseWhenOtherLive(tx, sub);
         const at = now();
         const toStatus = sub.status === "paused" ? "active" : sub.status;
         await tx
@@ -1072,7 +1079,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
         // a contracted plan's statements ignore promos, so a redemption here would be spent for nothing
@@ -1141,7 +1148,7 @@ export function buildDrizzleM35RouteService(
           .select({ stripeCustomerId: S.stripeCustomerId })
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         return sub?.stripeCustomerId ?? null;
       });
@@ -1214,7 +1221,7 @@ export function buildDrizzleM35RouteService(
             .select({ id: S.id })
             .from(S)
             .where(eq(S.organizationId, actor.organizationId))
-            .orderBy(desc(S.startedAt))
+            .orderBy(...currentSubscriptionOrder())
             .limit(1);
           if (sub)
             await tx
@@ -1257,7 +1264,7 @@ export function buildDrizzleM35RouteService(
           .select({ id: S.id })
           .from(S)
           .where(eq(S.organizationId, actor.organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (sub)
           await tx
@@ -1453,7 +1460,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(conds.length ? and(...conds) : undefined)
-          .orderBy(desc(S.startedAt), desc(S.id));
+          .orderBy(...currentSubscriptionOrder());
         const page = pageOf(PLATFORM_CURSOR_SCOPE, rows, (r) => isoReq(r.startedAt), cursor, limit);
         const names = await orgNameMap(page.items.map((s) => s.organizationId));
         const items: SubscriptionAdminView[] = [];
@@ -1557,6 +1564,8 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const sub = await lockSubscription(tx, subscriptionId);
         refuseAdminTransition(sub, "resume");
+        // one live subscription per organization: a typed 409 here, not the unique index's raw failure (nothing is written or audited)
+        await refuseWhenOtherLive(tx, sub);
         const at = now();
         await tx.update(S).set(resumedColumns(at)).where(eq(S.id, sub.id));
         // The ledger row and the event are the ones the hourly pause-resume sweep writes too (resume-transition.ts). The ledger row's
@@ -2073,7 +2082,7 @@ export function buildDrizzleM35RouteService(
           .select()
           .from(S)
           .where(eq(S.organizationId, organizationId))
-          .orderBy(desc(S.startedAt))
+          .orderBy(...currentSubscriptionOrder())
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
         const meters = await tx.select().from(PMTR).where(eq(PMTR.planId, sub.planId));
