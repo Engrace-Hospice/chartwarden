@@ -400,4 +400,33 @@ describe("a command built to make the classifier slow is answered quickly even w
     const r = claude(alias, { tool_name: "Bash", tool_input: { command }, cwd: alias });
     expect(decision(r)).toBeUndefined();
   });
+
+  // The hook's timeout is 10 s and a call whose hook is killed RUNS, so the payload a secret read follows must not
+  // be able to eat the time: both of these took 7 to 25 s, nested substitutions each holding nearly the whole text.
+  const THREE_S = 3000;
+  const CAP = 64 * 1024;
+  const nestedBraces = (levels: number): string => {
+    const tail = "\ncat .env";
+    const room = CAP - tail.length - levels * 3 - 20;
+    return `${"$(".repeat(levels)}cat ${"y".repeat(room - 120)}${"{a,b}".repeat(16)}${")".repeat(levels)}${tail}`;
+  };
+  const nestedSegments = `${"$(".repeat(31)}${"a;".repeat(30_000)}${")".repeat(31)}\ncat .env`;
+
+  it.each([
+    ["a payload nested 9 deep, with sixteen brace groups", nestedBraces(9)],
+    ["31 nested substitutions of 30,000 segments each", nestedSegments],
+  ])(
+    "refuses the secret read after %s in under 3 s, from a symlinked root",
+    (_name, command) => {
+      for (const run of [
+        () => claude(alias, { tool_name: "Bash", tool_input: { command }, cwd: alias }),
+        () => codex(alias, { tool_name: "Bash", tool_input: { command }, cwd: alias }),
+      ]) {
+        const { result, ms } = timed(run);
+        expect(decision(result)).toBe("deny");
+        expect(ms).toBeLessThan(THREE_S);
+      }
+    },
+    60_000,
+  );
 });

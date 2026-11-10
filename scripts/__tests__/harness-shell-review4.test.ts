@@ -489,3 +489,82 @@ describe("a tilde form the guard cannot place, and a spoofed HOME, do not hide a
     }
   });
 });
+
+// The 64 KB cap and the 300-call budget bound counts, not work: a command nested N deep in `$( )` holds nearly the
+// whole command at every level, and the old listing judged EVERY level from every level. Two payloads built that
+// way took 7.5 s and 25 s at 8a9eb5a, past the hook's 10 s, and the guard then lets the call run; a secret read
+// after the payload is the call that ran.
+describe("nested commands are judged once each, within a text budget and a time limit", () => {
+  const CAP = 64 * 1024;
+  const FAST_MS = 3000;
+  const atRoot = { ...ctx, cwd: ROOT, exists: () => false };
+  const timed = (cmd: string) => {
+    const started = performance.now();
+    const verdict = classifyBash(cmd, atRoot);
+    return { verdict, ms: performance.now() - started };
+  };
+  /** `$(` x levels, one huge word with sixteen brace groups, `)` x levels, then a secret read. */
+  const nestedBraces = (levels: number): string => {
+    const tail = "\ncat .env";
+    const room = CAP - tail.length - levels * 3 - 20;
+    return `${"$(".repeat(levels)}cat ${"y".repeat(room - 120)}${"{a,b}".repeat(16)}${")".repeat(levels)}${tail}`;
+  };
+  const nestedSegments = (): string =>
+    `${"$(".repeat(31)}${"a;".repeat(30_000)}${")".repeat(31)}\ncat .env`;
+
+  it.each([5, 7, 9, 20, 30])("denies the secret read after a payload nested %i deep, fast", (n) => {
+    const { verdict, ms } = timed(nestedBraces(n));
+    expect(verdict.decision).toBe("deny");
+    expect(ms).toBeLessThan(FAST_MS);
+  });
+
+  it("denies the secret read after 31 nested substitutions of 30,000 segments each, fast", () => {
+    const { verdict, ms } = timed(nestedSegments());
+    expect(verdict.decision).toBe("deny");
+    expect(ms).toBeLessThan(FAST_MS);
+  });
+
+  it("asks, not allows, when nothing in the payload is itself refused", () => {
+    const cheap = `${"$(".repeat(31)}${"a;".repeat(30_000)}${")".repeat(31)}`;
+    const { verdict, ms } = timed(cheap);
+    expect(verdict.decision).toBe("ask");
+    expect(verdict.reason).toMatch(/too many|too big/i);
+    expect(ms).toBeLessThan(FAST_MS);
+  });
+
+  // Cheap per character (one long word), so only the text budget, not the clock, can stop it: each level judges the
+  // whole text again, 6 x 60 KB is past 256 KB, 4 x 60 KB is not.
+  it("budgets the text judged across nested commands: 3 levels of 60 KB pass, 5 do not", () => {
+    const nested = (levels: number): string =>
+      `${"$(".repeat(levels)}echo ${"y".repeat(60_000)}${")".repeat(levels)}`;
+    expect(timed(nested(3)).verdict.decision).toBe("allow");
+    const over = timed(nested(5));
+    expect(over.verdict.decision).toBe("ask");
+    expect(over.verdict.reason).toMatch(/too many|too big/i);
+    expect(over.ms).toBeLessThan(FAST_MS);
+  });
+
+  it("asks once its time limit has passed, and judges normally within it", () => {
+    expect(classifyBash("echo hi", { ...atRoot, judgeTimeLimitMs: -1 }).decision).toBe("ask");
+    expect(classifyBash("echo hi", { ...atRoot, judgeTimeLimitMs: 5000 }).decision).toBe("allow");
+    expect(classifyBash("cat .env", { ...atRoot, judgeTimeLimitMs: 5000 }).decision).toBe("deny");
+  });
+
+  it("still finds a read nested several levels down, and a write after a cd inside a substitution", () => {
+    expect(d("echo $(echo $(echo $(echo $(echo $(cat .env)))))")).toBe("deny");
+    expect(d(`echo ${"$(echo ".repeat(7)}cat .env${")".repeat(7)}`)).toBe("deny");
+    expect(d("echo $(cd scripts && echo $(echo x > harness/p))")).toBe("ask");
+    expect(d("echo $(echo `cat .env`)")).toBe("deny");
+  });
+
+  it.each([
+    "echo $(git rev-parse --show-toplevel)/x",
+    "x=$(echo $(date))",
+    'bash -c "echo $(cat package.json)"',
+    "echo $(echo $(echo $(echo $(echo $(echo hi)))))",
+    "diff <(sort a.txt) <(sort b.txt)",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});

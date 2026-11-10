@@ -325,6 +325,8 @@ export interface BashContext {
   readonly cwd?: string;
   /** The user's home directory, so `~`, `$HOME` and the expanded `/Users/me/...` agree. Default: `$HOME`. */
   readonly home?: string;
+  /** Wall-clock budget for judging one command, in ms (default 1000); past it the answer is ask. A test seam. */
+  readonly judgeTimeLimitMs?: number;
 }
 
 /** One simple command, and the operator (`&&`, `||`, `;`, a newline, `|`, `&`) that joined it to the one before. */
@@ -441,7 +443,9 @@ function substitutions(cmd: string): string[] {
         else if (cmd[j] === ")") depth--;
       }
       out.push(cmd.slice(i + 2, j - 1));
-      i += 1; // keep scanning inside, so nested substitutions are found too
+      // Only the outermost: judging it finds the ones inside it, with the directory its own `cd`s leave. Listing
+      // every level would judge a text nested N deep N times, each time nearly the whole command.
+      i = j - 1;
     }
   }
   return out;
@@ -787,20 +791,33 @@ const MAX_BRACE_GROUPS = 16;
  */
 const MAX_COMMAND_BRACE_ALTERNATIVES = 4096;
 const MAX_COMMAND_PATH_RESOLUTIONS = 16_384;
+/** Text judged across the command and everything nested in it (`$( )`, `bash -c`, `eval`): four times the 64 KB command cap. */
+const MAX_COMMAND_JUDGED_CHARS = 256 * 1024;
+/** A word longer than a path can be (PATH_MAX) is not a file name, so its braces are not expanded. */
+const MAX_BRACE_WORD_CHARS = 4096;
+/**
+ * Wall-clock backstop for one `classifyBash`. The hook is killed at 10 s and Claude Code then runs the call, and
+ * the guard judges a command twice when the root or cwd is a symlink, so each judging gets a second.
+ */
+const MAX_COMMAND_JUDGE_MS = 1000;
 const WORK_BUDGET_REASON =
-  "This command has too many brace alternatives or path targets for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in). Split it into smaller commands, or let a human run it.";
-let work = {
+  "This command has too many brace alternatives, path targets or nested commands, or is too big, for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in, and with every command nested in another). Split it into smaller commands, or let a human run it.";
+const freshWork = (limitMs: number) => ({
   braces: MAX_COMMAND_BRACE_ALTERNATIVES,
   resolutions: MAX_COMMAND_PATH_RESOLUTIONS,
+  chars: MAX_COMMAND_JUDGED_CHARS,
+  deadline: performance.now() + limitMs,
   spent: false,
+});
+let work = freshWork(MAX_COMMAND_JUDGE_MS);
+const refillWork = (limitMs: number): void => {
+  work = freshWork(limitMs);
 };
-const refillWork = (): void => {
-  work = {
-    braces: MAX_COMMAND_BRACE_ALTERNATIVES,
-    resolutions: MAX_COMMAND_PATH_RESOLUTIONS,
-    spent: false,
-  };
-};
+/** Has this command used up its time? Marks the budget spent, so the command asks. */
+function outOfTime(): boolean {
+  if (!work.spent && performance.now() > work.deadline) work.spent = true;
+  return work.spent;
+}
 
 /**
  * The first `{a,b}` group in `word` that has no brace inside it, split into the text before, its body and
@@ -828,6 +845,7 @@ function firstBraceGroup(word: string): { pre: string; body: string; post: strin
 
 /** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
 function expandBraces(word: string): string[] {
+  if (word.length > MAX_BRACE_WORD_CHARS) return [word];
   let out = [word];
   for (let round = 0; round < MAX_BRACE_GROUPS; round++) {
     const next: string[] = [];
@@ -1156,7 +1174,7 @@ function switchesHarness(parts: readonly Segment[], parsed: readonly Parsed[]): 
   });
 }
 
-const MAX_NESTING = 4;
+const MAX_NESTING = 8;
 
 // Every `$( … )` is judged as a command line of its own, so a few thousand nested ones fan out without
 // bound, and the guard fails OPEN when the hook times out. One budget for the whole call keeps it bounded.
@@ -1181,7 +1199,7 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
   }
   if (depth === 0) {
     judgeBudget = MAX_JUDGED_COMMAND_LINES;
-    refillWork();
+    refillWork(ctx.judgeTimeLimitMs ?? MAX_COMMAND_JUDGE_MS);
   }
   const start = startingDir(ctx);
   const verdict = judge(cmd, ctx, depth, [start]);
@@ -1220,6 +1238,11 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
       "Command substitutions or `bash -c` nested too deeply, or too many to check; a human decides.",
     );
   }
+  // Every nested text is judged whole, and one that holds the next level holds nearly the whole command again, so
+  // the TEXT judged is budgeted, not only the number of judgings.
+  work.chars -= c.length;
+  if (work.chars < 0) work.spent = true;
+  if (outOfTime()) return ask(WORK_BUDGET_REASON);
   const { parts, sequential } = splitSegments(c);
   const parsedParts = parts.map((part) => parseSegment(part.text));
 
@@ -1245,6 +1268,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   // `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named.
   const cdpath = /\bCDPATH\b/.test(c);
   parts.forEach((part, index) => {
+    if (outOfTime()) return;
     const parsed = parsedParts[index] as Parsed;
     // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
     const shellIn = sequential && part.joiner === "&&" ? after : anywhere;
