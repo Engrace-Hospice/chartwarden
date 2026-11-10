@@ -239,7 +239,9 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       | "rollback-then-500"
       | "commit-then-deadlock"
       | "read-then-503"
-      | "autocommit-then-500" = "commit-then-500";
+      | "autocommit-then-500"
+      | "writer-fn-autocommit-then-500"
+      | "writer-fn-in-tx-then-500" = "commit-then-500";
 
     const probeRows = async () =>
       Number((await admin.query("SELECT count(*)::int AS n FROM idem_probe")).rows[0].n);
@@ -252,6 +254,13 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       await admin.query("CREATE TABLE idem_probe (id serial PRIMARY KEY, n int NOT NULL)");
       await admin.query("GRANT ALL ON idem_probe TO chartwarden_app");
       await admin.query("GRANT USAGE ON SEQUENCE idem_probe_id_seq TO chartwarden_app");
+      // The platform-writer pattern: a SECURITY DEFINER function that writes, called as `SELECT fn(...)`. Nothing in the
+      // statement's text says it writes, so the tracker must count every call that is not a known read-only builtin.
+      await admin.query(
+        `CREATE FUNCTION idem_probe_writer(p int) RETURNS void LANGUAGE sql SECURITY DEFINER
+           SET search_path = pg_catalog, public AS $$ INSERT INTO idem_probe (n) VALUES (p) $$`,
+      );
+      await admin.query("GRANT EXECUTE ON FUNCTION idem_probe_writer(int) TO chartwarden_app");
       app = Fastify();
       app.decorateRequest("context", undefined as never);
       app.addHook("onRequest", async (request) => {
@@ -267,6 +276,18 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
             (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(sql`SELECT 1`),
           ); // a guard-style read transaction: it COMMITs, but writes nothing
           return reply.code(503).send({ error: { code: "DEGRADED" } });
+        }
+        if (mode === "writer-fn-autocommit-then-500") {
+          await handle.db.execute(sql`SELECT idem_probe_writer(${runs})`); // autocommit: durable once it returns
+          throw new Error("failed after a writer-function call");
+        }
+        if (mode === "writer-fn-in-tx-then-500") {
+          await withOrgContext(handle.db, scope, (tx) =>
+            (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(
+              sql`SELECT idem_probe_writer(${runs})`,
+            ),
+          ); // committed with the transaction
+          throw new Error("failed after a writer-function call");
         }
         if (mode === "autocommit-then-500") {
           // No transaction block: drizzle sends this through pool.query (pg-pool's own checkout), the path whose callback may
@@ -334,6 +355,21 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       expect(runs).toBe(1);
       expect(await probeRows()).toBe(before + 1);
     });
+
+    it.each(["writer-fn-autocommit-then-500", "writer-fn-in-tx-then-500"] as const)(
+      "a SECURITY DEFINER writer called via SELECT (%s): cached, the retry does NOT write again",
+      async (writerMode) => {
+        mode = writerMode;
+        runs = 0;
+        const key = `live-${writerMode}`;
+        const before = await probeRows();
+        expect((await post(key)).statusCode).toBe(500);
+        expect((await post(key)).statusCode).toBe(500);
+        expect(runs).toBe(1);
+        expect(await probeRows()).toBe(before + 1);
+        expect(await rowFor(ORG_A, key)).toMatchObject([{ state: "complete", status: "500" }]);
+      },
+    );
 
     it("a write that ROLLED BACK, then a 500: the key is released and the retry runs", async () => {
       mode = "rollback-then-500";
