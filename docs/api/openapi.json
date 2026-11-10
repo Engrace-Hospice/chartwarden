@@ -54151,7 +54151,8 @@
                     "locationIds",
                     "orgWidePatientScope",
                     "isAdmin",
-                    "permissions"
+                    "permissions",
+                    "organizationStage"
                   ],
                   "properties": {
                     "userId": {
@@ -54220,6 +54221,18 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "organizationStage": {
+                      "anyOf": [
+                        {
+                          "const": "onboarding",
+                          "type": "string"
+                        },
+                        {
+                          "const": "live",
+                          "type": "string"
+                        }
+                      ]
                     }
                   }
                 }
@@ -97457,11 +97470,118 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
-        "parameters": [],
+        "summary": "Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "credentialId",
+                    "organizationId",
+                    "providerEntityId",
+                    "macJurisdiction",
+                    "submitterId",
+                    "tradingPartnerId",
+                    "clientId",
+                    "hasSecret",
+                    "baaRecordRef",
+                    "credentialExpiresAt",
+                    "lastSandboxTestAt",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "credentialId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "macJurisdiction": {
+                      "type": "string"
+                    },
+                    "submitterId": {
+                      "type": "string"
+                    },
+                    "tradingPartnerId": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "baaRecordRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "credentialExpiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastSandboxTestAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -97687,12 +97807,21 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+        "summary": "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up; Idempotency-Key required (§4.1 #36)",
         "parameters": [
           {
             "name": "providerEntityId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
             "schema": {
               "type": "string"
             }

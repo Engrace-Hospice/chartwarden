@@ -7309,7 +7309,7 @@ export interface paths {
         /** List per-ProviderEntity MAC credentials - secrets masked, cursor-paginated (§4.1 #34) */
         get: operations["getApiV1BillingMaccredentials"];
         put?: never;
-        /** Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35) */
+        /** Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35) */
         post: operations["postApiV1BillingMaccredentials"];
         delete?: never;
         options?: never;
@@ -7343,7 +7343,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36) */
+        /** Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up; Idempotency-Key required (§4.1 #36) */
         post: operations["postApiV1BillingMaccredentialsByProviderEntityIdTest"];
         delete?: never;
         options?: never;
@@ -44174,6 +44174,7 @@ export interface operations {
                         orgWidePatientScope: boolean;
                         isAdmin: boolean;
                         permissions: string[];
+                        organizationStage: "onboarding" | "live";
                     };
                 };
             };
@@ -52837,7 +52838,12 @@ export interface operations {
     postApiV1BillingMaccredentials: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save. */
+                "If-Match"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -52859,11 +52865,28 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -52911,7 +52934,10 @@ export interface operations {
     postApiV1BillingMaccredentialsByProviderEntityIdTest: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path: {
                 providerEntityId: string;
             };
