@@ -90,6 +90,20 @@ const rowById = (scope: HTMLElement | null, id: string | null): HTMLElement | nu
         (el) => el.dataset.rowId === id,
       ) ?? null);
 
+/** The width at which list-chrome.css stacks the drawer under its list (`.wx-list-drawer.has-drawer` collapses to one column). */
+const STACKED_DRAWER_QUERY = "(max-width: 1280px)";
+
+/**
+ * Focus `el` without the browser's own scroll. Side by side the drawer is already in view; stacked under the list it sits below
+ * the fold (or the opener row is above it), so bring it into view with the least movement.
+ */
+function focusInView(el: HTMLElement): void {
+  el.focus({ preventScroll: true });
+  const stacked =
+    typeof window.matchMedia === "function" && window.matchMedia(STACKED_DRAWER_QUERY).matches;
+  if (stacked) el.scrollIntoView?.({ block: "nearest" });
+}
+
 const OWN_ESCAPE =
   "input, textarea, select, [role='dialog'], [role='alertdialog'], [contenteditable='true']";
 
@@ -112,7 +126,7 @@ export function useDrawerA11y<T extends HTMLElement = HTMLElement>(
     const active = document.activeElement;
     const focusedOutside = active instanceof HTMLElement && !node?.contains(active);
     // Focus the drawer — unless the user is typing in a field outside it (a filter box whose result opened this drawer).
-    if (!(focusedOutside && isTextEntry(active))) node?.focus({ preventScroll: true });
+    if (node && !(focusedOutside && isTextEntry(active))) focusInView(node);
     // Nothing focused (a deep link, or the previous drawer unmounted with focus inside it): the opener is the selected row.
     const opener = focusedOutside && active !== document.body ? active : selectedRow(scope, node);
     const openerRowId = rowIdOf(opener);
@@ -133,7 +147,7 @@ export function useDrawerA11y<T extends HTMLElement = HTMLElement>(
       const target = opener?.isConnected
         ? opener
         : ((listPresent ? rowById(scope, openerRowId) : null) ?? selected);
-      target?.focus({ preventScroll: true });
+      if (target) focusInView(target);
     };
   }, []);
 

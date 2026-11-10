@@ -221,6 +221,49 @@ interface RowsHandle {
   select: (id: string | null) => void;
 }
 
+describe("useDrawerA11y when the drawer is stacked under the list", () => {
+  const originalMatchMedia = window.matchMedia;
+  const originalScrollIntoView = Element.prototype.scrollIntoView;
+  const scrollIntoView = vi.fn();
+  /** Mirrors list-chrome.css: at <=1280px `.wx-list-drawer.has-drawer` is one column. */
+  const setStacked = (stacked: boolean): void => {
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: stacked && query === "(max-width: 1280px)",
+      media: query,
+    })) as unknown as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    scrollIntoView.mockClear();
+  });
+
+  it("brings the drawer into view on open, and the opener back into view on close", () => {
+    Element.prototype.scrollIntoView = scrollIntoView;
+    setStacked(true);
+    render(<Host onClose={() => undefined} />);
+    const opener = screen.getByRole("button", { name: "open" });
+    opener.focus();
+    fireEvent.click(opener);
+    const drawer = screen.getByRole("complementary", { name: "Detail" });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(drawer);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "act" }), { key: "Escape" });
+    expect(document.activeElement).toBe(opener);
+    expect(scrollIntoView.mock.contexts[1]).toBe(opener);
+  });
+
+  it("does not scroll when the drawer sits beside the list", () => {
+    Element.prototype.scrollIntoView = scrollIntoView;
+    setStacked(false);
+    render(<Host onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+});
+
 describe("useDrawerA11y focus hand-off", () => {
   const mountRows = (rowMarker?: RowMarker): RowsHandle => {
     const handle = createRef<RowsHandle>();
