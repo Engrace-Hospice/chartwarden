@@ -122,4 +122,52 @@ describe("the text a failed row persists never carries a bound parameter", () =>
   it("an error with no database in it keeps its message and is capped", () => {
     expect(classifySyncFault(new Error("x".repeat(5000)), REGISTERED).error).toHaveLength(2000);
   });
+
+  describe("a long statement keeps the diagnostics that sit at the END of the text (SQLSTATE, constraint, table)", () => {
+    // a multi-row medication_history_record insert: hundreds of numbered placeholders, so the statement alone is several KB
+    const PLACEHOLDER_ROWS = 400;
+    const rowPlaceholders = (row: number) => `($${2 * row + 1}, $${2 * row + 2})`;
+    const longStatement = (inlineLiteral = "") =>
+      `insert into "medication_history_record" ("drug_name","sig_text") values ${Array.from(
+        { length: PLACEHOLDER_ROWS },
+        (_, row) => rowPlaceholders(row),
+      ).join(", ")}${inlineLiteral}`;
+    const longFailure = (inlineLiteral = "") =>
+      new DrizzleQueryError(
+        longStatement(inlineLiteral),
+        Array.from({ length: PLACEHOLDER_ROWS * 2 }, (_, i) =>
+          i % 2 === 0 ? MARKER_DRUG : MARKER_SIG,
+        ),
+        Object.assign(new Error("duplicate key value violates unique constraint"), {
+          code: "23505",
+          severity: "ERROR",
+          detail: `Key (drug_name)=(${MARKER_DRUG}) already exists.`,
+          table: "medication_history_record",
+          constraint: "medication_history_record_uq",
+        }),
+      );
+
+    it("the statement is more than 5 KB, yet the persisted text keeps its head and the SQLSTATE, constraint and table", () => {
+      expect(longStatement().length).toBeGreaterThan(5000);
+      const out = classifySyncFault(longFailure(), REGISTERED);
+      expect(out.kind).toBe("failed");
+      expect(out.error.length).toBeLessThanOrEqual(2000);
+      expect(out.error).toContain("DrizzleQueryError: Failed query: insert into"); // the head
+      expect(
+        out.error.endsWith("[23505 medication_history_record_uq medication_history_record]"),
+      ).toBe(true); // the tail: what an operator needs to diagnose
+      expect(out.error).toContain(" ... "); // and it says it was cut
+      expect(out.error).not.toContain("MARKER");
+    });
+
+    it("an inline literal in a long statement is redacted too (sql.raw can inline one)", () => {
+      const out = classifySyncFault(longFailure(` /* '${MARKER_SIG}' */`), REGISTERED);
+      expect(out.error).not.toContain("MARKER");
+      expect(out.error).toContain("23505");
+    });
+
+    it("a statement that fits is not cut", () => {
+      expect(classifySyncFault(dbFailure(), REGISTERED).error).not.toContain(" ... ");
+    });
+  });
 });

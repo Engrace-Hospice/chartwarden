@@ -17,6 +17,20 @@ import { safeErrorMessage } from "../../../bootstrap/redact-database-error";
 
 /** The longest `last_error` a row keeps. */
 const MAX_ERROR_CHARS = 2000;
+/** What a text over the cap keeps from its END: `safeErrorMessage` puts the SQLSTATE, constraint and table there, after the statement. */
+const ERROR_TAIL_CHARS = 500;
+const ERROR_CUT_MARKER = " ... ";
+
+/**
+ * A text over {@link MAX_ERROR_CHARS} keeps its head AND its tail. A database error reads `Type: Failed query: <whole statement> [23505 constraint
+ * table]`; cutting only the end (as `slice(0, n)` does) drops exactly the part that diagnoses it once the statement is long (a multi-row insert is
+ * hundreds of placeholders).
+ */
+function capErrorText(text: string): string {
+  if (text.length <= MAX_ERROR_CHARS) return text;
+  const headChars = MAX_ERROR_CHARS - ERROR_TAIL_CHARS - ERROR_CUT_MARKER.length;
+  return `${text.slice(0, headChars)}${ERROR_CUT_MARKER}${text.slice(-ERROR_TAIL_CHARS)}`;
+}
 
 /** The attempt budget of a row (attempts that reached the vendor and failed transiently). 8 attempts back off 1+2+4+8+16+32+60 minutes. */
 export const SYNC_MAX_ATTEMPTS = 8;
@@ -55,8 +69,11 @@ export function classifySyncFault(error: unknown, ctx: SyncFaultContext): SyncFa
   // A plain Error is deterministic and non-retryable. Its text lands in `dosespot_sync_queue.last_error`, which the write-audit trigger copies
   // into audit_event: `safeErrorMessage`, never `.message`, because a Drizzle error's message embeds the statement's bound parameters (the
   // MedHx ingest runs inside this try, so a failing medication_history_record insert would otherwise persist drug names and sig text).
+  // `bare: true` redacts a database error exactly as without it, but returns a NON-database Error's `message` verbatim: that is safe only
+  // because no throw in the sync/ingest path interpolates a value (an id, a name, a parameter) into its own message. A new throw there must keep to
+  // that, or its text lands in this column and the audit row (sync-outcome.test.ts pins the database-error case, not a hand-written message).
   return {
     kind: "failed",
-    error: safeErrorMessage(error, { bare: true }).slice(0, MAX_ERROR_CHARS),
+    error: capErrorText(safeErrorMessage(error, { bare: true })),
   };
 }
