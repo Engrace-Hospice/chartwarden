@@ -13535,6 +13535,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       outbox: m12OutboxPublisher,
       connection: queueConnection,
       doseSpotClient: m12DoseSpotClient,
+      // a registered tenant that is not live has its rows left pending, not failed (jobs/sync-preflight.ts)
+      config: m12TenantConfig,
+      warn: (fields, message) => app.log.warn(fields, message),
       demographicsForOrg: (organizationId, patientId) =>
         dosespotSyncDemographicsForOrg(dbHandle.db, organizationId, patientId),
     });
@@ -13544,9 +13547,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     });
     try {
       const m12SyncQueue = await scheduleDoseSpotSyncQueueDrain(queueConnection);
-      // a registered tenant that is not live has its rows left pending, not failed (jobs/sync-preflight.ts)
-      config: m12TenantConfig,
-      warn: (fields, message) => app.log.warn(fields, message),
       app.addHook("onClose", async () => {
         await m12SyncQueue.close();
       });
