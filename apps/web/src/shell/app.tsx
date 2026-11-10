@@ -44,6 +44,7 @@ import {
 import { AppLayout } from "./layout";
 import { LiveFeatureFlagProvider } from "./live-feature-flags";
 import { OfflineBanner } from "./offline-banner";
+import { ONBOARDING_HOME, isOnboardingScreen } from "./onboarding-stage";
 import { RedirectRememberingLink } from "./redirect-remembering-link";
 import type { WebScreen } from "./screen-registry";
 import { ActorSessionProvider, useSessionState } from "./session";
@@ -70,9 +71,6 @@ export interface AppShellProps {
    */
   screenGuard?: ComponentType<{ path: string; children: ReactNode }>;
 }
-
-/** The tenant onboarding wizard (apps/web/src/modules/34-saas): where a refused-while-onboarding call sends the person. The shell imports no module, so the path is named here. */
-const ONBOARDING_HOME = "/admin/onboarding";
 
 function newCorrelationId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
@@ -116,13 +114,16 @@ function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
  */
 function RequireScreenPermission({
   screen,
+  enforce = true,
   children,
 }: {
   screen: { requiredPermission?: string; title: string };
+  /** False for a param-path screen: its descriptor key is only a nav key, so nothing is blocked (see the route builder). */
+  enforce?: boolean;
   children: ReactNode;
 }): JSX.Element {
   const { session } = useSessionState();
-  if (!isScreenDenied(screen, session)) return <>{children}</>;
+  if (!enforce || !isScreenDenied(screen, session)) return <>{children}</>;
   return (
     <>
       <h1 className="sr-only">{screen.title}</h1>
@@ -193,13 +194,13 @@ function GlobalResponseWatcher(): null {
       }
     } else if (signal.kind === "organization-onboarding") {
       // The organization is not live yet and this call is outside onboarding. When the session already says `onboarding`, the screen
-      // guard routes (and a refused background call, like the alert inbox poll, is expected noise: it must not bounce Agency setup or
-      // Account, which work). When the stage is unknown the refusal is the server's own word: the wizard is where the work is. Not
-      // from the wizard itself, and not for a signed-out visitor.
+      // guard routes (and a refused background call is expected noise). When the stage is unknown the refusal is the server's own
+      // word: the wizard is where the work is. Never from a screen that works while onboarding (the wizard, Agency setup, Account,
+      // passkeys: one of their own calls, or a late background one, must not bounce them), and not for a signed-out visitor.
       if (
         status === "authenticated" &&
         session?.organizationStage === undefined &&
-        !pathname.startsWith(ONBOARDING_HOME)
+        !isOnboardingScreen(pathname)
       ) {
         navigate(ONBOARDING_HOME, { replace: true });
       }
@@ -283,15 +284,14 @@ export function AppShell({
                 // Param-path screens (`/x/:id`) are reached by links, and their descriptor key was only ever a
                 // nav key — it may differ from what the screen's own API call requires — so hard-blocking them
                 // could deny a user the server would serve. The guard covers static paths (the create forms).
+                // ONE tree shape for static and param paths (guard > permission > Suspense > screen): a screen registered under
+                // both /x and /x/:id (the onboarding wizard) must keep its state when the person moves between them, and two
+                // shapes would make React remount it.
                 element: guarded(
                   s.path,
-                  s.path.includes(":") ? (
-                    withSuspense(createElement(s.screen))
-                  ) : (
-                    <RequireScreenPermission screen={s}>
-                      {withSuspense(createElement(s.screen))}
-                    </RequireScreenPermission>
-                  ),
+                  <RequireScreenPermission screen={s} enforce={!s.path.includes(":")}>
+                    {withSuspense(createElement(s.screen))}
+                  </RequireScreenPermission>,
                 ),
               })),
             ],

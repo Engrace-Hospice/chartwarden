@@ -116,7 +116,7 @@ describe("GoLivePanel", () => {
     );
   });
 
-  it("keeps the note and the confirmation through Re-verify", async () => {
+  it("keeps the note through Re-verify but never the attestation tick", async () => {
     const client = stubClient({ POST: { [ATTEST]: () => refused(403, "STEP_UP_REQUIRED") } });
     const first = mount(readyView, client);
     fireEvent.change(screen.getByLabelText(/note/i), {
@@ -134,7 +134,35 @@ describe("GoLivePanel", () => {
     );
     expect(
       (screen.getByRole("checkbox", { name: /ready to go live/i }) as HTMLInputElement).checked,
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it.each(["GO_LIVE_ALREADY_ATTESTED", "GO_LIVE_ATTESTATION_EXPIRED", "ACTIVATION_GUARDS_FAILED"])(
+    "reloads the wizard when the server answers %s (its copy says it was reloaded)",
+    async (code) => {
+      const client = stubClient({ POST: { [ATTEST]: () => refused(409, code) } });
+      const { onChanged } = mount(readyView, client);
+      tick();
+      attest();
+      expect((await screen.findByRole("alert")).textContent).toMatch(/reloaded/i);
+      await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    },
+  );
+
+  it("lets a holder of the officer role attest while no officer is assigned (the server's rule)", () => {
+    const unassigned = wizardView([done("ccn_registered", 1), goLiveStep], {
+      goLive: goLive("awaiting_attestation", { complianceOfficerMembershipId: null }),
+    });
+    mount(unassigned);
+    expect(screen.getByRole("form", { name: "Attest go-live readiness" })).toBeTruthy();
+  });
+
+  it("does not let another officer attest once someone else is assigned", () => {
+    const other = wizardView([done("ccn_registered", 1), goLiveStep], {
+      goLive: goLive("awaiting_attestation", { complianceOfficerMembershipId: "m-someone-else" }),
+    });
+    mount(other);
+    expect(screen.queryByRole("form", { name: "Attest go-live readiness" })).toBeNull();
   });
 
   it("drops a second submit while the first is in flight", async () => {
@@ -201,6 +229,35 @@ describe("GoLivePanel", () => {
     );
     expect(
       screen.getByText(/waiting for chartwarden's approval: it can be approved for 5 more days/i),
+    ).toBeTruthy();
+  });
+
+  it("tells the tenant to ask ChartWarden to clear an expired attestation", () => {
+    const attestation = {
+      id: "g-1",
+      status: "pending" as const,
+      attestedByMembershipId: "m-officer",
+      attestedAt: "2026-10-01T00:00:00.000Z",
+      expiresAt: "2026-10-15T00:00:00.000Z",
+      attestationNote: null,
+      approvedByMembershipId: null,
+      approvedByLabel: null,
+      approvedAt: null,
+      approvalReason: null,
+      revokedByMembershipId: null,
+      revokedByLabel: null,
+      revokedAt: null,
+      revokeReason: null,
+    };
+    mount(
+      wizardView([done("ccn_registered", 1), goLiveStep], {
+        goLive: goLive("awaiting_approval", { attestation }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        /ask chartwarden to clear it, then your compliance officer can attest again/i,
+      ),
     ).toBeTruthy();
   });
 

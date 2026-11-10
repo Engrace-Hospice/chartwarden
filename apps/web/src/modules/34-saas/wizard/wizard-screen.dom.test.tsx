@@ -52,12 +52,22 @@ describe("OnboardingWizard", () => {
     expect(screen.getByTestId("where").textContent).toBe("/admin/onboarding/account_created");
   });
 
-  it("says there is no such step and links to the current one", async () => {
-    renderAt("/admin/onboarding/nope", routes, client());
-    expect(await screen.findByText('There is no step called "nope"')).toBeTruthy();
+  it("says there is no such step without echoing the address back, and links to the current one", async () => {
+    renderAt("/admin/onboarding/Call-555-0100-to-verify", routes, client());
+    expect(await screen.findByText("That step does not exist")).toBeTruthy();
+    // only the test's own location probe prints the address
+    for (const el of screen.queryAllByText(/Call-555/)) {
+      expect(el.getAttribute("data-testid")).toBe("where");
+    }
     expect(screen.getByRole("link", { name: "Go to the current step" }).getAttribute("href")).toBe(
       "/admin/onboarding/plan_contract",
     );
+  });
+
+  it("says there are no steps yet, instead of spinning, when the wizard has none", async () => {
+    renderAt("/admin/onboarding", routes, client(wizardView([])));
+    expect(await screen.findByText("There are no steps yet")).toBeTruthy();
+    expect(screen.queryByText("Opening the current step…")).toBeNull();
   });
 
   it("reads a locked step but offers no action on it, and names the step to finish", async () => {
@@ -98,6 +108,25 @@ describe("OnboardingWizard", () => {
     expect(
       await screen.findByRole("heading", { level: 2, name: "Plan and contract" }),
     ).toBeTruthy();
+  });
+
+  it("replaces a failed-load screen when a later focus reload succeeds", async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    let calls = 0;
+    const c = stubClient({
+      GET: { [PATH]: () => (++calls === 1 ? refused(500, "BOOM") : ok(wizardView(steps()))) },
+    });
+    renderAt("/admin/onboarding", routes, c);
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /could not load your onboarding/i,
+    );
+    now += FOCUS_RELOAD_MIN_MS + 1;
+    window.dispatchEvent(new Event("focus"));
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Plan and contract" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/could not load your onboarding/i)).toBeNull();
   });
 
   it("is read-only once the organization is live, and says so", async () => {

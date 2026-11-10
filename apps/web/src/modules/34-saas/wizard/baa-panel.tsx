@@ -7,20 +7,18 @@ import {
   FactList,
   InlineAlert,
   LoadingSpinner,
-  stashStepUpMemoryDraft,
   useApiClient,
   useLoad,
-  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { FailureNotice } from "./failure-notice";
-import type { StepPanelProps } from "./panel-props";
+import { type StepPanelProps, isStepOpenForWork } from "./panel-props";
 import { ONBOARDING_KEYS } from "./permissions";
 import { RoleCannot } from "./role-cannot";
 import { useOpsWrite } from "./use-ops-write";
-import { WIZARD_ERROR_COPY } from "./wizard-errors";
+import { WIZARD_ERROR_COPY, viewHasMoved } from "./wizard-errors";
 import { ROLE_COMPLIANCE_OFFICER } from "./wizard-model";
 
 type BaaPage = operations["getApiV1TenantBaa"]["responses"][200]["content"]["application/json"];
@@ -29,7 +27,13 @@ type BaaRecord = BaaPage["items"][number];
 /** The go-live guard: an executed BAA must have more than this many days left. */
 const MIN_DAYS_LEFT = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DRAFT_KEY = "wizard:baa_executed:attest";
+
+const STATUS_LABEL: Readonly<Record<BaaRecord["baaStatus"], string>> = {
+  executed: "Executed",
+  pending: "Pending",
+  terminated: "Terminated",
+  missing: "Not recorded",
+};
 
 /** The record go-live judges: the newest one. */
 const latestOf = (items: readonly BaaRecord[]): BaaRecord | null =>
@@ -71,7 +75,7 @@ function BaaRecordFacts({ record }: { record: BaaRecord }): JSX.Element {
   return (
     <dl className="wx-kv">
       <dt>Status</dt>
-      <dd>{record.baaStatus}</dd>
+      <dd>{STATUS_LABEL[record.baaStatus] ?? record.baaStatus}</dd>
       <dt>Addendum version</dt>
       <dd>{record.addendumVersion}</dd>
       {record.executedOn ? (
@@ -90,7 +94,7 @@ function BaaRecordFacts({ record }: { record: BaaRecord }): JSX.Element {
   );
 }
 
-export function BaaPanel({ held, roles, onChanged }: StepPanelProps): JSX.Element {
+export function BaaPanel({ step, view, held, roles, onChanged }: StepPanelProps): JSX.Element {
   const client = useApiClient();
   const mayRead = held.has(ONBOARDING_KEYS.baaRead);
   const mayAttest = held.has(ONBOARDING_KEYS.baaAttest) && roles.has(ROLE_COMPLIANCE_OFFICER);
@@ -102,13 +106,17 @@ export function BaaPanel({ held, roles, onChanged }: StepPanelProps): JSX.Elemen
         : { data: { items: [], nextCursor: null, hasMore: false } },
     WIZARD_ERROR_COPY,
   );
-  // Back from Re-verify the confirmation box is as it was left (it holds no free text, only the tick).
-  const restored = useStepUpMemoryDraft<{ confirmed: boolean }>(DRAFT_KEY);
-  const [confirmed, setConfirmed] = useState(restored?.confirmed ?? false);
+  // A consent tick is never kept through a Re-verify: the person ticks again, knowingly, on the record in front of them.
+  const [confirmed, setConfirmed] = useState(false);
   const write = useOpsWrite();
 
   const record = latestOf(baa.data?.items ?? []);
-  const canAttest = mayAttest && record?.baaStatus === "executed" && !record.attestedAt;
+  // After go-live (or on a locked step) the server refuses the attest, so the form is not offered.
+  const canAttest =
+    mayAttest &&
+    isStepOpenForWork(view, step) &&
+    record?.baaStatus === "executed" &&
+    !record.attestedAt;
 
   async function attest(): Promise<void> {
     if (!record || !confirmed) return;
@@ -126,6 +134,7 @@ export function BaaPanel({ held, roles, onChanged }: StepPanelProps): JSX.Elemen
       },
     );
     if (outcome.ok) setConfirmed(false);
+    else if (viewHasMoved(outcome.failure)) await Promise.all([baa.reload(true), onChanged()]);
   }
 
   return (
@@ -169,12 +178,7 @@ export function BaaPanel({ held, roles, onChanged }: StepPanelProps): JSX.Elemen
             />
             <span>I confirm this agreement is correct for our organization.</span>
           </label>
-          {write.failure ? (
-            <FailureNotice
-              failure={write.failure}
-              onReverify={() => stashStepUpMemoryDraft(DRAFT_KEY, { confirmed })}
-            />
-          ) : null}
+          {write.failure ? <FailureNotice failure={write.failure} /> : null}
           <div className="wx-drawer-actions">
             <Button type="submit" disabled={!confirmed || write.busy}>
               {write.busy ? "Attesting…" : "Attest the BAA"}

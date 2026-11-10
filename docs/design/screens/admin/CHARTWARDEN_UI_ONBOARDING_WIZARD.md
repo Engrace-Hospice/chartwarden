@@ -198,8 +198,8 @@ and a tab opened before approval says "Reload to open all of ChartWarden".
 
 While the organization is onboarding the server refuses every route outside onboarding, go-live, account and sign-in
 (403 `ORGANIZATION_ONBOARDING`), so the shell sends the landing page to the wizard and says "Available after go-live" on
-the other screens; only the wizard, Account and Agency setup work. A 403 `ORGANIZATION_ONBOARDING` from any call sends the
-person to the wizard (not again from the wizard itself). The stage comes from the session (`organizationStage`); when it is
+the other screens; only the wizard, Account, Agency setup and the passkey screen (the step-up ceremony sends a person with no enrolled factor there) work, and the shell's alert inbox and feature-flag reads are not made while confined. A 403 `ORGANIZATION_ONBOARDING` from a session whose stage is unknown sends the
+person to the wizard (never from a screen that works while onboarding). The stage comes from the session (`organizationStage`); when it is
 absent the shell stays normal and the server stays the authority.
 
 | # | Step | The tenant sees | The tenant can |
@@ -215,7 +215,7 @@ absent the shell stays normal and the server stays the authority.
 | 9 | Payer enrollment | the step and its evidence | mark done with evidence, or **skip** |
 | 10 | DoseSpot kickoff | the step and its evidence | mark done with evidence (slice 7C-b), or **skip** |
 | 11 | First admin | the invitation state | nothing; ChartWarden settles it |
-| 12 | Compliance officer | the current officer and the staff list | the administrator picks one (fresh step-up), is given the role first when missing, or invites someone |
+| 12 | Compliance officer | the current officer, and the staff who already hold the compliance officer role | the administrator picks one of them (fresh step-up). ChartWarden alone assigns the role (separation of duties), so when no one holds it the panel says "ChartWarden assigns the compliance officer role. Ask ChartWarden to give it to the person you want, then choose them here."; a colleague can be invited |
 | 13 | Sample data (optional) | the step | nothing; never skippable by the tenant |
 | 14 | Go live | not ready (each open step a link), awaiting the officer, awaiting ChartWarden's approval (days left), live | the assigned compliance officer attests readiness with an optional note (fresh step-up) |
 

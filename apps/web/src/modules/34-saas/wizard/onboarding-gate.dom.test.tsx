@@ -28,6 +28,7 @@ const screens: ScreenRegistryModule<ComponentType> = {
     standIn("t.account", "/admin/account", "Account page"),
     standIn("t.setup", "/admin/setup", "Agency setup page"),
     standIn("t.grants", "/admin/support-grants", "Support grants page"),
+    standIn("t.passkeys", "/security/passkeys", "Passkeys page"),
   ],
 };
 
@@ -79,6 +80,8 @@ describe("OnboardingScreenGate", () => {
     expect(screen.getByRole("link", { name: "Back to onboarding" }).getAttribute("href")).toBe(
       "/admin/onboarding",
     );
+    // a tab opened before go-live can reload into the open product
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
   it.each([
@@ -86,6 +89,8 @@ describe("OnboardingScreenGate", () => {
     ["/admin/onboarding/plan_contract", "Wizard step"],
     ["/admin/account", "Account page"],
     ["/admin/setup", "Agency setup page"],
+    // the step-up ceremony sends a person with no enrolled factor here: blocking it would strand a new compliance officer
+    ["/security/passkeys", "Passkeys page"],
   ])("lets %s through while onboarding", async (path, heading) => {
     mountAt(path, "onboarding");
     expect(await screen.findByRole("heading", { name: heading })).toBeTruthy();

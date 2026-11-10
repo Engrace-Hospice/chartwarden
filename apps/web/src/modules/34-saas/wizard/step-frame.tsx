@@ -9,14 +9,12 @@ import {
   REASON_RULES,
   StatusPill,
   type StatusTone,
-  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { statusLabel } from "../saas-status";
-import { AttestCard, attestDraftKey } from "./attest-card";
+import { AttestCard, attestDraftName } from "./attest-card";
 import { FailureNotice } from "./failure-notice";
 import type { StepPanelProps } from "./panel-props";
 import type { PanelComponent } from "./panels";
@@ -24,6 +22,7 @@ import { ReasonPrompt } from "./reason-prompt";
 import { SettledCard } from "./settled-card";
 import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
+import { useWizardDraft } from "./wizard-drafts";
 import { viewHasMoved } from "./wizard-errors";
 import { OWNER_LABEL, stepActionsOf } from "./wizard-model";
 
@@ -46,7 +45,7 @@ interface DecideDraft {
   readonly prompt: "skip" | "reopen";
   readonly reason: string;
 }
-const decideDraftKey = (stepKey: string): string => `wizard:${stepKey}:decide`;
+const decideDraftName = (stepKey: string): string => `decide:${stepKey}`;
 
 const PROMPT_COPY = {
   skip: {
@@ -74,13 +73,23 @@ export function StepFrame({
   const client = useApiClient();
   const { step, view, held, roles, onChanged } = base;
   const actions = stepActionsOf(step, view, held, roles);
-  // Back from Re-verify with a stashed form: the card (or prompt) opens with what was typed. Only on that return.
-  const attestDraft = useStepUpMemoryDraft(attestDraftKey(step.key));
+  // Back from Re-verify with a stashed form: the card (or prompt) opens with what was typed, and only if the person may still do that.
+  const attestDraft = useWizardDraft<unknown>(attestDraftName(step.key)).restored;
   const [attesting, setAttesting] = useState(() => actions.canAttest && attestDraft !== undefined);
-  const decideDraft = useStepUpMemoryDraft<DecideDraft>(decideDraftKey(step.key));
-  const [prompt, setPrompt] = useState<Prompt>(decideDraft?.prompt ?? null);
+  const { restored: decideDraft, stash: stashDecide } = useWizardDraft<DecideDraft>(
+    decideDraftName(step.key),
+  );
+  const restoredPrompt: DecideDraft | undefined =
+    decideDraft?.prompt === "skip" && actions.canSkip
+      ? decideDraft
+      : decideDraft?.prompt === "reopen" && actions.canReopen
+        ? decideDraft
+        : undefined;
+  const [prompt, setPrompt] = useState<Prompt>(restoredPrompt?.prompt ?? null);
   // What is in the prompt's box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
-  const typed = useRef(decideDraft?.reason ?? "");
+  const typed = useRef(restoredPrompt?.reason ?? "");
+  const headingId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const write = useOpsWrite();
   // A refusal that says the step moved under the person: the view is read again and the refusal is read on the page.
   const [moved, setMoved] = useState<OpsFailure | null>(null);
@@ -135,6 +144,8 @@ export function StepFrame({
     if (outcome.ok) {
       closePrompt();
       await onChanged();
+      // the button that opened the prompt is gone now: focus lands on the step heading, not on a detached node
+      headingRef.current?.focus();
     } else if (viewHasMoved(outcome.failure)) {
       closePrompt(true);
       await onChanged();
@@ -148,10 +159,10 @@ export function StepFrame({
 
   return (
     <div className="wx-wizard-panel">
-      <section className="wx-drawer-card" aria-label={step.title}>
+      <section className="wx-drawer-card" aria-labelledby={headingId}>
         <div className="wx-drawer-card-head">
           {/* wizard-screen moves focus here when the person changes step */}
-          <h2 tabIndex={-1} data-step-heading="">
+          <h2 id={headingId} ref={headingRef} tabIndex={-1} data-step-heading="">
             {step.title}
           </h2>
           <StatusPill label={statusLabel(step.status)} tone={STEP_TONE[step.status] ?? "neutral"} />
@@ -233,17 +244,13 @@ export function StepFrame({
           rule={prompt === "skip" ? SKIP_RULE : REOPEN_RULE}
           busy={write.busy}
           fieldError={failure?.fieldErrors.reason ?? failure?.fieldErrors.skipRationale}
-          initialReason={decideDraft?.prompt === prompt ? decideDraft.reason : undefined}
+          initialReason={restoredPrompt?.prompt === prompt ? restoredPrompt.reason : undefined}
           error={
             failure ? (
               <FailureNotice
                 failure={failure}
-                onReverify={() =>
-                  stashStepUpMemoryDraft<DecideDraft>(decideDraftKey(step.key), {
-                    prompt,
-                    reason: typed.current,
-                  })
-                }
+                inputFields={["reason", "skipRationale"]}
+                onReverify={() => stashDecide({ prompt, reason: typed.current })}
               />
             ) : null
           }

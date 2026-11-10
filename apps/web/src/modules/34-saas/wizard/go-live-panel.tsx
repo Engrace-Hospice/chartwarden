@@ -8,9 +8,7 @@ import {
   InlineAlert,
   TextAreaField,
   UnstyledList,
-  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -21,16 +19,17 @@ import type { StepPanelProps } from "./panel-props";
 import { ONBOARDING_KEYS } from "./permissions";
 import { RoleCannot } from "./role-cannot";
 import { useOpsWrite } from "./use-ops-write";
-import { guardLabel } from "./wizard-errors";
+import { useWizardDraft } from "./wizard-drafts";
+import { guardLabel, viewHasMoved } from "./wizard-errors";
 import { GO_LIVE_STEP_KEY, ROLE_COMPLIANCE_OFFICER, type WizardStep } from "./wizard-model";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOTE_MAX = 1000;
-const DRAFT_KEY = "wizard:go_live:attest";
+const DRAFT_NAME = "go-live-note";
 
+/** What a Re-verify keeps: the note only. The attestation tick is never restored: the officer attests knowingly, again. */
 interface Draft {
   note: string;
-  confirmed: boolean;
 }
 
 const isSettled = (s: WizardStep): boolean => s.status === "done" || s.status === "skipped";
@@ -54,7 +53,7 @@ function StateLine({ props }: { props: StepPanelProps }): JSX.Element {
           {daysLeft === null
             ? "."
             : daysLeft === 0
-              ? ": the attestation has expired, so your compliance officer will need to attest again."
+              ? ": the attestation has expired. Ask ChartWarden to clear it, then your compliance officer can attest again."
               : `: it can be approved for ${daysLeft} more ${daysLeft === 1 ? "day" : "days"}.`}
         </InlineAlert>
       );
@@ -78,16 +77,18 @@ export function GoLivePanel(props: StepPanelProps): JSX.Element {
   const client = useApiClient();
   const me = useSession()?.membershipId;
   const { goLive } = view;
-  const restored = useStepUpMemoryDraft<Draft>(DRAFT_KEY);
+  const { restored, stash } = useWizardDraft<Draft>(DRAFT_NAME);
   const [note, setNote] = useState(restored?.note ?? "");
-  const [confirmed, setConfirmed] = useState(restored?.confirmed ?? false);
+  const [confirmed, setConfirmed] = useState(false);
   const write = useOpsWrite();
 
   const open = view.steps.filter(
     (s) => s.isCanonical && !s.optional && s.key !== GO_LIVE_STEP_KEY && !isSettled(s),
   );
   const mayAttest = held.has(ONBOARDING_KEYS.goLiveAttest) && roles.has(ROLE_COMPLIANCE_OFFICER);
-  const isAssigned = me !== undefined && goLive.complianceOfficerMembershipId === me;
+  // The server's rule: with no officer assigned, any holder of the role may attest; once one is assigned, only that person.
+  const assigned = goLive.complianceOfficerMembershipId;
+  const isAssigned = me !== undefined && (assigned === null || assigned === me);
   const canAttest = mayAttest && goLive.state === "awaiting_attestation" && isAssigned;
   const noteTooLong = note.trim().length > NOTE_MAX;
 
@@ -106,7 +107,7 @@ export function GoLivePanel(props: StepPanelProps): JSX.Element {
     if (outcome.ok) {
       setNote("");
       setConfirmed(false);
-    }
+    } else if (viewHasMoved(outcome.failure)) await onChanged();
   }
 
   const facts: Fact[] = [
@@ -184,7 +185,8 @@ export function GoLivePanel(props: StepPanelProps): JSX.Element {
           {write.failure ? (
             <FailureNotice
               failure={write.failure}
-              onReverify={() => stashStepUpMemoryDraft<Draft>(DRAFT_KEY, { note, confirmed })}
+              inputFields={["note"]}
+              onReverify={() => stash({ note })}
             />
           ) : null}
           <div className="wx-drawer-actions">

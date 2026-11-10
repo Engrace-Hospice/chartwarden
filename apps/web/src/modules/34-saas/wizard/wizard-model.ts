@@ -1,7 +1,12 @@
 // apps/web/src/modules/34-saas/wizard — the tenant onboarding wizard's decisions as pure functions (which actions a step offers to whom,
 // and what is said when none is). The server owns every rule (strict sequence, owner, evidence, step-up, the pending go-live
 // attestation); this only decides what to OFFER, so the tenant is not handed a button the server is certain to refuse.
-import { ORG_ADMIN_ROLE, type TenantWizardStep, type TenantWizardView } from "./panel-props";
+import {
+  ORG_ADMIN_ROLE,
+  STEPS_SETTLED_BY_PANEL,
+  type TenantWizardStep,
+  type TenantWizardView,
+} from "./panel-props";
 
 export type WizardView = TenantWizardView;
 export type WizardStep = TenantWizardStep;
@@ -123,11 +128,14 @@ export function stepActionsOf(
   }
   const canSkip =
     step.tenantSkippable &&
+    !step.locked &&
     step.isCanonical &&
     step.owner === "either" &&
     roleSet.has(ORG_ADMIN_ROLE) &&
     held.has(ONBOARDING_KEYS.manageOwn);
-  const canAttest = mayUpdate && step.completionMode !== "auto";
+  // A step whose own panel settles it (choosing a clearinghouse) is never marked done by hand: that would settle it without the choice.
+  const canAttest =
+    mayUpdate && step.completionMode !== "auto" && !STEPS_SETTLED_BY_PANEL.has(step.key);
   const canStart = mayUpdate && step.status === "pending";
   return {
     ...NONE,

@@ -1,15 +1,7 @@
 // apps/web/src/modules/34-saas/wizard — step 1, Organisation: the display name and IANA time zone the organization carries. The
 // administrator saves them (PATCH /api/v1/tenant/org-profile); ChartWarden then confirms the step. The legal business name is fixed at
 // setup and is not edited here.
-import {
-  Button,
-  type Fact,
-  FactList,
-  TextField,
-  stashStepUpDraft,
-  useApiClient,
-  useStepUpDraft,
-} from "@chartwarden/ui";
+import { Button, type Fact, FactList, TextField, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { FailureNotice } from "./failure-notice";
@@ -18,13 +10,15 @@ import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { ONBOARDING_KEYS } from "./permissions";
 import { RoleCannot } from "./role-cannot";
 import { useOpsWrite } from "./use-ops-write";
+import { useWizardDraft } from "./wizard-drafts";
+import { viewHasMoved } from "./wizard-errors";
 
 interface Draft {
   displayName: string;
   orgTimezone: string;
 }
 
-const DRAFT_KEY = "wizard:account_created:profile";
+const DRAFT_NAME = "profile";
 
 /** The IANA zones the browser knows, as suggestions (the server is the judge of what it accepts). Read once: the list never changes. */
 const TIME_ZONE_SUGGESTIONS: readonly string[] = (() => {
@@ -41,7 +35,7 @@ export function OrganisationPanel({
   onChanged,
 }: StepPanelProps): JSX.Element {
   const client = useApiClient();
-  const restored = useStepUpDraft<Draft>(DRAFT_KEY);
+  const { restored, stash } = useWizardDraft<Draft>(DRAFT_NAME);
   const [displayName, setDisplayName] = useState(
     restored?.displayName ?? view.orgProfile?.displayName ?? "",
   );
@@ -73,6 +67,7 @@ export function OrganisationPanel({
       async () => onChanged(),
     );
     if (outcome.ok) setSaved(true);
+    else if (viewHasMoved(outcome.failure)) await onChanged();
   }
 
   const facts: Fact[] = [
@@ -136,7 +131,8 @@ export function OrganisationPanel({
         {failure ? (
           <FailureNotice
             failure={failure}
-            onReverify={() => stashStepUpDraft<Draft>(DRAFT_KEY, { displayName, orgTimezone })}
+            inputFields={["displayName", "orgTimezone"]}
+            onReverify={() => stash({ displayName, orgTimezone })}
           />
         ) : null}
         {locked ? null : (

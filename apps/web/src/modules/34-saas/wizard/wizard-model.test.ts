@@ -111,7 +111,34 @@ describe("stepActionsOf: who may act on an open step", () => {
   });
 });
 
+describe("stepActionsOf: a step whose own panel settles it", () => {
+  it("offers no Mark done on the clearinghouse step even though the server mode is 'either'", () => {
+    // migration 1418 made clearinghouse_selected completion_mode 'either': a member could otherwise settle it with no choice made
+    const clearinghouse = step("clearinghouse_selected", { completionMode: "either" });
+    const a = actions(clearinghouse);
+    expect(a.canAttest).toBe(false);
+    expect(a.canStart).toBe(true);
+  });
+
+  it("still offers Mark done on an ordinary 'either' step", () => {
+    expect(actions(step("payer_enrollment", { completionMode: "either" })).canAttest).toBe(true);
+  });
+
+  it("still lets the clearinghouse step be re-opened once it is settled", () => {
+    expect(actions(step("clearinghouse_selected", { status: "done" })).canReopen).toBe(true);
+  });
+});
+
 describe("stepActionsOf: the skip action (steps 8, 9, 10 only)", () => {
+  it("does not offer Skip on a locked step, whatever the flag says", () => {
+    const locked = step("mac_configured", {
+      locked: true,
+      lockedBy: "clearinghouse_selected",
+      tenantSkippable: true,
+    });
+    expect(actions(locked).canSkip).toBe(false);
+  });
+
   it.each(["mac_configured", "payer_enrollment", "dosespot_kickoff_initiated"])(
     "offers Skip on %s to the organization's administrator when the server says the tenant may",
     (key) => {

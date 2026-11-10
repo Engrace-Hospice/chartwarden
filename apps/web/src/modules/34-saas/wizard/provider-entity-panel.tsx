@@ -12,6 +12,7 @@ import {
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import type { JSX } from "react";
+import { statusLabel } from "../saas-status";
 import { type StepPanelProps, isStepOpenForWork } from "./panel-props";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { ONBOARDING_KEYS } from "./permissions";
@@ -95,7 +96,7 @@ export function ProviderEntityPanel({ step, view, held, onChanged }: StepPanelPr
                   <td className="wx-data-md">{e.ccn}</td>
                   <td className="wx-data-md">{e.npi}</td>
                   <td>{e.legalName}</td>
-                  <td>{e.status}</td>
+                  <td>{statusLabel(e.status)}</td>
                 </tr>
               ))}
             </tbody>
@@ -123,6 +124,7 @@ export function ProviderEntityPanel({ step, view, held, onChanged }: StepPanelPr
             onCreated={async () => {
               await Promise.all([list.reload(true), onChanged()]);
             }}
+            onViewMoved={async () => onChanged()}
           />
         </section>
       ) : null}

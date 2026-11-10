@@ -107,7 +107,7 @@ describe("ProviderEntityPanel", () => {
     await waitFor(() => expect(client.GET.mock.calls.length).toBeGreaterThan(1));
   });
 
-  it("shows the server's reason and refuses a malformed CCN without sending anything", async () => {
+  it("says in the tenant's words when the tax ID cannot be stored, and refuses a malformed CCN without sending", async () => {
     const client = stubClient({
       GET: { [LIST]: () => page() },
       POST: {
@@ -123,7 +123,61 @@ describe("ProviderEntityPanel", () => {
 
     type(/^CCN/i, "051234");
     submit();
-    expect((await screen.findByRole("alert")).textContent).toMatch(/cipher is not bound/);
+    const alert = (await screen.findByRole("alert")).textContent ?? "";
+    expect(alert).toMatch(/your tax id cannot be stored right now/i);
+    expect(alert).not.toMatch(/envelope cipher/i);
+  });
+
+  it("never shows a server error's own sentence: a plain line and the reference to quote", async () => {
+    const client = stubClient({
+      GET: { [LIST]: () => page() },
+      POST: { [LIST]: () => refused(500, "INTERNAL", "relation provider_entity does not exist") },
+    });
+    mount(client);
+    await fill();
+    submit();
+    const alert = (await screen.findByRole("alert")).textContent ?? "";
+    expect(alert).toMatch(/could not do that right now/i);
+    expect(alert).toMatch(/Reference: corr-test/);
+    expect(alert).not.toMatch(/relation provider_entity/);
+  });
+
+  it("lists a field error that has no input beside the form", async () => {
+    const client = stubClient({
+      GET: { [LIST]: () => page() },
+      POST: {
+        [LIST]: () =>
+          refused(422, "VALIDATION_FAILED", "invalid", [
+            {
+              field: "iqiesFacilityId",
+              code: "invalid",
+              message: "That facility id is not valid.",
+            },
+          ]),
+      },
+    });
+    mount(client);
+    await fill();
+    submit();
+    expect(await screen.findByText("That facility id is not valid.")).toBeTruthy();
+  });
+
+  it("reloads the wizard when the refusal says the step moved", async () => {
+    const client = stubClient({
+      GET: { [LIST]: () => page() },
+      POST: { [LIST]: () => refused(409, "TENANT_NOT_ONBOARDING") },
+    });
+    const { onChanged } = mount(client);
+    await fill();
+    submit();
+    await screen.findByRole("alert");
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("labels the status in words, not as the stored value", async () => {
+    mount(stubClient({ GET: { [LIST]: () => page({ ...ENTITY, status: "pending_review" }) } }));
+    expect(await screen.findByText("Pending Review")).toBeTruthy();
+    expect(screen.queryByText("pending_review")).toBeNull();
   });
 
   it("keeps the typed fields through Re-verify and never the EIN", async () => {
@@ -187,5 +241,55 @@ describe("ProviderEntityPanel", () => {
     expect(screen.getByText(/your role cannot see or add provider entities/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /add provider entity/i })).toBeNull();
     expect(client.GET).not.toHaveBeenCalled();
+  });
+});
+
+describe("ProviderEntityPanel: the idempotency fingerprint", () => {
+  it("still submits, with a key, on an origin without SubtleCrypto (plain-HTTP staging)", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "11111111-1111-4111-8111-111111111111" });
+    try {
+      const client = stubClient({
+        GET: { [LIST]: () => page() },
+        POST: { [LIST]: () => ok({ id: "pe-2" }) },
+      });
+      mount(client);
+      await fill();
+      submit();
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+      expect(keyOf(client.POST.mock.calls[0] as unknown[])).toMatch(/\S+/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("holds the in-flight guard from the first instant, while the digest is still being computed", async () => {
+    // The digest is asynchronous: two Enters before it settles must make one attempt, not two.
+    const real = crypto.subtle.digest.bind(crypto.subtle);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(crypto.subtle, "digest").mockImplementation(
+      async (...args: Parameters<typeof real>) => {
+        await gate;
+        return real(...args);
+      },
+    );
+    try {
+      const client = stubClient({
+        GET: { [LIST]: () => page() },
+        POST: { [LIST]: () => ok({ id: "pe-2" }) },
+      });
+      mount(client);
+      await fill();
+      submit();
+      submit();
+      release();
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(client.POST).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

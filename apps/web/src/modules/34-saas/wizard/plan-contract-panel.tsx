@@ -4,6 +4,8 @@
 import { Button, InlineAlert, LoadingSpinner, useApiClient, useLoad } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import type { JSX } from "react";
+import { formatCents } from "../../35-subscription/billing-status";
+import { statusLabel } from "../saas-status";
 import type { StepPanelProps } from "./panel-props";
 import { ONBOARDING_KEYS } from "./permissions";
 import { RoleCannot } from "./role-cannot";
@@ -20,14 +22,7 @@ const MODE_LABEL: Record<Contract["billingServiceMode"], string> = {
 };
 /** What the panel shows when the person may not read the plan: nothing is requested. */
 const noPricing: Pricing = { contract: null, latestStatement: null };
-const CENTS_PER_UNIT = 100;
 const BPS_PER_PERCENT = 100;
-
-export function formatCents(cents: number, currencyCode = "USD"): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: currencyCode }).format(
-    cents / CENTS_PER_UNIT,
-  );
-}
 
 const censusBand = (band: Contract["bands"][number]): string =>
   band.maxAdc === null
@@ -129,7 +124,8 @@ export function PlanContractPanel({ held }: StepPanelProps): JSX.Element {
       {contract ? <ContractFacts contract={contract} /> : null}
       {statement ? (
         <p className="wx-row-sub">
-          Latest statement ({statement.periodYearMonth}, {statement.status}):{" "}
+          Latest statement ({statement.periodYearMonth},{" "}
+          {statusLabel(statement.status).toLowerCase()}):{" "}
           {formatCents(statement.totalCents, statement.currencyCode)}
         </p>
       ) : null}

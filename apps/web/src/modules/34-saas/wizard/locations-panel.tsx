@@ -11,6 +11,7 @@ import {
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import type { JSX } from "react";
+import { statusLabel } from "../saas-status";
 import { LocationForm } from "./location-form";
 import { type StepPanelProps, isStepOpenForWork } from "./panel-props";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
@@ -104,7 +105,7 @@ export function LocationsPanel({ step, view, held, onChanged }: StepPanelProps):
                   <td>{l.city}</td>
                   <td>{l.state}</td>
                   <td>{l.timezone}</td>
-                  <td>{l.status}</td>
+                  <td>{statusLabel(l.status)}</td>
                 </tr>
               ))}
             </tbody>
@@ -126,6 +127,7 @@ export function LocationsPanel({ step, view, held, onChanged }: StepPanelProps):
             onCreated={async () => {
               await Promise.all([lists.reload(true), onChanged()]);
             }}
+            onViewMoved={async () => onChanged()}
           />
         </section>
       ) : null}

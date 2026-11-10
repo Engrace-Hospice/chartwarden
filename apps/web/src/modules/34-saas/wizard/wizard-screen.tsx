@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ONBOARDING_HOME, isOnboardingSession } from "../../../shell/onboarding-stage";
 import { useSession } from "../../../shell/session";
 import { StepTitlesContext, stepHref } from "./failure-notice";
 import { panelFor } from "./panels";
@@ -42,8 +43,8 @@ function Frame({ children }: { children: ReactNode }): JSX.Element {
 
 /** The organization went live while this tab was open: the session still says onboarding until it is loaded again. */
 function WentLiveNotice({ view }: { view: WizardView }): JSX.Element | null {
-  const stage = useSession()?.organizationStage;
-  if (view.goLive.state !== "live" || stage !== "onboarding") return null;
+  const onboarding = isOnboardingSession(useSession());
+  if (view.goLive.state !== "live" || !onboarding) return null;
   return (
     <InlineAlert tone="success">
       Your organization is live. Reload to open all of ChartWarden.{" "}
@@ -71,11 +72,13 @@ export function OnboardingWizard(): JSX.Element {
 
   // The time of the last read, so window focus never causes two reads closer than FOCUS_RELOAD_MIN_MS.
   const lastRead = useRef(Date.now());
-  const { reload } = wizard;
+  const { reload, failure } = wizard;
+  // A quiet reload keeps what is on screen, but it cannot clear a failed load (nothing is on screen then): while one is showing, the
+  // reload is a plain one, so a success replaces the error screen.
   const refresh = useCallback(async () => {
     lastRead.current = Date.now();
-    await reload(true);
-  }, [reload]);
+    await reload(failure === null);
+  }, [reload, failure]);
   useEffect(() => {
     const onFocus = (): void => {
       if (document.visibilityState === "hidden") return;
@@ -171,13 +174,16 @@ export function OnboardingWizard(): JSX.Element {
             />
           ) : stepKey ? (
             <EmptyState
-              title={`There is no step called "${stepKey}"`}
+              title="That step does not exist"
               description="It may have been retired. Open the current step instead."
               action={
-                <Link to={resume ? stepHref(resume) : "/admin/onboarding"}>
-                  Go to the current step
-                </Link>
+                <Link to={resume ? stepHref(resume) : ONBOARDING_HOME}>Go to the current step</Link>
               }
+            />
+          ) : resume === null ? (
+            <EmptyState
+              title="There are no steps yet"
+              description="ChartWarden adds your onboarding steps once your organization has been set up."
             />
           ) : (
             <div className="wx-list-state">

@@ -24,30 +24,28 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
     "A go-live attestation is waiting for ChartWarden's approval. Reassign the compliance officer or ask ChartWarden to revoke it, then re-open the step. The page has been reloaded.",
   GO_LIVE_NOT_COMPLIANCE_OFFICER:
     "Only your organization's compliance officer can attest that you are ready to go live.",
+  GO_LIVE_NOT_ASSIGNED_OFFICER:
+    "Only the compliance officer assigned to your organization can attest that you are ready to go live. The page has been reloaded.",
+  GO_LIVE_ALREADY_ATTESTED:
+    "Readiness is already attested and waiting for ChartWarden's approval. The page has been reloaded.",
+  GO_LIVE_ATTESTATION_EXPIRED:
+    "The attestation is more than 14 days old, so it can no longer be approved. Ask ChartWarden to clear it, then your compliance officer can attest again. The page has been reloaded.",
   ACTIVATION_GUARDS_FAILED:
     "Your organization cannot go live yet: the checks listed below do not pass. The page has been reloaded.",
   COMPLIANCE_OFFICER_NOT_A_MEMBER:
     "The compliance officer must be an active member of your organization.",
   COMPLIANCE_OFFICER_LACKS_ROLE:
-    "That person does not hold the compliance officer role yet. Give them the role, then assign them.",
+    "That person does not hold the compliance officer role. ChartWarden assigns that role: ask ChartWarden to give it to them, then choose them here.",
   COMPLIANCE_OFFICER_LOCKED:
     "The compliance officer can only be changed while your organization is onboarding or live.",
   COMPLIANCE_OFFICER_PLATFORM_STAFF:
     "ChartWarden staff cannot be your compliance officer. Pick one of your own staff.",
   INVALID_ORG_TIMEZONE: "That is not a valid time zone. Use an IANA name such as America/Denver.",
   INVALID_DISPLAY_NAME: "That display name is not valid.",
-  IF_MATCH_REQUIRED:
-    "This record changed while you were looking at it. It has been reloaded. Review what it says now and enter your change again.",
-  VERSION_CONFLICT:
-    "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
-  STALE_VERSION:
-    "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
+  TAX_ID_CIPHER_UNBOUND:
+    "Your tax ID cannot be stored right now. Nothing was saved. Tell ChartWarden if this keeps happening.",
   RATE_LIMITED: "That was tried too many times in a row. Wait a few minutes and try again.",
 };
-
-/** A refusal that is about an input (not the step): the prompt gets out of the way so the error is read beside that input. */
-export const isAboutAnInput = (failure: Pick<OpsFailure, "kind" | "fieldErrors">): boolean =>
-  failure.kind === "validation" && Object.keys(failure.fieldErrors).length > 0;
 
 /**
  * The codes that say the step, or the organization, is no longer in the state the person was looking at (an operator or a colleague
@@ -60,6 +58,9 @@ const VIEW_MOVED_CODES: ReadonlySet<string> = new Set([
   "TENANT_NOT_ONBOARDING",
   "ACTIVATION_GUARDS_FAILED",
   "GO_LIVE_PENDING",
+  "GO_LIVE_ALREADY_ATTESTED",
+  "GO_LIVE_ATTESTATION_EXPIRED",
+  "GO_LIVE_NOT_ASSIGNED_OFFICER",
 ]);
 export const viewHasMoved = (failure: Pick<OpsFailure, "code">): boolean =>
   failure.code !== null && VIEW_MOVED_CODES.has(failure.code);

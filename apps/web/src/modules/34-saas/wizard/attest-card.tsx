@@ -1,19 +1,12 @@
 // apps/web/src/modules/34-saas/wizard — mark a step done with evidence. The evidence is recorded on the step and in your organization's
 // audit trail, so the form says so and the server screens it for patient identifiers. A refusal keeps what was typed; a stale step-up
-// offers Re-verify and carries the form through it in this tab's memory only: free text never goes to sessionStorage.
-import {
-  Button,
-  type OpsFailure,
-  TextAreaField,
-  TextField,
-  stashStepUpMemoryDraft,
-  useApiClient,
-  useStepUpMemoryDraft,
-} from "@chartwarden/ui";
+// offers Re-verify and carries the form through it in this tab's memory only: free text never goes to Web Storage.
+import { Button, type OpsFailure, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX, RefObject } from "react";
 import { FailureNotice } from "./failure-notice";
 import { useOpsWrite } from "./use-ops-write";
+import { useWizardDraft } from "./wizard-drafts";
 import { viewHasMoved } from "./wizard-errors";
 import type { WizardStep } from "./wizard-model";
 
@@ -25,7 +18,8 @@ interface Draft {
   evidenceRef: string;
 }
 
-export const attestDraftKey = (stepKey: string): string => `wizard:${stepKey}:attest`;
+/** The name the evidence form is kept under through a Re-verify (the frame reads the same one to reopen the card). */
+export const attestDraftName = (stepKey: string): string => `attest:${stepKey}`;
 
 export function AttestCard({
   step,
@@ -44,8 +38,7 @@ export function AttestCard({
   onMoved: (failure: OpsFailure) => void;
 }): JSX.Element {
   const client = useApiClient();
-  const draftKey = attestDraftKey(step.key);
-  const restored = useStepUpMemoryDraft<Draft>(draftKey);
+  const { restored, stash } = useWizardDraft<Draft>(attestDraftName(step.key));
   const [note, setNote] = useState(restored?.evidenceNote ?? "");
   const [ref, setRef] = useState(restored?.evidenceRef ?? "");
   const [errors, setErrors] = useState<Partial<Record<keyof Draft, string>>>({});
@@ -124,9 +117,8 @@ export function AttestCard({
       {failure ? (
         <FailureNotice
           failure={failure}
-          onReverify={() =>
-            stashStepUpMemoryDraft<Draft>(draftKey, { evidenceNote: note, evidenceRef: ref })
-          }
+          inputFields={["evidenceNote", "evidenceRef"]}
+          onReverify={() => stash({ evidenceNote: note, evidenceRef: ref })}
         />
       ) : null}
       <div className="wx-drawer-actions">

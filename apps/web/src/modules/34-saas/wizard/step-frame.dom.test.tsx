@@ -3,6 +3,7 @@
 // "this does not apply to us" on steps 8, 9 and 10 only: the administrator, a written reason and a fresh step-up.
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { stashStepUpDraft } from "../../../shell/step-up-redirect";
 import type { StepPanelProps } from "./panel-props";
 import { StepFrame } from "./step-frame";
 import {
@@ -19,6 +20,7 @@ import {
   wizardStep,
   wizardView,
 } from "./test-support";
+import { wizardDraftKey } from "./wizard-drafts";
 import type { WizardStep, WizardView } from "./wizard-model";
 
 const SKIP = "/api/v1/tenant/onboarding/{taskId}/skip";
@@ -93,6 +95,100 @@ describe("StepFrame: where Skip is offered", () => {
   it("does not offer Skip to the compliance officer", () => {
     mount(wizardStep("mac_configured", 1), stubClient({}), COMPLIANCE_OFFICER);
     expect(screen.queryByRole("button", { name: "Skip this step" })).toBeNull();
+  });
+});
+
+describe("StepFrame: one Skip button", () => {
+  it("renders exactly one Skip this step button per skippable step with a panel mounted (the frame owns it)", () => {
+    mount(wizardStep("mac_configured", 1));
+    expect(screen.getAllByRole("button", { name: "Skip this step" })).toHaveLength(1);
+  });
+});
+
+describe("StepFrame: a stashed prompt is only reopened for someone who may still use it", () => {
+  const stash = (stepKey: string, value: unknown, who = ORG_ADMIN): void => {
+    const owner = { userId: who.userId, organizationId: who.organizationId };
+    stashStepUpDraft(wizardDraftKey(owner, `decide:${stepKey}`), value);
+  };
+
+  it("does not open a stashed skip prompt for the compliance officer", () => {
+    stash(
+      "mac_configured",
+      { prompt: "skip", reason: "We bill through another vendor" },
+      COMPLIANCE_OFFICER,
+    );
+    mount(
+      wizardStep("mac_configured", 1),
+      stubClient({}),
+      COMPLIANCE_OFFICER,
+      {},
+      RETURNED_FROM_STEP_UP,
+    );
+    expect(screen.queryByLabelText("Why it does not apply")).toBeNull();
+  });
+
+  it("does not open a stashed re-open prompt when re-open is blocked by a pending go-live attestation", () => {
+    const attestation = {
+      id: "g",
+      status: "pending" as const,
+      attestedByMembershipId: "m",
+      attestedAt: "2026-11-02T00:00:00.000Z",
+      expiresAt: null,
+      attestationNote: null,
+      approvedByMembershipId: null,
+      approvedByLabel: null,
+      approvedAt: null,
+      approvalReason: null,
+      revokedByMembershipId: null,
+      revokedByLabel: null,
+      revokedAt: null,
+      revokeReason: null,
+    };
+    stash("ccn_registered", { prompt: "reopen", reason: "The CCN was wrong" });
+    mount(
+      wizardStep("ccn_registered", 1, { owner: "either", status: "done" }),
+      stubClient({}),
+      ORG_ADMIN,
+      {
+        goLive: {
+          state: "awaiting_approval",
+          attestation,
+          failedGuards: [],
+          complianceOfficerMembershipId: "m",
+        },
+      },
+      RETURNED_FROM_STEP_UP,
+    );
+    expect(screen.queryByLabelText("Why you are re-opening it")).toBeNull();
+  });
+
+  it("still opens it for the administrator who may (the same stash, honoured)", () => {
+    stash("mac_configured", { prompt: "skip", reason: "We bill through another vendor" });
+    mount(wizardStep("mac_configured", 1), stubClient({}), ORG_ADMIN, {}, RETURNED_FROM_STEP_UP);
+    expect((screen.getByLabelText("Why it does not apply") as HTMLTextAreaElement).value).toBe(
+      "We bill through another vendor",
+    );
+  });
+});
+
+describe("StepFrame: focus and labelling", () => {
+  it("moves focus to the step heading once a skip lands, because the button that opened the prompt is gone", async () => {
+    const client = stubClient({ POST: { [SKIP]: () => ok({}) } });
+    mount(wizardStep("mac_configured", 1), client);
+    openSkip();
+    rationale("We bill through another vendor");
+    confirmSkip();
+    await waitFor(() =>
+      expect(document.activeElement?.hasAttribute("data-step-heading")).toBe(true),
+    );
+  });
+
+  it("labels the step's section by its heading, so the title is announced once", () => {
+    mount(wizardStep("mac_configured", 1, { title: "MAC credentials" }));
+    const heading = screen.getByRole("heading", { level: 2, name: "MAC credentials" });
+    expect(
+      screen.getByRole("region", { name: "MAC credentials" }).getAttribute("aria-labelledby"),
+    ).toBe(heading.id);
   });
 });
 

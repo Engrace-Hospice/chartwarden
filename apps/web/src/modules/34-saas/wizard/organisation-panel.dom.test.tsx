@@ -103,6 +103,15 @@ describe("OrganisationPanel", () => {
     );
   });
 
+  it("reloads the wizard when the refusal says the step moved (its copy says it was reloaded)", async () => {
+    const client = stubClient({ PATCH: { [PATH]: () => refused(409, "TENANT_NOT_ONBOARDING") } });
+    const onChanged = mount(client);
+    type("Display name", "Cedar Ridge Hospice");
+    save();
+    expect((await screen.findByRole("alert")).textContent).toMatch(/not in onboarding/i);
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
   it("drops a second submit while the first is in flight", async () => {
     const gate = deferred(ok({ displayName: "x", orgTimezone: "y" }));
     const client = stubClient({ PATCH: { [PATH]: gate.handler } });

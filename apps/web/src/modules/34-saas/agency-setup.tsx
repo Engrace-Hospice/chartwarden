@@ -75,7 +75,7 @@ export function AgencySetup(): JSX.Element {
         </PageHeader>
       }
       table={
-        <div className="wx-form-stack">
+        <div className="wx-page-sections">
           {loadError ? (
             <>
               <InlineAlert tone="error">Could not load your agency details.</InlineAlert>
@@ -105,7 +105,7 @@ function ProviderEntitySection({
 }: { entities: ProviderEntityRow[]; onCreated: () => Promise<void> }): JSX.Element {
   return (
     <section aria-label="Provider entities">
-      <h2>Provider entities</h2>
+      <h2 className="wx-section-title">Provider entities</h2>
       {entities.length === 0 ? <p>No provider entity yet.</p> : null}
       <ul>
         {entities.map((p) => (
@@ -131,7 +131,7 @@ function LocationSection({
   const noEntities = entities.length === 0;
   return (
     <section aria-label="Locations">
-      <h2>Locations</h2>
+      <h2 className="wx-section-title">Locations</h2>
       {noEntities ? <p>Add a provider entity first; a location belongs to one.</p> : null}
       {locations.length === 0 && !noEntities ? <p>No location yet.</p> : null}
       <ul>

@@ -104,7 +104,7 @@ describe("BaaPanel", () => {
     );
   });
 
-  it("offers Re-verify on a stale step-up and keeps the confirmation on return", async () => {
+  it("offers Re-verify on a stale step-up and never restores the consent tick on return", async () => {
     const client = stubClient({
       GET: { [LIST]: () => page(record()) },
       POST: { [ATTEST]: () => refused(403, "STEP_UP_REQUIRED") },
@@ -120,7 +120,43 @@ describe("BaaPanel", () => {
     const box = (await screen.findByRole("checkbox", {
       name: /this agreement is correct/i,
     })) as HTMLInputElement;
-    expect(box.checked).toBe(true);
+    expect(box.checked).toBe(false);
+  });
+
+  it("reloads the wizard and the agreement when the refusal says the step moved", async () => {
+    const client = stubClient({
+      GET: { [LIST]: () => page(record()) },
+      POST: { [ATTEST]: () => refused(409, "ONBOARDING_TASK_CHANGED") },
+    });
+    const { onChanged } = mount(client);
+    await tick();
+    attest();
+    await screen.findByRole("alert");
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    await waitFor(() => expect(client.GET.mock.calls.filter((c) => c[0] === LIST).length).toBe(2));
+  });
+
+  it("offers no attest form once the organization is live or the step is locked", async () => {
+    const closed = wizardView([wizardStep("baa_executed", 1)], { tenantStatus: "active" });
+    renderAt(
+      "/x",
+      [
+        {
+          path: "/x",
+          element: <BaaPanel {...panelProps(closed, "baa_executed", COMPLIANCE_OFFICER)} />,
+        },
+      ],
+      stubClient({ GET: { [LIST]: () => page(record()) } }),
+      COMPLIANCE_OFFICER,
+    );
+    expect(await screen.findByText("2026-1")).toBeTruthy();
+    expect(screen.queryByRole("form", { name: "Attest the BAA" })).toBeNull();
+  });
+
+  it("words the status for a person, not as a raw enum", async () => {
+    mount(stubClient({ GET: { [LIST]: () => page(record({ baaStatus: "missing" })) } }));
+    expect(await screen.findByText("Not recorded")).toBeTruthy();
+    expect(screen.queryByText("missing")).toBeNull();
   });
 
   it("drops a second submit while the first is in flight", async () => {

@@ -18,9 +18,3 @@ export function useRoles(): readonly string[] {
   const roles = useSession()?.roles;
   return useMemo(() => roles ?? [], [roles]);
 }
-
-/** Whether the person holds every one of `keys` (naming none answers false: a gate with no key is a bug, not an open door). */
-export function useCan(...keys: readonly string[]): boolean {
-  const held = usePermissions();
-  return keys.length > 0 && keys.every((k) => held.has(k));
-}

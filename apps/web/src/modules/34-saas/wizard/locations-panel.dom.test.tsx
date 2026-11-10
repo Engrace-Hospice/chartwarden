@@ -2,6 +2,7 @@
 // Step 6, Locations: the administrator adds service locations through the same M2 route as Agency setup.
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { stashStepUpDraft } from "../../../shell/step-up-redirect";
 import { LocationsPanel } from "./locations-panel";
 import {
   COMPLIANCE_OFFICER,
@@ -17,6 +18,7 @@ import {
   wizardStep,
   wizardView,
 } from "./test-support";
+import { wizardDraftKey } from "./wizard-drafts";
 
 const ENTITIES = "/api/v1/provider-entities";
 const LOCATIONS = "/api/v1/locations";
@@ -136,6 +138,29 @@ describe("LocationsPanel", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(
       /location with that name exists/,
     );
+  });
+
+  it("falls back to the first provider entity when a restored draft names one that is no longer listed", async () => {
+    // a draft kept through Re-verify names an entity that has since gone from the list
+    stashStepUpDraft(
+      wizardDraftKey(
+        { userId: ORG_ADMIN.userId, organizationId: ORG_ADMIN.organizationId },
+        "location",
+      ),
+      { ...BODY, providerEntityId: "pe-gone" },
+    );
+    const client = stubClient({
+      ...reads([ENTITY], []),
+      POST: { [LOCATIONS]: () => ok({ id: "loc-2" }) },
+    });
+    mount(client, ORG_ADMIN, RETURNED_FROM_STEP_UP);
+    await screen.findByRole("button", { name: /add location/i });
+    expect((screen.getByLabelText(/provider entity/i) as HTMLSelectElement).value).toBe("pe-1");
+    submit();
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const body = (client.POST.mock.calls[0] as [string, { body: { providerEntityId: string } }])[1]
+      .body;
+    expect(body.providerEntityId).toBe("pe-1");
   });
 
   it("asks for a provider entity first when there is none", async () => {

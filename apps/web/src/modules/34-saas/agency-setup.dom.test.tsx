@@ -117,7 +117,7 @@ describe("AgencySetup", () => {
     expect(c.POST).not.toHaveBeenCalled();
   });
 
-  it("shows the server's reason, e.g. the unbound tax-id cipher", async () => {
+  it("says in the tenant's words when the tax ID cannot be stored", async () => {
     const c = client({
       post: vi.fn(async () => ({
         error: {
@@ -126,6 +126,7 @@ describe("AgencySetup", () => {
             message: "the tax-id envelope cipher is not bound",
           },
         },
+        response: { status: 503 },
       })),
     });
     mount(c);
@@ -134,7 +135,33 @@ describe("AgencySetup", () => {
     fillEntity();
     fireEvent.click(screen.getByRole("button", { name: /add provider entity/i }));
 
-    expect((await screen.findByRole("alert")).textContent).toMatch(/cipher is not bound/);
+    const alert = (await screen.findByRole("alert")).textContent ?? "";
+    expect(alert).toMatch(/your tax id cannot be stored right now/i);
+    expect(alert).not.toMatch(/envelope cipher/);
+  });
+
+  it("never shows a server error's own sentence, only a plain line and its reference", async () => {
+    const c = client({
+      post: vi.fn(async () => ({
+        error: {
+          error: {
+            code: "INTERNAL",
+            message: "connection to 10.0.0.5 refused",
+            correlationId: "corr-9",
+          },
+        },
+        response: { status: 500 },
+      })),
+    });
+    mount(c);
+
+    await screen.findByRole("button", { name: /add provider entity/i });
+    fillEntity();
+    fireEvent.click(screen.getByRole("button", { name: /add provider entity/i }));
+
+    const alert = (await screen.findByRole("alert")).textContent ?? "";
+    expect(alert).toMatch(/could not do that right now.*Reference: corr-9/i);
+    expect(alert).not.toMatch(/10\.0\.0\.5/);
   });
 
   it("creates a location under a chosen provider entity", async () => {
@@ -206,5 +233,19 @@ describe("AgencySetup", () => {
     expect(
       (screen.getByRole("button", { name: /add provider entity/i }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it("keeps the page's layout: sections spaced apart, section titles, and forms held to a readable width", async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ApiClientProvider client={client({ entities: [ENTITY] }) as unknown as ApiClient}>
+          <AgencySetup />
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("region", { name: "Provider entities" });
+    expect(container.querySelector(".wx-page-sections")).toBeTruthy();
+    expect(container.querySelectorAll("h2.wx-section-title")).toHaveLength(2);
+    expect(container.querySelectorAll("form.wx-form-stack.wx-form-narrow")).toHaveLength(2);
   });
 });

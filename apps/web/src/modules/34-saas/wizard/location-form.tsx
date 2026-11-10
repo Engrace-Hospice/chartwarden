@@ -1,19 +1,13 @@
 // apps/web/src/modules/34-saas/wizard — the form that creates a service location under one of the organization's provider entities,
 // shared by the wizard's step 6 and the Agency setup screen. POST /api/v1/locations (`org.manage`). One Idempotency-Key per attempt, so a
 // double submit or a retry after no answer never creates the location twice.
-import {
-  Button,
-  InlineAlert,
-  SelectField,
-  TextField,
-  stashStepUpMemoryDraft,
-  useApiClient,
-  useStepUpMemoryDraft,
-} from "@chartwarden/ui";
+import { Button, InlineAlert, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { FailureNotice } from "./failure-notice";
 import { useOpsWrite } from "./use-ops-write";
+import { useWizardDraft } from "./wizard-drafts";
+import { viewHasMoved } from "./wizard-errors";
 
 export interface EntityOption {
   readonly id: string;
@@ -33,25 +27,31 @@ const EMPTY_LOCATION = {
 };
 
 /** What a Re-verify keeps of the form. */
-const DRAFT_KEY = "wizard:location:new";
+const DRAFT_NAME = "location";
 
 export function LocationForm({
   entities,
   onCreated,
+  onViewMoved,
 }: {
   entities: readonly EntityOption[];
   /** Called once the location is saved (the host reloads its list). */
   onCreated: () => Promise<void>;
+  /** Called when a refusal says the wizard's view is out of date (the host reloads it). */
+  onViewMoved?: () => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
   const write = useOpsWrite();
-  const restored = useStepUpMemoryDraft<typeof EMPTY_LOCATION>(DRAFT_KEY);
+  const { restored, stash } = useWizardDraft<typeof EMPTY_LOCATION>(DRAFT_NAME);
   const [form, setForm] = useState({ ...EMPTY_LOCATION, ...restored });
   const [error, setError] = useState<string | null>(null);
   const set = (key: keyof typeof form) => (value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
   const noEntities = entities.length === 0;
-  const providerEntityId = form.providerEntityId || entities[0]?.id || "";
+  // A restored (or stale) id that is not one of the entities now listed falls back to the first one, which is what the select shows.
+  const providerEntityId = entities.some((p) => p.id === form.providerEntityId)
+    ? form.providerEntityId
+    : (entities[0]?.id ?? "");
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -73,18 +73,20 @@ export function LocationForm({
       (key) => client.POST("/api/v1/locations", { body, headers: { "Idempotency-Key": key } }),
       onCreated,
     );
-    if (outcome.ok)
+    if (outcome.ok) {
       setForm((f) => ({ ...EMPTY_LOCATION, providerEntityId: f.providerEntityId, timezone }));
+    } else if (viewHasMoved(outcome.failure)) await onViewMoved?.();
   }
 
   return (
-    <form className="wx-form-stack" onSubmit={(e) => void submit(e)}>
+    <form className="wx-form-stack wx-form-narrow" onSubmit={(e) => void submit(e)}>
       <SelectField
         label="Provider entity"
         value={providerEntityId}
         disabled={noEntities}
         onChange={(e) => set("providerEntityId")(e.target.value)}
         options={entities.map((p) => ({ value: p.id, label: p.legalName }))}
+        error={write.failure?.fieldErrors.providerEntityId}
       />
       <TextField
         label="Location name"
@@ -128,7 +130,16 @@ export function LocationForm({
       {!error && write.failure ? (
         <FailureNotice
           failure={write.failure}
-          onReverify={() => stashStepUpMemoryDraft(DRAFT_KEY, form)}
+          inputFields={[
+            "providerEntityId",
+            "name",
+            "addressLine1",
+            "city",
+            "state",
+            "postalCode",
+            "timezone",
+          ]}
+          onReverify={() => stash(form)}
         />
       ) : null}
       <Button type="submit" disabled={write.busy || noEntities}>
