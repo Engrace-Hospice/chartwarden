@@ -5,6 +5,7 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { PlanEdit } from "../plan-edit";
 import { RefundApprove } from "../refund-approve";
 import { RefundNew } from "../refund-new";
 import { AddonsPanel } from "../subscription-addons";
@@ -29,6 +30,20 @@ const refund = {
   status: "requested",
   requestedAt: "2026-01-01T00:00:00.000Z",
   requestedByMembershipId: "member-1",
+};
+const plan = {
+  id: SUB,
+  slug: "starter-monthly",
+  name: "Starter",
+  tier: "starter",
+  cadence: "monthly",
+  basePriceCents: 4900,
+  currencyCode: "USD",
+  trialPeriodDays: 0,
+  isActive: false,
+  stripePriceId: null,
+  stripeProductId: null,
+  meters: [],
 };
 const liveAddon = {
   id: "66666666-6666-4666-8666-666666666666",
@@ -70,6 +85,7 @@ function mount(path: string, reads: () => Response): void {
               path="/admin/subscriptions/:id/addons"
               element={<AddonsPanel subscriptionId={SUB} usage={null} />}
             />
+            <Route path="/admin/plans/:id/edit" element={<PlanEdit />} />
             <Route path="*" element={<p>elsewhere</p>} />
           </Routes>
         </MemoryRouter>
@@ -152,5 +168,16 @@ describe("a gated write whose request never gets an answer", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Cancel add-on" }));
     expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
     await waitFor(() => expect(idle(button("Cancel add-on"))).toBe(true));
+  });
+
+  it("plan editor: activating and adding a meter both release the lock", async () => {
+    mount(`/admin/plans/${SUB}/edit`, () => json(plan));
+    fireEvent.click(await screen.findByRole("button", { name: /Activate/ }));
+    expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+    await waitFor(() => expect(idle(button(/Activate/))).toBe(true));
+    fireEvent.change(screen.getByLabelText(/Event type/), { target: { value: "claims" } });
+    fireEvent.click(button("Add meter"));
+    await waitFor(() => expect(idle(button("Add meter"))).toBe(true));
+    expect((screen.getByLabelText(/Event type/) as HTMLInputElement).value).toBe("claims");
   });
 });

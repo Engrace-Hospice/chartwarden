@@ -28,8 +28,10 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
+  UNREACHABLE_OUTCOME,
   failureOutcome,
   isNotFound,
+  settleWrite,
 } from "./ui";
 
 type PlanDetail =
@@ -115,11 +117,16 @@ function PlanEditBody(): JSX.Element {
     ): Promise<boolean> => {
       setBusy(true);
       setOutcome(null);
-      const res = await fn();
-      setOutcome(res.error ? failureOutcome(res.error, failMsg) : { ok: true, message: okMsg });
-      if (!res.error) await load();
+      const res = await settleWrite(fn());
+      if (!res || res.error) {
+        setOutcome(res ? failureOutcome(res.error, failMsg) : UNREACHABLE_OUTCOME);
+        setBusy(false);
+        return false;
+      }
+      setOutcome({ ok: true, message: okMsg });
+      await load();
       setBusy(false);
-      return !res.error;
+      return true;
     },
     [load],
   );
