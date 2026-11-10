@@ -361,7 +361,7 @@ controls:
       - script: test:m32:kill-switch-role-key:live
 
   - id: CW-DD-01
-    title: Death notifications — external disclosure gated on a BAA (re-checked at link redemption), explicit selection, caseload check, atomic single-send claim and a disclosure audit trail; internal notices fixed-text and explicitly acknowledged
+    title: Death notifications — external disclosure gated on a BAA (service check; re-checked at link redemption and on every funeral-home session read), explicit selection, caseload check (refusals audited), atomic single-send claim with stranded-send reconciliation, a disclosure audit trail that distinguishes attempted from completed (m2.funeral.invited / invite_revoked), a keyed recipient digest and database-enforced disclosure-record integrity (not a BAA gate); internal notices fixed-text and explicitly acknowledged. Strengthened in ADR-0098 A10; human compliance approval of the change is still required
     hipaa: ["164.502(e)", "164.308(b)(1)", "164.312(b)"]
     soc2: ["CC6.7", "CC9.2"]
     status: implemented
@@ -371,6 +371,8 @@ controls:
       - file: apps/backend/src/modules/36-messaging/death-notification/death-notification-service.ts
       - file: apps/backend/src/bootstrap/death-notification-funeral-link.ts
       - file: packages/db/migrations/1306_m36_death_notification_funeral_send.sql
+      - file: packages/db/migrations/1307_m36_death_notification_disclosure_integrity.sql
+      - file: apps/backend/src/modules/36-messaging/death-notification/recipient-hash.ts
       - script: test:m2:link-redemption:live
 
 # Every one of these must be cited by at least one row (the gate enforces it), so a row cannot be
