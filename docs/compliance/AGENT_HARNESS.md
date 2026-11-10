@@ -248,12 +248,18 @@ bundlers with an output option such as `cc -o` or `tsc --outFile`, `git bundle`,
 writes where its own configuration says). Whole-tree reads that bypass
 `.gitignore` (`grep -r`, `rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built
 by command substitution and agents started with approval prompts, the sandbox or hooks off. A harness
-switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, `HOME`, …) followed by `=` asks
+switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, `HOME`, …) followed by `=`, `+=` or `:=` asks
 ANYWHERE in a command, however it is spelled (`export $(echo X=…)`, `ssh h 'X=… cmd'`, `watch 'X=… cmd'`, a value an
-assignment builds), except when the command only prints or searches (`rg`, `grep`, `ag`, `ack`, `echo`, `printf`,
-`cat`, `less`, `head`, `tail`, `wc`, `sed -n`, `git log/grep/show/diff/commit`) with nothing assigned before it, no
-redirect except `/dev/null` and its output going only to another such command or a filter: `rg CODEX_HOME= docs`
-and `echo CODEX_HOME=x` set nothing. A switch name with no `=` (`export CODEX_HOME`) sets nothing and is allowed. Reasons
+assignment builds, `export CODEX_HO\ME=…`, `export CODEX_HOME{,}=…`), and so does a command that names one for the shell or
+the session to set with no `=` (`printf -v X`, `read X`, `for X in …`, `launchctl setenv X v`, `tmux set-environment X v`,
+`systemctl set-environment`, `defaults write d X v`). The exception is a command that only prints or searches (`rg`, `grep`,
+`ag`, `ack`, `echo`, `printf`, `cat`, `head`, `tail`, `wc`, `sed -n`, `git log/grep/show/diff/commit`) with nothing
+assigned before it, no redirect except `/dev/null` and its output going only to another such command or a filter
+(`sort`, `uniq`, `cut`, `tr`, `nl`, `column`): `rg CODEX_HOME= docs` and `echo CODEX_HOME=x` set nothing. "Only prints" is
+judged by what the command can DO: `sort -o`/`--output`/`--compress-program`, `uniq IN OUT`, a `sed` script with a `w`, `W` or `e`
+command or flag (or `sed -f`), `git grep -O`/`--open-files-in-pager`, `git commit -t`/`--template`, `rg --pre`/`--hostname-bin`
+and `ag`/`ack --pager` write a file or run a command, so none of them is a print. A switch name with no `=`
+(`export CODEX_HOME`) sets nothing and is allowed. Reasons
 never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
 call through in Claude Code: a command over 64 KB is REFUSED before it is parsed (an ask would let padding
 turn a denied command into a prompt; put large file content in a file with the Write tool, and a heredoc patch
