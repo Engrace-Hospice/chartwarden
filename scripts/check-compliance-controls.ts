@@ -239,6 +239,9 @@ export const FORBIDDEN_ENV = [
   "CW_STOP_GATE",
   "CLAUDE_PROJECT_DIR",
   "CW_HARNESS_ROOT_FOR_TESTS",
+  // Test seams of the guard's hard deadline: one forces a hang, crash or exit in the worker, the other shortens the deadline.
+  "CW_HARNESS_TEST_FAULT",
+  "CW_HARNESS_DEADLINE_MS_FOR_TESTS",
   // bun reads it for every run, and `--preload x.ts` in it runs x.ts before the hook script (verified).
   "BUN_OPTIONS",
   // Re-point an agent at a configuration directory that has no hooks.

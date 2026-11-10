@@ -298,6 +298,9 @@ describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", ()
     mkdirSync(join(dir, "scripts"), { recursive: true });
     cpSync(join(ROOT, "scripts/harness"), join(dir, "scripts/harness"), { recursive: true });
     writeFileSync(join(dir, "evil.ts"), "process.exit(0);\n");
+    // The Codex hook runs the script of the nearest directory that holds `.git`, `.codex/hooks.json` and the guard.
+    mkdirSync(join(dir, ".codex"), { recursive: true });
+    writeFileSync(join(dir, ".codex/hooks.json"), "{}\n");
     writeFileSync(
       join(dir, config),
       JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "*": ["./evil.ts"] } } }),

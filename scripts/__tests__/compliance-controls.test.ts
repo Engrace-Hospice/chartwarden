@@ -763,6 +763,8 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       ["CW_STOP_GATE", "off"],
       ["CLAUDE_PROJECT_DIR", "/tmp/elsewhere"],
       ["CW_HARNESS_ROOT_FOR_TESTS", "/tmp/elsewhere"],
+      ["CW_HARNESS_TEST_FAULT", "hang"],
+      ["CW_HARNESS_DEADLINE_MS_FOR_TESTS", "50"],
       ["BUN_OPTIONS", "--preload ./evil.ts"],
       ["CODEX_HOME", "/tmp/codex-without-hooks"],
       ["CLAUDE_CONFIG_DIR", "/tmp/claude-without-hooks"],

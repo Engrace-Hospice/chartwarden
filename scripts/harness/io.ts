@@ -42,10 +42,9 @@ export interface HookInput {
   readonly invalid?: boolean;
 }
 
-export async function readHookInput(): Promise<HookInput> {
-  const chunks: Buffer[] = [];
-  for await (const c of process.stdin) chunks.push(c as Buffer);
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
+/** What a hook's stdin text means: the JSON object, or `{ invalid: true }` for empty, unparseable or non-object input. */
+export function parseHookInput(text: string): HookInput {
+  const raw = text.trim();
   if (!raw) return { invalid: true };
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -56,6 +55,12 @@ export async function readHookInput(): Promise<HookInput> {
   } catch {
     return { invalid: true };
   }
+}
+
+export async function readHookInput(): Promise<HookInput> {
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  return parseHookInput(Buffer.concat(chunks).toString("utf8"));
 }
 
 export function projectDir(input?: HookInput): string {
