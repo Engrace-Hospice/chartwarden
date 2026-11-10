@@ -1761,6 +1761,14 @@ function findActionIsNarrowed(rest: readonly string[], action: number): boolean 
  * limits it (`find . -name '*.tmp' -delete` stays an everyday cleanup).
  */
 function findWrites(args: readonly string[]): WriteTarget[] {
+  // `-fprint F`, `-fprint0 F`, `-fprintf F FORMAT` and `-fls F` write the file F.
+  const printed = targetsOf(
+    args.flatMap((a, i) =>
+      /^-f(?:print0?|printf|ls)$/.test(a) && args[i + 1] !== undefined
+        ? [args[i + 1] as string]
+        : [],
+    ),
+  );
   let k = 0;
   while (/^-[HLP]$/.test(args[k] ?? "")) k++;
   const starts: string[] = [];
@@ -1773,9 +1781,12 @@ function findWrites(args: readonly string[]): WriteTarget[] {
     const writes = FIND_WRITER.test(next) || (next === "sed" && rest.slice(i + 2).some(isInPlace));
     return writes ? [i] : [];
   });
-  if (actions.length === 0) return [];
+  if (actions.length === 0) return printed;
   const wholeTree = actions.some((i) => !findActionIsNarrowed(rest, i));
-  return fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true, wholeTree));
+  return [
+    ...printed,
+    ...fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true, wholeTree)),
+  ];
 }
 
 /** `tar x…` and `unzip` unpack into `-C dir` / `-d dir`, or the current directory: a merge into it. */
@@ -1835,26 +1846,70 @@ function optionValues(
 }
 
 /**
- * Programs that write the file an option names: `curl -o`, `wget -O`/`-o`/`-a`, `sort -o`, `base64 -o`, each with
- * its short letter and its long spelling. curl's `--output` shares every shorter prefix with `--output-dir`, and
- * wget's `--output-document` and `--output-file` share `--output-`, so those are ambiguous until the last letter.
+ * Programs that write the file an option names: `wget -O`/`-o`/`-a`/`-P`, `sort -o`, `base64 -o`, each with its
+ * short letter and its long spelling (`curl` is {@link curlWrites}). wget's `--output-document` and `--output-file`
+ * share `--output-`, so those are ambiguous until the last letter.
  */
 const OUTPUT_OPTIONS: ReadonlyMap<
   string,
   ReadonlyArray<readonly [string, readonly LongOption[]]>
 > = new Map([
-  ["curl", [["o", [["output", 6]]]]],
   [
     "wget",
     [
       ["O", [["output-document", 8]]],
       ["o", [["output-file", 8]]],
       ["a", [["append-output", 2]]],
+      // The directory a download is saved in; `--dir` is ambiguous with `--directories`, `--directory` is not.
+      ["P", [["directory-prefix", 9]]],
     ],
   ],
   ["sort", [["o", [["output", 1]]]]],
   ["base64", [["o", [["output", 1]]]]],
 ]);
+
+/** The write targets named by words, brace-expanded and unescaped as the shell would. */
+const targetsOf = (words: readonly string[]): WriteTarget[] => fileArgs(words).map((f) => wt(f));
+
+/**
+ * What `curl` writes: the `-o`/`--output` file, and, with `--output-dir DIR`, the directory a relative `-o` file or
+ * a `-O` name lands in. `-O` alone writes the URL's name into the current directory (`.`). With no `-o` and no `-O`
+ * curl writes to stdout, and `--output-dir` alone writes nothing. curl takes no abbreviated long options.
+ */
+function curlWrites(args: readonly string[]): WriteTarget[] {
+  const files = optionValues(args, "o", [["output", 6]]);
+  const dirs = optionValues(args, "", [["output-dir", 10]]);
+  const remoteName = args.some(
+    (a) => a === "--remote-name" || a === "--remote-name-all" || clusterHas(a, "O"),
+  );
+  if (files.length === 0 && !remoteName) return [];
+  const into = dirs.length > 0 ? dirs : remoteName ? ["."] : [];
+  return targetsOf([...files, ...into]);
+}
+
+/**
+ * The files a `sed` script writes: the `w FILE` command (`sed -n 'w out'`, `1,3w out`) and the `w` flag of `s///w
+ * out`. The file name runs to the end of the line, so the whole rest of the line and its first word are both
+ * named. Read as text: the `w` might be a letter inside a pattern, and that costs nothing unless what follows it
+ * resolves onto a protected path.
+ */
+function sedWriteTargets(args: readonly string[]): WriteTarget[] {
+  const names: string[] = [];
+  for (const arg of args) {
+    const script = arg.startsWith("--expression=")
+      ? arg.slice("--expression=".length)
+      : /^-[A-Za-z]*e./.test(arg)
+        ? arg.slice(arg.indexOf("e") + 1)
+        : arg.startsWith("-")
+          ? ""
+          : arg;
+    for (const m of script.matchAll(/(?<![A-Za-z_])[wW][ \t]*([^\n]+)/g)) {
+      const rest = (m[1] ?? "").trim();
+      names.push(rest, rest.split(/[\s;}]/)[0] ?? "");
+    }
+  }
+  return targetsOf(names);
+}
 
 /** Compressors that replace their input with the compressed (or decompressed) file unless told to print it. */
 const COMPRESSOR =
@@ -1888,8 +1943,10 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
   if (/^(chmod|chown)$/.test(prog)) return files.map((f) => wt(f, recursive, recursive));
   if (/^(sed|perl)$/.test(prog)) {
-    return args.some(isInPlace) ? files.map((f) => wt(f)) : [];
+    const inPlace = args.some(isInPlace) ? files.map((f) => wt(f)) : [];
+    return prog === "sed" ? [...inPlace, ...sedWriteTargets(args)] : inPlace;
   }
+  if (prog === "curl") return curlWrites(args);
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
   const outputOptions = OUTPUT_OPTIONS.get(prog);
   if (outputOptions) {
@@ -2033,6 +2090,23 @@ function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, di
   return isPath && (ctx.exists?.(one) ?? true) ? [one] : [];
 }
 
+/** `git format-patch -o DIR` writes its patch files into DIR. */
+function formatPatchVerdict(
+  rest: readonly string[],
+  cwds: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  const dirs = fileArgs(optionValues(rest, "o", [["output-directory", 8]]));
+  for (const cwd of cwds) {
+    for (const d of dirs) {
+      const rel = resolvePath(d, cwd, ctx);
+      if (rel === null) return ask(UNKNOWN_DIR_REASON);
+      if (protectedTouch(rel, wt(d))) return ask(protectedReason(rel));
+    }
+  }
+  return null;
+}
+
 /** `git apply`/`am` (a diff we cannot read), `clean`, and checkout/restore/rm/mv onto protected paths. */
 function gitWriteVerdict(
   sub: string,
@@ -2053,6 +2127,7 @@ function gitWriteVerdict(
       "`git clean` deletes untracked files, and with -x the ignored ones too (the audit ledger, .claude/.cache). A human decides.",
     );
   }
+  if (sub === "format-patch") return formatPatchVerdict(rest, cwds, ctx);
   if (!/^(checkout|restore|rm|mv)$/.test(sub)) return null;
   for (const cwd of cwds) {
     let dir = cwd;

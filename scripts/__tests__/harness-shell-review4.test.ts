@@ -568,3 +568,57 @@ describe("nested commands are judged once each, within a text budget and a time 
     expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });
+
+// Writers that name a directory or a file inside an option or an action rather than as an operand: wget `-P`,
+// curl `--output-dir`, find's `-fprint` family, sed's `w` command and flag, `git format-patch -o`.
+describe("a directory or file named inside an option or an action is a write target", () => {
+  it.each([
+    "wget -P compliance https://example.com/x",
+    "wget --directory-prefix=scripts/harness https://example.com/x",
+    "wget --directory-prefix .claude/rules https://example.com/x",
+    "wget --directory scripts/harness https://example.com/x",
+    "curl -o x.txt --output-dir compliance https://example.com/x",
+    "curl --output-dir scripts/harness -O https://example.com/x",
+    "curl -sSO --output-dir .githooks https://example.com/x",
+    "cd compliance && curl -O https://example.com/x",
+    "find . -fprint compliance/controls.yaml",
+    "find . -name '*.ts' -fprintf scripts/harness/x '%p\\n'",
+    "find . -fls .githooks/pre-commit",
+    "find . -fprint0 compliance/x",
+    "sed -n 'w compliance/controls.yaml' /tmp/x",
+    "sed 's/a/b/w scripts/harness/pre-tool-guard.ts' /tmp/x",
+    "sed -n '1,3w .githooks/pre-commit' /tmp/x",
+    "sed -e 'w CLAUDE.md' /tmp/x",
+    "sed --expression='w compliance/controls.yaml' /tmp/x",
+    "sed -n -e '/x/{' -e 'w compliance/c.yaml' -e '}' /tmp/x",
+    "git format-patch -o compliance HEAD~1",
+    "git format-patch --output-directory scripts/harness -1",
+    "git format-patch --output-directory=.githooks -1",
+    "git format-patch -1 -o .claude/rules",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "wget -P /tmp/dl https://example.com/x",
+    "wget -P downloads https://example.com/x",
+    "wget --directory-prefix=/tmp/dl https://example.com/x",
+    "curl -o x.txt --output-dir /tmp https://example.com/x",
+    "curl -O https://example.com/x",
+    "curl --output-dir /tmp -O https://example.com/x",
+    "curl --output-dir compliance https://example.com/x",
+    "find . -fprint /tmp/files.txt",
+    "find . -name '*.ts' -fprint out.txt",
+    "find . -name '*.ts' -print",
+    "sed -n 'w /tmp/out.txt' /tmp/x",
+    "sed 's/a/b/w out.txt' /tmp/x",
+    "sed -n '/foo/p' file.txt",
+    "sed 's/ w x/y/' file.txt",
+    "sed -n 'p' compliance/AGENT_HARNESS.md",
+    "sed -n '1,5p' scripts/harness/patterns.ts",
+    "git format-patch -o /tmp/patches HEAD~1",
+    "git format-patch -o patches -1",
+    "git format-patch -1",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});
