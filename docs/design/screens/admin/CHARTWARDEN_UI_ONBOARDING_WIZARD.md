@@ -184,6 +184,58 @@ revoke; an expired attestation can only be revoked), live (approved by, why), cl
 
 ---
 
+## Tenant surface (`apps/web`, `/admin/onboarding[/:stepKey]`)
+
+The tenant sees the same rail and step frame in its own words: the owner reads "ChartWarden", "Your administrator", "Your
+compliance officer" or "Your administrator or ChartWarden", and an operator is never named ("ChartWarden operations").
+The page head says "Onboarding" and "n of m steps done" and holds one reserved slot for Get help (slice 7D). A step is a
+deep link; the bare route resumes at the first step that is not settled; a change of step moves focus to the step heading.
+
+`GET /api/v1/tenant/onboarding` writes an audit row per call, so the wizard reads it once, again after each write, and again
+on window focus no more often than every 30 seconds. It is never polled. A failed quiet reload keeps what is on screen and
+says it may be out of date. A locked step reads but offers nothing. Once the organization is live the wizard is read-only,
+and a tab opened before approval says "Reload to open all of ChartWarden".
+
+While the organization is onboarding the server refuses every route outside onboarding, go-live, account and sign-in
+(403 `ORGANIZATION_ONBOARDING`), so the shell sends the landing page to the wizard and says "Available after go-live" on
+the other screens; only the wizard, Account and Agency setup work. A 403 `ORGANIZATION_ONBOARDING` from any call sends the
+person to the wizard (not again from the wizard itself). The stage comes from the session (`organizationStage`); when it is
+absent the shell stays normal and the server stays the authority.
+
+| # | Step | The tenant sees | The tenant can |
+|---|------|-----------------|----------------|
+| 1 | Organisation | display name and time zone, with the facts that settle the step | edit them (administrator, `onboarding.manage_own`); ChartWarden confirms the step |
+| 2 | Plan and contract | the plan, terms, census bands and latest statement, read only | nothing; "To change your plan or contract, ask ChartWarden" |
+| 3 | BAA | the recorded agreement and its facts (executed, attested, more than 90 days left) | the compliance officer attests it (fresh step-up) |
+| 4 | Provisioning | what ChartWarden is doing | nothing; ChartWarden settles it |
+| 5 | Provider entity and NPI | the entities (CCN, NPI, status) | the administrator adds one (`org.manage`); CCN, NPI, EIN and fiscal year end cannot be changed, so "ask ChartWarden" |
+| 6 | Locations | the service locations | the administrator adds one (`org.manage`) |
+| 7 | Billing: clearinghouse | the clearinghouse choice and its state | the administrator chooses and verifies it (slice 7C-b) |
+| 8 | MAC credentials | the credential state | enter and test it (slice 7C-b), or **skip** |
+| 9 | Payer enrollment | the step and its evidence | mark done with evidence, or **skip** |
+| 10 | DoseSpot kickoff | the step and its evidence | mark done with evidence (slice 7C-b), or **skip** |
+| 11 | First admin | the invitation state | nothing; ChartWarden settles it |
+| 12 | Compliance officer | the current officer and the staff list | the administrator picks one (fresh step-up), is given the role first when missing, or invites someone |
+| 13 | Sample data (optional) | the step | nothing; never skippable by the tenant |
+| 14 | Go live | not ready (each open step a link), awaiting the officer, awaiting ChartWarden's approval (days left), live | the assigned compliance officer attests readiness with an optional note (fresh step-up) |
+
+Every step also offers, where the person's role allows it: Start, Mark done with evidence (what was checked and by whom,
+an optional reference; refused if it looks like a patient identifier) and Re-open with a reason (refused while a go-live
+attestation is pending). A step ChartWarden or the system settled shows how: "Skipped by your organization", "Skipped by
+ChartWarden operations", or "Skipped automatically because your organization bills outside ChartWarden".
+
+### Skip (steps 8, 9 and 10 only)
+
+"This does not apply to us". Offered only to the organization's administrator (the `org_admin` role and
+`onboarding.manage_own`) and only where the step view says `tenantSkippable`, which the server derives for exactly these
+three steps. It is never offered on sample data (step 13), the go-live step or a step an operator added. The prompt asks
+for a written reason of 8 to 2000 characters (counted after whitespace is collapsed), screened by the server for patient
+identifiers, and the write needs a fresh step-up (a refused step-up offers Re-verify and keeps the typed reason in this
+tab's memory only) and one Idempotency-Key per intent (kept across a retry that got no answer, renewed by any answer).
+The go-live approver sees who skipped and why; a skip is undone by Re-open with a reason.
+
+---
+
 ## Writes by the operator
 
 Every write needs a fresh step-up and is refused for an AI principal. A refused step-up offers Re-verify and carries

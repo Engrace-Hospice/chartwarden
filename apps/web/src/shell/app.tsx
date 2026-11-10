@@ -64,7 +64,15 @@ export interface AppShellProps {
   chromeOverlay?: ReactNode;
   /** Feature-owned access guard injected at composition so the M1 shell remains module-agnostic. */
   chromeGuard?: ComponentType<{ children: ReactNode }>;
+  /**
+   * Feature-owned guard around each chromed screen (the landing included, as path "/"), inside the app frame: it may show something
+   * else in a screen's place or redirect (e.g. the onboarding gate). Injected at composition, so the shell imports no feature module.
+   */
+  screenGuard?: ComponentType<{ path: string; children: ReactNode }>;
 }
+
+/** The tenant onboarding wizard (apps/web/src/modules/34-saas): where a refused-while-onboarding call sends the person. The shell imports no module, so the path is named here. */
+const ONBOARDING_HOME = "/admin/onboarding";
 
 function newCorrelationId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
@@ -151,7 +159,7 @@ function withSuspense(element: ReactNode): JSX.Element {
 function GlobalResponseWatcher(): null {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { status } = useSessionState();
+  const { status, session } = useSessionState();
   const signal = useSyncExternalStore(subscribeGlobalResponseSignal, getGlobalResponseSignal);
   const alreadyExpiredRef = useRef(false);
   useEffect(() => {
@@ -183,6 +191,18 @@ function GlobalResponseWatcher(): null {
       ) {
         navigate("/login/organization", { replace: true });
       }
+    } else if (signal.kind === "organization-onboarding") {
+      // The organization is not live yet and this call is outside onboarding. When the session already says `onboarding`, the screen
+      // guard routes (and a refused background call, like the alert inbox poll, is expected noise: it must not bounce Agency setup or
+      // Account, which work). When the stage is unknown the refusal is the server's own word: the wizard is where the work is. Not
+      // from the wizard itself, and not for a signed-out visitor.
+      if (
+        status === "authenticated" &&
+        session?.organizationStage === undefined &&
+        !pathname.startsWith(ONBOARDING_HOME)
+      ) {
+        navigate(ONBOARDING_HOME, { replace: true });
+      }
     } else if (signal.kind === "tenant-unavailable") {
       // Already there (the page's own requests may be refused too): re-navigating would only churn history/state.
       if (pathname !== "/tenant-unavailable") {
@@ -192,7 +212,7 @@ function GlobalResponseWatcher(): null {
       navigate("/maintenance");
     }
     setGlobalResponseSignal(null); // consume — don't re-fire the same signal on every re-render
-  }, [signal, navigate, status, pathname]);
+  }, [signal, navigate, status, session, pathname]);
   return null;
 }
 
@@ -215,6 +235,7 @@ export function AppShell({
   correlationId = newCorrelationId(),
   chromeOverlay,
   chromeGuard: ChromeGuard,
+  screenGuard: ScreenGuard,
 }: AppShellProps): JSX.Element {
   const router = useMemo(() => {
     const screens = registry.screens();
@@ -225,6 +246,8 @@ export function AppShell({
     // A chromeless screen may own "/" (ADR-0049: the app.<base> landing); the chromed layout's index child (Role Home)
     // would otherwise outrank it, so it is left out in that case.
     const chromelessOwnsRoot = chromeless.some((s) => s.path === "/");
+    const guarded = (path: string, element: ReactNode): ReactNode =>
+      ScreenGuard ? <ScreenGuard path={path}>{element}</ScreenGuard> : element;
     const routes: RouteObject[] = [
       {
         element: <RootWatcher />,
@@ -249,18 +272,26 @@ export function AppShell({
             children: [
               ...(chromelessOwnsRoot
                 ? []
-                : [{ index: true, element: withSuspense(<RoleHome screens={chromed} />) }]),
+                : [
+                    {
+                      index: true,
+                      element: guarded("/", withSuspense(<RoleHome screens={chromed} />)),
+                    },
+                  ]),
               ...chromed.map((s) => ({
                 path: s.path.replace(/^\//, ""),
                 // Param-path screens (`/x/:id`) are reached by links, and their descriptor key was only ever a
                 // nav key — it may differ from what the screen's own API call requires — so hard-blocking them
                 // could deny a user the server would serve. The guard covers static paths (the create forms).
-                element: s.path.includes(":") ? (
-                  withSuspense(createElement(s.screen))
-                ) : (
-                  <RequireScreenPermission screen={s}>
-                    {withSuspense(createElement(s.screen))}
-                  </RequireScreenPermission>
+                element: guarded(
+                  s.path,
+                  s.path.includes(":") ? (
+                    withSuspense(createElement(s.screen))
+                  ) : (
+                    <RequireScreenPermission screen={s}>
+                      {withSuspense(createElement(s.screen))}
+                    </RequireScreenPermission>
+                  ),
                 ),
               })),
             ],
@@ -269,7 +300,7 @@ export function AppShell({
       },
     ];
     return createBrowserRouter(routes);
-  }, [registry, chromeOverlay, ChromeGuard]);
+  }, [registry, chromeOverlay, ChromeGuard, ScreenGuard]);
 
   return (
     <ErrorBoundary correlationId={correlationId}>

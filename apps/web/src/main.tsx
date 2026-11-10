@@ -50,7 +50,7 @@ import { qualityScreens } from "./modules/30-quality";
 import { portalStaffScreens } from "./modules/31-portal";
 import { aiPlatformScreens } from "./modules/32-ai-platform";
 import { reportingScreens } from "./modules/33-reporting";
-import { saasScreens } from "./modules/34-saas";
+import { OnboardingScreenGate, saasScreens } from "./modules/34-saas";
 import { subscriptionScreens } from "./modules/35-subscription";
 import { messagingScreens } from "./modules/36-messaging";
 import { ipuScreens } from "./modules/37-ipu";
@@ -135,6 +135,7 @@ createRoot(rootEl).render(
         </ErrorBoundary>
       }
       chromeGuard={CredentialStateGuard}
+      screenGuard={OnboardingScreenGate}
     />
   </StrictMode>,
 );

@@ -6,6 +6,7 @@ import type { ApiClient } from "@chartwarden/ui";
 // `locations_seeded`) read exactly these rows, so a tenant could not finish onboarding on its own. This screen
 // creates both through the existing M2 org-admin routes.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AgencySetup } from "./agency-setup";
 
@@ -47,9 +48,12 @@ function client(over: {
 
 function mount(c: unknown): void {
   render(
-    <ApiClientProvider client={c as ApiClient}>
-      <AgencySetup />
-    </ApiClientProvider>,
+    // The forms keep a draft through a step-up round trip, which reads the router location.
+    <MemoryRouter>
+      <ApiClientProvider client={c as ApiClient}>
+        <AgencySetup />
+      </ApiClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -92,6 +96,8 @@ describe("AgencySetup", () => {
           taxId: "12-3456789",
           fiscalYearEnd: "1231",
         },
+        // one Idempotency-Key per attempt, so a double submit or a retry never creates the entity twice
+        headers: { "Idempotency-Key": expect.any(String) },
       }),
     );
     await waitFor(() => expect(c.GET.mock.calls.length).toBeGreaterThan(2));
@@ -156,6 +162,7 @@ describe("AgencySetup", () => {
           postalCode: "93701",
           timezone: "America/Los_Angeles",
         },
+        headers: { "Idempotency-Key": expect.any(String) },
       }),
     );
   });

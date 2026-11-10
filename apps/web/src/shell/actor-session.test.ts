@@ -60,6 +60,22 @@ describe("FB-T15 toSession — maps the live actor context into the shell Sessio
   });
 });
 
+describe("toSession — organizationStage (slice 7A adds it to the auth context)", () => {
+  const withStage = (stage: unknown): ActorContextResponse =>
+    ({ ...ORG_BOUND, organizationStage: stage }) as ActorContextResponse;
+
+  it("carries onboarding and live through", () => {
+    expect(toSession(withStage("onboarding")).organizationStage).toBe("onboarding");
+    expect(toSession(withStage("live")).organizationStage).toBe("live");
+  });
+
+  it("leaves the stage undefined when the server sends none or something unknown (fail open to the normal shell)", () => {
+    expect(toSession(ORG_BOUND).organizationStage).toBeUndefined();
+    expect(toSession(withStage("suspended")).organizationStage).toBeUndefined();
+    expect(toSession(withStage(null)).organizationStage).toBeUndefined();
+  });
+});
+
 describe("needsOrgSelection — shell pre-org guard", () => {
   it("is true for a resolved session with no bound org (post-login, pre-select)", () => {
     const preOrg = toSession({
