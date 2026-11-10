@@ -283,3 +283,19 @@ describe("a tenant cannot burn a promo redemption on a contracted subscription",
     expect(t.writes).toEqual([]);
   });
 });
+
+describe("an operator cannot spend a promo redemption on a contracted subscription either", () => {
+  it("adminApplyPromo on a census_banded subscription -> 409 PROMO_NOT_APPLICABLE_TO_CONTRACTED_PLAN (not the tenant's 403), nothing redeemed", async () => {
+    const t = serviceOver("active", true, undefined, { tier: "census_banded" });
+    const failure = await t.service.adminApplyPromo(operator, SUBSCRIPTION_ID, "WELCOME10").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(failure).toBeInstanceOf(ChartWardenError);
+    expect(failure).toMatchObject({
+      code: "PROMO_NOT_APPLICABLE_TO_CONTRACTED_PLAN",
+      statusCode: 409,
+    });
+    expect(t.writes).toEqual([]);
+  });
+});

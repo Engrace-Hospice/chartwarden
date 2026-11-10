@@ -158,6 +158,22 @@ function refuseContractedPlan(
 }
 
 /**
+ * A promo is a discount on a plan's price, and a contracted (census_banded) subscription is billed from the plan version the tenant
+ * signed: its statements ignore promos. A redemption spent on one would count against the code's limit and discount nothing, so the
+ * OPERATOR's apply refuses it too (the tenant's is refused with PLAN_ASSIGNED_BY_OPERATIONS, which is addressed to a tenant): a 409
+ * with its own code, raised before anything is redeemed.
+ */
+function refuseContractedPlanPromo(plan: { readonly tier: string } | null | undefined): void {
+  if (plan?.tier === "census_banded") {
+    throw new ChartWardenError(
+      "PROMO_NOT_APPLICABLE_TO_CONTRACTED_PLAN",
+      "a promo cannot be applied to a contracted subscription: its statements are priced from the signed plan version and ignore promos",
+      409,
+    );
+  }
+}
+
+/**
  * What a tenant can SELECT is never a contracted plan: asking for one answers exactly what asking for a plan that does not exist
  * answers (404), so a probe cannot tell the census_banded slugs from nothing.
  */
@@ -1637,6 +1653,7 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
         if (!sub) throw new NotFoundError("subscription", subscriptionId);
+        refuseContractedPlanPromo(await loadPlan(tx, sub.planId));
         const { application: app, promoCode: code } = await redeemPromoInTx(tx, {
           code: promoCode,
           organizationId: sub.organizationId,
