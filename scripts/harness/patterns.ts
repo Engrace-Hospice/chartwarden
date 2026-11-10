@@ -31,6 +31,7 @@ import {
   scanShell,
   splitCommand,
 } from "./shell-lex";
+import { isToolchainPath } from "./toolchain-paths";
 
 export interface SyntheticRegistry {
   readonly ssn: ReadonlySet<string>;
@@ -1847,7 +1848,7 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
     for (const dir of dirs) {
       const rel = resolvePath(t.raw, dir, ctx);
       if (rel === null) unknownDir = true;
-      else if (protectedTouch(rel, t)) return { path: rel };
+      else if (protectedTouch(rel, t) || isToolchainPath(rel)) return { path: rel };
     }
   }
   if (inline) {
@@ -1911,7 +1912,9 @@ function readsScriptFromStdin(p: Parsed, index: number): boolean {
 const UNKNOWN_DIR_REASON =
   "A `cd` the guard cannot resolve comes before this write, so it could land in the agent harness or the compliance record. A human approves it here.";
 const protectedReason = (path: string): string =>
-  `\`${echo(path)}\` is part of the agent harness or the compliance record. Changing it through the shell skips the edit prompt, so a human approves it here.`;
+  isToolchainPath(path)
+    ? `\`${echo(path)}\` is the bun the agent hooks run on, or a shell startup file: a write there switches the guard off for every later command. A human approves it here.`
+    : `\`${echo(path)}\` is part of the agent harness or the compliance record. Changing it through the shell skips the edit prompt, so a human approves it here.`;
 const WHOLE_TREE: WriteTarget = { raw: "", anc: true, merge: true };
 const ROOT_WIDE_REASON =
   "This recursive delete, permission change or tree merge takes in the whole repo root, and with it the agent harness and the compliance record. A human decides.";
