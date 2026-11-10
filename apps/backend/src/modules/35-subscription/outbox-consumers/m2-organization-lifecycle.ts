@@ -55,8 +55,13 @@
 // `subscription_state_history` row (status did not change, so there is no state transition to log).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, desc, eq } from "drizzle-orm";
-import { ORG_SUSPENDED_REASON_CODE, PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
+import { and, eq } from "drizzle-orm";
+import { isPauseLapsed } from "../pricing/contract-select";
+import {
+  ORG_SUSPENDED_REASON_CODE,
+  PAUSE_LAPSED_REASON_CODE,
+  lockNewestSubscription,
+} from "../routes/admin-transition";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 
 const S = schema.subscriptionRow;
@@ -151,17 +156,11 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
       await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
         const tx = scoped as unknown as DbClient;
 
-        // Read under a row lock: the hourly pause-resume sweep (billing-runtime/pause-resume.ts) resumes a lapsed pause under the same lock,
-        // so whichever of the two takes the row first finishes before the other judges it. Without the lock, a sweep that committed between
-        // this read and the guarded write below would make that write (still keyed on the `paused` it read) update nothing, and the
+        // Read under a row lock (lockNewestSubscription): the hourly pause-resume sweep resumes a lapsed pause under the same lock on the
+        // same row, so whichever of the two takes it first finishes before the other judges it. Without the lock, a sweep that committed
+        // between this read and the guarded write below would make that write (still keyed on the `paused` it read) update nothing, and the
         // suspension would be dropped as a "lost race" while the subscription is active.
-        const [sub] = await tx
-          .select()
-          .from(S)
-          .where(eq(S.organizationId, organizationId))
-          .orderBy(desc(S.startedAt))
-          .limit(1)
-          .for("update");
+        const sub = await lockNewestSubscription(tx, organizationId);
         if (!sub) return; // no subscription for this org yet — see the `.activated` "CREATE" note above.
 
         const at = now();
@@ -174,8 +173,7 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
           // `active` here and this is the plain path below (no lapse row of ours: the sweep wrote it, dated at the same end date). A pause
           // that is open-ended already covers the suspension: idempotent. A DATED pause that is still running (its date ahead) covers it
           // only until that date, after which billing would count the pause as over for a suspended organization: it is made open-ended.
-          const lapsed =
-            sub.status === "paused" && sub.pausedUntil !== null && sub.pausedUntil <= at;
+          const lapsed = isPauseLapsed(sub, at);
           if (sub.status === "paused" && sub.pausedUntil !== null && !lapsed) {
             await makeRunningPauseOpenEnded(deps, tx, sub, at, reason);
             return;

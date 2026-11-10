@@ -13,18 +13,23 @@ date, but nothing changed the stored status, so the subscription read `paused` (
 claims-billing entitlement) until an operator remembered to resume it.
 
 - An hourly sweep (`m35.subscription-pause-resume`) now resumes a subscription that is `paused` with a `pausedUntil` that has passed: `status`
-  becomes `active` and `pausedAt` and `pausedUntil` become `null`. Until the sweep runs (at most about an hour) the stored status still reads
-  `paused`, and billing still counts the pause as over at its date.
+  becomes `active` and `pausedAt` and `pausedUntil` become `null`. Until the sweep runs (normally within the hour; longer if the worker is late
+  or skips the row) the stored status still reads `paused`, and billing still counts the pause as over at its date.
 - The resume is announced with the same `m35.subscription.resumed` event an operator's resume publishes; `resumedAt` is the pause's end
   date, not the instant the sweep ran. The subscription's status history (`reasonCode` `platform_ops_pause_lapsed`, no actor) is dated at
   that end date too, so a statement for the month the pause ended in does not change when the sweep runs.
-- The sweep visits active organizations only. A pause with no end date, a pause whose date is ahead, and an organization suspension (which
-  pauses with no end date) are never resumed by it. A superseded pause is also left alone when the organization already has another live
-  subscription.
+- The sweep visits active organizations only, and acts on the organization's newest subscription only. A pause with no end date, a pause
+  whose date is ahead, an organization suspension (which pauses with no end date) and an older, superseded subscription are never resumed by
+  it. The newest subscription's pause is also left alone when an older subscription of the organization is live.
 - When the platform suspends an organization (`m2.organization.suspended`) while an operator's dated pause is still running, the pause
   becomes open-ended: `pausedUntil` is cleared, the subscription's status history gains a `paused` to `paused` row (`reasonCode`
   `org_suspended_by_platform_admin`) dated at the suspension, and `m35.subscription.paused` is published again with `pausedUntil: null`.
   The suspended organization stays unbilled past the old date until it is reactivated.
+- `POST /api/v1/subscription/resume` (the tenant's own resume of a non-contracted subscription) now reads the subscription under the same row
+  lock, so it cannot announce a resume the sweep has just made, and it answers `409 SUBSCRIPTION_NOT_PAUSED` for a subscription that is
+  neither paused nor scheduled to cancel (it used to answer `200`, touch `updatedAt` and publish `m35.subscription.resumed` again).
+  Resuming a subscription scheduled to cancel at period end still clears the schedule; it no longer publishes `m35.subscription.resumed`,
+  which means "resumed from paused".
 - No request or response shape changes.
 
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status

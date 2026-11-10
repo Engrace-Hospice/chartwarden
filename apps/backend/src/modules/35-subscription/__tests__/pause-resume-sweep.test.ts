@@ -1,11 +1,14 @@
 // A lapsed operator pause is resumed by an hourly sweep (product decision: the stored status follows the date).
-//   - the sweep resumes a `paused` subscription whose `paused_until` has passed: status -> active, the pause's own timestamps cleared, a
+//   - the sweep acts on the org's NEWEST subscription only (`ORDER BY started_at DESC LIMIT 1`, the row every other M35 lifecycle path acts
+//     on) and resumes it when it is `paused` with a `paused_until` that has passed: status -> active, the pause's own timestamps cleared, a
 //     ledger row (paused -> active) DATED AT THE OLD END DATE (so a statement's pause window does not move), and the same
 //     `m35.subscription.resumed` event the operator's own resume publishes, once;
+//   - an older (superseded) subscription is never a candidate, whatever its status;
 //   - it never touches an open-ended pause, a pause whose date is ahead, or a row another writer already moved (zero rows updated);
 //   - it composes with the m2 `.suspended` consumer in either order without a duplicate ledger row.
-// No database here: a recording transaction double whose reads encode the SQL predicates by hand (the predicates themselves are rendered and
-// asserted). The live suite (m35-org-lifecycle-consumer) proves the same, and the real race, on the real NOBYPASSRLS application role.
+// No database here: a recording transaction double over a LIST of subscriptions that models `ORDER BY started_at DESC` and `LIMIT`, whose
+// writes land on the row the guard names (the guards themselves are rendered and asserted). The live suites (m35-org-lifecycle-consumer,
+// m35-tenant-pricing) prove the same, and the real races, on the real NOBYPASSRLS application role.
 import type { DbClient } from "@chartwarden/db";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -47,52 +50,63 @@ const lapsedPause = (over: Partial<SubState> = {}): SubState => ({
 
 const render = (c: SQL) => new PgDialect().sqlToQuery(c);
 
-/** What `status = 'paused' AND paused_until IS NOT NULL AND paused_until <= now` selects, written by hand against the double's one row. */
-const isLapsed = (s: SubState, now: Date): boolean =>
-  s.status === "paused" && s.pausedUntil !== null && s.pausedUntil <= now;
-
-/** One subscription, two views: the sweep's reads (the lapse predicate) and the consumer's (the org's newest row). */
-function world(
-  initial: SubState,
-  opts: { loseRace?: boolean; now?: Date; otherLive?: boolean } = {},
-) {
-  let current = initial;
-  const now = opts.now ?? NOW;
+/** One org's subscriptions (given oldest first, to prove the sweep does not rely on heap order) behind a recording transaction. */
+function world(initial: SubState | SubState[], opts: { loseRace?: boolean; now?: Date } = {}) {
+  let rows = Array.isArray(initial) ? [...initial] : [initial];
   const log = {
     wheres: [] as SQL[],
     guards: [] as SQL[],
     locks: [] as unknown[],
+    orderings: [] as string[],
+    limits: [] as number[],
     updates: [] as Record<string, unknown>[],
+    updatedIds: [] as string[],
     ledger: [] as Record<string, unknown>[],
     transactions: [] as number[],
   };
-  /** The tail of a select: `.orderBy().limit(n)` and `.for("update")` both end the chain with the rows (`.limit()` can still take a lock). */
-  const readOf = (rows: () => unknown[]) => {
+  /** A select's tail: `.orderBy()` sorts (only `started_at desc` is modelled), `.limit(n)` cuts, `.for("update")` records the lock. */
+  const readOf = (base: () => SubState[]) => {
+    let newestFirst = false;
+    let max: number | undefined;
+    const result = () => {
+      const sorted = newestFirst
+        ? [...base()].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+        : base();
+      return max === undefined ? sorted : sorted.slice(0, max);
+    };
     const forUpdate = (mode: unknown) => {
       log.locks.push(mode);
-      return Promise.resolve(rows());
+      return Promise.resolve(result());
     };
     const query = {
-      orderBy: () => query,
-      limit: () => Object.assign(Promise.resolve(rows()), { for: forUpdate }),
+      orderBy: (...columns: SQL[]) => {
+        const texts = columns.map((c) => render(c).sql);
+        log.orderings.push(texts.join(", "));
+        newestFirst = texts.some((t) => t.includes('"started_at" desc'));
+        return query;
+      },
+      limit: (n: number) => {
+        log.limits.push(n);
+        max = n;
+        return Object.assign(Promise.resolve(result()), { for: forUpdate });
+      },
       for: forUpdate,
     };
     return query;
   };
   const tx = {
     execute: async () => undefined,
-    // Three reads, told apart by the predicate each renders: the sweep's lapse read (names `paused_until`), its sibling check (names
-    // `id <> ...`), and the consumer's read of the org's newest row.
+    // Two reads, told apart by the predicate each renders: the one-live-per-org check (names `id <> ...`) and the read of the org's rows.
     select: () => ({
       from: () => ({
         where: (c: SQL) => {
           log.wheres.push(c);
-          const text = render(c).sql;
+          const { sql: text, params } = render(c);
           if (text.includes('"id" <> $'))
-            return readOf(() => (opts.otherLive ? [{ id: "other" }] : []));
-          if (text.includes('"paused_until"'))
-            return readOf(() => (isLapsed(current, now) ? [current] : []));
-          return readOf(() => [current]);
+            return readOf(() =>
+              rows.filter((r) => r.id !== params[1] && !["canceled", "paused"].includes(r.status)),
+            );
+          return readOf(() => rows);
         },
       }),
     }),
@@ -102,11 +116,13 @@ function world(
         return {
           where: (c: SQL) => {
             log.guards.push(c);
+            const id = render(c).params[0];
             return {
               returning: async () => {
                 if (opts.loseRace) return [];
-                current = { ...current, ...(v as Partial<SubState>) };
-                return [{ id: current.id }];
+                log.updatedIds.push(String(id));
+                rows = rows.map((r) => (r.id === id ? { ...r, ...(v as Partial<SubState>) } : r));
+                return [{ id }];
               },
             };
           },
@@ -125,7 +141,7 @@ function world(
       return fn(tx);
     },
   } as unknown as DbClient;
-  return { db, log, state: () => current };
+  return { db, log, state: (id: string = SUB) => rows.find((r) => r.id === id) as SubState };
 }
 
 function deps(db: DbClient, over: Partial<M35JobDeps> = {}) {
@@ -185,21 +201,77 @@ describe("the sweep resumes a lapsed operator pause", () => {
     ]);
   });
 
-  it("reads the lapsed pauses under a row lock, and both the read and the write carry the lapse predicate", async () => {
+  it("reads the org's NEWEST subscription (ORDER BY started_at DESC LIMIT 1) under a row lock, and the write carries the lapse predicate", async () => {
     const w = world(lapsedPause());
     await runPauseResumeForOrg(deps(w.db).jobs, ORG);
 
     expect(w.log.locks).toEqual(["update"]);
-    // the first read is the lapse read (the second, if any, is the one-live-per-org check)
-    for (const predicate of [w.log.wheres[0] as SQL, w.log.guards[0] as SQL]) {
-      const { sql: text, params } = render(predicate);
-      expect(text).toContain('"status" = $');
-      expect(text).toContain('"paused_until" is not null');
-      expect(text).toContain('"paused_until" <= $');
-      expect(params).toContain("paused");
+    expect(w.log.limits[0]).toBe(1); // (the second limit, if any, is the one-live-per-org check)
+    expect(w.log.orderings).toHaveLength(1);
+    expect(w.log.orderings[0]).toContain('"started_at" desc');
+    expect(render(w.log.wheres[0] as SQL).sql).toContain('"organization_id" = $');
+    // the write is guarded: the row, still `paused`, its date still passed
+    const { sql: text, params } = render(w.log.guards[0] as SQL);
+    expect(text).toContain('"id" = $');
+    expect(text).toContain('"status" = $');
+    expect(text).toContain('"paused_until" is not null');
+    expect(text).toContain('"paused_until" <= $');
+    expect(params).toContain("paused");
+  });
+
+  it("two lapsed pauses in one org: only the NEWEST is resumed, the older one is never a candidate (whatever order the rows come in)", async () => {
+    const older = lapsedPause({
+      id: "5b000000-0000-4000-8000-000000000010",
+      startedAt: new Date("2026-09-01T00:00:00Z"),
+    });
+    const newest = lapsedPause({
+      id: "5b000000-0000-4000-8000-000000000011",
+      startedAt: new Date("2026-11-01T00:00:00Z"),
+    });
+    for (const rows of [
+      [older, newest],
+      [newest, older],
+    ]) {
+      const w = world(rows);
+      const { jobs, published } = deps(w.db);
+
+      expect(await runPauseResumeForOrg(jobs, ORG)).toBe(1);
+
+      expect(w.state(newest.id).status).toBe("active");
+      expect(w.state(older.id)).toMatchObject({ status: "paused", pausedUntil: UNTIL });
+      expect(w.log.updatedIds).toEqual([newest.id]);
+      expect(w.log.ledger.map((r) => r.subscriptionId)).toEqual([newest.id]);
+      expect(published.map((e) => e.aggregateId)).toEqual([newest.id]);
+      // and a second run (the older one is still lapsed and paused) resumes nothing
+      expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0);
     }
-    // the guard names the row, so a concurrent operator action or suspension that moved it updates zero rows
-    expect(render(w.log.guards[0] as SQL).sql).toContain('"id" = $');
+  });
+
+  it("a lapsed pause under a NEWER subscription is never resurrected, whatever the newer one is (canceled, active, paused open-ended): nothing is written and nothing is logged", async () => {
+    const lapsed = lapsedPause({
+      id: "5b000000-0000-4000-8000-000000000020",
+      startedAt: new Date("2026-09-01T00:00:00Z"),
+    });
+    for (const status of ["canceled", "active", "trialing", "suspended"]) {
+      const newer = lapsedPause({
+        id: `5b000000-0000-4000-8000-0000000000${status.length}1`,
+        status,
+        pausedAt: null,
+        pausedUntil: null,
+        startedAt: new Date("2026-11-01T00:00:00Z"),
+      });
+      const w = world([lapsed, newer]);
+      const logged: unknown[] = [];
+      const { jobs, published } = deps(w.db, { log: (...args) => void logged.push(args) });
+
+      expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0);
+
+      expect(w.state(lapsed.id).status).toBe("paused");
+      expect(w.log.updates).toEqual([]);
+      expect(w.log.ledger).toEqual([]);
+      expect(published).toEqual([]);
+      expect(logged).toEqual([]);
+    }
   });
 
   it("does nothing when no pause has lapsed: no write, no ledger row, no event", async () => {
@@ -246,16 +318,30 @@ describe("the sweep resumes a lapsed operator pause", () => {
     expect(published).toEqual([]);
   });
 
-  it("leaves a superseded pause alone when the org already has another live subscription (resuming it would break one-live-per-org)", async () => {
-    const w = world(lapsedPause(), { otherLive: true });
+  it("leaves the newest pause alone when an OLDER subscription of the org is live (resuming it would break one-live-per-org), logging it ONCE per row, not every hour", async () => {
+    const older = lapsedPause({
+      id: "5b000000-0000-4000-8000-000000000030",
+      status: "active",
+      pausedAt: null,
+      pausedUntil: null,
+      startedAt: new Date("2026-09-01T00:00:00Z"),
+    });
+    const newest = lapsedPause({
+      id: "5b000000-0000-4000-8000-000000000031",
+      startedAt: new Date("2026-11-01T00:00:00Z"),
+    });
+    const w = world([older, newest]);
     const logged: Record<string, unknown>[] = [];
     const { jobs, published } = deps(w.db, { log: (_m, detail) => void logged.push(detail) });
 
     expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0);
-    expect(w.state().status).toBe("paused");
+    expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0); // the next hour
+    expect(await runPauseResumeForOrg(jobs, ORG)).toBe(0); // and the next
+
+    expect(w.state(newest.id).status).toBe("paused");
     expect(w.log.updates).toEqual([]);
     expect(published).toEqual([]);
-    expect(logged).toEqual([{ organizationId: ORG, subscriptionId: SUB }]);
+    expect(logged).toEqual([{ organizationId: ORG, subscriptionId: newest.id }]); // once
   });
 
   it("is idempotent: a second run finds nothing to do and publishes nothing more", async () => {
@@ -268,7 +354,7 @@ describe("the sweep resumes a lapsed operator pause", () => {
     expect(published).toHaveLength(1);
   });
 
-  it("a failing publish fails the org's whole transaction (the sweep retries; a transition never lacks its event)", async () => {
+  it("a failing publish rejects the org's run, so its transaction does not commit (the rollback itself is proven live; the next hour retries)", async () => {
     const w = world(lapsedPause());
     const { jobs, outbox } = deps(w.db);
     outbox.publish.mockRejectedValueOnce(new Error("catalog refused"));
