@@ -72,8 +72,8 @@ const CLEARINGHOUSE_RELEASE_KEY = "tenant_clearinghouse.release_credential_platf
 /** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own permission key (the platform_ops role holds them all). */
 const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
 
-const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
-const OPS = (key: string): PreHandler => requireAbac(key, PLATFORM_OPS) as PreHandler;
+export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
+export const OPS = (key: string): PreHandler => requireAbac(key, PLATFORM_OPS) as PreHandler;
 
 const READ: readonly PreHandler[] = [P(READ_KEY), OPS(READ_KEY)];
 const WRITE: readonly PreHandler[] = [
@@ -129,7 +129,7 @@ const NOTICE_WITHDRAW: readonly PreHandler[] = [
 ];
 
 /** The operator, from the server-assembled session (never the body); the kit's write actor: 401 without a session, 403 for a live session with no membership. */
-function operatorOf(request: FastifyRequest): OnboardingOperator {
+export function operatorOf(request: FastifyRequest): OnboardingOperator {
   const actor = writeActorOf(request);
   const ctx = request.context;
   return {
@@ -153,7 +153,7 @@ function operatorOf(request: FastifyRequest): OnboardingOperator {
  * characters a padded reason is made of, so the NORMALISED length is what is enforced: a reason of "abcd    " is a 422,
  * not an audit row, and what reaches the tenant-visible audit trail has no control or format characters in it.
  */
-function splitReason<B extends { reason: string }>(
+export function splitReason<B extends { reason: string }>(
   body: B,
 ): { reason: string; fields: Omit<B, "reason"> } {
   const { reason, ...fields } = body;

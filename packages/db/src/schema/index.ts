@@ -411,6 +411,7 @@ export * from "./dosespot/medication-order-transmissions";
 export * from "./dosespot/refill-requests";
 export * from "./dosespot/dosespot-webhook-events";
 export * from "./dosespot/dosespot-prescribers";
+export * from "./dosespot/dosespot-clinic-registration";
 export * from "./dosespot/epcs-signing-attempts";
 export * from "./dosespot/medication-order-idg-decision-applications";
 export * from "./dosespot/medication-order-reconciliation-decision-applications";

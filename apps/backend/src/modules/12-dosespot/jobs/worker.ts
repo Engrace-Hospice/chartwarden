@@ -1,6 +1,7 @@
 import type { DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotClient,
+  type DoseSpotTenantConfigResolver,
   buildPatientUpsertPayload,
   createUnboundDoseSpotClient,
   isDegradedError,
@@ -64,13 +65,17 @@ import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { ingestMedicationHistoryPull } from "../history/ingest";
+import { readRegistrationTarget, vendorWriteIsCurrent } from "../tenant-config/registration-target";
 import {
   createDrizzleDosespotPatientIdResolver,
+  patientSyncWasRetargeted,
   recordPatientSyncFailure,
   recordPatientSyncSuccess,
 } from "./patient-sync-store";
 import { DosespotSyncQueueRepository } from "./repository";
 import { invalidateRxBenefitCacheForPatient } from "./rx-benefit-prewarm";
+import { type SyncFaultOutcome, classifySyncFault } from "./sync-outcome";
+import { syncPreflight } from "./sync-preflight";
 import {
   type DosespotPatientIdResolver,
   type DosespotSyncDemographicsForOrg,
@@ -79,6 +84,14 @@ import {
 } from "./vendor-boundary";
 
 type DosespotSyncQueueRow = schema.DosespotSyncQueueRow;
+
+const PATIENT_NOT_SYNCED_TEXT =
+  "no DoseSpot-side patient id is recorded for this patient — the prior patient-sync has not succeeded yet";
+/** A fetch for a patient whose vendor id a registration move cleared: the patient is not registered at the clinic the registration names now. */
+export const PATIENT_NOT_AT_CURRENT_CLINIC_TEXT =
+  "this patient is not registered at the DoseSpot clinic the registration now names (it moved to another clinic); the medication history was not pulled. A patient sync registers the patient and the next admission or recertification pulls it";
+const REGISTRATION_MOVED_SYNC_TEXT =
+  "the DoseSpot registration moved to another clinic while the patient was being synced; the patient syncs again under the new registration";
 
 export const M12_DOSESPOT_SYNC_QUEUE = "dosespot.sync_queue_drain";
 /** Every 2 minutes — this queue is patient-facing (DoseSpot demographic sync + MedHx availability for
@@ -107,6 +120,13 @@ export interface DoseSpotSyncWorkerDeps {
   /** Publishes `m12.dosespot_patient_synced` on a real (future) successful upsert. Optional — a missing
    *  port just means the completion event is not announced; the row is still marked completed. */
   readonly outbox?: DoseSpotWriteOutboxPort;
+  /**
+   * The same resolver the client reads. With it, a tenant that registered DoseSpot but is not live (deactivated, rotating its key, not yet
+   * activated) or whose config cannot be read has its rows left `pending` and untouched (`sync-preflight.ts`); without it every org is drained.
+   */
+  readonly config?: Pick<DoseSpotTenantConfigResolver, "configFor">;
+  /** A structured warning (pino's `(fields, message)` shape): org ids and error classes only, never a message that could carry a value. */
+  readonly warn?: (fields: Record<string, string | number>, message: string) => void;
   readonly batchSize?: number;
   readonly now?: () => Date;
   readonly connection?: ConnectionOptions;
@@ -114,7 +134,11 @@ export interface DoseSpotSyncWorkerDeps {
 
 /** One claimed row's outcome, processed OUTSIDE any held DB transaction (the vendor call is network I/O;
  *  holding a Postgres lock across it would serialize the whole org's queue behind the slowest call). */
-async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRow): Promise<void> {
+async function processRow(
+  deps: DoseSpotSyncWorkerDeps,
+  row: DosespotSyncQueueRow,
+  orgHasRegistration: boolean,
+): Promise<void> {
   const doseSpotClient = deps.doseSpotClient ?? createUnboundDoseSpotClient();
   const snapshotResolver =
     deps.snapshotResolver ??
@@ -131,11 +155,10 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
     deps.dosespotPatientIdResolver ?? createDrizzleDosespotPatientIdResolver(deps.db);
   const now = deps.now ?? (() => new Date());
 
-  let outcome:
-    | { kind: "completed" }
-    | { kind: "failed"; error: string }
-    | { kind: "requeue"; error: string };
+  let outcome: { kind: "completed" } | SyncFaultOutcome;
   let errorClass = "unknown";
+  /** The clinic a patient upsert began under, once it has (see below): a failure after the registration moved off it may be the move's doing. */
+  let roundTripTarget: string | undefined;
   try {
     if (row.kind === "patient_sync") {
       const snapshot = await snapshotResolver.resolve(row.organizationId, row.patientId);
@@ -143,6 +166,14 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         // Genuinely no such patient under this org any more — nothing to sync, not a failure.
         outcome = { kind: "completed" };
       } else {
+        // The clinic the registration names as this round trip begins: the id the vendor answers with is only recorded while it still does
+        // (a move clears every patient's vendor id; an old-clinic id written after the clear would stand, and nothing clears it again).
+        const target = await withOrgContext(
+          deps.db,
+          { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
+          (tx) => readRegistrationTarget(tx as DbClient, row.organizationId),
+        );
+        roundTripTarget = target;
         // GAP-037 — a patient already known to DoseSpot is EDITED, never re-created (no duplicate chart).
         const knownDosespotPatientId = await dosespotPatientIdResolver.resolve(
           row.organizationId,
@@ -152,20 +183,28 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
           ...buildPatientUpsertPayload(snapshot),
           ...(knownDosespotPatientId ? { existingDosespotPatientId: knownDosespotPatientId } : {}),
         };
-        const idempotencyKey = patientSyncIdempotencyKey(row.patientId, snapshot.updatedAt);
-        // Reached (past this point) only once the vendor client is real — today it always throws here.
+        // scoped to the clinic this round trip began under: the patient's `updated_at` does not move with the registration, so the bare key would
+        // be the one the OLD clinic already answered (plan.ts says why; only a digest of the target is in it)
+        const idempotencyKey = patientSyncIdempotencyKey(row.patientId, snapshot.updatedAt, target);
+        // The unbound deny-stub (the default when no client is injected) rejects here; the HTTP adapter sends the upsert. It is told the clinic this
+        // round trip began under and refuses to send under another (its config is resolved again for the request: packages/dosespot, http.ts).
         const response = await doseSpotClient.upsertPatient(
           row.organizationId,
           payload,
           idempotencyKey,
+          { expectedTarget: target },
         );
         const outboxPort = deps.outbox;
         // §2.6 "on success": record the vendor-returned id (the ONLY writer of `dosespot_patient_sync`'s
         // id — reached only with a real `upsertPatient` response) and announce it in the SAME tx.
-        await withOrgContext(
+        const recorded = await withOrgContext(
           deps.db,
           { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
           async (tx) => {
+            // FIRST: the registration may have moved to another clinic while the vendor call ran (registration-target.ts)
+            if (!(await vendorWriteIsCurrent(tx as DbClient, row.organizationId, target))) {
+              return false;
+            }
             await recordPatientSyncSuccess(tx as DbClient, {
               organizationId: row.organizationId,
               patientId: row.patientId,
@@ -185,9 +224,21 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
                 },
               });
             }
+            return true;
           },
         );
-        if (row.invalidateRxBenefitCache) {
+        if (!recorded) {
+          // the patient now exists at the OLD clinic: nothing is recorded, and the row waits to run again under the new registration
+          deps.warn?.(
+            {
+              organizationId: row.organizationId,
+              patientId: row.patientId,
+              class: "registration_moved",
+            },
+            "M12 sync drain: the DoseSpot registration moved to another clinic during the patient sync; the vendor patient id was dropped and the row runs again",
+          );
+          outcome = { kind: "defer", error: REGISTRATION_MOVED_SYNC_TEXT };
+        } else if (row.invalidateRxBenefitCache) {
           // GAP-037 — demographics / payer changed: the cached coverage may no longer be true, so drop it
           // (the prewarm cron repopulates). Same org scope, after the id is recorded.
           await withOrgContext(
@@ -197,7 +248,7 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
               invalidateRxBenefitCacheForPatient(tx as DbClient, row.organizationId, row.patientId),
           );
         }
-        outcome = { kind: "completed" };
+        if (recorded) outcome = { kind: "completed" };
       }
     } else {
       const dosespotPatientId = await dosespotPatientIdResolver.resolve(
@@ -205,10 +256,17 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         row.patientId,
       );
       if (dosespotPatientId === null) {
+        // Two different reasons for "no id": never synced, or synced under the clinic the registration USED to name (a move cleared the id). Both end
+        // the row (the pull needs an id and nothing here registers a patient: only an order, or a demographic change, does), but the second says so,
+        // and it is told apart from a sync that merely has not happened yet.
+        const retargeted = await patientSyncWasRetargeted(
+          deps.db,
+          row.organizationId,
+          row.patientId,
+        );
         outcome = {
           kind: "failed",
-          error:
-            "no DoseSpot-side patient id is recorded for this patient — the prior patient-sync has not succeeded yet",
+          error: retargeted ? PATIENT_NOT_AT_CURRENT_CLINIC_TEXT : PATIENT_NOT_SYNCED_TEXT,
         };
       } else {
         if (!deps.outbox) {
@@ -252,16 +310,7 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
       : error instanceof Error
         ? error.name
         : "unknown";
-    if (isDegradedError(error)) {
-      outcome = error.retryable
-        ? { kind: "requeue", error: error.customerMessage }
-        : { kind: "failed", error: error.customerMessage };
-    } else if (error instanceof Error) {
-      // A plain Error is deterministic and non-retryable — reported as-is.
-      outcome = { kind: "failed", error: error.message };
-    } else {
-      outcome = { kind: "failed", error: String(error) };
-    }
+    outcome = classifySyncFault(error, { attemptCount: row.attemptCount, orgHasRegistration });
   }
 
   await withOrgContext(
@@ -269,11 +318,35 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
     { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
     async (tx) => {
       const repo = new DosespotSyncQueueRepository(tx as DbClient);
-      if (outcome.kind === "completed") await repo.markCompleted(row.id, now());
-      else if (outcome.kind === "failed") await repo.markFailed(row.id, outcome.error, now());
-      else await repo.requeue(row.id, outcome.error);
-      // §2.6 "on failure": record the sync outcome + bump `retry_count` (no id is ever invented).
-      if (row.kind === "patient_sync" && outcome.kind !== "completed") {
+      let settled = outcome;
+      // A patient upsert that FAILED after the registration moved to another clinic may have failed because of it (an edit of the old clinic's patient
+      // id, refused under the new one, is refused for good): it must not end the row. It waits and runs again under the new registration, like a
+      // success that overlapped the move (a plain read: nothing is written on this verdict, so it needs no lock).
+      if (
+        (settled.kind === "failed" || settled.kind === "requeue") &&
+        roundTripTarget !== undefined &&
+        (await readRegistrationTarget(tx as DbClient, row.organizationId)) !== roundTripTarget
+      ) {
+        deps.warn?.(
+          {
+            organizationId: row.organizationId,
+            patientId: row.patientId,
+            class: "registration_moved",
+          },
+          "M12 sync drain: a patient sync failed after the DoseSpot registration moved to another clinic; the row waits and runs again",
+        );
+        settled = { kind: "defer", error: REGISTRATION_MOVED_SYNC_TEXT };
+      }
+      if (settled.kind === "completed") await repo.markCompleted(row.id, now());
+      else if (settled.kind === "failed") await repo.markFailed(row.id, settled.error, now());
+      else if (settled.kind === "defer") await repo.defer(row.id, settled.error, now());
+      else await repo.requeue(row.id, settled.error, now());
+      // §2.6 "on failure": record the sync outcome + bump `retry_count` (no id is ever invented). A row that only WAITS for the registration
+      // (`defer`) did not fail: the patient's last outcome is left as it was.
+      if (
+        row.kind === "patient_sync" &&
+        (settled.kind === "failed" || settled.kind === "requeue")
+      ) {
         await recordPatientSyncFailure(tx as DbClient, {
           organizationId: row.organizationId,
           patientId: row.patientId,
@@ -286,6 +359,33 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
 }
 
 /**
+ * A claimed row whose outcome could not be written (a database fault inside its settle, rolled back whole): it is still `processing`. End it as `failed`
+ * with the error's class only, and say so with ids and the class. If even that cannot be written the database is unreachable: the error propagates, which
+ * fails the org's pass (the job's own retry then runs the drain again) rather than pretending the row was settled.
+ */
+async function endUnrecordableRow(
+  deps: DoseSpotSyncWorkerDeps,
+  row: DosespotSyncQueueRow,
+  error: unknown,
+): Promise<void> {
+  const cause = error instanceof Error ? error.name : "unknown";
+  deps.warn?.(
+    { organizationId: row.organizationId, patientId: row.patientId, cause },
+    "M12 sync drain: a row's outcome could not be recorded; it was ended as failed and the org's other rows went on",
+  );
+  await withOrgContext(
+    deps.db,
+    { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
+    (tx) =>
+      new DosespotSyncQueueRepository(tx as DbClient).markFailed(
+        row.id,
+        `the drain could not record this row's outcome (${cause})`,
+        (deps.now ?? (() => new Date()))(),
+      ),
+  );
+}
+
+/**
  * One drain tick: fan out over every active org, claim its pending rows (`FOR UPDATE SKIP LOCKED`,
  * `./repository.ts`), and process each outside the claiming transaction. One org's failure does not stop
  * the others (`M11_STANDING_SPAWN`/`M20 SOS watchdog` precedent — `AggregateError` at the end).
@@ -294,6 +394,20 @@ export async function runDoseSpotSyncQueueDrain(deps: DoseSpotSyncWorkerDeps): P
   const failures: unknown[] = [];
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
     try {
+      const preflight = await syncPreflight(deps, organizationId);
+      if (!preflight.drain) {
+        // a registered tenant that is not live (or whose config cannot be read): its rows wait, unclaimed and unchanged
+        if (preflight.fault !== null) {
+          deps.warn?.(
+            {
+              organizationId,
+              cause: preflight.fault instanceof Error ? preflight.fault.name : "unknown",
+            },
+            "M12 sync drain: the org's DoseSpot config could not be read; its rows were left pending",
+          );
+        }
+        continue;
+      }
       const claimed = await withOrgContext(
         deps.db,
         { organizationId, userId: CONSUMER_USER_ID },
@@ -307,7 +421,13 @@ export async function runDoseSpotSyncQueueDrain(deps: DoseSpotSyncWorkerDeps): P
         },
       );
       for (const row of claimed) {
-        await processRow(deps, row);
+        try {
+          await processRow(deps, row, preflight.orgHasRegistration);
+        } catch (error) {
+          // one row whose outcome could not be recorded must not strand the rest of the batch in `processing` (the claim takes only `pending` rows,
+          // so nothing would release them): end it, with the error's class only (never its message), and go on
+          await endUnrecordableRow(deps, row, error);
+        }
       }
     } catch (error) {
       failures.push(error);

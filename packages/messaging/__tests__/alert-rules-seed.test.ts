@@ -246,6 +246,14 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.cop_review_overdue",
       "mdm.baa_expiring",
       "mdm.physician_deactivated",
+      // M12 DoseSpot e-prescribing: adapter degraded / recovered (M36 `dosespot-alerts`) and the registration deactivated.
+      "m12.dosespot_degraded",
+      "m12.dosespot_recovered",
+      // M12: a transmission whose outcome DoseSpot left unconfirmed is held, not retried.
+      "m12.medication_order.transmission_unconfirmed",
+      // M12: a transmission that exhausted its retry budget (or was resolved by an administrator as never sent) pages the administrators.
+      "m12.medication_order.transmission_failed",
+      "m12.dosespot_config.deactivated",
       // ADR-0109 D7 — the M16 bereavement program's oversight alerts.
       "m16.bereavement.death_intake",
       "m16.bereavement.physician_letter_pending_review",

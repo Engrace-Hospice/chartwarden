@@ -1,0 +1,147 @@
+// Slice 4 — a tenant never supplies a DoseSpot URL: the `environment` it picks maps to a platform-held https host, so a
+// registration can never aim the clinic key (or PHI) at an arbitrary server.
+import { describe, expect, it } from "vitest";
+import {
+  DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+  environmentAllowsLive,
+  isSandboxEnabled,
+  resolveDoseSpotEnvironment,
+  subscriptionKeyFallback,
+} from "../src";
+
+describe("DoseSpot environment resolution", () => {
+  it("maps sandbox to the staging host by default and drops a trailing slash", () => {
+    expect(resolveDoseSpotEnvironment("sandbox", {})).toEqual({
+      ok: true,
+      baseUrl: DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+    });
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: "https://my.staging.dosespot.com/webapi/v2/",
+      }),
+    ).toEqual({ ok: true, baseUrl: "https://my.staging.dosespot.com/webapi/v2" });
+  });
+
+  it("has no baked-in production host: production needs the flag and an explicit URL", () => {
+    expect(resolveDoseSpotEnvironment("production", {})).toEqual({
+      ok: false,
+      reason: "production_disabled",
+    });
+    expect(
+      resolveDoseSpotEnvironment("production", { DOSESPOT_PRODUCTION_ENABLED: "true" }),
+    ).toEqual({ ok: false, reason: "production_url_unset" });
+    expect(
+      resolveDoseSpotEnvironment("production", {
+        DOSESPOT_PRODUCTION_ENABLED: "true",
+        DOSESPOT_BASE_URL_PRODUCTION: "https://my.dosespot.com/webapi/v2",
+      }),
+    ).toEqual({ ok: true, baseUrl: "https://my.dosespot.com/webapi/v2" });
+  });
+
+  it("only an exact 'true' enables production", () => {
+    for (const flag of ["TRUE", "1", "yes", " true", ""]) {
+      const r = resolveDoseSpotEnvironment("production", {
+        DOSESPOT_PRODUCTION_ENABLED: flag,
+        DOSESPOT_BASE_URL_PRODUCTION: "https://my.dosespot.com/webapi/v2",
+      });
+      expect(r).toEqual({ ok: false, reason: "production_disabled" });
+    }
+  });
+
+  it("refuses an override that is not https or not a dosespot.com host", () => {
+    for (const bad of [
+      "http://my.staging.dosespot.com/webapi/v2",
+      "https://evil.example.com/webapi/v2",
+      "https://dosespot.com.evil.example/webapi/v2",
+      "https://127.0.0.1/webapi/v2",
+      "https://user:pass@my.staging.dosespot.com/webapi/v2",
+      "not a url",
+    ]) {
+      expect(resolveDoseSpotEnvironment("sandbox", { DOSESPOT_BASE_URL_SANDBOX: bad })).toEqual({
+        ok: false,
+        reason: "base_url_invalid",
+      });
+    }
+  });
+
+  it("a sandbox override can never name the production host (the flag guards production only)", () => {
+    const host = "https://my.dosespot.com/webapi/v2";
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: host,
+        DOSESPOT_BASE_URL_PRODUCTION: host,
+      }),
+    ).toEqual({ ok: false, reason: "base_url_invalid" });
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: "https://my.dosespot.com/webapi/v2/",
+        DOSESPOT_BASE_URL_PRODUCTION: "https://MY.dosespot.com/webapi/v2",
+      }),
+    ).toEqual({ ok: false, reason: "base_url_invalid" });
+    // a sandbox override may change the path or port, never the hostname
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: "https://my.staging.dosespot.com:8443/webapi/v3",
+      }),
+    ).toEqual({ ok: true, baseUrl: "https://my.staging.dosespot.com:8443/webapi/v3" });
+  });
+
+  it("a sandbox registration may be VERIFIED anywhere, but may only be LIVE where the platform enables sandbox (exactly 'true')", () => {
+    expect(resolveDoseSpotEnvironment("sandbox", {})).toEqual({
+      ok: true,
+      baseUrl: DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+    }); // verify is not gated
+    expect(isSandboxEnabled({ DOSESPOT_SANDBOX_ENABLED: "true" })).toBe(true);
+    for (const flag of ["TRUE", "1", "yes", " true", "", undefined]) {
+      expect(isSandboxEnabled({ DOSESPOT_SANDBOX_ENABLED: flag })).toBe(false);
+      expect(environmentAllowsLive("sandbox", { DOSESPOT_SANDBOX_ENABLED: flag })).toBe(false);
+    }
+    expect(environmentAllowsLive("sandbox", { DOSESPOT_SANDBOX_ENABLED: "true" })).toBe(true);
+  });
+
+  it("production may be live only with its own flag and host, whatever the sandbox flag says", () => {
+    expect(environmentAllowsLive("production", { DOSESPOT_SANDBOX_ENABLED: "true" })).toBe(false);
+    expect(
+      environmentAllowsLive("production", {
+        DOSESPOT_PRODUCTION_ENABLED: "true",
+        DOSESPOT_BASE_URL_PRODUCTION: "https://my.dosespot.com/webapi/v2",
+      }),
+    ).toBe(true);
+    expect(environmentAllowsLive("production", { DOSESPOT_PRODUCTION_ENABLED: "true" })).toBe(
+      false,
+    );
+  });
+
+  it("a sandbox override names the sandbox HOSTNAME and nothing else in the dosespot.com family (a port or an unseen host does not slip past)", () => {
+    for (const bad of [
+      "https://my.dosespot.com/webapi/v2",
+      "https://MY.dosespot.com/webapi/v2/",
+      "https://my.dosespot.com:8443/webapi/v2", // the port does not make it a different host
+      "https://api.dosespot.com/webapi/v2", // a production-family host we have never listed
+      "https://sandbox2.dosespot.com/webapi/v2", // nor is any other host trusted as a sandbox until the sandbox run says so
+    ]) {
+      expect(resolveDoseSpotEnvironment("sandbox", { DOSESPOT_BASE_URL_SANDBOX: bad })).toEqual({
+        ok: false,
+        reason: "base_url_invalid",
+      });
+    }
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: "https://my.staging.dosespot.com/webapi/v2",
+      }),
+    ).toEqual({ ok: true, baseUrl: "https://my.staging.dosespot.com/webapi/v2" });
+  });
+
+  it("reads the platform subscription-key fallback per environment, empty when unset", () => {
+    expect(subscriptionKeyFallback("sandbox", { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "k-s" })).toBe(
+      "k-s",
+    );
+    expect(
+      subscriptionKeyFallback("production", { DOSESPOT_SUBSCRIPTION_KEY_PRODUCTION: "k-p" }),
+    ).toBe("k-p");
+    expect(
+      subscriptionKeyFallback("sandbox", { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "  " }),
+    ).toBeNull();
+    expect(subscriptionKeyFallback("sandbox", {})).toBeNull();
+  });
+});

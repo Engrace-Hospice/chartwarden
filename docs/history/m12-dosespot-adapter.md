@@ -26,12 +26,13 @@ F-058 local activation (`not_required`) is unchanged.
 `createHttpDoseSpotClient` implements the `DoseSpotClient` port over the DoseSpot v2 REST API:
 OAuth2 token minting and caching per (tenant, clinician) with early refresh and one forced re-mint on a 401; the
 `Subscription-Key` + `Authorization: Bearer` headers; a hard request timeout; 429/5xx/network => retryable with the per-call
-250/500 ms backoff, then a retryable `DegradedError` for the BullMQ layer; other 4xx and `Result.ResultCode = "ERROR"` =>
+250/500 ms backoff, then a retryable `DegradedError` for the BullMQ layer (the prescription SEND is the exception: only a 429, a 503
+or a connection never made is retryable, and every other send 5xx, a timeout or a reset is held as an unconfirmed outcome); other 4xx and `Result.ResultCode = "ERROR"` =>
 permanent; the per-tenant circuit breaker (open/close edges are published as `m12.dosespot_degraded` / `_recovered` by the next
 cron tick); NewRx idempotency (the D8 key is sent as `Idempotency-Key` AND a created-but-unsent prescription is remembered in
 process so a retry re-sends rather than creating a second).
 
-**Fail-closed.** With no complete per-tenant config (`DOSESPOT_TENANT_CONFIGS`; https only) every call rejects with a
+**Fail-closed.** With no complete per-tenant config (a tenant's own `dosespot_clinic_registration` that is `active`, or, for a tenant with NO row, its `DOSESPOT_TENANT_CONFIGS` entry; https only) every call rejects with a
 non-retryable `DegradedError` before any payload is touched, the vendor-facing crons skip the tenant, and nothing is queued.
 A controlled substance is refused for a tenant whose config does not say `epcsCertified` (D18). The boot log states
 "UNBOUND until per-tenant credentials are configured" or the bound tenant count, plus the unverified endpoint list.
@@ -77,12 +78,220 @@ Everything below is flagged in code (`client/endpoints.ts` `verification`, `clie
 9. **Prescriber token**: `transmitNewRx` authenticates as the prescribing clinician (`dosespotPrescriberId`); every other call as
    `serviceClinicianId`. Whether the send needs the prescriber's PIN is unconfirmed (`pin` is optional in the swagger).
 
+## Tenant registration (slice 4, ADR-0111)
+
+A tenant registers its own clinic: `PUT /api/v1/tenant/dosespot` (org admin) or `PUT /api/v1/platform/tenants/:orgSlug/dosespot`
+(platform ops, while the tenant is onboarding), then `verify` (one token mint, no PHI), then `activate` (the tenant's own administrator
+alone since 2026-11-09, CW-AC-21: there is no platform activate route and the service refuses the platform lane with 403
+`DOSESPOT_ACTIVATION_TENANT_ONLY`; the platform lane may still deactivate). The clinic key is sealed under
+the tenant key ring and never returned; the environment (`sandbox` | `production`) maps to a platform host, never a tenant-typed URL.
+A rotation lands on `registered` and needs a fresh test; a plain deactivation goes to `verified`. `GET` shows `prescribersEnrolled` and
+`queuedTransmissions`; neither gates anything. A prescriber is enrolled with DoseSpot by
+`POST /api/v1/admin/dosespot-prescribers/:membershipId/dosespot-enrollment` (or the operator's copy), which records the vendor id the
+transmit cron sends under; the sign path queues an order only for a prescriber linked this way.
+
+**Added to "requires sandbox verification" (all still unverified):**
+
+10. **The Subscription-Key**: per clinic (platform support enters it per tenant, sealed in the registration) or ChartWarden's own,
+    shared (the platform env `DOSESPOT_SUBSCRIPTION_KEY_*` applies when a row carries none)? The tenant lane may rotate one that
+    platform support set and never introduce one, so a platform key is never typed in by a tenant. The sandbox run decides.
+11. **Clinician dedupe**: does `POST /api/clinicians` refuse a second clinician with the same NPI? A crash between the vendor create and
+    the local record leaves an orphan clinician, and the retry may meet a duplicate (the request marker is committed first).
+12. **The production host and the BAA**: production has no baked-in host; it needs `DOSESPOT_PRODUCTION_ENABLED=true` and
+    `DOSESPOT_BASE_URL_PRODUCTION`, set only once the ChartWarden / DoseSpot BAA is executed and the wire shapes are confirmed.
+13. **A vendor rejection of a rotated key at runtime** still fails the order permanently (a token-mint 4xx is permanent); a guard that
+    holds orders and alerts once, as the clearinghouse has (#714), is not built.
+
+**Independent review of slice 4 (what it found and what now stops it):**
+
+- *A sandbox registration could reach `active` on a production deployment* and send real prescriptions to DoseSpot's test
+  environment. `DOSESPOT_SANDBOX_ENABLED` (exactly `true`) now gates it: `activate` is refused (409 `DOSESPOT_SANDBOX_NOT_ENABLED`), and
+  the resolver, the sign-time gate and the wizard's `dosespotSettled` all call ONE predicate (`registrationIsLive`: active, and the
+  environment allowed on this deployment), so an active sandbox row stops transmitting if the flag is later unset and a not-live row
+  activates orders locally instead of stalling them in `queued`.
+- A claimed order whose registration stops being live, or whose resolver, key ring or credential faults (a corrupt envelope is a 503), goes
+  back to `queued` with no retry spent. `addClinician` is never re-POSTed in-call (no idempotency key); the enrolment claim is released only
+  after a definitive refusal and only by the attempt that made it, outlasts the worst-case vendor call, and a first-enrol race is a 409.
+- *The NPI and name of an enrolled prescriber were typed by whoever enrolled them* (the roster administrator or the operator), so the
+  identity DoseSpot was told, and the NPI the roster recorded, had no source. They are now derived from the physician record the roster
+  links the member to (M40's NPPES-sourced `external_physician`) and cross-checked against NPPES's public directory (`nppes_provider`, via
+  M29's reader seam): NPI-1, active, same surname. The enrolment body is empty; the member must already be on the roster with that link,
+  which is how the demo roster is seeded (`db:seed:prescriber-roster`). NPPES with no row refuses in production and proceeds flagged
+  (`nppesVerified: false` on the audit row) in sandbox, because the demo's synthetic NPIs are not in the real registry.
+- *The link from a member to that record was one administrator's word about another person.* The prescriber now confirms it from their
+  own account (`/api/v1/me/dosespot-prescriber-link`, migration 1430), pinned to the link and NPI they were shown, and enrolment on both
+  lanes is refused 409 `DOSESPOT_PRACTITIONER_UNCONFIRMED` until a confirmation matches the current link. A re-link or revoke clears it;
+  a table CHECK requires the recorded confirmer to be the row's own member, and a trigger refuses a write that sets or changes a
+  confirmation unless the transaction's declared actor (`app.user_id`) is that member's user (clearing is open to any actor; the trigger is a
+  backstop on the declared actor, not authentication). The row's write-audit record carries the confirmed NPI (public provider data) like
+  any column of the table. The demo seed has Dr. Harris confirm his own link.
+- Fixed here too: the shared Idempotency-Key middleware stored a plain SHA-256 of every request (a credential in the body was testable
+  from the table); it is now an HMAC under a key derived from `BETTER_AUTH_SECRET` (CW-SEC-02), with the legacy form honoured for one TTL.
+- Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0111 open items).
+
 ## Operational notes
 
-- Enabling a tenant = set its entry in `DOSESPOT_TENANT_CONFIGS` (staging URL first), enroll its prescribers (`dosespot_prescriber`
-  with `dosespot_prescriber_id`), and let patient sync populate `dosespot_patient_sync`. A tenant that loses its config keeps its
-  queued orders `queued` (the crons skip it) rather than failing them.
+- Deploy note: a local or CI database that applied an EARLIER copy of migration 1430 (before the confirmer CHECK and the actor trigger) or of
+  1431 must be recreated. Both were edited in place because neither had shipped, and the migration runner checksums applied files, so it
+  will refuse them. Nothing in any shared environment applied the old copies.
+
+- Enabling a tenant = it (or an operator for it) registers and tests its clinic and the tenant activates it (sandbox first), then enrols its prescribers
+  with DoseSpot; patient sync then populates `dosespot_patient_sync`. `DOSESPOT_TENANT_CONFIGS` is only the fallback for an org with no
+  registration row (the demo tenant): the boot log names each such org, and a row takes over the day it exists. A tenant that loses its
+  live registration (deactivated, rotated) keeps its queued orders `queued` (the crons skip it) rather than failing them; newly signed
+  orders activate locally and its administrators are alerted.
+- Degradation alerts (review of slice 4, M3): `m12.dosespot_degraded` / `_recovered` (breaker edges, an org whose config cannot be opened, signed
+  orders queued over an hour) are consumed by M36's `dosespot-alerts` and reach the tenant's administrators (seeded `tenant_admins` rules, the
+  deactivation alert's rule among them; before, these events had no consumer and the deactivation alert no rule, so nobody was told). The
+  "once per episode" memory is a few Valkey keys per (kind, org) (`chartwarden:m12:episode:*`), shared by every replica: a restart does not
+  re-alert, and the replica that sees the recovery announces it whichever one raised the alert, after two consecutive clean ticks (a report of
+  the fault resets the count, so replicas that disagree do not flap). Each announcement is a short-lived CLAIM (2 minutes, never refreshed by
+  other ticks) that is confirmed only after its event has committed: `open` is written after the alert is published and removed after the
+  recovery is, so a crash, a failed publish, a failed release or an unreachable store delays an announcement until the claim lapses and never
+  drops one. It is at-least-once: a process that dies after its publish committed but before the confirm announces it a second time. The circuit
+  breaker's own edges are still paired
+  in-process (a restart while a breaker is open leaves that alert without its recovery notice).
+- A retry-exhausted transmission (`m12.medication_order.transmission_failed`, owner addition to the review of slice 4) pages the tenant's
+  administrators through the same M36 `dosespot-alerts` consumer and a seeded critical `tenant_admins` rule: it was described as "M36
+  high-severity" from the start and consumed by nobody, so an order that never reached the pharmacy told no one. The alert says it has NOT
+  reached the pharmacy and that the prescriber retransmits it.
+- An outcome DoseSpot left unconfirmed (review of slice 4, L-e): a 2xx that is unreadable or carries no prescription id means the prescription
+  may already exist there, so `transmitNewRx` neither fails the order nor retries it (a second send could dispense twice). The order is HELD:
+  still `queued_for_transmission` / `in_flight`, its transmission row `last_error_class = 'unconfirmed_outcome'` with a detail line, no retry
+  spent, skipped by the claim and by the stale-claim drain. `m12.medication_order.transmission_unconfirmed` is published in the same transaction
+  and M36's `dosespot-alerts` pages the tenant's administrators once, naming the order, and again as a reminder when the hold is over 24 hours
+  old (`held_orders_aged`, through the same episode machinery: ONE reminder per episode, so while any order stays held past 24 hours the episode stays open and a second order that ages meanwhile is covered by it, not by a new reminder; each order still gets its own alert when it is held). The way out is an ADMINISTRATOR's resolution (MEDIUM-1 of the next review):
+  `POST /api/v1/medication-orders/:id/resolve-held-transmission` (`prescribing.clinic.admin` + a fresh step-up + a human actor + an
+  Idempotency-Key + a reason), offered on the medication-order detail to administrators. The administrator checks the prescriber's DoseSpot
+  account and says SENT (entering the DoseSpot prescription id: the order becomes `transmitted`, the `transmitted` event goes out as for a
+  worker success and the status poll follows it as normal) or NOT SENT (the order becomes `transmission_failed`, whose only way on is the
+  existing retransmit, where the prescriber signs a replacement; it is never put back on the queue). Either is accepted only while the hold
+  marker is on the transmission row, under a row lock and a conditional update, so two resolutions, or a resolution racing the recovery drain,
+  cannot both win (409 `DOSESPOT_TRANSMISSION_NOT_HELD`); the marker, not `transmission_failed_at`, says an order is held (an earlier retry sets that
+  timestamp and the backoff needs it kept); a "sent" id that another order of the organization already carries is refused (409
+  `DOSESPOT_PRESCRIPTION_ID_IN_USE`: webhooks bind an order by that id and take the first match), by a per-(org, id) advisory lock taken before the
+  order row, and the worker's own success applies the same guard (it holds the order instead of recording a duplicate id); the reason is stored on the transmission row's denylisted `last_error_detail`, and the
+  audit entry (`m12.dosespot_order.transmission_resolved`) carries ids and the outcome only. `GET .../transmission` reports `unconfirmed_outcome`
+  while held. (The same 2xx-but-no-id ambiguity after the create step used to be a permanent
+  refusal; it is now this class, like an enrolment's.) The claim also stamps `transmission_started_at` in its own committed transaction just
+  BEFORE the vendor call (and clears it when the order goes back to the queue), so a worker that dies, or whose settle fails, after the call began
+  leaves a stale claim the recovery drain HOLDS (same marker, same event) instead of re-queueing; a stale claim without the stamp never reached
+  the vendor and is released and re-sent as before. The hold is therefore committed either by the settle or, at the latest, by the next drain.
+  That stamp is also the FENCE (H3 of the following review): one conditional update moves the order's `updated_at` from the claim's value to the
+  call's, only while the order is still that worker's claim, so a worker whose claim was drained and taken over while it was busy with an
+  earlier order of its batch makes no call (it used to stamp and send with the same key: a double send), and the stale-claim clock runs from the
+  call, not the claim. A hold the drain set while the original call was still running is cleared by that call's late success, and a late
+  unconfirmed outcome does not announce a held order a second time.
+  The fence covered only the vendor call, so (MEDIUM-1 of the next review) every write the worker makes after its claim is conditional on the
+  claim still being its own too: the settle locks the ORDER row with the `updated_at` the claim wrote, and after the fence the TRANSMISSION row
+  carrying the nonce the fence wrote (`call_token`, a uuid, migration 1432; it first was the stamp's own time, which two cycles on an equal clock
+  could share: review of d333d1d9d..HEAD). `updated_at` cannot be the token after the fence: it is shared with a coverage save, allowed in every
+  status, and a correction's version bump, and as the token it made such a write during the call orphan a prescription DoseSpot had accepted
+  (review of 436fd3c1c..). A
+  worker that lost its claim writes nothing and is counted `skipped` (and says so, ids and the kind of what it discarded only, for a failure, an outage and an unconfirmed outcome as well as a success; the cron tick's warning carries the count) (it used to requeue or exhaust the new owner's claim and clear its stamp when its
+  payload build failed after a takeover, so the owner's success matched nothing and the prescription went out again). The order row is locked
+  before the transmission row, as in the administrator's resolution, so a late failure racing a resolution cannot deadlock, and a late outage
+  after a drain hold clears the stale hold marker. The adapter sends a prescription as soon as `onCreated` returns, and `onCreated` used to update the
+  transmission row by id alone, so a worker that had lost the order (an administrator resolved it NOT SENT) still sent it; it now answers only while the
+  worker owns the call and throws otherwise, which stops the send (the created prescription stays at DoseSpot as an unsent draft). `onCreated` runs only
+  when a call creates the prescription, so a retry handed a PERSISTED created id (the create skipped) was still unchecked: the adapter now also calls
+  `beforeSend` just before the send on every path and the worker re-checks ownership there, so a resolved order is not sent from a resume either. What
+  remains is a send already in flight, whose success is then recorded nowhere (a warning with ids only). A late DEFINITIVE
+  failure after a drain hold is deliberately NOT kept held: it is the call's own answer to what the hold was waiting for, so it is settled as an ordinary
+  failure (retryable: requeued, one retry spent, the persisted created id re-sent, the marker replaced; permanent: the order fails and the
+  administrators are told), and an administrator mid-resolution is then refused with 409 DOSESPOT_TRANSMISSION_NOT_HELD.
+- A replacement order was never sent (found in the review of d333d1d9d..HEAD, outside the reviewed range): the D8 key was sha256(prescriber, patient,
+  drug, strength, sig), unique per organization, and the sign-time enqueue reused an existing row on a conflict without asking whose it was. A retransmit by
+  the authoring prescriber (the standing rule allows it) mints a replacement with exactly the same content, so it found the FAILED order's row (or the
+  "resolved not sent" one's), was queued with none of its own, and sat queued forever: the worker finds transmissions by order id and skips an order
+  with none, and the age alert needs a transmission row too, so nothing said so. The same held for any second order with identical content, a refill
+  mint included. The order id is now part of the key (a retransmit is its own prescription, so DoseSpot's own dedupe, if it exists, cannot fold it
+  into the failed attempt; a double-sign of the SAME order still shares one row), and the enqueue refuses, loudly, a row under its key that is
+  another order's. After a "not sent" resolution that was a mistake the retransmit therefore duplicates the prescription, as the CW-AC-23 gap already
+  says. Orders already stuck queued with no row (demo data) are not repaired by this change: reseed them. Two things now keep a leftover orphan from hiding
+  or hurting (review of 18d8778fe..HEAD): the claim only considers orders that HAVE a transmission row (it chose its batch before reading rows, so a
+  batch of orphans older than a real order filled it and the real order was never reached), and the queued-age alert also finds a queued order with no
+  row at all, aged by the order's own `updated_at`.
+- A created-but-unsent prescription survives a change of replica (LOW of the following review): the adapter used to remember a created
+  `addCodedPrescription` id only in its own process memory, so a retry on another replica re-ran the create (a second prescription). The adapter now
+  reports the id (`onCreated`) before the send and accepts it back (`createdPrescriptionId`); the worker persists it on the transmission row's
+  `dosespot_prescription_id` and hands it to the next attempt, so a retry re-runs only the send. The ORDER still carries an id only once it is
+  really sent (webhooks bind by it). If persisting fails the send is not attempted and the order spends a retry as a generic failure (bounded at five; it is
+  not classified as an outage, which would loop without bound while the persist keeps failing); a create whose answer had no id is
+  still held as unconfirmed (there is nothing to persist).
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a
   throwaway Postgres 18 with `max_locks_per_transaction=4096`.
+- A move to another clinic stranded the old clinic's ids (review of 3717fe9ee, HIGH, both reviews): changing the environment or the clinic dropped the sealed key
+  and nothing else, so the roster's `dosespot_prescriber_id`, the patient-sync `last_dosespot_patient_id` and a waiting transmission's persisted
+  `dosespot_prescription_id` still named the OLD clinic's clinicians, patients and prescription. Re-enrolment returned early (`alreadyLinked`), so a tenant moving
+  sandbox -> production (or fixing a mistyped clinic id) queued orders under ids DoseSpot refuses for good: a permanent `transmission_failed` no route
+  recovers. `put` now clears all three in the same transaction (`ConfigStore.clearVendorBindings`; also when a row takes over from the env binding), a queued
+  order whose prescriber is on the roster with no vendor id WAITS (no retry spent) instead of failing as `prescriber_not_enrolled`, and the field-level audit
+  row names `vendorBindings` (ADR-0111 D6). A held order keeps its created-prescription id (the administrator looks for it at the old clinic).
+  Chosen over a clinic-binding column on the three tables: three comparisons (gate, worker, enrolment) and a migration for the same result, with the
+  cost that an env-fallback -> row takeover of the SAME clinic re-enrols (DoseSpot's dedupe by NPI is unverified).
+- The patient-sync / MedHx drain treated `NotEnabledError` as terminal (same review, MEDIUM): a tenant that deactivated, rotated its key or had not
+  activated got every row marked `failed` for good (and its patients' last sync flipped to `failed`), while a retryable `ConfigUnavailableError` was
+  requeued every two minutes with no cap. A tenant WITH a registration row that is not live now has its rows left `pending` and unclaimed (preflight in
+  `jobs/sync-preflight.ts`; mid-batch a `NotEnabledError` or `ConfigUnavailableError` puts the row back with no attempt spent); a tenant with none keeps the
+  old behaviour on purpose (parking every patient's demographics for the day it switches DoseSpot on is worse than a failed row); a transient vendor
+  failure backs off by attempt count and ends the row after 8 attempts (`jobs/sync-outcome.ts`).
+- The unsealed credential and the bearer tokens outlived their TTL in an idle process (same review, LOW): the 5-minute check ran only when the same org was
+  looked up again, so a tenant that left the active enumeration kept its clinic key and live tokens in memory until the process exited (ADR-0111 D2 said
+  five minutes at most). Every lookup/mint now prunes the whole cache and an unref'd one-minute sweep runs while a cache holds anything
+  (`createExpirySweeper`, `client/token-cache.ts`). The bound is therefore about SIX minutes, not five (re-review LOW): the five-minute cache life plus up to
+  one minute for the sweep (an entry added while the timer is already armed waits for its next run); ADR-0111 D2 now says so.
+- Boot warnings for the two platform flags (compliance review, MEDIUM): `DOSESPOT_SANDBOX_ENABLED` on `NODE_ENV=production` and `DOSESPOT_PRODUCTION_ENABLED`
+  are operating policy (CW-AC-21, CW-BA-01), not machine-checked, so the boot says so loudly once per process (`describeM12PlatformFlagWarnings`); there is no
+  hard refusal (the demo VPS runs the sandbox on a production build).
+- Re-review of the fix round (MEDIUM x3, LOW x3, UNCERTAIN x2, on 3717fe9ee..0fb682534): (1) the adapter's per-process map of a created-but-unsent prescription
+  survived a clinic move and was served in preference to the cleared persisted id, so the old clinic's id was sent under the new one on the same worker: the entry
+  now records the clinic it was created under and is served only under it (tested through the real HTTP client). (2) A round trip that began under the old clinic
+  could write its id AFTER the clear (an enrolment's `recordVendorId`, `rememberCreated`, a patient sync's `recordPatientSyncSuccess`) and nothing cleared it
+  again: each now captures the registration's target before the call and writes only while it still holds, under an advisory lock the clear takes exclusively
+  (`tenant-config/registration-target.ts`); the lock tests fail without the lock. (3) `classifySyncFault` persisted a raw `.message` into
+  `dosespot_sync_queue.last_error` (copied into audit_event, and a Drizzle error's message embeds its bound parameters, the MedHx ingest being inside the same try):
+  now `safeErrorMessage`; no other raw message is persisted or logged in M12. (4) A waiting order (prescriber on the roster with no vendor id) was claimed and
+  put back every tick, 3 audited writes each, and 25 of them starved the batch: the claim now skips them. (5) The clear kept a created id only on a HELD transmission;
+  one whose call had begun (stamped, worker possibly dead) was nulled before the drain could hold it: a begun call keeps its id, and a live worker that sees the move
+  clears its own. (6) The credential and token sweep bound is about six minutes, not five. UNCERTAIN (a): the clear gives a waiting transmission a fresh idempotency
+  key (nothing reads the column back: the sign-time enqueue runs only for an order not yet queued), so DoseSpot, if it dedupes by key across clinics, never sees the
+  old one; the dedupe itself stays unverified. UNCERTAIN (b): the admission trigger enqueues a MedHx fetch only, never a patient sync, so a fetch for a patient with no
+  vendor id already ended failed ("prior patient-sync has not succeeded yet") before the reset existed; after a reset it now says the patient is not registered at the
+  current clinic. Deferring instead would re-claim the row every two minutes for as long as no patient sync runs, for no gain; auto-registering patients was refused.
+- Re-review of the registration-target fences (MEDIUM x1, LOW x5, on 8504577fa): (M1) a call that had BEGUN kept the old clinic's created id and key through the clear
+  (the clear skips a stamped row) and a worker that then requeued its own order (an outage, or a failure that was not permanent) carried both into the next
+  attempt, which sent the old clinic's id under the new one (refused for good, `transmission_failed`) and reused the old key. The settle now asks, FIRST in its
+  transaction (the shared registration lock before any row lock: the reset takes it exclusively and then updates transmission rows, so asking after the row locks
+  could deadlock), whether the registration still names the clinic the call began under; if not, an outage or ANY failure (a permanent one too: a send refused
+  under the new clinic is the move's doing) drops the id, replaces the key and requeues with no retry spent; a call held for a person keeps both (`transmit-settle.ts`,
+  `jobs/transmit-ownership.ts`). While reading the stamp again as a hostile reviewer, the payload's own vendor ids turned out to have the same window (read, then a move,
+  then the stamp): the payload now carries the target read BEFORE its ids and the stamp refuses to start the call if the registration names another clinic (the stamp rolls
+  back). (L1) `last_error` kept the head of a long statement and lost the SQLSTATE, constraint and table that `safeErrorMessage` puts at the END: a text over the cap now keeps
+  its head and its tail. (L2) the patient-sync key `patient:<id>:<updatedAt>` is the same for an unchanged patient after a move, so `addPatient` at the new clinic could be
+  answered with the old clinic's id: it now carries a digest of the target. A patient upsert that FAILS after a move waits instead of ending the row, like one that succeeded.
+  (L3) the call used the claim's copy of the created id and key, which in a batch can be a whole batch old and which the reset now rewrites for a claimed, unstamped
+  order: the stamp returns the row's values and the call uses those. (L4) CW-AC-21's wording now says what the code does (see the row). (L5) the queued-order age
+  alert still fires for a waiting order the claim skips (tested). The move-time behaviour of a begun call is proved against real Postgres in
+  `m12-crons-transmit.live.test.ts` (a begun call that ends as a retryable failure, a permanent rejection, an open circuit or a registration no longer live, a settle that
+  starts while the reset holds its lock, a stamp that races a move, an unconfirmed send that is held with its id).
+- Second re-review of the registration-target fences (MEDIUM x1, LOW x8, INFO x4, on 8504577fa..65ebec064): (1) the control said a round trip never writes its id
+  after a move, but a send that SUCCEEDED after the move is recorded as sent with the id it returned (it really went out; requeueing it would send it twice): the
+  exception is stated, commented at the check and pinned by a live case. (2) The settle's first statement waits for the reset's lock (it cannot deadlock with it).
+  (3) The DB guards cover the writes, not the requests: the adapter resolves the config again for every request, so a move landing between the stamp and a request
+  (the create, the send, the patient upsert) sent that request under the new clinic's credentials with the old clinic's ids. The caller now names its target
+  (`expectedTarget`), the DB-backed config source stamps each config with its registration target, and the adapter compares every resolution before anything is
+  sent (a `NotEnabledError`); what remains is a move after a request's config was read while it is on the wire. (4) A processing sync row that went back to
+  pending (a defer, now also reached from a failed verdict after a move) while a demographic change had enqueued a pending sibling hit the partial unique index,
+  threw out of the settle and left the rest of the batch in `processing` with nothing to release it: it now ends instead, and a row whose settle throws is ended
+  as failed with the class only. (5)(6) The head-and-tail cap could split a surrogate pair, and kept the last 500 characters of ANY error, so a wrapper that
+  flattened a Drizzle error into a plain message would have persisted its trailing `params:` values: a `\nparams:` section is dropped for every error and only a
+  database error keeps a tail. (7) The shared lock was taken with no bound and the per-org passes run in series: it is polled for at most five seconds, and a reset
+  still holding it counts as a move. (8) The settle's atomicity is proved with a transaction-counting proxy (a move started while the settle's transaction is open
+  waits for its commit; one transaction follows the call). (9) The Module 12 spec's patient-sync key is updated. (10) INFO: the deployment-configured entry is always
+  the target `env` (an operator's edit of its clinic is invisible to the fences, and the key digest is the same for any such clinic); the patient-sync key shape change
+  means one duplicate DoseSpot chart is possible once for an upsert whose answer was lost across the deploy; the adapter's created-id memory is bounded; and the
+  sign-time enqueue could, with a stale second sign racing a rekey, insert a second transmission row for one order (proved, then fixed by finding the row by the
+  order first; no second prescription was possible, the send state being per order).

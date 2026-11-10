@@ -2,6 +2,7 @@
 
 - **Status:** **Proposed** (2026-11-05)
 - **Date:** 2026-11-05
+- **Numbering:** first drafted under number 0108; renumbered to 0110 when `main` took 0108 for group tags and 0109 for the M16 bereavement program. Three migrations still cite it by the old number in their comments: 1320, 1321 and 1325. They are applied files and the runner checksums them, so a comment-only edit would change their checksum; they stay byte-for-byte as they were. (1350 became 1386 in the stack's merge with main, then 1417 when the stack was renumbered past main's: a new file under a new ordinal, so its comment follows the current number.)
 - **Related:** Module 35 (subscription billing; amends its D21), Module 5 (patient), Modules 23 / 24 / 25 / 41 (Medicare, Medicaid, remittance, commercial billing), ADR-0025 (M34↔M35 seams), ADR-0053 (clearinghouse transport), ADR-0100 (M41).
 - **Note on migration headers:** the headers of migrations 1320, 1321 and 1325 cite "ADR-0108" for the claims-billing add-on. Those references mean this ADR (ADR-0110); ADR-0108 is message group tags. The applied migrations are not edited to correct them.
 

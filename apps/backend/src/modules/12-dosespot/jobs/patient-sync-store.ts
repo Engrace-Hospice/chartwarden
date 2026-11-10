@@ -4,7 +4,8 @@
 // resolves to `null` — never a guessed or derived id.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { REGISTRATION_RETARGETED_CLASS } from "../tenant-config/config-store";
 import type { DosespotPatientIdResolver } from "./vendor-boundary";
 
 const SYNC = schema.dosespotPatientSync;
@@ -89,4 +90,30 @@ export function createDrizzleDosespotPatientIdResolver(db: DbClient): DosespotPa
       });
     },
   };
+}
+
+/**
+ * Was this patient's vendor id cleared because the registration moved to another clinic (config-store `clearVendorBindings`)? True only for a row
+ * that has no id AND carries that class: a patient never synced, or one whose last sync failed for another reason, is false.
+ */
+export function patientSyncWasRetargeted(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<boolean> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [row] = await (tx as DbClient)
+      .select({ id: SYNC.id })
+      .from(SYNC)
+      .where(
+        and(
+          eq(SYNC.organizationId, organizationId),
+          eq(SYNC.patientId, patientId),
+          isNull(SYNC.lastDosespotPatientId),
+          eq(SYNC.lastErrorClass, REGISTRATION_RETARGETED_CLASS),
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
+  });
 }

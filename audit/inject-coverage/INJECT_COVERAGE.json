@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2005,
-    "coveredRoutes": 2005,
-    "directRoutesReferenced": 1822
+    "routes": 2020,
+    "coveredRoutes": 2020,
+    "directRoutesReferenced": 1836
   },
   "modules": [
     {
@@ -240,18 +240,21 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
+      "routes": 43,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
+        "apps/backend/__tests__/m12-roster-write-routes.test.ts",
+        "apps/backend/__tests__/m12-tenant-dosespot-get-actor.test.ts",
+        "apps/backend/__tests__/m12-tenant-dosespot-routes.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 35
     },
     {
       "module": "13-emar",
@@ -564,20 +567,21 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 88,
+      "routes": 94,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
+        "apps/backend/__tests__/m34-onboarding-dosespot-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
         "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 88
+      "directRoutesReferenced": 94
     },
     {
       "module": "35-subscription",

@@ -42,6 +42,8 @@ export {
   M12_QUEUE_CATALOG,
   M12_SPEC_QUEUE_NAMES,
   describeM12AdapterPosture,
+  describeM12EnvFallbackWarning,
+  describeM12PlatformFlagWarnings,
   describeM12DeferredQueues,
 } from "./queue-catalog";
 // GAP-037 — the seven §4.8 crons (transmission, recovery drain, status sweep, refill SLA, IAL2, EPCS expiry,
@@ -54,7 +56,32 @@ export {
   registerM12CronWorkers,
   scheduleM12Jobs,
 } from "./cron-workers";
-export { type M12CronDeps, runForEachActiveOrg } from "./cron-common";
+export {
+  type EpisodeTracker,
+  type M12CronDeps,
+  createEpisodeTracker,
+  runForEachActiveOrg,
+} from "./cron-common";
+export {
+  QUEUED_ORDER_ALERT_AGE_MS,
+  runHeldAgeAlertForOrg,
+  runQueuedAgeAlertForOrg,
+} from "./degradation-reports";
+export {
+  HELD_ORDER_REMINDER_AGE_MS,
+  RESOLVED_NOT_SENT_CLASS,
+  RESOLVED_SENT_CLASS,
+  UNCONFIRMED_OUTCOME_CLASS,
+} from "./hold";
+export {
+  EPISODE_CLAIM_MS,
+  EPISODE_CLEAN_TICKS,
+  EPISODE_KEY_PREFIX,
+  EPISODE_TTL_MS,
+  type EpisodeStoreClient,
+  createInMemoryEpisodeStore,
+  createValkeyEpisodeTracker,
+} from "./episode-store";
 export {
   M12_CRON_QUEUES,
   M12_CRON_QUEUE_PARAMS,

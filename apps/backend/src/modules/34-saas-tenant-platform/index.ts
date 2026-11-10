@@ -296,6 +296,7 @@ import {
 } from "./onboarding/wizard-store-memory";
 import { registerOnboardingDataRoutes } from "./routes/platform/onboarding-data-routes";
 import type { OnboardingDataService } from "./routes/platform/onboarding-data-service";
+import { registerOnboardingDoseSpotRoutes } from "./routes/platform/onboarding-dosespot-routes";
 import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
 import { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
 import {
@@ -329,6 +330,8 @@ export function mountTenantPlatformRoutes(
       service: OnboardingDataService;
       /** Per-user cap on the clearinghouse `verify` (a vendor call per request). */
       clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-target-tenant cap on the DoseSpot `verify` (a vendor call per request). */
+      dosespotVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
       /** Per-target-tenant cap on the clearinghouse `PUT` (its 409 is an account-in-use oracle); fail-closed in production. */
       clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>;
       /** Per-operator (across tenants) cap on the BAA revoke, a kill switch; fail-open in production (the audit row and alerts still fire). */
@@ -400,6 +403,13 @@ export function mountTenantPlatformRoutes(
             clearinghouseRevokeBaaRateLimit: services.onboardingData
               .clearinghouseRevokeBaaRateLimit as never,
           }
+        : {}),
+    });
+    // Tenant onboarding slice 4 (ADR-0111): the same service, the DoseSpot lane.
+    registerOnboardingDoseSpotRoutes(app, {
+      service: services.onboardingData.service,
+      ...(services.onboardingData.dosespotVerifyRateLimit
+        ? { verifyRateLimit: services.onboardingData.dosespotVerifyRateLimit as never }
         : {}),
     });
   }

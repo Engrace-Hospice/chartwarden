@@ -5,17 +5,24 @@
  * the different-body conflict (SEC-025), and the concurrent-duplicate `pending` race.
  * Storage is an in-memory fake of the injected IdempotencyStore port.
  */
+import { createHash } from "node:crypto";
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   IDEMPOTENCY_PENDING_MAX_AGE_MS,
   IdempotencyConflictError,
   IdempotencyInFlightError,
+  IdempotencyKeyStaleError,
   IdempotencyKeyStuckError,
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
+  LEGACY_ARM_REMOVE_AFTER,
   computeIdempotencyHash,
+  idempotencyHashMatches,
+  idempotencyKeyId,
+  idempotencyKeyIsStale,
+  legacyIdempotencyHash,
   runIdempotent,
 } from "../src/index";
 
@@ -38,26 +45,119 @@ function memoryStore(seed?: IdempotencyRecord): IdempotencyStore {
 }
 
 const ORG = "00000000-0000-0000-0000-000000000001";
+const KEY = "server-side-fingerprint-key-for-tests-0001";
+const h = (org: string, key: string, body: unknown) => computeIdempotencyHash(org, key, body, KEY);
 
 describe("computeIdempotencyHash (SEC-025 / F13)", () => {
-  it("is deterministic for the same (org, key, body)", () => {
-    const a = computeIdempotencyHash(ORG, "k1", { amount: 10 });
-    const b = computeIdempotencyHash(ORG, "k1", { amount: 10 });
+  it("is deterministic for the same (org, key, body, server key)", () => {
+    const a = h(ORG, "k1", { amount: 10 });
+    const b = h(ORG, "k1", { amount: 10 });
     expect(a).toBe(b);
-    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).toMatch(/^h1:[0-9a-f]{8}:[0-9a-f]{64}$/);
   });
 
   it("differs when org, key, or body differ", () => {
-    const base = computeIdempotencyHash(ORG, "k1", { amount: 10 });
-    expect(computeIdempotencyHash("other", "k1", { amount: 10 })).not.toBe(base);
-    expect(computeIdempotencyHash(ORG, "k2", { amount: 10 })).not.toBe(base);
-    expect(computeIdempotencyHash(ORG, "k1", { amount: 11 })).not.toBe(base);
+    const base = h(ORG, "k1", { amount: 10 });
+    expect(h("other", "k1", { amount: 10 })).not.toBe(base);
+    expect(h(ORG, "k2", { amount: 10 })).not.toBe(base);
+    expect(h(ORG, "k1", { amount: 11 })).not.toBe(base);
   });
 
   it("normalizes undefined and null bodies to the same fingerprint", () => {
-    expect(computeIdempotencyHash(ORG, "k1", undefined)).toBe(
-      computeIdempotencyHash(ORG, "k1", null),
+    expect(h(ORG, "k1", undefined)).toBe(h(ORG, "k1", null));
+  });
+
+  it("is a KEYED hash: the stored value cannot be tested against a guessed secret without the server key", () => {
+    const body = { clinicKey: "a-guessable-clinic-key-1234" };
+    const stored = h(ORG, "k1", body);
+    // an attacker who can read the table and knows the org, the key and a candidate body computes plain SHA-256: no match
+    expect(stored).not.toContain(legacyIdempotencyHash(ORG, "k1", body));
+    expect(stored.split(":")[2]).not.toBe(legacyIdempotencyHash(ORG, "k1", body));
+    // and a different server key (a rotated or wrong one) gives a different fingerprint
+    expect(computeIdempotencyHash(ORG, "k1", body, "another-server-key-0000000000000002")).not.toBe(
+      stored,
     );
+    // the stored value carries no part of the secret
+    expect(stored).not.toContain("guessable");
+  });
+});
+
+describe("the server key id (told apart from a different body)", () => {
+  const OTHER = "another-server-key-0000000000000002";
+
+  it("is 8 hex characters, the same for every request under one key, different under another, and carries no part of the key", () => {
+    const kid = idempotencyKeyId(KEY);
+    expect(kid).toMatch(/^[0-9a-f]{8}$/);
+    expect(h(ORG, "k1", { a: 1 }).startsWith(`h1:${kid}:`)).toBe(true);
+    expect(h(ORG, "k2", { b: 2 }).startsWith(`h1:${kid}:`)).toBe(true);
+    expect(idempotencyKeyId(OTHER)).not.toBe(kid);
+    expect(kid).not.toContain(KEY.slice(0, 4));
+  });
+
+  it("a record under another key is STALE; a different body under the same key is not; a legacy or malformed record is not", () => {
+    const stored = h(ORG, "k1", { a: 1 });
+    const underOther = (body: unknown) => computeIdempotencyHash(ORG, "k1", body, OTHER);
+    expect(idempotencyKeyIsStale(stored, underOther({ a: 1 }))).toBe(true);
+    expect(idempotencyKeyIsStale(stored, underOther({ a: 2 }))).toBe(true); // the key changed: that is all anyone can say
+    expect(idempotencyKeyIsStale(stored, h(ORG, "k1", { a: 2 }))).toBe(false);
+    expect(idempotencyKeyIsStale(stored, stored)).toBe(false);
+    expect(idempotencyKeyIsStale(legacyIdempotencyHash(ORG, "k1", { a: 1 }), stored)).toBe(false);
+    expect(idempotencyKeyIsStale(`h1:${"0".repeat(64)}`, stored)).toBe(false);
+  });
+});
+
+describe("a fingerprint stored before the keyed hash (plain SHA-256)", () => {
+  it("legacyIdempotencyHash is the old SHA-256 of the canonical (org, key, body)", () => {
+    const canonical = JSON.stringify({ organizationId: ORG, key: "k1", body: { a: 1 } });
+    expect(legacyIdempotencyHash(ORG, "k1", { a: 1 })).toBe(
+      createHash("sha256").update(canonical).digest("hex"),
+    );
+  });
+
+  it("still matches the SAME request for one TTL, and never a different one; a keyed value never matches the legacy form", () => {
+    const legacy = legacyIdempotencyHash(ORG, "k1", { a: 1 });
+    const keyed = h(ORG, "k1", { a: 1 });
+    const legacyOf = (body: unknown) => () => legacyIdempotencyHash(ORG, "k1", body);
+    expect(idempotencyHashMatches(legacy, keyed, legacyOf({ a: 1 }))).toBe(true);
+    expect(idempotencyHashMatches(legacy, h(ORG, "k1", { a: 2 }), legacyOf({ a: 2 }))).toBe(false);
+    expect(idempotencyHashMatches(keyed, keyed, legacyOf({ a: 1 }))).toBe(true);
+    // a keyed record is compared as keyed only: a request under another server key is a mismatch, cleanly
+    const rotated = computeIdempotencyHash(
+      ORG,
+      "k1",
+      { a: 1 },
+      "another-server-key-0000000000000002",
+    );
+    expect(idempotencyHashMatches(keyed, rotated, legacyOf({ a: 1 }))).toBe(false);
+  });
+
+  it("the legacy arm is chosen from the STORED value: a stored `h1:` record is never matched through the legacy hash, whatever it computes", () => {
+    // falsifiable: delete the `!stored.startsWith("h1:")` check and this returns true. A real legacy digest is plain hex and can never
+    // carry the prefix, so the lambda is made to return the stored value itself to prove the prefix, not the hex shape, decides.
+    const keyed = h(ORG, "k1", { a: 1 });
+    const other = h(ORG, "k1", { a: 2 });
+    expect(idempotencyHashMatches(keyed, other, () => keyed)).toBe(false);
+    // and an un-prefixed stored value is matched through the legacy hash only when that hash equals it
+    const plain = legacyIdempotencyHash(ORG, "k1", { a: 1 });
+    expect(idempotencyHashMatches(plain, other, () => plain)).toBe(true);
+    expect(idempotencyHashMatches(plain, other, () => "0".repeat(64))).toBe(false);
+  });
+});
+
+describe("the legacy plain-SHA-256 arm has a removal date and it is enforced", () => {
+  it("is removed once LEGACY_ARM_REMOVE_AFTER has passed: this fails after that date while legacyIdempotencyHash still exists", () => {
+    const endOfRemovalDay = Date.parse(`${LEGACY_ARM_REMOVE_AFTER}T23:59:59.999Z`);
+    expect(Number.isNaN(endOfRemovalDay), "LEGACY_ARM_REMOVE_AFTER must be a YYYY-MM-DD date").toBe(
+      false,
+    );
+    const overdue = Date.now() > endOfRemovalDay;
+    // Delete `legacyIdempotencyHash`, the middleware's legacy arm (apps/backend/src/bootstrap/plugins/idempotency.ts), this test and
+    // LEGACY_ARM_REMOVE_AFTER together. If the keyed fingerprint has not yet been live everywhere for a full TTL, move the date instead,
+    // with CW-SEC-02's review_by.
+    expect(
+      overdue && typeof legacyIdempotencyHash === "function",
+      `the legacy idempotency arm outlived ${LEGACY_ARM_REMOVE_AFTER}: remove it (or move the date, with CW-SEC-02's review_by)`,
+    ).toBe(false);
   });
 });
 
@@ -67,40 +167,67 @@ describe("runIdempotent", () => {
   it("runs the handler once on a first call and returns its response", async () => {
     const store = memoryStore();
     const handler = vi.fn(async () => ok);
-    const res = await runIdempotent(store, ORG, "k1", { a: 1 }, handler);
+    const res = await runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY);
     expect(res).toEqual(ok);
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("replays the cached response for a same-body retry without re-running the handler", async () => {
-    const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+    const hash = h(ORG, "k1", { a: 1 });
     const store = memoryStore({ state: "complete", requestHash: hash, response: ok });
     const handler = vi.fn(async () => ({ status: "500", body: null }));
-    const res = await runIdempotent(store, ORG, "k1", { a: 1 }, handler);
+    const res = await runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY);
     expect(res).toEqual(ok);
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("throws IdempotencyConflictError when the key is reused with a different body", async () => {
-    const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
-    const store = memoryStore({ state: "complete", requestHash: hash, response: ok });
-    await expect(runIdempotent(store, ORG, "k1", { a: 2 }, async () => ok)).rejects.toBeInstanceOf(
+  it("replays a record stored under the legacy SHA-256 (a deploy mid-TTL does not double-execute a retry), and still conflicts on another body", async () => {
+    const legacy = legacyIdempotencyHash(ORG, "k1", { a: 1 });
+    const store = memoryStore({ state: "complete", requestHash: legacy, response: ok });
+    const handler = vi.fn(async () => ({ status: "500", body: null }));
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY)).resolves.toEqual(ok);
+    await expect(runIdempotent(store, ORG, "k1", { a: 2 }, handler, KEY)).rejects.toBeInstanceOf(
       IdempotencyConflictError,
     );
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("a record stored under a DIFFERENT server key is a clean mismatch (409), never a replay and never a re-run", async () => {
+    const other = computeIdempotencyHash(
+      ORG,
+      "k1",
+      { a: 1 },
+      "another-server-key-0000000000000002",
+    );
+    const store = memoryStore({ state: "complete", requestHash: other, response: ok });
+    const handler = vi.fn(async () => ok);
+    const error = await runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY).catch((e) => e);
+    // its own error, not "a different body": the body is the same, the server's key changed
+    expect(error).toBeInstanceOf(IdempotencyKeyStaleError);
+    expect(error).not.toBeInstanceOf(IdempotencyConflictError);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("throws IdempotencyConflictError when the key is reused with a different body", async () => {
+    const hash = h(ORG, "k1", { a: 1 });
+    const store = memoryStore({ state: "complete", requestHash: hash, response: ok });
+    await expect(
+      runIdempotent(store, ORG, "k1", { a: 2 }, async () => ok, KEY),
+    ).rejects.toBeInstanceOf(IdempotencyConflictError);
   });
 
   it("throws IdempotencyInFlightError on a concurrent duplicate (pending) (F15)", async () => {
-    const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+    const hash = h(ORG, "k1", { a: 1 });
     const store = memoryStore({ state: "pending", requestHash: hash });
     const handler = vi.fn(async () => ok);
-    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY)).rejects.toBeInstanceOf(
       IdempotencyInFlightError,
     );
     expect(handler).not.toHaveBeenCalled();
   });
 
   it("never runs the handler when the claim is lost, and replays the winner's response (GAP-007)", async () => {
-    const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+    const hash = h(ORG, "k1", { a: 1 });
     const loads: Array<IdempotencyRecord | null> = [
       null,
       { state: "complete", requestHash: hash, response: ok },
@@ -112,7 +239,7 @@ describe("runIdempotent", () => {
       release: async () => undefined,
     };
     const handler = vi.fn(async () => ({ status: "500", body: null }));
-    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).resolves.toEqual(ok);
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY)).resolves.toEqual(ok);
     expect(handler).not.toHaveBeenCalled();
     expect(store.complete).not.toHaveBeenCalled();
   });
@@ -127,7 +254,7 @@ describe("runIdempotent", () => {
   });
 
   it("reports in-flight when the claim is lost to a still-pending winner", async () => {
-    const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+    const hash = h(ORG, "k1", { a: 1 });
     const loads: Array<IdempotencyRecord | null> = [null, { state: "pending", requestHash: hash }];
     const store: IdempotencyStore = {
       load: async () => loads.shift() ?? null,
@@ -136,7 +263,7 @@ describe("runIdempotent", () => {
       release: async () => undefined,
     };
     const handler = vi.fn(async () => ok);
-    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY)).rejects.toBeInstanceOf(
       IdempotencyInFlightError,
     );
     expect(handler).not.toHaveBeenCalled();
@@ -145,7 +272,7 @@ describe("runIdempotent", () => {
 
 describe("a claim that stays pending past the bound is stuck, not in flight", () => {
   const ok: IdempotentResponse = { status: "201", body: { id: 1 } };
-  const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+  const hash = h(ORG, "k1", { a: 1 });
   const pendingFor = (pendingForMs?: number): IdempotencyRecord => ({
     state: "pending",
     requestHash: hash,
@@ -158,6 +285,7 @@ describe("a claim that stays pending past the bound is stuck, not in flight", ()
       "k1",
       { a: 1 },
       vi.fn(async () => ok),
+      KEY,
     );
 
   it("is its own code (IDEMPOTENCY_KEY_STUCK, still a 409) with a message that says the outcome is unknown and not to retry with the key", () => {
@@ -182,7 +310,7 @@ describe("a claim that stays pending past the bound is stuck, not in flight", ()
   it("a pending claim older than the bound is stuck, and the handler never runs", async () => {
     const handler = vi.fn(async () => ok);
     const store = memoryStore(pendingFor(IDEMPOTENCY_PENDING_MAX_AGE_MS + 1));
-    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY)).rejects.toBeInstanceOf(
       IdempotencyKeyStuckError,
     );
     expect(handler).not.toHaveBeenCalled();
@@ -190,9 +318,9 @@ describe("a claim that stays pending past the bound is stuck, not in flight", ()
 
   it("a different body is still IDEMPOTENCY_CONFLICT, whatever the age", async () => {
     const store = memoryStore(pendingFor(IDEMPOTENCY_PENDING_MAX_AGE_MS * 10));
-    await expect(runIdempotent(store, ORG, "k1", { a: 2 }, async () => ok)).rejects.toBeInstanceOf(
-      IdempotencyConflictError,
-    );
+    await expect(
+      runIdempotent(store, ORG, "k1", { a: 2 }, async () => ok, KEY),
+    ).rejects.toBeInstanceOf(IdempotencyConflictError);
   });
 
   it("the age is read when the claim is lost to a winner too", async () => {
@@ -206,8 +334,8 @@ describe("a claim that stays pending past the bound is stuck, not in flight", ()
       complete: async () => undefined,
       release: async () => undefined,
     };
-    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, async () => ok)).rejects.toBeInstanceOf(
-      IdempotencyKeyStuckError,
-    );
+    await expect(
+      runIdempotent(store, ORG, "k1", { a: 1 }, async () => ok, KEY),
+    ).rejects.toBeInstanceOf(IdempotencyKeyStuckError);
   });
 });

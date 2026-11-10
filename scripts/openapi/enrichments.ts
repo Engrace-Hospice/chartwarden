@@ -6051,12 +6051,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12NamedPrescriberListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
-    summary: "Enroll a prescriber into DoseSpot; Idempotency-Key required",
+    summary:
+      "Put a member on the prescriber roster and link them to a physician record (externalPhysicianMdmId). The acting administrator is recorded as the link's asserter: the linked member cannot confirm a link they made themself (409 DOSESPOT_LINK_SELF_CONFIRM on the confirmation); re-saving a link that has no recorded maker records the acting administrator as its maker. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12EnrollPrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/revoke": {
-    summary: "Revoke a prescriber; Idempotency-Key required",
+    summary:
+      "Revoke a prescriber from the roster (their link confirmation goes with it). prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12RevokePrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
     summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
@@ -16046,5 +16050,131 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",
     body: M25ClaimMdEraRecoveryBodySchema,
+  },
+});
+
+// ── tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration (M12 tenant routes + the M34 platform copy) ──
+import {
+  ClinicConfigViewSchema as M12ClinicConfigViewSchema,
+  ConfirmPractitionerLinkBodySchema as M12ConfirmPractitionerLinkBodySchema,
+  EnrollPrescriberVendorBodySchema as M12EnrollPrescriberVendorBodySchema,
+  PractitionerLinkViewSchema as M12PractitionerLinkViewSchema,
+  PrescriberVendorEnrollmentViewSchema as M12PrescriberVendorEnrollmentViewSchema,
+  PutClinicBodySchema as M12PutClinicBodySchema,
+  ResolveHeldTransmissionBodySchema as M12ResolveHeldTransmissionBodySchema,
+  ResolveHeldTransmissionResponseSchema as M12ResolveHeldTransmissionResponseSchema,
+  VerifyClinicResponseSchema as M12VerifyClinicResponseSchema,
+} from "../../apps/backend/src/modules/12-dosespot/tenant-config/typebox";
+import {
+  OnboardingDoseSpotEnrollRequest as M34OnboardingDoseSpotEnrollRequest,
+  OnboardingDoseSpotEnrollViewSchema as M34OnboardingDoseSpotEnrollViewSchema,
+  OnboardingDoseSpotPrescriberListSchema as M34OnboardingDoseSpotPrescriberListSchema,
+  OnboardingDoseSpotPutRequest as M34OnboardingDoseSpotPutRequest,
+  OnboardingDoseSpotVerifyResponseSchema as M34OnboardingDoseSpotVerifyResponseSchema,
+  OnboardingDoseSpotViewSchema as M34OnboardingDoseSpotViewSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-dosespot-typebox";
+
+const DOSESPOT_IF_MATCH_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The registration's current integer version; required to change an existing registration, absent on a first save.",
+  },
+};
+const DOSESPOT_FLOW_NOTE =
+  "draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned";
+const M34_DOSESPOT_WRITE_NOTE =
+  "tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/dosespot": {
+    summary: `The organization's DoseSpot registration, masked (hasSecret; no credential is ever returned; prescribersEnrolled and queuedTransmissions are shown, neither gates anything) — ${DOSESPOT_FLOW_NOTE}. prescribing.clinic.read (org-level)`,
+    response: M12ClinicConfigViewSchema,
+  },
+  "PUT /api/v1/tenant/dosespot": {
+    summary: `Save the DoseSpot registration: create (201) or version-checked change (200, If-Match). Complete input is \`registered\`, incomplete stays \`draft\` (save and resume); ANY change to the environment, clinic, clinician or a key sends the row back and clears the test and activation (a change of environment or clinic also drops the stored key). The environment is a name, never a URL. A tenant administrator cannot introduce a Subscription-Key (422 DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY) but may rotate one platform support set — ${DOSESPOT_FLOW_NOTE}. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    body: M12PutClinicBodySchema,
+    headers: DOSESPOT_IF_MATCH_HEADERS,
+    status: 201,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/tenant/dosespot/verify": {
+    summary:
+      "Test the DoseSpot connection: one service-clinician token mint with the stored credential, no patient data. The probe runs with no transaction open (409 DOSESPOT_CHANGED_DURING_VERIFY if the registration moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome (credential_rejected or unreachable) and leaves the status where it was; production is refused (409 DOSESPOT_PRODUCTION_NOT_ENABLED) until the platform enables it. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12VerifyClinicResponseSchema,
+  },
+  "POST /api/v1/tenant/dosespot/activate": {
+    summary:
+      "Activate a verified registration: e-prescribing then transmits for the organization (409 DOSESPOT_NOT_VERIFIED before a passed test; production only when the platform enabled it; idempotent once active). prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/tenant/dosespot/deactivate": {
+    summary:
+      "Take an active registration out of service (back to verified; the credential is unchanged, so no new test is owed). Newly signed orders then activate locally and queued ones wait. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/admin/dosespot-prescribers/:membershipId/dosespot-enrollment": {
+    summary:
+      "Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the prescriber must first have confirmed the linked record themself (409 DOSESPOT_PRACTITIONER_UNCONFIRMED); a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a registration move to another clinic while the vendor call ran is 409 DOSESPOT_REGISTRATION_MOVED (nothing is linked: enrol again under the new registration); a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12EnrollPrescriberVendorBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12PrescriberVendorEnrollmentViewSchema,
+  },
+  "GET /api/v1/me/dosespot-prescriber-link": {
+    summary:
+      "The signed-in prescriber's OWN link: the physician record the prescriber roster linked them to, shown with its name and NPI (public provider data), and whether they have confirmed it. prescribing.sign; the session's membership selects the roster row",
+    response: M12PractitionerLinkViewSchema,
+  },
+  "POST /api/v1/me/dosespot-prescriber-link/confirm": {
+    summary:
+      "The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); a link the member made themself cannot be confirmed by them (409 DOSESPOT_LINK_SELF_CONFIRM: another roster administrator must link them), nor can a link whose maker was never recorded (409 DOSESPOT_LINK_MAKER_UNKNOWN: a roster administrator must link them again), and the enrolment refuses a link whose linker is its confirmer; 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12ConfirmPractitionerLinkBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12PractitionerLinkViewSchema,
+  },
+  "POST /api/v1/medication-orders/:id/resolve-held-transmission": {
+    summary:
+      "An organization administrator resolves a medication order HELD because DoseSpot may have acted on its NewRx call but did not confirm the outcome (an unreadable or id-less 2xx, a lost send answer, or a send answered with a 5xx other than 503; the order is in flight and its transmission is marked unconfirmed_outcome; while it is held no worker fails, retries or re-sends it, though the slow original call's own late answer can still end the hold). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED, `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED, and an id another order of the organization already carries is 409 DOSESPOT_PRESCRIPTION_ID_IN_USE (webhooks bind by it); a reason that is under 10 characters once trimmed (it passed the request schema's length only because it was padded with whitespace) is 422 DOSESPOT_REASON_REQUIRED, while one under 10 characters as sent, or nothing but whitespace, is already a 400 from the request schema; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12ResolveHeldTransmissionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ResolveHeldTransmissionResponseSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/dosespot": {
+    summary:
+      "A tenant's DoseSpot registration, masked (hasSecret; no credential is ever returned) — platform ops; read is audited",
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/dosespot": {
+    summary: `Register a tenant's DoseSpot clinic on its behalf: create (201) or version-checked change (200, If-Match). Platform support may set the clinic's own Subscription-Key; ${DOSESPOT_FLOW_NOTE}. ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingDoseSpotPutRequest,
+    headers: DOSESPOT_IF_MATCH_HEADERS,
+    status: 201,
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/verify": {
+    summary: `Test a tenant's DoseSpot connection (a no-PHI token mint; a failed test is a 200 with the outcome); 6 requests/min per target tenant. ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotVerifyResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/deactivate": {
+    summary: `Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a \`reason\` are required; an AI actor is refused`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/dosespot/prescribers": {
+    summary:
+      "A tenant's prescriber roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA number, no vendor id) — platform ops; read is audited",
+    response: M34OnboardingDoseSpotPrescriberListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/prescribers/:membershipId/enroll": {
+    summary: `Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; the NPI and legal name are derived from the physician record the roster links the member to and cross-checked against NPPES, never typed, so the body is the reason alone, and the prescriber must have confirmed that link themself (the roster list shows linkConfirmed; the operator cannot confirm for them): see the tenant route for the 409/422 codes; idempotent for a linked prescriber; never starts EPCS). ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingDoseSpotEnrollRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotEnrollViewSchema,
   },
 });

@@ -12,6 +12,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap007:idempotency-claim:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
@@ -226,6 +227,41 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       const replayFresh = await post("/open", "http-expiry");
       expect(replayFresh.json()).toEqual(fresh.json());
       expect(handlerRuns).toBe(2);
+    });
+
+    /** origin/main's request fingerprint (before the keyed hash), as its middleware called it: scope `${orgId}|${userId}` (this app's context has no user). */
+    const mainsHash = (key: string, body: unknown): string =>
+      createHash("sha256")
+        .update(JSON.stringify({ organizationId: `${ORG_A}|`, key, body }))
+        .digest("hex");
+
+    it("a row written by origin/main's middleware (plain SHA-256) REPLAYS on the Postgres store; another body is a 409; the handler never runs", async () => {
+      handlerRuns = 0;
+      expect(await store.putPending(ORG_A, "pre-deploy", mainsHash("pre-deploy", { a: 1 }))).toBe(
+        true,
+      );
+      await store.complete(ORG_A, "pre-deploy", {
+        status: "201",
+        body: { run: "before-the-deploy" },
+      });
+
+      const replay = await post("/open", "pre-deploy");
+      expect(replay.statusCode).toBe(201);
+      expect(replay.json()).toEqual({ run: "before-the-deploy" });
+      const otherBody = await app.inject({
+        method: "POST",
+        url: "/open",
+        headers: { "idempotency-key": "pre-deploy" },
+        payload: { a: 2 },
+      });
+      expect(otherBody.statusCode).toBe(409);
+      expect(handlerRuns).toBe(0);
+      // the legacy row is neither rewritten nor deleted by a replay
+      const [row] = await rowFor(ORG_A, "pre-deploy");
+      expect(row).toMatchObject({
+        state: "complete",
+        request_hash: mainsHash("pre-deploy", { a: 1 }),
+      });
     });
   });
 

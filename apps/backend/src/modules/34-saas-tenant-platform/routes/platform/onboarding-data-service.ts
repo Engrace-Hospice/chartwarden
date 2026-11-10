@@ -33,6 +33,7 @@ import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
 } from "../../../../bootstrap/onboarding-credential-port";
+import type { OnboardingDoseSpotPort } from "../../../../bootstrap/onboarding-dosespot-port";
 import type {
   OnboardingNoticeKind,
   OnboardingNoticePort,
@@ -55,6 +56,7 @@ import {
   type OnboardingOperator,
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
+import { type DoseSpotLaneMethods, buildDoseSpotLane } from "./onboarding-dosespot-lane";
 import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
@@ -62,7 +64,8 @@ export type { OnboardingOperator } from "./onboarding-data-audit";
 /** A body field set with the platform `reason` already removed, ready for the tenant's own validators. */
 export type OnboardingFields = Readonly<Record<string, unknown>>;
 
-export interface OnboardingDataService {
+/** Tenant onboarding slice 4 (ADR-0111): the DoseSpot methods come from the lane (`onboarding-dosespot-lane.ts`). */
+export interface OnboardingDataService extends DoseSpotLaneMethods {
   listProviderEntities(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   createProviderEntity(
     op: OnboardingOperator,
@@ -196,6 +199,8 @@ export interface OnboardingDataDeps {
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   /** M23's clearinghouse adapter (ADR-0053 amendment 2026-11-06); unbound -> the clearinghouse routes answer 503. */
   readonly clearinghouse?: OnboardingClearinghousePort;
+  /** M12's DoseSpot adapter (tenant onboarding slice 4); unbound -> the DoseSpot routes answer 503. */
+  readonly dosespot?: OnboardingDoseSpotPort;
   /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
   readonly notices?: OnboardingNoticePort;
   /**
@@ -265,6 +270,11 @@ interface WriteResult<T> {
   readonly value: T;
   readonly resourceId: string;
   readonly changedFields?: readonly string[];
+  /**
+   * The write changed NOTHING (a no-op save): the audit row stays, but a pending go-live attestation is NOT voided: it attested data that
+   * is exactly as it was.
+   */
+  readonly noChange?: boolean;
   /** False for a successful idempotent retry that changed no onboarding evidence. */
   readonly dataChanged?: boolean;
   /** Non-sensitive facts for the audit row (counts, codes, kinds). */
@@ -280,6 +290,13 @@ interface WriteSpec {
   /** True for a write a LIVE tenant needs too (the BAA verification): the shared lock and the audit row stay, the status gate goes. */
   readonly anyTenantStatus?: boolean;
 }
+
+const notOnboarding = (status: string): ChartWardenError =>
+  new ChartWardenError(
+    "TENANT_NOT_ONBOARDING",
+    `onboarding data can be entered only while the tenant is provisioning or onboarding (it is ${status})`,
+    409,
+  );
 
 const scopeOf = (op: OnboardingOperator, organizationId: string): OnboardingWriteScope => ({
   organizationId,
@@ -386,7 +403,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           const done = await run(tx, target);
           // A pending go-live attestation said this data was ready: the write makes that stale, so it is voided in the same
           // transaction (the attestation and the write commit or roll back together).
-          if (done.dataChanged !== false) {
+          if (!done.noChange && done.dataChanged !== false) {
             await voidPendingGoLiveForDataChange(tx, {
               organizationId: target.organizationId,
               revokedByUserId: op.userId,
@@ -409,15 +426,42 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       await recordFailedWrite(op, target, spec, err);
       throw err;
     }
-    if ("refusedStatus" in outcome) {
-      throw new ChartWardenError(
-        "TENANT_NOT_ONBOARDING",
-        `onboarding data can be entered only while the tenant is provisioning or onboarding (it is ${outcome.refusedStatus})`,
-        409,
-      );
-    }
+    if ("refusedStatus" in outcome) throw notOnboarding(outcome.refusedStatus);
     await settleAfterWrite(target.organizationId, tenantAccountId);
     return outcome.value;
+  }
+
+  /**
+   * The onboarding-status gate on its own, for a write whose work must not start before it is allowed (a vendor call, a committed
+   * roster row). It takes the same shared lock and applies the same rule as `write`, and a refusal is audited the same way; `write`
+   * stays the authoritative re-check (the status can move between the two). Without it, a write that does real work in its
+   * `prepare` step would act on a LIVE tenant and only then be refused.
+   */
+  async function precheck(op: OnboardingOperator, orgSlug: string, spec: WriteSpec): Promise<void> {
+    const target = await targetOf(orgSlug);
+    const refusedStatus = await withOrgContext<DbClient, string | null>(
+      db,
+      { organizationId: target.organizationId, userId: op.userId },
+      async (tx) => {
+        await lockTenantOnboardingShared(tx, target.organizationId);
+        const [account] = await tx
+          .select({ status: ACCOUNT.status })
+          .from(ACCOUNT)
+          .where(eq(ACCOUNT.organizationId, target.organizationId))
+          .limit(1);
+        if (!account) throw new NotFoundError("tenant");
+        if (spec.anyTenantStatus || ONBOARDING_WRITABLE_STATUSES.has(account.status)) return null;
+        await recordOnboardingAudit(tx, op, target, {
+          eventType: EVENTS.writeRefused,
+          resourceKind: spec.resourceKind,
+          outcome: "denied",
+          reason: spec.reason,
+          detail: { attemptedEvent: spec.event, tenantStatus: account.status },
+        });
+        return account.status;
+      },
+    );
+    if (refusedStatus !== null) throw notOnboarding(refusedStatus);
   }
 
   /** Post-commit, best effort: let the advance sweep settle whatever step this write satisfied. */
@@ -810,5 +854,17 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),
+
+    // Tenant onboarding slice 4: the DoseSpot lane (its own file; it reuses write / read / settle above).
+    ...buildDoseSpotLane({
+      port: () => deps.dosespot,
+      targetOf,
+      scopeOf,
+      write,
+      precheck,
+      read,
+      settle: settleStepAfter,
+      ...(deps.logError ? { logError: deps.logError } : {}),
+    }),
   };
 }

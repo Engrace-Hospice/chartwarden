@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 2017,
-    "enriched": 2017,
+    "routes": 2032,
+    "enriched": 2032,
     "deficit": 0,
-    "mutating": 1159,
+    "mutating": 1170,
     "mutatingNoBody": 1,
-    "gets": 805,
+    "gets": 809,
     "getsNoResponse": 9
   },
   "modules": [
@@ -111,12 +111,12 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
-      "enriched": 34,
+      "routes": 43,
+      "enriched": 43,
       "deficit": 0,
-      "mutating": 23,
+      "mutating": 30,
       "mutatingNoBody": 0,
-      "gets": 11,
+      "gets": 13,
       "getsNoResponse": 0
     },
     {
@@ -331,12 +331,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 88,
-      "enriched": 88,
+      "routes": 94,
+      "enriched": 94,
       "deficit": 0,
-      "mutating": 58,
+      "mutating": 62,
       "mutatingNoBody": 0,
-      "gets": 29,
+      "gets": 31,
       "getsNoResponse": 0
     },
     {
