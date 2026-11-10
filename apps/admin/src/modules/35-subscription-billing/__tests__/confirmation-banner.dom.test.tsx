@@ -3,7 +3,7 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // seconds. The message now also rides the navigation state, and the page the operator lands on keeps showing it (not as a live
 // region: the toast already announced it) until they move on.
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RefundApprove } from "../refund-approve";
 import { RefundsQueue } from "../refunds-queue";
@@ -52,7 +52,15 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   return json({});
 }
 
-function mount(entry: string | { pathname: string; state: unknown }): void {
+/** What a reload or Back to this entry would restore: the current location, with its history state. */
+function HistoryEntry(): JSX.Element {
+  const { pathname, search, state } = useLocation();
+  return <output data-testid="entry">{JSON.stringify({ pathname, search, state })}</output>;
+}
+const entryNow = (): { pathname: string; search: string; state: unknown } =>
+  JSON.parse(screen.getByTestId("entry").textContent ?? "{}");
+
+function mount(entry: string | { pathname: string; search?: string; state?: unknown }): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <ToastProvider>
@@ -63,6 +71,7 @@ function mount(entry: string | { pathname: string; state: unknown }): void {
             <Route path="/admin/subscriptions/:id/pause" element={<SubscriptionPause />} />
             <Route path="/admin/subscriptions/:id" element={<SubscriptionDetail />} />
           </Routes>
+          <HistoryEntry />
         </MemoryRouter>
       </ToastProvider>
     </ApiClientProvider>,
@@ -123,5 +132,30 @@ describe("the confirmation of a finished write", () => {
     await advance(SETTLE_MS);
     expect(screen.getByRole("heading", { name: "Refunds" })).toBeTruthy();
     expect(document.body.textContent).not.toContain("[object Object]");
+  });
+
+  it("is consumed once: after it shows, a reload or Back to the entry no longer brings it back", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const message = "Refund approved — queued for execution.";
+    mount({
+      pathname: "/admin/refunds",
+      search: "?filter=x",
+      state: { confirmation: message },
+    });
+    await advance(SETTLE_MS);
+    // Shown now, and it stays for as long as the operator stays.
+    expect(screen.getByText(message)).toBeTruthy();
+    await advance(TOAST_MS + SETTLE_MS);
+    expect(screen.getByText(message)).toBeTruthy();
+    // But the history entry no longer carries it (same path and search, state cleared).
+    const entry = entryNow();
+    expect(entry).toEqual({ pathname: "/admin/refunds", search: "?filter=x", state: null });
+
+    // A reload (or Back/Forward to this entry) restores that entry: nothing to show.
+    cleanup();
+    mount(entry);
+    await advance(SETTLE_MS);
+    expect(screen.getByRole("heading", { name: "Refunds" })).toBeTruthy();
+    expect(screen.queryByText(message)).toBeNull();
   });
 });

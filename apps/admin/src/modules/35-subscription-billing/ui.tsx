@@ -12,8 +12,8 @@ import {
   type WriteResult,
   isStepUpRequired,
 } from "@chartwarden/ui";
-import type { JSX, ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { type JSX, type ReactNode, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 /** A server result surfaced to the operator. `stepUp`: the refusal was STEP_UP_REQUIRED (offer Re-verify). */
 export interface Outcome {
@@ -62,15 +62,29 @@ export const confirmationState = (message: string): { confirmation: string } => 
 /**
  * The confirmation of the write that sent the operator here, for the destination page to show. The toast announces it and is gone
  * after five seconds, which is too short a record for a money write (a refund approved, a subscription paused): this stays on the
- * page until the operator moves on (any navigation replaces the history state). Not a live region, the toast already announced it.
+ * page for as long as the operator stays. Not a live region, the toast already announced it.
+ *
+ * It is consumed ONCE: read from the navigation state into local state, then the history entry's state is replaced with null (same
+ * path, search and hash). The message lives in `history.state`, so left there a hard reload or Back/Forward to this entry would show
+ * "Refund approved" later, perhaps after the refund executed or failed, as if it were news.
  */
 export function ConfirmationBanner(): JSX.Element | null {
-  const message = (useLocation().state as { confirmation?: unknown } | null)?.confirmation;
-  return typeof message === "string" ? (
+  const { pathname, search, hash, state } = useLocation();
+  const navigate = useNavigate();
+  const arrived = (state as { confirmation?: unknown } | null)?.confirmation;
+  const [message, setMessage] = useState<string | null>(
+    typeof arrived === "string" ? arrived : null,
+  );
+  useEffect(() => {
+    if (typeof arrived !== "string") return;
+    setMessage(arrived);
+    navigate({ pathname, search, hash }, { replace: true, state: null });
+  }, [arrived, pathname, search, hash, navigate]);
+  return message === null ? null : (
     <InlineAlert tone="success" live={false}>
       {message}
     </InlineAlert>
-  ) : null;
+  );
 }
 
 /**
