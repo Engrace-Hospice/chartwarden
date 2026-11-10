@@ -7,7 +7,11 @@
 //   outage       -> back to `queued`, no retry spent, the stamp (and a stale hold) cleared
 //   failure      -> the §4.10 planner: requeue while budget remains, else `transmission_failed` + event
 //   unconfirmed  -> HELD for a person: the order stays in flight, its transmission row naming why, `transmission_unconfirmed` published
-// Lock order is the advisory lock for a prescription id (success only), then the ORDER row, then the transmission row.
+// An outage or a failure of a call that BEGAN under a clinic the registration no longer names (a move: the clear skipped the stamped row) also drops the old
+// clinic's created prescription id and idempotency key and, whatever it found, goes back to `queued` with no retry spent (`settleMoved`).
+// Lock order is the advisory lock (for a prescription id on a success; the registration's bindings lock, shared, on an outage or a failure of a call),
+// then the ORDER row, then the transmission row. The bindings lock comes FIRST because the clear takes it exclusively and then updates transmission rows:
+// taking it after this transaction's row locks would let the two wait on each other.
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
@@ -18,6 +22,7 @@ import {
 } from "@chartwarden/dosespot";
 import { and, eq, sql } from "drizzle-orm";
 import { isPrescriptionIdTaken, lockPrescriptionId } from "../prescription-id";
+import { vendorWriteIsCurrent } from "../tenant-config/registration-target";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 import { UNCONFIRMED_OUTCOME_CLASS } from "./hold";
 import { DosespotSyncQueueRepository } from "./repository";
@@ -27,6 +32,8 @@ import {
   discarded,
   lockOwnership,
   orderStillTheWorkers,
+  retargetedBindings,
+  warnRegistrationMoved,
 } from "./transmit-ownership";
 
 const MO = schema.medicationOrders;
@@ -62,6 +69,7 @@ interface SettleCtx {
   readonly organizationId: string;
   readonly c: Claimed;
   readonly orderId: string;
+  readonly deps: M12CronDeps;
   readonly now: Date;
   /** Every order write repeats this predicate. */
   readonly stillMine: ReturnType<typeof orderStillTheWorkers>;
@@ -74,7 +82,7 @@ interface SettleCtx {
 const clearedHoldClass = sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorClass} END`;
 const clearedHoldDetail = sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorDetail} END`;
 
-async function settleOutage(x: SettleCtx): Promise<SettleResult> {
+async function settleOutage(x: SettleCtx, movedClinic = false): Promise<SettleResult> {
   const { tx, c, now, stillMine } = x;
   const back = await tx
     .update(MO)
@@ -82,8 +90,9 @@ async function settleOutage(x: SettleCtx): Promise<SettleResult> {
     .where(stillMine)
     .returning({ id: MO.id });
   if (back.length !== 1) return x.lost();
-  // nothing reached the vendor (an open circuit, a registration not live, a config fault, or the stamp itself failed): no call began, so the
-  // stamp and its token go, and so does a hold the drain set while this worker was still in its call (the order is queued again, not "held")
+  // an outage: an open circuit, a registration not live, a config fault, the stamp itself failing, or (`movedClinic`) a call that ended after the
+  // registration moved to another clinic. Either way the attempt is over and spent nothing, so the stamp and its token go, and so does a hold the
+  // drain set while this worker was still in its call (the order is queued again, not "held")
   await tx
     .update(MOT)
     .set({
@@ -91,9 +100,32 @@ async function settleOutage(x: SettleCtx): Promise<SettleResult> {
       callToken: null,
       lastErrorClass: clearedHoldClass,
       lastErrorDetail: clearedHoldDetail,
+      // the registration moved to another clinic during the call: the old clinic's created id and key do not go with the order into its requeue
+      ...(movedClinic ? retargetedBindings() : {}),
     })
     .where(eq(MOT.id, c.transmission.id));
+  if (movedClinic) warnRegistrationMoved(x.deps, x.organizationId, x.orderId);
   return "deferred";
+}
+
+/**
+ * The call began under one clinic and the registration names another now (and the call did not end in a send whose outcome a person must check): the
+ * order WAITS for the new registration whatever the call found, since a failure after a move may be the move's doing (a send under the new clinic with
+ * the old clinic's prescription id is refused for good), so no retry is spent and nothing is exhausted. It leaves no old-clinic id or key behind.
+ */
+const settleMoved = (x: SettleCtx): Promise<SettleResult> => settleOutage(x, true);
+
+/** Did the registration move to another clinic since this call began? Only an outage or a failure of a call that began is asked (see the header). */
+async function registrationMovedSince(
+  tx: DbClient,
+  organizationId: string,
+  attempt: Attempt,
+): Promise<boolean> {
+  const { outcome, owns } = attempt;
+  if (owns.stage !== "call" || (outcome.kind !== "outage" && outcome.kind !== "failure")) {
+    return false;
+  }
+  return !(await vendorWriteIsCurrent(tx, organizationId, owns.target));
 }
 
 /**
@@ -265,6 +297,7 @@ export async function settle(
       organizationId,
       c,
       orderId,
+      deps,
       now,
       stillMine: orderStillTheWorkers(orderId, owns),
       emit: (eventName, payload) =>
@@ -277,9 +310,12 @@ export async function settle(
         }),
       lost: () => discarded(deps, organizationId, orderId, outcome.kind),
     };
+    // FIRST, before any row lock (see the header)
+    const movedClinic = await registrationMovedSince(tx, organizationId, attempt);
     if (outcome.kind === "success")
       await lockPrescriptionId(tx, organizationId, outcome.prescriptionId);
     if (!(await lockOwnership(tx, c, owns))) return ctx.lost();
+    if (movedClinic) return settleMoved(ctx);
     switch (outcome.kind) {
       case "outage":
         return settleOutage(ctx);

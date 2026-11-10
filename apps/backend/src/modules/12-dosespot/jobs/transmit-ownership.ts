@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { NotEnabledError } from "@chartwarden/dosespot";
 import { and, eq } from "drizzle-orm";
-import { vendorWriteIsCurrent } from "../tenant-config/registration-target";
+import { freshIdempotencyKey, vendorWriteIsCurrent } from "../tenant-config/registration-target";
 import { type M12CronDeps, inOrg } from "./cron-common";
 
 const MO = schema.medicationOrders;
@@ -23,6 +23,10 @@ type TransmissionRow = typeof MOT.$inferSelect;
 /** One order a worker claimed: what it read, and the `updated_at` its claim wrote. */
 export interface Claimed {
   readonly order: OrderRow;
+  /**
+   * The transmission row as the CLAIM read it: good for its id and its retry count. NOT for the created prescription id or the idempotency key the call
+   * is made with: the registration's reset rewrites both on a claimed order that is not stamped yet, so the call takes them from the stamp's own answer.
+   */
   readonly transmission: TransmissionRow;
   /** The `updated_at` this claim wrote: the fence compares against it, so a claim that was drained and taken over no longer matches. */
   readonly claimedAt: Date;
@@ -37,7 +41,8 @@ export interface Claimed {
  */
 export type Ownership =
   | { readonly stage: "claim"; readonly claimedAt: Date }
-  | { readonly stage: "call"; readonly token: string };
+  /** `target` is the registration target (registration-target.ts) the call began under: the settle drops the old clinic's ids if it moved. */
+  | { readonly stage: "call"; readonly token: string; readonly target: string };
 
 /**
  * A worker that no longer owns what it found writes nothing. It says so, with ids only and the KIND of what it discarded (never the content of it: a
@@ -96,14 +101,34 @@ export async function lockOwnership(tx: DbClient, c: Claimed, owns: Ownership): 
 const LOST_ORDER = "this worker no longer owns the order, so the prescription is not sent";
 
 /**
- * The registration moved to another clinic while this worker's call was in flight (registration-target.ts). A NotEnabledError, so the worker settles
- * it as an outage: the order goes back to `queued`, no retry spent, and runs again under the new registration. Carries no id and no content.
+ * What a transmission row is set to when the clinic the registration names has changed under a call that had begun (the clear skips a stamped row, so
+ * the worker whose call it was drops the old clinic's bindings itself, in the settle, transmit-settle.ts): the created prescription id goes (an id is
+ * scoped to the clinic that created it, and DoseSpot refuses it for good under another) and the idempotency key is replaced (it names the order at the
+ * old clinic). Both, or the requeued order would resume the old clinic's draft or reuse its key under the new one.
  */
-function registrationMoved(deps: M12CronDeps, organizationId: string, c: Claimed): NotEnabledError {
+export const retargetedBindings = () => ({
+  dosespotPrescriptionId: null,
+  idempotencyKey: freshIdempotencyKey(MOT.idempotencyKey),
+});
+
+/** Said when a worker drops the old clinic's ids because the registration moved during its call. Ids only. */
+export function warnRegistrationMoved(
+  deps: M12CronDeps,
+  organizationId: string,
+  orderId: string,
+): void {
   deps.warn?.(
-    { organizationId, orderId: c.order.id, class: "registration_moved" },
-    "M12 transmit: the DoseSpot registration moved to another clinic during the call; the created prescription id was dropped and the order waits",
+    { organizationId, orderId, class: "registration_moved" },
+    "M12 transmit: the DoseSpot registration moved to another clinic during the call; the created prescription id and the idempotency key were dropped and the order waits",
   );
+}
+
+/**
+ * The registration moved to another clinic while this worker's call was in flight (registration-target.ts). A NotEnabledError, so the worker settles
+ * it as an outage: the order goes back to `queued`, no retry spent, and runs again under the new registration (the settle drops the old clinic's
+ * created id and key, which it sees because the registration no longer names the clinic the call began under). Carries no id and no content.
+ */
+function registrationMoved(): NotEnabledError {
   return new NotEnabledError(
     "dosespot",
     "transmitNewRx",
@@ -115,8 +140,8 @@ function registrationMoved(deps: M12CronDeps, organizationId: string, c: Claimed
 /**
  * The call-stage guard shared by {@link rememberCreated} and {@link requireOwnership}: in ONE transaction, check the registration still names the
  * clinic the call began under (FIRST, before any row lock, so it cannot deadlock with the clear), lock what the worker owns (a worker that lost the
- * order throws), and run `whileCurrent`. If the registration moved, the created id this worker may already have persisted is the OLD clinic's and the
- * clear skipped it (the call had begun): the worker, which owns the transmission row, clears it itself, and the caller then throws.
+ * order throws), and run `whileCurrent`. If the registration moved the caller throws, which stops the call; the created id this worker may already
+ * have persisted is the OLD clinic's, and it is dropped, with the key, by the settle that follows (the clear skipped it: the call had begun).
  */
 async function guardedCallStage(
   deps: M12CronDeps,
@@ -128,15 +153,13 @@ async function guardedCallStage(
 ): Promise<void> {
   const current = await inOrg(deps.db, organizationId, async (tx) => {
     const isCurrent = await vendorWriteIsCurrent(tx, organizationId, target);
-    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
-    if (isCurrent) {
-      await whileCurrent(tx);
-      return true;
+    if (!(await lockOwnership(tx, c, { stage: "call", token, target }))) {
+      throw new Error(LOST_ORDER);
     }
-    await tx.update(MOT).set({ dosespotPrescriptionId: null }).where(eq(MOT.id, c.transmission.id));
-    return false;
+    if (isCurrent) await whileCurrent(tx);
+    return isCurrent;
   });
-  if (!current) throw registrationMoved(deps, organizationId, c);
+  if (!current) throw registrationMoved();
 }
 
 /**

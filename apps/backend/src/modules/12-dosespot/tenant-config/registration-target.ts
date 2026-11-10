@@ -13,7 +13,7 @@
 // that takes over from the env binding is a different target, matching the clear's conservative rule. A move A -> B -> A inside one round trip
 // reads as "unchanged" (ABA); the ids a trip under A wrote are valid under A, so nothing stale is written.
 import { type DbClient, schema } from "@chartwarden/db";
-import { eq, sql } from "drizzle-orm";
+import { type SQLWrapper, eq, sql } from "drizzle-orm";
 
 const R = schema.dosespotClinicRegistrations;
 
@@ -39,6 +39,15 @@ export async function readRegistrationTarget(
     .limit(1);
   return targetOfRegistration(row);
 }
+
+/**
+ * A fresh idempotency key derived from the old one (SQL, so it can ride the UPDATE that drops the old clinic's bindings). The key names an order at the
+ * OLD clinic (it rides as the Idempotency-Key of the create and the send): if DoseSpot dedupes by key across clinics, the new clinic would answer with
+ * the old prescription. Derived from the old key so it stays unique per order, with a random part so it never repeats; 64 hex characters like every
+ * key the transmission row holds. Nothing reads a key back to compare it (the sign-time enqueue only runs for an order not yet queued).
+ */
+export const freshIdempotencyKey = (previousKey: SQLWrapper) =>
+  sql`encode(sha256(convert_to(${previousKey} || ':retargeted:' || gen_random_uuid()::text, 'UTF8')), 'hex')`;
 
 /** One advisory-lock key per organization; the clear holds it exclusively, every guarded vendor-id write holds it shared. */
 const bindingsLockKey = (organizationId: string) =>

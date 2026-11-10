@@ -164,7 +164,15 @@ async function claim(
 }
 
 type Built =
-  | { readonly kind: "payload"; readonly payload: DoseSpotNewRxPayload }
+  | {
+      readonly kind: "payload";
+      readonly payload: DoseSpotNewRxPayload;
+      /**
+       * The registration target the payload's vendor ids were read under (read BEFORE them, in the same transaction): the stamp refuses to start
+       * the call if the registration names another clinic by then, because the ids in the payload may be the old clinic's.
+       */
+      readonly target: string;
+    }
   | { readonly kind: "patient_not_synced" }
   /**
    * The prescriber is on the roster and not revoked but holds no DoseSpot id: the registration moved to another clinic since the order was
@@ -181,6 +189,8 @@ async function buildPayload(
   order: OrderRow,
 ): Promise<Built> {
   const facts = await inOrg(deps.db, organizationId, async (tx) => {
+    // FIRST, before the vendor ids below: a move that commits between this read and those leaves ids this target does not name, and the stamp sees it
+    const target = await readRegistrationTarget(tx, organizationId);
     const [sync] = await tx
       .select({ id: SYNC.lastDosespotPatientId, outcome: SYNC.lastSyncOutcome })
       .from(SYNC)
@@ -192,6 +202,7 @@ async function buildPayload(
       .where(and(eq(DP.membershipId, order.prescriberMembershipId), isNull(DP.revokedAt)))
       .limit(1);
     return {
+      target,
       patientId: sync?.id ?? null,
       onRoster: prescriber !== undefined,
       prescriberId: prescriber?.id ?? null,
@@ -220,6 +231,7 @@ async function buildPayload(
   }
   return {
     kind: "payload",
+    target: facts.target,
     payload: {
       medicationOrderId: order.id,
       dosespotPatientId: facts.patientId,
@@ -237,6 +249,31 @@ async function buildPayload(
   };
 }
 
+/** What {@link markCallStarted} returns: the nonce it wrote, and what the call is made with. */
+interface CallStart {
+  readonly token: string;
+  /** The registration target the call begins under (see registration-target.ts). */
+  readonly target: string;
+  /** A created-but-unsent prescription id an earlier attempt persisted, as the row holds it now; null when there is none. */
+  readonly createdPrescriptionId: string | null;
+  /** The key the call is made with, as the row holds it now. */
+  readonly idempotencyKey: string;
+}
+
+/**
+ * The registration named another clinic at the stamp than when the payload's vendor ids were read. Thrown inside the stamp's transaction, so the stamp
+ * is rolled back and the vendor is not called: the ids in the payload may be the old clinic's, and sent under the new one they are refused for good.
+ * The order waits (no retry spent) and its payload is built again. Carries no id.
+ */
+class RegistrationMovedBeforeCallError extends Error {
+  constructor() {
+    super(
+      "the registration moved to another clinic after the payload was built; the call was not started",
+    );
+    this.name = "RegistrationMovedBeforeCallError";
+  }
+}
+
 /**
  * The FENCE before a vendor call. In one committed transaction it (1) moves the order's `updated_at` from the claim's value to the call's, but
  * only while the order is still THIS worker's claim (`in_flight` with the `updated_at` this claim wrote), and (2) stamps the transmission row's
@@ -247,12 +284,23 @@ async function buildPayload(
  * `updated_at` only keeps the stale clock. A random uuid, not the stamp's time: two cycles that stamp the same instant must still be told apart.
  * A worker that dies after this and before its settle leaves a stale claim carrying the stamp, which the drain HOLDS instead of re-sending. A
  * failure here throws and the order is not called: it stays a claim without the stamp, which the drain releases.
+ *
+ * It also returns what the transmission row holds AT THE STAMP: the created prescription id and the idempotency key the call is made with. Not
+ * what the claim read: the registration's clear touches a claimed order that is not yet stamped (it drops the old clinic's id and replaces the key),
+ * and in a batch an order is stamped only after the vendor calls of the ones before it, so the claim's copy may be a whole batch old. The stamp
+ * holds the row lock, so a clear that reaches the row waits for it and then finds it stamped and leaves it; what the stamp returns is what the clear
+ * left, and the target read after it is the clinic those values belong to.
+ *
+ * `payloadTarget` is the target the payload's vendor ids were read under: if the registration names another clinic by the stamp, those ids may be the
+ * old clinic's, so it throws {@link RegistrationMovedBeforeCallError} and nothing is stamped. (A move A -> B -> A, with a re-enrolment in between, all
+ * inside the milliseconds between the payload and the stamp, would read as unchanged: the same accepted ABA as registration-target.ts.)
  */
 async function markCallStarted(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
-): Promise<{ readonly token: string; readonly target: string } | null> {
+  payloadTarget: string,
+): Promise<CallStart | null> {
   const now = nowOf(deps);
   const token = randomUUID();
   return inOrg(deps.db, organizationId, async (tx) => {
@@ -269,14 +317,19 @@ async function markCallStarted(
       )
       .returning({ id: MO.id });
     if (fenced.length !== 1) return null;
-    const stamped = await tx
+    const [stamped] = await tx
       .update(MOT)
       .set({ transmissionStartedAt: now, callToken: token })
       .where(eq(MOT.id, c.transmission.id))
-      .returning({ id: MOT.id });
-    if (stamped.length !== 1) throw new Error("transmission row vanished before the vendor call");
+      .returning({
+        createdPrescriptionId: MOT.dosespotPrescriptionId,
+        idempotencyKey: MOT.idempotencyKey,
+      });
+    if (!stamped) throw new Error("transmission row vanished before the vendor call");
     // the clinic the registration names as the call begins: the writes that follow (the created id, the send) are refused if it moves
-    return { token, target: await readRegistrationTarget(tx, organizationId) };
+    const target = await readRegistrationTarget(tx, organizationId);
+    if (target !== payloadTarget) throw new RegistrationMovedBeforeCallError();
+    return { token, target, ...stamped };
   });
 }
 
@@ -305,15 +358,15 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       syncPatient: false,
     });
   }
-  let token: string;
-  let target: string;
+  let start: CallStart;
   try {
     // the fence: null = this worker no longer owns the claim (it was drained and taken over): make no call and touch nothing
-    const fenced = await markCallStarted(deps, organizationId, c);
+    const fenced = await markCallStarted(deps, organizationId, c, built.target);
     if (fenced === null) return beforeFence({ kind: "superseded" });
-    ({ token, target } = fenced);
+    start = fenced;
   } catch (fault) {
-    // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
+    // the stamp could not be committed (or the registration moved after the payload was built, which rolls the stamp back), so the vendor was NOT
+    // called: the order waits (no retry spent) and the drain releases the claim
     deps.warn?.(
       {
         organizationId,
@@ -324,16 +377,20 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
     );
     return beforeFence({ kind: "outage" });
   }
-  const owned = (outcome: Outcome): Attempt => ({ outcome, owns: { stage: "call", token } });
+  const { token, target } = start;
+  const owned = (outcome: Outcome): Attempt => ({
+    outcome,
+    owns: { stage: "call", token, target },
+  });
   try {
     const res = await deps.client.transmitNewRx(
       organizationId,
       built.payload,
-      c.transmission.idempotencyKey,
+      start.idempotencyKey,
       {
         // a created-but-unsent id from an earlier attempt (possibly on another replica): the send is re-run, the create is not
-        ...(c.transmission.dosespotPrescriptionId
-          ? { createdPrescriptionId: c.transmission.dosespotPrescriptionId }
+        ...(start.createdPrescriptionId
+          ? { createdPrescriptionId: start.createdPrescriptionId }
           : {}),
         onCreated: (id) => rememberCreated(deps, organizationId, c, token, id, target),
         beforeSend: () => requireOwnership(deps, organizationId, c, token, target),

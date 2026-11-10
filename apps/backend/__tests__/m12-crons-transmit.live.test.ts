@@ -803,7 +803,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       probe: { probe: async () => "ok" },
       env: { DOSESPOT_SANDBOX_ENABLED: "true" },
     });
-    const registerOldClinic = async () => {
+    const registerClinic = async (clinicId: string, environment: "sandbox" | "production") => {
       const m = h.memberOf[ORG_A];
       await h.admin.query("DELETE FROM dosespot_clinic_registration WHERE organization_id=$1", [
         ORG_A,
@@ -812,10 +812,11 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         `INSERT INTO dosespot_clinic_registration (organization_id, environment, status, clinic_id, service_clinician_id,
            secret_cipher, secret_dek_ref, registered_at, registered_by_membership_id, verified_at, verified_by_membership_id,
            activated_at, activated_by_membership_id, set_by_membership_id)
-         VALUES ($1,'sandbox','active','clinic-old','900','sealed','dek-1', now(), $2, now(), $2, now(), $2, $2)`,
-        [ORG_A, m],
+         VALUES ($1,$3,'active',$4,'900','sealed','dek-1', now(), $2, now(), $2, now(), $2, $2)`,
+        [ORG_A, m, environment, clinicId],
       );
     };
+    const registerOldClinic = () => registerClinic("clinic-old", "sandbox");
     const moveToProduction = async () =>
       inOrg(h.handle.db, ORG_A, (tx) =>
         clinicService.put(
@@ -978,6 +979,33 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       );
     });
 
+    it("an order the claim now skips (its prescriber waits for re-enrolment) still raises the queued-order age alert: the alert reads the transmission's own age, not the claim", async () => {
+      const { orderId } = await queued();
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET queued_at = now() - interval '2 hours' WHERE medication_order_id=$1",
+        [orderId],
+      );
+      await moveToProduction(); // the prescriber has no vendor id now: the claim leaves the order alone
+      const world: M12CronDeps = {
+        ...deps(new FakeDoseSpotVendor()),
+        episodes: createEpisodeTracker(),
+      };
+      const breaker = `dosespot-queued_orders_stale:${ORG_A}`;
+      const degraded = async () =>
+        (await h.eventsOf("m12.dosespot_degraded", ORG_A)).filter(
+          (e) => e.payload.breakerName === breaker,
+        );
+      const before = (await degraded()).length;
+
+      expect(await runTransmitNewRxForOrg(world, ORG_A)).toMatchObject({ claimed: 0 });
+      expect(await runQueuedAgeAlertForOrg(world, ORG_A)).toBe(true);
+
+      const opened = await degraded();
+      expect(opened).toHaveLength(before + 1);
+      expect(opened.at(-1)?.payload.lastErrorClass).toBe("queued_orders_stale");
+      expect((await orderRow(orderId)).s).toBe("queued"); // still waiting, untouched
+    });
+
     it("30 waiting orders older than one that can go do not starve it: the waiting ones are skipped by the claim, the claimable one is sent in the same pass", async () => {
       // a second prescriber, re-enrolled (has its vendor id)
       const U2 = "44444444-4444-4444-8444-444444444404";
@@ -1099,6 +1127,267 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1 });
         expect(await orderRow(orderId)).toMatchObject({ s: "queued" });
         expect((await txRow(transmissionId as string)).dosespot_prescription_id).toBeNull();
+      });
+
+      /** The prescriber is re-enrolled, the patients are synced and the registration is live again, now at the NEW clinic. */
+      const reEnrolAtNewClinic = async () => {
+        await h.admin.query(
+          "UPDATE dosespot_prescriber SET dosespot_prescriber_id='810' WHERE organization_id=$1",
+          [ORG_A],
+        );
+        await h.admin.query(
+          "UPDATE dosespot_patient_sync SET last_dosespot_patient_id='601', last_sync_outcome='success', last_error_class=NULL WHERE organization_id=$1",
+          [ORG_A],
+        );
+        await registerClinic("clinic-new", "production");
+      };
+
+      // ── a call that BEGAN before the move keeps its id and key through the clear (its worker may be alive); when that worker's call then ENDS, ────
+      // ── the settle must not carry the old clinic's created id or key into the requeue ────────────────────────────────────────────────────
+      describe("a call that ends after the move drops the old clinic's created id and key with its requeue", () => {
+        const OLD_CREATED = "rx-created-under-old-clinic";
+        const persisted = async () => {
+          const order = await queued();
+          await h.admin.query(
+            "UPDATE medication_order_transmission SET dosespot_prescription_id=$2 WHERE id=$1",
+            [order.transmissionId, OLD_CREATED],
+          );
+          return order;
+        };
+        /** The call overlaps the move (the PUT commits while it runs, and skips the stamped row), then ends with `fault`. */
+        const endsAfterMove = (fault: () => Error) =>
+          new FakeDoseSpotVendor({
+            transmit: async () => {
+              await moveToProduction();
+              throw fault();
+            },
+          });
+
+        it.each([
+          ["a retryable failure", retryable],
+          ["a permanent rejection", permanent],
+          ["a circuit that opened", circuitOpen],
+          [
+            "a registration that is no longer live",
+            () => new NotEnabledError("dosespot", "transmitNewRx", "not live", "c5"),
+          ],
+        ])(
+          "%s: the id and the key go, the order waits with no retry spent, and the next attempt creates under the new key instead of sending the old id",
+          async (_name, fault) => {
+            const { orderId, transmissionId, idempotencyKey } = await persisted();
+            const r = await runTransmitNewRxForOrg(
+              depsWithWarn(endsAfterMove(fault as () => Error)),
+              ORG_A,
+            );
+            expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, failed: 0, requeued: 0 });
+            expect(await orderRow(orderId)).toMatchObject({
+              status: "queued_for_transmission",
+              s: "queued",
+            });
+            const t = await txRow(transmissionId as string);
+            expect(t.dosespot_prescription_id).toBeNull(); // the old clinic's id is not left for the next attempt
+            expect(t.idempotency_key).not.toBe(idempotencyKey); // nor its key
+            expect(t.idempotency_key).toMatch(/^[0-9a-f]{64}$/);
+            expect(t.retry_count).toBe(0);
+            expect(t.transmission_failed_at).toBeNull();
+            expect(t.transmission_started_at).toBeNull();
+            expect(t.call_token).toBeNull();
+            expect(warned).toEqual([
+              { organizationId: ORG_A, orderId, class: "registration_moved" },
+            ]);
+            expect(
+              (await h.eventsOf("m12.medication_order.transmission_failed", ORG_A)).filter(
+                (e) => (e.payload as { orderId?: string }).orderId === orderId,
+              ),
+            ).toEqual([]);
+
+            // the prescriber is re-enrolled and the registration is live at the new clinic: the order goes out as a NEW prescription
+            await reEnrolAtNewClinic();
+            const seen: Array<{ key: string; resumed: string | undefined }> = [];
+            const next = new FakeDoseSpotVendor({
+              transmit: async (_o, _p, key, resume) => {
+                seen.push({ key, resumed: resume?.createdPrescriptionId });
+                return { dosespotPrescriptionId: "rx-new-clinic", transmittedAt: T0.toISOString() };
+              },
+            });
+            expect(await runTransmitNewRxForOrg(deps(next), ORG_A)).toMatchObject({
+              claimed: 1,
+              transmitted: 1,
+            });
+            expect(seen).toEqual([{ key: t.idempotency_key, resumed: undefined }]);
+          },
+        );
+
+        it("control: with no move, a retryable failure keeps the persisted id and the key (the retry only re-runs the send) and spends a retry", async () => {
+          const { orderId, transmissionId, idempotencyKey } = await persisted();
+          const vendor = new FakeDoseSpotVendor({
+            transmit: async () => {
+              throw retryable();
+            },
+          });
+          const r = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+          expect(r).toMatchObject({ claimed: 1, requeued: 1, deferredByOutage: 0 });
+          const t = await txRow(transmissionId as string);
+          expect(t.dosespot_prescription_id).toBe(OLD_CREATED);
+          expect(t.idempotency_key).toBe(idempotencyKey);
+          expect(t.retry_count).toBe(1);
+          expect(warned).toEqual([]);
+          expect((await orderRow(orderId)).s).toBe("queued");
+        });
+
+        it("an UNCONFIRMED send after the move is HELD with its id and key (the prescription may exist at the old clinic, and the administrator looks for it)", async () => {
+          const { orderId, transmissionId, idempotencyKey } = await persisted();
+          const vendor = endsAfterMove(
+            () =>
+              new UnconfirmedOutcomeError("dosespot", "transmitNewRx", "send answer lost.", "c6"),
+          );
+          const r = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+          expect(r).toMatchObject({ claimed: 1, held: 1 });
+          expect(await orderRow(orderId)).toMatchObject({ s: "in_flight" });
+          const t = await txRow(transmissionId as string);
+          expect(t.dosespot_prescription_id).toBe(OLD_CREATED);
+          expect(t.idempotency_key).toBe(idempotencyKey);
+          expect(t.last_error_class).toBe("unconfirmed_outcome");
+        });
+
+        it("a settle that starts while the move holds its lock waits for it, then sees the new clinic and drops the old id and key (the check and the requeue are one transaction)", async () => {
+          const { orderId, transmissionId, idempotencyKey } = await persisted();
+          let release: () => void = () => undefined;
+          const gate = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          let moving: Promise<unknown> = Promise.resolve();
+          const vendor = new FakeDoseSpotVendor({
+            transmit: async () => {
+              let reached: () => void = () => undefined;
+              const putReached = new Promise<void>((resolve) => {
+                reached = resolve;
+              });
+              moving = inOrg(h.handle.db, ORG_A, async (tx) => {
+                await clinicService.put(
+                  createDrizzleConfigStore(tx),
+                  actor(),
+                  { environment: "production", clinicId: "clinic-new" },
+                  1,
+                );
+                reached();
+                await gate; // the PUT's transaction stays open, holding the clear's lock, while this call's settle starts
+              });
+              await putReached;
+              setTimeout(release, 300);
+              throw retryable();
+            },
+          });
+          try {
+            const r = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+            expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, requeued: 0 });
+          } finally {
+            release(); // never leave the move's transaction open, even when an assertion above fails
+          }
+          await moving;
+          const t = await txRow(transmissionId as string);
+          expect(t.dosespot_prescription_id).toBeNull();
+          expect(t.idempotency_key).not.toBe(idempotencyKey);
+          expect(t.retry_count).toBe(0);
+          expect(warned).toEqual([{ organizationId: ORG_A, orderId, class: "registration_moved" }]);
+        });
+      });
+
+      it("an order claimed in a batch and stamped AFTER a move that the clear reached sends under what the row holds at the stamp, not the claim's old id and key", async () => {
+        const first = await queued();
+        const second = await queued();
+        await h.admin.query(
+          "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-old-created' WHERE id=$1",
+          [second.transmissionId],
+        );
+        const sent: Array<{ order: string; key: string; resumed: string | undefined }> = [];
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_o, payload, key, resume) => {
+            sent.push({
+              order: payload.medicationOrderId,
+              key,
+              resumed: resume?.createdPrescriptionId,
+            });
+            if (sent.length === 1) {
+              // the first order's call overlaps the move: the clear reaches the second order (claimed, not stamped yet) and the prescriber is
+              // re-enrolled before the second order's payload is built
+              await moveToProduction();
+              await reEnrolAtNewClinic();
+              throw retryable();
+            }
+            return { dosespotPrescriptionId: "rx-second", transmittedAt: T0.toISOString() };
+          },
+        });
+        const r = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+        expect(r).toMatchObject({ claimed: 2, transmitted: 1, deferredByOutage: 1 });
+        const rotated = (await txRow(second.transmissionId as string)).idempotency_key;
+        expect(rotated).not.toBe(second.idempotencyKey);
+        expect(rotated).toMatch(/^[0-9a-f]{64}$/);
+        expect(sent[1]).toEqual({
+          order: second.orderId,
+          key: rotated, // the key the clear left, not the one the claim read
+          resumed: undefined, // and no created id: the old clinic's was dropped
+        });
+        expect(first.orderId).toBe(sent[0]?.order);
+      });
+
+      it("a move that commits between the payload's vendor ids and the stamp starts NO call: the payload may hold the old clinic's ids, so the order waits and is built again", async () => {
+        const { orderId, transmissionId } = await queued();
+        let transactions = 0;
+        let raced = false;
+        // the order's own transactions run in a fixed order: 1 = the claim, 2 = the payload's vendor ids, 3 = the stamp. The move commits just before the 3rd.
+        const racingDb = new Proxy(h.handle.db, {
+          get(target, prop, receiver) {
+            const value = Reflect.get(target, prop, receiver);
+            if (prop !== "transaction") return value;
+            return async (...args: unknown[]) => {
+              transactions += 1;
+              if (transactions === 3 && !raced) {
+                raced = true;
+                await moveToProduction();
+                await reEnrolAtNewClinic();
+              }
+              return (value as (...a: unknown[]) => unknown).apply(target, args);
+            };
+          },
+        });
+        const first = new FakeDoseSpotVendor({
+          transmit: async () => ({
+            dosespotPrescriptionId: "rx-never",
+            transmittedAt: T0.toISOString(),
+          }),
+        });
+        const r = await runTransmitNewRxForOrg({ ...depsWithWarn(first), db: racingDb }, ORG_A);
+        expect(raced).toBe(true);
+        expect(first.calls).toEqual([]); // the old clinic's ids were never sent
+        expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, failed: 0, requeued: 0 });
+        expect(await orderRow(orderId)).toMatchObject({
+          status: "queued_for_transmission",
+          s: "queued",
+        });
+        const t = await txRow(transmissionId as string);
+        expect(t.transmission_started_at).toBeNull(); // the stamp was rolled back with the check
+        expect(t.retry_count).toBe(0);
+        expect(warned).toEqual([
+          { organizationId: ORG_A, orderId, cause: "RegistrationMovedBeforeCallError" },
+        ]);
+
+        // built again under the new registration: the NEW clinic's prescriber and patient ids go out
+        const second = new FakeDoseSpotVendor({
+          transmit: async () => ({
+            dosespotPrescriptionId: "rx-new",
+            transmittedAt: T0.toISOString(),
+          }),
+        });
+        expect(await runTransmitNewRxForOrg(deps(second), ORG_A)).toMatchObject({
+          claimed: 1,
+          transmitted: 1,
+        });
+        expect(second.calls).toHaveLength(1);
+        expect(second.calls[0]?.payload).toMatchObject({
+          dosespotPrescriberId: "810",
+          dosespotPatientId: "601",
+        });
       });
 
       it("a write that began before the move commits first and the move then clears what it wrote", async () => {

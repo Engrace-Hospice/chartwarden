@@ -4,7 +4,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, count, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { UNCONFIRMED_OUTCOME_CLASS } from "../jobs/hold";
-import { lockVendorBindingsForClear } from "./registration-target";
+import { freshIdempotencyKey, lockVendorBindingsForClear } from "./registration-target";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
@@ -150,17 +150,16 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
         .update(MOT)
         .set({
           dosespotPrescriptionId: null,
-          // the key names the order at the OLD clinic (it rides as the Idempotency-Key of the create and the send): if DoseSpot dedupes by key
-          // across clinics, the new clinic would answer with the old prescription. A fresh one is derived from the old, so it is unique and
-          // never repeats; nothing reads it back (the sign-time enqueue only runs for an order not yet queued).
-          idempotencyKey: sql`encode(sha256(convert_to(${MOT.idempotencyKey} || ':retargeted:' || gen_random_uuid()::text, 'UTF8')), 'hex')`,
+          // the key names the order at the OLD clinic: a fresh one (registration-target.ts says why)
+          idempotencyKey: freshIdempotencyKey(MOT.idempotencyKey),
         })
         .where(
           and(
             eq(MOT.organizationId, organizationId),
             isNull(MOT.transmissionSucceededAt),
             // a call that has BEGUN may be in flight (its worker alive) or about to be held (its worker dead): the created id is what the
-            // administrator looks for at the old clinic, so it stays; a worker that is alive clears its own when it sees the move
+            // administrator looks for at the old clinic, so it stays, and so does the key. A worker that is alive drops BOTH itself when its call
+            // ends and it sees the move (transmit-settle.ts), unless that call is held for a person.
             isNull(MOT.transmissionStartedAt),
             // a held order's prescription may exist at the old clinic: its id is what the administrator looks for
             sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
