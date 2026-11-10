@@ -149,15 +149,21 @@ export async function refuseUnlessNewestSubscription(
 
 /** Map only the partial unique index's resume race; every other database failure keeps its original identity. */
 export function rethrowOtherLiveRace(err: unknown, audience: ResumeAudience): never {
+  if (isOtherLiveRace(err)) throw otherLiveConflict(audience);
+  throw err;
+}
+
+/** True only for the database invariant that one organization may have one live subscription. */
+export function isOtherLiveRace(err: unknown): boolean {
   let cursor: unknown = err;
   for (let depth = 0; depth < 5 && cursor instanceof Error; depth += 1) {
     const candidate = cursor as { code?: unknown; constraint?: unknown; cause?: unknown };
     if (candidate.code === "23505" && candidate.constraint === SUBSCRIPTION_ORG_ACTIVE_UQ) {
-      throw otherLiveConflict(audience);
+      return true;
     }
     cursor = candidate.cause;
   }
-  throw err;
+  return false;
 }
 
 /**
