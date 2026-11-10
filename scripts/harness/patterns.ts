@@ -20,6 +20,7 @@
  */
 import { userInfo } from "node:os";
 
+import { type SwitchHelpers, switchesHarness } from "./harness-switch";
 import {
   BARE,
   COMMENT,
@@ -1018,57 +1019,12 @@ const echo = (token: string): string => {
 const deny = (reason: string): BashVerdict => ({ decision: "deny", reason: scrub(reason) });
 const ask = (reason: string): BashVerdict => ({ decision: "ask", reason: scrub(reason) });
 
-/**
- * Variables that disable or redirect an agent guard, its ledger, or the tree whose controls it judges. `HOME`
- * moves what `~` and `$HOME` mean, so `HOME=<the repo> sh -c 'echo x > ~/scripts/harness/p'` writes into it.
- */
-const HARNESS_SWITCH_NAMES =
-  "CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR|HOME";
-/** A shell word that assigns one: `NAME=value`. */
-const HARNESS_SWITCH = new RegExp(`^(${HARNESS_SWITCH_NAMES})=`);
-/** The name and `=` ANYWHERE in a command's text, quotes and nested strings included (`ssh h 'NAME=x cmd'`). */
-const HARNESS_SWITCH_TEXT = new RegExp(`\\b(${HARNESS_SWITCH_NAMES})=`);
-/** Programs whose own arguments assign variables (`export NAME=value`, `env NAME=value cmd`). */
-const VARIABLE_SETTER = /^(export|declare|typeset|readonly|local|env)$/;
-/** Programs that only print or search what they are handed, so a switch's name in their arguments is text. */
-const PRINTS_OR_SEARCHES = /^(rg|grep|egrep|fgrep|ag|ack|echo|printf|cat|less|head|tail|wc)$/;
-/** What a print or search may be piped into without the text going anywhere: another filter. */
-const FILTERS = /^(sort|uniq|cut|tr|nl|column)$/;
-/** `git` subcommands whose arguments are text or a message: a search, a print, a commit message. */
-const GIT_TEXT_ARGUMENTS = /^(log|grep|show|diff|commit)$/;
-
-/** Does this command only print or search, with nothing assigned in front of it and nothing written by it? */
-function printsOrSearches(p: Parsed): boolean {
-  if (p.outs.some((out) => out !== "/dev/null") || p.assigns.length > 0) return false;
-  if (PRINTS_OR_SEARCHES.test(p.prog)) return true;
-  if (p.prog === "git") return GIT_TEXT_ARGUMENTS.test(gitInvocation(p.args).sub);
-  // `sed -n '/NAME=/p'` prints; `sed -i` and a plain `sed s///` into a redirect are writers handled elsewhere.
-  return p.prog === "sed" && p.args.some((a) => clusterHas(a, "n")) && !p.args.some(isInPlace);
-}
-
-/**
- * Does one command line SWITCH the harness: assign a harness variable as a `NAME=value` prefix (also behind
- * `sudo`, `env`, `time`…) or as an argument of `export`/`declare`/`env`, or carry the name and `=` anywhere in its
- * text (inside `$( )`, `ssh h '…'`, `script -c '…'`, `watch '…'`, `xargs`, a value an assignment builds)? Only a
- * command that prints or searches, and whose output goes nowhere but a filter, may MENTION the name
- * (`rg CODEX_HOME= docs`, `echo CODEX_HOME=x`): that text sets nothing. A `NAME` with no `=` sets nothing either.
- */
-function switchesHarness(parts: readonly Segment[], parsed: readonly Parsed[]): boolean {
-  return parts.some((part, i) => {
-    const p = parsed[i] as Parsed;
-    const words = [...p.assigns, ...(VARIABLE_SETTER.test(p.prog) ? p.args : [])];
-    if (words.some((w) => HARNESS_SWITCH.test(w))) return true;
-    if (!HARNESS_SWITCH_TEXT.test(part.text)) return false;
-    // The mention is harmless only when this command and every filter after it in the pipeline just print.
-    if (!printsOrSearches(p)) return true;
-    for (let j = i + 1; parts[j]?.joiner === "|"; j++) {
-      const next = parsed[j] as Parsed;
-      if (!printsOrSearches(next) && !(FILTERS.test(next.prog) && next.outs.length === 0))
-        return true;
-    }
-    return false;
-  });
-}
+/** What the harness-switch rule needs from this file: git's subcommand, and sed's flag clusters. */
+const SWITCH_HELPERS: SwitchHelpers = {
+  gitSubcommand: (args) => gitInvocation(args).sub,
+  clusterHas: (arg, letters) => clusterHas(arg, letters),
+  isInPlace: (arg) => isInPlace(arg),
+};
 
 const MAX_NESTING = 8;
 
@@ -1149,7 +1105,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   // --- Switching the harness itself off is the human's call, however it is spelled. `CODEX_HOME` and
   // `CLAUDE_CONFIG_DIR` re-point an agent at a config directory that has no hooks; `CLAUDE_PROJECT_DIR` and
   // `CW_HARNESS_ROOT_FOR_TESTS` re-point the guard at another tree, so protected-path matching runs there.
-  if (switchesHarness(parts, parsedParts)) {
+  if (switchesHarness(parts, parsedParts, SWITCH_HELPERS)) {
     return ask(
       "That variable switches off or re-points part of the agent harness (Stop gate, ledger, guard fail-closed, its project root, an ECC hook, or the hook configuration an agent loads). A human decides.",
     );
