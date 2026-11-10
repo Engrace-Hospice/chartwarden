@@ -747,6 +747,15 @@ describe.skipIf(!DB_URL)(
             [org, subId],
           )
         ).rows.map((r) => [r.event_type, r.actor_kind, r.actor_user_id]);
+        // ... but not the outbox row the same transaction wrote: the baseline trigger skips outbox_event (migration 0004)
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='outbox_event'",
+              [org],
+            )
+          ).rows[0].n,
+        ).toBe(0);
         expect(audited).toHaveLength(2);
         expect(audited).toEqual(
           expect.arrayContaining([
