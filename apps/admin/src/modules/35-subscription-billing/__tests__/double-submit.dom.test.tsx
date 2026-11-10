@@ -333,11 +333,16 @@ describe("refund decision", () => {
     expect(denyReason().readOnly).toBe(false);
   });
 
-  it("marks the deny reason as required and says so in its hint, even when an error is showing", async () => {
+  it("does not demand the deny reason up front, since approving needs none; it becomes required once a deny is attempted", async () => {
     await open();
-    expect(denyReason().required).toBe(true);
+    // Approve is the other action: no native `required`, no `*`, and the hint says a blank reason approves.
+    expect(denyReason().required).toBe(false);
+    expect(denyReason().getAttribute("aria-required")).toBeNull();
+    expect(screen.getByText("Deny reason").textContent).not.toMatch(/\*/);
+    expect(screen.getByText("Required to deny a refund; leave it blank to approve.")).toBeTruthy();
     fireEvent.click(denyButton());
     await screen.findByText("Say why this refund is being denied.");
+    expect(denyReason().getAttribute("aria-required")).toBe("true");
     const described = (denyReason().getAttribute("aria-describedby") ?? "")
       .split(" ")
       .map((id) => document.getElementById(id)?.textContent);

@@ -200,8 +200,9 @@ export function RefundApprove(): JSX.Element {
               <TextAreaField
                 id="deny-reason"
                 label="Deny reason"
-                required
                 hint="Required to deny a refund; leave it blank to approve."
+                // Not `required` (and no `*`): Approve does not need it. It becomes required once a deny is attempted.
+                aria-required={denyAttempted || undefined}
                 // The reason is what the decision sends: it must not change while a decision is in flight or after it landed.
                 readOnly={acting !== null || done}
                 value={denyReason}
