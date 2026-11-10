@@ -7,6 +7,7 @@
 // withPlatformContext per call); the app role holds SELECT on its own org's rows and nothing else. The operator is the
 // session's membership id, never the body; the row's audit after-image carries it. Revoked rows stay as evidence.
 import { type DbClient, schema } from "@chartwarden/db";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
@@ -183,8 +184,11 @@ export function buildDrizzleNpiVerificationService(
         return entities.map((e) => deriveNpiVerification(e, rows));
       }),
 
-    verify: (actor, providerEntityId, args) =>
-      platform(async (tx) => {
+    verify: async (actor, providerEntityId, args) => {
+      // `evidence` is operator free text stored on a tenant-readable row (the app role reads its own org's verifications) and
+      // copied into the audit after-image: it is no place for a patient. Screened before any platform transaction opens.
+      assertNoPatientIdentifier("evidence", args.evidence);
+      return platform(async (tx) => {
         const entity = await entityOrThrow(tx, providerEntityId);
         if (entity.npi !== args.npi) {
           throw new ChartWardenError(
@@ -218,7 +222,8 @@ export function buildDrizzleNpiVerificationService(
         });
         await deps.onVerificationChanged(tx, changeOf(actor, entity));
         return viewOf(tx, entity);
-      }),
+      });
+    },
 
     revoke: (actor, providerEntityId) =>
       platform(async (tx) => {
