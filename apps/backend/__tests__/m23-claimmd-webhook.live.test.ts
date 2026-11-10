@@ -34,7 +34,9 @@ import {
 import { registerClaimMdWebhookRoutes } from "../src/modules/23-billing-medicare/claimmd-webhook/routes";
 import {
   type BillingEntitlementPort,
+  CLAIMMD_KEY_FAULT_GRACE_DAYS,
   CLAIMMD_PAYLOAD_RETENTION_DAYS,
+  CLAIMMD_SWEEP_BATCH,
   CLAIMMD_SWEEP_MAX_ATTEMPTS,
   type ClaimMdSweepDeps,
   runClaimMdWebhookSweep,
@@ -631,6 +633,91 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
         payload_cipher: null,
       });
       expect((await outcome("r3")).payload_sha256).toMatch(/^[0-9a-f]{64}$/); // the digest stays as evidence
+    });
+
+    // ── key faults are bounded: a wrong key id is refused early, bad rows cannot starve fresh ones, none lives for ever ──
+    const DAY = 86_400_000;
+
+    it("refuses a receipt sealed under another key id BEFORE any decrypt, then recovers under the right id", async () => {
+      await store([enrollFor("m1", NPI_A)]);
+      // The SAME key bytes under a different id: if the sweep tried to decrypt it would succeed, so only the key-id check refuses it.
+      const rotated = createWebhookPayloadCipher(Buffer.alloc(32, 5), "claimmd-webhook-v2");
+      const r = await sweep(undefined, T0, { cipher: rotated });
+      expect(r.outcomes).toEqual({ payload_key_mismatch: 1 });
+      expect(await outcome("m1")).toMatchObject({
+        processing_outcome: null,
+        attempt_count: 0,
+        last_error_class: "payload_key_mismatch",
+      });
+      expect((await sweep()).outcomes).toEqual({ published: 1 });
+    });
+
+    it("does not let a backlog of failed receipts starve a fresh one (fresh rows sort first)", async () => {
+      await admin.query(
+        `INSERT INTO claimmd_webhook_event (usage, acct_number, event_id, event_type, received_at, signature_verified_at,
+           payload_sha256, payload_cipher, payload_key_ref, last_error_class)
+         SELECT 'test', '99999', 'bad-' || g, 'enroll', $1::timestamptz - interval '1 hour', $1::timestamptz - interval '1 hour',
+           repeat('0', 64), 'v1.x.y.z', 'claimmd-webhook-v1', 'payload_undecryptable'
+         FROM generate_series(1, ${CLAIMMD_SWEEP_BATCH + 5}) g`,
+        [T0.toISOString()],
+      );
+      await store([enrollFor("fresh1", NPI_A)]);
+      const r = await sweep();
+      expect(r.seen).toBe(CLAIMMD_SWEEP_BATCH);
+      expect(r.outcomes.published).toBe(1);
+      expect(await outcome("fresh1")).toMatchObject({ processing_outcome: "published" });
+    });
+
+    it("makes a receipt that stays unreadable past the grace window terminal `failed` (alerted once, no attempt spent)", async () => {
+      await store([enrollFor("g1", NPI_A)]);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      const alerts: Array<Record<string, unknown>> = [];
+      const onFailed: ClaimMdSweepDeps["onFailed"] = (detail) => alerts.push({ ...detail });
+      const grace = new Date(T0.getTime() + CLAIMMD_KEY_FAULT_GRACE_DAYS * DAY);
+      const justBefore = new Date(grace.getTime() - 1);
+      expect((await sweep(undefined, justBefore, { cipher: wrongKey, onFailed })).outcomes).toEqual(
+        { payload_undecryptable: 1 },
+      );
+      expect((await sweep(undefined, grace, { cipher: wrongKey, onFailed })).outcomes).toEqual({
+        failed: 1,
+      });
+      expect(await outcome("g1")).toMatchObject({
+        processing_outcome: "failed",
+        attempt_count: 0,
+        last_error_class: "payload_undecryptable",
+      });
+      expect((await outcome("g1")).processed_at).not.toBeNull();
+      expect(alerts).toEqual([
+        { usage: "test", eventId: "g1", attempts: 0, errorClass: "payload_undecryptable" },
+      ]);
+      // Terminal: the next sweep no longer selects it.
+      expect((await sweep(undefined, grace, { cipher: wrongKey })).seen).toBe(0);
+    });
+
+    it("clears the cipher of ANY receipt older than the retention window from received_at, settled or not", async () => {
+      const old = new Date(T0.getTime() - (CLAIMMD_PAYLOAD_RETENTION_DAYS + 1) * DAY);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      // u2 settled, but its processed_at is recent while received_at is old; u4 never settles (unreadable).
+      await store([enrollFor("u2", NPI_A)], old);
+      await sweep(undefined, old);
+      await store([enrollFor("u4", NPI_A)], old);
+      await sweep(undefined, old, { cipher: wrongKey });
+      await admin.query(
+        "UPDATE claimmd_webhook_event SET processed_at = $1 WHERE event_id = 'u2'",
+        [T0.toISOString()],
+      );
+      const alerts: Array<Record<string, unknown>> = [];
+      const onFailed: ClaimMdSweepDeps["onFailed"] = (detail) => alerts.push({ ...detail });
+      await sweep(undefined, T0, { onFailed });
+      expect(await outcome("u2")).toMatchObject({ payload_cipher: null, payload_key_ref: null });
+      expect((await outcome("u2")).payload_cleared_at).not.toBeNull();
+      expect(await outcome("u4")).toMatchObject({
+        processing_outcome: "failed",
+        payload_cipher: null,
+      });
+      expect(alerts).toEqual([
+        { usage: "test", eventId: "u4", attempts: 0, errorClass: "payload_undecryptable" },
+      ]);
     });
   });
 

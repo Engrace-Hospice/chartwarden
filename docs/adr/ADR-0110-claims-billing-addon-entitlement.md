@@ -3,6 +3,7 @@
 - **Status:** **Proposed** (2026-11-05)
 - **Date:** 2026-11-05
 - **Related:** Module 35 (subscription billing; amends its D21), Module 5 (patient), Modules 23 / 24 / 25 / 41 (Medicare, Medicaid, remittance, commercial billing), ADR-0025 (M34↔M35 seams), ADR-0053 (clearinghouse transport), ADR-0100 (M41).
+- **Note on migration headers:** the headers of migrations 1320, 1321 and 1325 cite "ADR-0108" for the claims-billing add-on. Those references mean this ADR (ADR-0110); ADR-0108 is message group tags. The applied migrations are not edited to correct them.
 
 ## Context
 

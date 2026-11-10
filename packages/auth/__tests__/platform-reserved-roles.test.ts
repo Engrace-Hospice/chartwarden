@@ -6,8 +6,10 @@
  * These tests pin the single rule the enrichment reader, the role-create route and the DB backstop share.
  */
 import {
+  PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
   PLATFORM_GRANTABLE_ROLE_KEYS,
   PLATFORM_OPS_ROLE_KEYS,
+  ROLE_TEMPLATES,
   isPlatformGrantableRoleKey,
   isReservedPlatformRoleKey,
   isTenantRoleReserved,
@@ -71,6 +73,22 @@ describe("platform-role CLI allowlist", () => {
     );
     for (const key of PLATFORM_GRANTABLE_ROLE_KEYS)
       expect(isReservedPlatformRoleKey(key)).toBe(true);
+  });
+
+  it("covers every platform-owned role template (a key list built from it never misses a holder)", () => {
+    // `m34_platform_role_holders` selects exactly the keys the caller names (migration 1333 dropped the `platform_%` prefix floor
+    // that 0740 / 1097 ANDed onto them), so the list callers use for "any platform staff" must contain every platform-owned role.
+    // `platform_alert_audience` is the derived tenant binding, deliberately never a source of operators.
+    const platformOwned = ROLE_TEMPLATES.filter((t) =>
+      isTenantRoleReserved({ key: t.key, category: t.category }),
+    )
+      .map((t) => t.key)
+      .filter((key) => key !== PLATFORM_ALERT_AUDIENCE_ROLE_KEY);
+    expect(platformOwned.length).toBeGreaterThan(0);
+    for (const key of platformOwned) expect(isPlatformGrantableRoleKey(key)).toBe(true);
+    expect(PLATFORM_GRANTABLE_ROLE_KEYS as readonly string[]).not.toContain(
+      PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
+    );
   });
 
   it("refuses unknown and tenant keys", () => {

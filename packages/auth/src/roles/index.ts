@@ -74,6 +74,7 @@ export {
   isSystemManagedRoleKey,
 } from "./system-managed";
 export {
+  ADMINISTRATOR_EXCLUDED_KEYS,
   FULL_CATALOG_ROLE_KEYS,
   type MirrorPermission,
   PLATFORM_PERMISSION_CATEGORY,

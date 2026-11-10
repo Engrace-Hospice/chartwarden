@@ -10,6 +10,13 @@ import {
 import type { ClaimMdPlatformRunner, ClaimMdUsage } from "./receipt-store";
 
 export const CLAIMMD_WEBHOOK_PAYLOAD_KEY_ENV = "CLAIMMD_WEBHOOK_PAYLOAD_KEY";
+/**
+ * The id stamped on every sealed receipt (`payload_key_ref`); the sweep opens only rows sealed under THIS id and refuses any other
+ * before decrypting (outcome `payload_key_mismatch`, terminal `failed` after CLAIMMD_KEY_FAULT_GRACE_DAYS). The process holds one
+ * key, so to rotate, change this id and CLAIMMD_WEBHOOK_PAYLOAD_KEY together, and only once no receipt is unsettled (processed_at
+ * NULL with a cipher): rows sealed under the old id are never decrypted again. Settled rows lose their cipher at 90 days anyway.
+ * (CW-AC-05B)
+ */
 export const CLAIMMD_WEBHOOK_KEY_ID = "claimmd-webhook-v1";
 
 export interface ClaimMdWebhookConfig {

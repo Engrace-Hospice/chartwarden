@@ -11,7 +11,11 @@
 // An unknown NPI or claim is terminal `unroutable_*` (ids-only log). Once the tenant is known the Billing add-on is
 // checked through BillingEntitlementPort: not entitled → `awaiting_entitlement` (kept encrypted, re-checked hourly,
 // processed when the add-on is granted, `expired_not_entitled` after the retention window); a port error leaves the row
-// as it was for the next sweep, and so does a payload the sweep cannot decrypt (a key fault; one ops alert per sweep).
+// as it was for the next sweep, and so does a payload the sweep cannot decrypt (a key fault; one ops alert per sweep),
+// but not for ever: a row stored under another key id is refused before any decrypt (`payload_key_mismatch`), rows that
+// already failed sort after fresh ones so they cannot starve new receipts, and a key-fault row still unreadable
+// CLAIMMD_KEY_FAULT_GRACE_DAYS after receipt goes terminal `failed` (ops alert). Retention clears EVERY cipher
+// CLAIMMD_PAYLOAD_RETENTION_DAYS after `received_at`, processed or not.
 // Entitled → one PHI-free `m23.clearinghouse.*_reported` event in the SAME transaction
 // that marks the row `published`, so a row is published at most once.
 //
@@ -74,8 +78,11 @@ export interface ClaimMdSweepDeps {
 export const CLAIMMD_WEBHOOK_SWEEP_QUEUE = "claimmd-webhook-sweep";
 export const CLAIMMD_SWEEP_BATCH = 100;
 export const CLAIMMD_SWEEP_MAX_ATTEMPTS = 5;
-/** Days a settled receipt keeps its cipher, and an entitlement-blocked receipt waits, before it is cleared. */
+/** Days after `received_at` that ANY receipt (settled or not) keeps its cipher, and an entitlement-blocked one waits, before it is cleared. */
 export const CLAIMMD_PAYLOAD_RETENTION_DAYS = 90;
+/** Days after `received_at` a receipt that stays undecryptable / under another key id is retried before it goes terminal `failed`. */
+export const CLAIMMD_KEY_FAULT_GRACE_DAYS = 7;
+const DAY_MS = 86_400_000;
 /** How often an `awaiting_entitlement` row is re-checked against the Billing add-on. */
 export const CLAIMMD_ENTITLEMENT_RECHECK_MINUTES = 60;
 
@@ -127,16 +134,25 @@ interface PendingRow {
   readonly event_id: string;
   readonly event_type: string | null;
   readonly payload_cipher: string;
+  readonly payload_key_ref: string | null;
   readonly payload_sha256: string;
   readonly received_at: Date;
 }
+
+type KeyFault = {
+  readonly outcome: "payload_undecryptable" | "payload_key_mismatch";
+  readonly errorClass: string;
+};
 
 type Settlement =
   | { readonly outcome: "unsupported_type" | "unroutable_npi" | "unroutable_claim" | "malformed" }
   | { readonly outcome: "awaiting_entitlement"; readonly org: string; readonly pe: string }
   | { readonly outcome: "published"; readonly org: string; readonly pe: string }
   | { readonly outcome: "entitlement_unavailable"; readonly org: string; readonly pe: string }
-  | { readonly outcome: "payload_undecryptable"; readonly errorClass: string };
+  | KeyFault;
+
+const isKeyFault = (s: Settlement): s is KeyFault =>
+  s.outcome === "payload_undecryptable" || s.outcome === "payload_key_mismatch";
 
 interface Route {
   readonly org: string;
@@ -215,6 +231,11 @@ async function routeOf(
 }
 
 async function settle(deps: ClaimMdSweepDeps, tx: DbClient, row: PendingRow): Promise<Settlement> {
+  // Sealed under another key id than the one this process holds: refuse before any decrypt (it cannot succeed, and a
+  // rotated key must not be tried against old rows). Distinct from a cipher that fails to open under the right id.
+  if (row.payload_key_ref !== deps.cipher.keyId) {
+    return { outcome: "payload_key_mismatch", errorClass: "PayloadKeyMismatch" };
+  }
   let element: Json;
   try {
     const plaintext = deps.cipher.decrypt(row.payload_cipher);
@@ -250,29 +271,49 @@ async function settle(deps: ClaimMdSweepDeps, tx: DbClient, row: PendingRow): Pr
 const keyOf = (row: PendingRow) =>
   sql`usage = ${row.usage} AND acct_number = ${row.acct_number} AND event_id = ${row.event_id}`;
 
-async function record(tx: DbClient, row: PendingRow, s: Settlement, now: Date): Promise<void> {
+/**
+ * A key fault spends no attempt (a wrong key must not fail every pending receipt in five sweeps), but it is not retried
+ * for ever either: once the row is CLAIMMD_KEY_FAULT_GRACE_DAYS old it goes terminal `failed`. Returns the outcome the
+ * sweep reports: the fault itself while it is still being retried, `failed` once it is terminal.
+ */
+async function recordKeyFault(
+  tx: DbClient,
+  row: PendingRow,
+  fault: KeyFault,
+  now: Date,
+): Promise<string> {
+  const aged = now.getTime() - row.received_at.getTime() >= CLAIMMD_KEY_FAULT_GRACE_DAYS * DAY_MS;
+  if (!aged) {
+    await tx.execute(
+      sql`UPDATE claimmd_webhook_event SET last_error_class = ${fault.outcome} WHERE ${keyOf(row)}`,
+    );
+    return fault.outcome;
+  }
+  await tx.execute(sql`UPDATE claimmd_webhook_event SET processing_outcome = 'failed', processed_at = ${now},
+    last_error_class = ${fault.outcome} WHERE ${keyOf(row)}`);
+  return "failed";
+}
+
+/** Writes the settlement; resolves the outcome the sweep reports for the row. */
+async function record(tx: DbClient, row: PendingRow, s: Settlement, now: Date): Promise<string> {
   const org = "org" in s ? s.org : null;
   const pe = "pe" in s ? s.pe : null;
-  if (s.outcome === "payload_undecryptable") {
-    await tx.execute(
-      sql`UPDATE claimmd_webhook_event SET last_error_class = 'payload_undecryptable' WHERE ${keyOf(row)}`,
-    );
-    return;
-  }
+  if (isKeyFault(s)) return recordKeyFault(tx, row, s, now);
   if (s.outcome === "entitlement_unavailable") {
     await tx.execute(sql`UPDATE claimmd_webhook_event SET derived_organization_id = ${org},
       derived_provider_entity_id = ${pe}, last_error_class = 'entitlement_unavailable' WHERE ${keyOf(row)}`);
-    return;
+    return s.outcome;
   }
   if (s.outcome === "awaiting_entitlement") {
     await tx.execute(sql`UPDATE claimmd_webhook_event SET derived_organization_id = ${org},
       derived_provider_entity_id = ${pe}, processing_outcome = 'awaiting_entitlement', entitlement_checked_at = ${now},
       last_error_class = NULL WHERE ${keyOf(row)}`);
-    return;
+    return s.outcome;
   }
   await tx.execute(sql`UPDATE claimmd_webhook_event SET derived_organization_id = ${org},
     derived_provider_entity_id = ${pe}, processing_outcome = ${s.outcome}, processed_at = ${now},
     attempt_count = attempt_count + 1, last_error_class = NULL WHERE ${keyOf(row)}`);
+  return s.outcome;
 }
 
 /** Count a failed attempt. Returns the error class when this attempt made the row terminal `failed`, else null. */
@@ -295,16 +336,40 @@ async function recordFailure(
   return res.rows[0]?.processing_outcome === "failed" ? errorClass : null;
 }
 
-/** Clear expired ciphers (terminal rows) and close out entitlement waits past the retention window. */
-async function applyRetention(tx: DbClient, now: Date): Promise<void> {
-  const cutoff = new Date(now.getTime() - CLAIMMD_PAYLOAD_RETENTION_DAYS * 86_400_000);
+/**
+ * Past the retention window (CLAIMMD_PAYLOAD_RETENTION_DAYS after `received_at`), for EVERY receipt, processed or not:
+ * close out an entitlement wait, fail a row that never settled (a key fault or an entitlement read that never
+ * recovered; alerted, because Claim.MD will not resend), then clear the cipher. The cipher is never kept longer for
+ * being unprocessed: a stuck row must not hold PHI-bearing ciphertext indefinitely.
+ */
+async function applyRetention(deps: ClaimMdSweepDeps, tx: DbClient, now: Date): Promise<void> {
+  const cutoff = new Date(now.getTime() - CLAIMMD_PAYLOAD_RETENTION_DAYS * DAY_MS);
   await tx.execute(sql`
     UPDATE claimmd_webhook_event SET processing_outcome = 'expired_not_entitled', processed_at = ${now}
     WHERE processing_outcome = 'awaiting_entitlement' AND processed_at IS NULL AND received_at < ${cutoff}`);
+  const unsettled = (await tx.execute(sql`
+    UPDATE claimmd_webhook_event SET processing_outcome = 'failed', processed_at = ${now}
+    WHERE processing_outcome IS NULL AND processed_at IS NULL AND received_at < ${cutoff}
+    RETURNING usage, event_id, attempt_count, last_error_class`)) as unknown as {
+    rows: {
+      usage: string;
+      event_id: string;
+      attempt_count: number;
+      last_error_class: string | null;
+    }[];
+  };
+  for (const r of unsettled.rows) {
+    deps.onFailed?.({
+      usage: r.usage,
+      eventId: r.event_id,
+      attempts: r.attempt_count,
+      errorClass: r.last_error_class ?? "unsettled",
+    });
+  }
+  // ponytail: no index on received_at for this scan; the set that still holds a cipher is at most the retention window.
   await tx.execute(sql`
     UPDATE claimmd_webhook_event SET payload_cipher = NULL, payload_key_ref = NULL, payload_cleared_at = ${now}
-    WHERE payload_cipher IS NOT NULL AND processed_at IS NOT NULL
-      AND (processed_at < ${cutoff} OR processing_outcome = 'expired_not_entitled')`);
+    WHERE payload_cipher IS NOT NULL AND received_at < ${cutoff}`);
 }
 
 export interface ClaimMdSweepResult {
@@ -317,15 +382,17 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
   const now = (deps.now ?? (() => new Date()))();
   const recheckBefore = new Date(now.getTime() - CLAIMMD_ENTITLEMENT_RECHECK_MINUTES * 60_000);
   return deps.runner(async (tx) => {
-    await applyRetention(tx, now);
+    await applyRetention(deps, tx, now);
+    // Fresh receipts first: a row that already failed (a key fault, an entitlement read error) sorts after every row that
+    // has not, so a backlog of unreadable receipts can never fill the batch and starve new ones.
     const pending = (
       (await tx.execute(sql`
-        SELECT usage, acct_number, event_id, event_type, payload_cipher, payload_sha256, received_at
+        SELECT usage, acct_number, event_id, event_type, payload_cipher, payload_key_ref, payload_sha256, received_at
         FROM claimmd_webhook_event
         WHERE processed_at IS NULL AND payload_cipher IS NOT NULL
           AND (processing_outcome IS NULL
             OR (processing_outcome = 'awaiting_entitlement' AND entitlement_checked_at < ${recheckBefore}))
-        ORDER BY received_at
+        ORDER BY (last_error_class IS NOT NULL), received_at
         LIMIT ${CLAIMMD_SWEEP_BATCH}
         FOR UPDATE SKIP LOCKED`)) as unknown as { rows: PendingRow[] }
     ).rows.map((r) => ({ ...r, received_at: new Date(r.received_at) }));
@@ -335,13 +402,24 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
       let outcome: string;
       try {
         // A savepoint per row: one row's failure (a bad publish, a constraint) rolls back only that row's work.
-        const s = await tx.transaction(async (sp) => {
-          const settled = await settle(deps, sp as unknown as DbClient, row);
-          await record(sp as unknown as DbClient, row, settled, now);
-          return settled;
+        const { settled, reported } = await tx.transaction(async (sp) => {
+          const settledRow = await settle(deps, sp as unknown as DbClient, row);
+          const final = await record(sp as unknown as DbClient, row, settledRow, now);
+          return { settled: settledRow, reported: final };
         });
-        outcome = s.outcome;
-        if (s.outcome === "payload_undecryptable") undecryptableClass = s.errorClass;
+        outcome = reported;
+        if (isKeyFault(settled)) {
+          undecryptableClass = settled.errorClass;
+          // Out of grace: terminal `failed`. No attempt was spent on it, and Claim.MD will not resend: alert it by id.
+          if (reported === "failed") {
+            deps.onFailed?.({
+              usage: row.usage,
+              eventId: row.event_id,
+              attempts: 0,
+              errorClass: settled.outcome,
+            });
+          }
+        }
       } catch (err) {
         const failedClass = await recordFailure(tx, row, err, now);
         outcome = failedClass === null ? "retry" : "failed";
@@ -359,7 +437,8 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
         deps.log?.("claimmd.webhook.settled", { usage: row.usage, eventId: row.event_id, outcome });
       }
     }
-    const undecryptable = outcomes.payload_undecryptable ?? 0;
+    const undecryptable =
+      (outcomes.payload_undecryptable ?? 0) + (outcomes.payload_key_mismatch ?? 0);
     if (undecryptable > 0) {
       deps.onUndecryptable?.({ count: undecryptable, errorClass: undecryptableClass });
     }
