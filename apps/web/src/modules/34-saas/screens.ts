@@ -12,7 +12,9 @@ import { lazy } from "react";
 import type { ComponentType } from "react";
 const AgencySetup = lazy(() => import("./agency-setup").then((m) => ({ default: m.AgencySetup })));
 const Account = lazy(() => import("./account").then((m) => ({ default: m.Account })));
-const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
+const OnboardingWizard = lazy(() =>
+  import("./wizard/wizard-screen").then((m) => ({ default: m.OnboardingWizard })),
+);
 const SupportGrants = lazy(() =>
   import("./support-grants").then((m) => ({ default: m.SupportGrants })),
 );
@@ -38,13 +40,23 @@ export const saasScreens: ScreenRegistryModule<ComponentType> = {
       requiredPermission: "org.manage",
       screen: AgencySetup,
     },
+    // The tenant's onboarding wizard. The compliance officer holds only `onboarding.read_own` and `go_live.attest` of the onboarding keys,
+    // so the descriptor key is the read; each action inside checks its own key (the server stays the authority).
     {
       id: "saas.onboarding",
       path: "/admin/onboarding",
       title: "Onboarding",
       navGroup: "Admin",
       requiredPermission: "onboarding.read_own",
-      screen: Onboarding,
+      screen: OnboardingWizard,
+    },
+    {
+      id: "saas.onboarding-step",
+      path: "/admin/onboarding/:stepKey",
+      title: "Onboarding step",
+      navGroup: "Admin",
+      requiredPermission: "onboarding.read_own",
+      screen: OnboardingWizard,
     },
     {
       id: "saas.support-grants",

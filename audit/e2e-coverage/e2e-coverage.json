@@ -1631,12 +1631,17 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 118,
+  "dynamicWebScreens": 119,
   "dynamicAxeReachedCount": 28,
   "dynamicExcluded": [
     {
       "id": "medicaid.surveyor-read",
       "path": "/admin/medicaid-billing-audit/:claimId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "saas.onboarding-step",
+      "path": "/admin/onboarding/:stepKey",
       "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
     },
     {

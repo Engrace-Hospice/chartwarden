@@ -5,7 +5,11 @@
 // loses the draft, which is the intended fail-safe). Only a 403 carrying `STEP_UP_REQUIRED` qualifies: any other
 // 403 is a permanent "not allowed", and redirecting it into a ceremony would be a loop with no exit.
 // The refusal test and the path are the shared kit's (also used by apps/admin), so both apps agree.
-import { isStepUpRequired, stepUpPath } from "@chartwarden/ui";
+import {
+  discardStepUpDrafts as discardKitStepUpDrafts,
+  isStepUpRequired,
+  stepUpPath,
+} from "@chartwarden/ui";
 
 /** `/step-up?returnTo=<path>` when `error` is the step-up refusal, else null. */
 export function stepUpRedirectFor(error: unknown, returnTo: string): string | null {
@@ -148,5 +152,7 @@ export function discardStepUpDrafts(owner: StepUpDraftOwner, action: string): vo
 /** Forget every stashed step-up draft and the return marker (sign-out, screen lock). */
 export function clearAllStepUpDrafts(): void {
   drafts.clear();
+  // The shared kit keeps its own stores (a memory map and a sessionStorage entry) for the forms built on it: forget those too.
+  discardKitStepUpDrafts();
   clearStepUpReturn();
 }

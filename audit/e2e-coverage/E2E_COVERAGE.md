@@ -219,11 +219,12 @@
 
 ## Dynamic web screens (#852)
 
-28/118 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
+28/119 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
 | `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | medicaid.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `saas.onboarding-step` | `/admin/onboarding/:stepKey` | onboarding.read_own | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `hope.admission-overview` | `/admissions/:admissionId/hope` | hope.timepoint.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `hope.sfv-capture` | `/admissions/:admissionId/hope/sfv/:sfvId` | hope.timepoint.write | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `hope.timepoint-capture` | `/admissions/:admissionId/hope/timepoints/:kind` | hope.timepoint.write | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |

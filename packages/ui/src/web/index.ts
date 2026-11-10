@@ -110,6 +110,51 @@ export { StepRail } from "./components/step-rail";
 export type { StepRailItem, StepRailProps, StepRailState } from "./components/step-rail";
 export { FactList } from "./components/fact-list";
 export type { Fact, FactListProps, FactState } from "./components/fact-list";
+// Hoisted from the admin onboarding wizard so the tenant wizard shares them: one read (`useLoad`), the lane-neutral rail/progress
+// helpers, and step 7's clearinghouse model + choice form (the view schema is the same on both lanes).
+export { useLoad } from "./hooks/use-load";
+export type { Loaded } from "./hooks/use-load";
+export {
+  OUTSIDE_SKIP_RATIONALE,
+  defaultStepKey,
+  gatingProgress,
+  isGatingStep,
+  isSettledStep,
+  isSystemSkip,
+  railItemsOf,
+} from "./onboarding-wizard";
+export type { WizardOwnerKey, WizardRailStep, WizardRailView } from "./onboarding-wizard";
+export {
+  MODE_LABEL,
+  VENDOR_LABEL,
+  clearinghouseActions,
+  clearinghouseFacts,
+  isTransmitting,
+  needsSecret,
+} from "./clearinghouse/clearinghouse-model";
+export type {
+  ClearinghouseActions,
+  ClearinghouseMode,
+  ClearinghouseVendor,
+  ClearinghouseView,
+} from "./clearinghouse/clearinghouse-model";
+export {
+  BLANK_CHOICE,
+  ChoiceFormCard,
+  SECRET_MAX,
+  SECRET_MIN,
+  TRANSMITTING_VENDORS,
+  VENDORS,
+  consequenceOf,
+  isLeavingOutside,
+  validateChoice,
+} from "./clearinghouse/clearinghouse-choice-form";
+export type {
+  BillingModePick,
+  ChoiceContext,
+  ChoiceErrors,
+  ChoiceForm,
+} from "./clearinghouse/clearinghouse-choice-form";
 export { ReasonDialog } from "./components/reason-dialog";
 export type { ReasonDialogProps, ReasonDialogRecordLine } from "./components/reason-dialog";
 export { WorkflowStepper } from "./components/workflow-stepper";
