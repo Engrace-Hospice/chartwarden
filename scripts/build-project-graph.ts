@@ -2,6 +2,7 @@
 // project state for the lifetime of one process; on the CI runner the full graph was OOM-killed.
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { resolveBoundedNodeOptions } from "./node-heap-policy";
 
 const root = JSON.parse(readFileSync(new URL("../tsconfig.json", import.meta.url), "utf8")) as {
   references: Array<{ path: string }>;
@@ -30,7 +31,7 @@ for (const [index, batch] of batches.entries()) {
     stdio: "inherit",
     env: {
       ...process.env,
-      NODE_OPTIONS: process.env.BUILD_NODE_OPTIONS ?? "--max-old-space-size=4096",
+      NODE_OPTIONS: resolveBoundedNodeOptions(process.env, "BUILD_NODE_OPTIONS"),
     },
   });
   if (result.error) throw result.error;
