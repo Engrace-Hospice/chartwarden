@@ -20,6 +20,17 @@
  */
 import { userInfo } from "node:os";
 
+import {
+  BARE,
+  COMMENT,
+  CONT,
+  type Segment,
+  type SplitCommand,
+  substitutions as lexSubstitutions,
+  scanShell,
+  splitCommand,
+} from "./shell-lex";
+
 export interface SyntheticRegistry {
   readonly ssn: ReadonlySet<string>;
   readonly mbi: ReadonlySet<string>;
@@ -329,91 +340,14 @@ export interface BashContext {
   readonly judgeTimeLimitMs?: number;
 }
 
-/** One simple command, and the operator (`&&`, `||`, `;`, a newline, `|`, `&`) that joined it to the one before. */
-interface Segment {
-  readonly text: string;
-  readonly joiner: string;
-}
-
-interface SplitCommand {
-  readonly parts: Segment[];
-  /**
-   * True when the line holds only `;`, `&&`, `||` and newlines between commands: no `( … )` group, pipe or
-   * `&`. Then every command runs in the shell itself, and `&&` really means "the one before it succeeded".
-   * Otherwise a `cd` may have run in a subshell or a pipeline and never applied to what follows.
-   */
-  readonly sequential: boolean;
-}
-
-/** Split a command line into simple commands on `;`, `&&`, `||`, `|` and newlines, outside quotes. */
-function splitSegments(cmd: string): SplitCommand {
-  const raw: Segment[] = [];
-  let cur = "";
-  let joiner = "";
-  let sequential = true;
-  let quote: string | null = null;
-  const cut = (next: string): void => {
-    raw.push({ text: cur, joiner });
-    cur = "";
-    joiner = next;
-  };
-  for (let i = 0; i < cmd.length; i++) {
-    const ch = cmd[i] as string;
-    if (quote) {
-      if (ch === quote) quote = null;
-      cur += ch;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      cur += ch;
-      continue;
-    }
-    const two = cmd.slice(i, i + 2);
-    if (two === "&&" || two === "||") {
-      cut(two);
-      i++;
-      continue;
-    }
-    if (ch === "(" || ch === ")") sequential = false;
-    // `>|` (clobber) and `&>` / `>&` / `2>&1` (redirections) are not separators; a lone `&` is.
-    const prev = cmd[i - 1] ?? "";
-    const pipe = ch === "|" && prev !== ">";
-    const background = ch === "&" && cmd[i + 1] !== ">" && !/[<>&|]/.test(prev);
-    if (ch === ";" || ch === "\n" || pipe || background) {
-      if (pipe || background) sequential = false;
-      cut(ch);
-      continue;
-    }
-    cur += ch;
-  }
-  cut("");
-  // A subshell group's parentheses are not part of the command; they only end the line's `sequential` run.
-  const parts = raw
-    .map((p) => ({ text: ungroup(p.text), joiner: p.joiner }))
-    .filter((p) => p.text !== "");
-  return { parts, sequential };
-}
+/**
+ * Split a command line into simple commands on `;`, `&&`, `||`, `|`, `&` and newlines, outside quotes,
+ * escapes, comments, substitutions and heredoc bodies. The lexer is `shell-lex.ts`; a heredoc body is data
+ * unless what it feeds runs it as a script (a shell, `eval`, `source`, or a pipeline into one).
+ */
+const splitSegments = (cmd: string): SplitCommand => splitCommand(cmd, readsShellScript);
 
 const segments = (cmd: string): string[] => splitSegments(cmd).parts.map((p) => p.text);
-
-const count = (text: string, ch: string): number => text.split(ch).length - 1;
-
-/** Drop a leading `(`/`{`, and trailing `)`/`}` that close a group opened elsewhere (not `$(date)` or `{a,b}`). */
-function ungroup(segment: string): string {
-  const t = segment.replace(/^[\s({]+/, "");
-  let paren = count(t, ")") - count(t, "(");
-  let brace = count(t, "}") - count(t, "{");
-  let end = t.length;
-  for (;;) {
-    while (end > 0 && /\s/.test(t[end - 1] as string)) end--;
-    const last = t[end - 1];
-    if (last === ")" && paren > 0) paren--;
-    else if (last === "}" && brace > 0) brace--;
-    else return t.slice(0, end);
-    end--;
-  }
-}
 
 /**
  * The text inside every `$( … )`, `<( … )`, `>( … )` and backtick pair that the shell would actually run
@@ -421,34 +355,7 @@ function ungroup(segment: string): string {
  * the `cat`.
  */
 function substitutions(cmd: string): string[] {
-  const out: string[] = [];
-  let single = false;
-  for (let i = 0; i < cmd.length && out.length <= MAX_SUBSTITUTIONS; i++) {
-    const ch = cmd[i] as string;
-    if (ch === "'") single = !single;
-    if (single) continue;
-    if (ch === "`") {
-      const end = cmd.indexOf("`", i + 1);
-      if (end < 0) break;
-      out.push(cmd.slice(i + 1, end));
-      i = end;
-      continue;
-    }
-    // `$( … )`, and the process substitutions `<( … )` / `>( … )`, which also run their text as a command.
-    if ((ch === "$" || ch === "<" || ch === ">") && cmd[i + 1] === "(" && cmd[i + 2] !== "(") {
-      let depth = 1;
-      let j = i + 2;
-      for (; j < cmd.length && depth > 0; j++) {
-        if (cmd[j] === "(") depth++;
-        else if (cmd[j] === ")") depth--;
-      }
-      out.push(cmd.slice(i + 2, j - 1));
-      // Only the outermost: judging it finds the ones inside it, with the directory its own `cd`s leave. Listing
-      // every level would judge a text nested N deep N times, each time nearly the whole command.
-      i = j - 1;
-    }
-  }
-  return out;
+  return lexSubstitutions(cmd, MAX_SUBSTITUTIONS + 1);
 }
 
 /** `bash -c "…"`, `sh -c '…'`, `eval …`: the quoted string is itself a command line. */
@@ -676,25 +583,13 @@ interface Redirects {
 const REDIRECT_OPERATOR = /(?:>>|>\||>&|<<<|<<-?|<&|<>|>|<)/y;
 const FD_DUP = /\d+-?|-/y;
 
-/** Read one shell word starting at `from` (quotes and `$( )` respected); returns its raw text and end. */
-function readWord(text: string, from: number): { word: string; end: number } {
+/** Read one shell word starting at `from` (the lexer's mask says what is quoted); returns its raw text and end. */
+function readWord(text: string, from: number, kind: Uint8Array): { word: string; end: number } {
   let i = from;
   while (i < text.length && /\s/.test(text[i] as string)) i++;
   const start = i;
-  let quote: string | null = null;
-  let depth = 0;
   for (; i < text.length; i++) {
-    const ch = text[i] as string;
-    if (quote) {
-      if (ch === quote) quote = null;
-    } else if (depth > 0) {
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-    } else if (ch === '"' || ch === "'") quote = ch;
-    else if (ch === "$" && text[i + 1] === "(") {
-      depth = 1;
-      i++;
-    } else if (/[\s;|&<>()]/.test(ch)) break;
+    if (kind[i] === BARE && /[\s;|&<>()]/.test(text[i] as string)) break;
   }
   return { word: text.slice(start, i), end: i };
 }
@@ -710,54 +605,38 @@ function fdPrefixLength(seg: string, at: number): number {
 
 function splitRedirects(seg: string): Redirects {
   if (!/[<>]/.test(seg)) return { rest: seg, outs: [], ins: [], docs: [] };
+  // The segment has its heredoc body taken out already, so `<<` reads as an ordinary operator here.
+  const { kind } = scanShell(seg, false);
   let rest = "";
   const outs: string[] = [];
   const ins: string[] = [];
   const docs: string[] = [];
-  let quote: string | null = null;
-  let depth = 0;
-  let tick = false;
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i] as string;
-    if (quote || tick || depth > 0) {
+    const k = kind[i];
+    if (k === COMMENT || k === CONT) continue;
+    // Only a bare `<` or `>` is a redirection: a quoted, escaped or substituted one is part of a word.
+    if (k !== BARE || (ch !== ">" && ch !== "<")) {
       rest += ch;
-      if (quote) quote = ch === quote ? null : quote;
-      else if (tick) tick = ch !== "`";
-      else if (ch === "(") depth++;
-      else if (ch === ")") depth--;
       continue;
     }
-    if (ch === "\\" && i + 1 < seg.length) {
-      rest += ch + seg[++i];
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-      rest += ch;
-    } else if (ch === "`") {
-      tick = true;
-      rest += ch;
-    } else if (ch === "$" && seg[i + 1] === "(") {
-      depth = 1;
-      rest += "$(";
-      i++;
-    } else if ((ch === ">" || ch === "<") && seg[i + 1] !== "(") {
-      REDIRECT_OPERATOR.lastIndex = i;
-      const op = REDIRECT_OPERATOR.exec(seg)?.[0] ?? ch;
-      const fd = fdPrefixLength(seg, i);
-      i += op.length - 1;
-      rest = `${fd > 0 ? rest.slice(0, rest.length - fd) : rest} `;
-      if (op.endsWith("&")) {
-        FD_DUP.lastIndex = i + 1;
-        const dup = FD_DUP.exec(seg)?.[0];
-        if (dup !== undefined) {
-          i += dup.length;
-          continue;
-        }
+    REDIRECT_OPERATOR.lastIndex = i;
+    const op = REDIRECT_OPERATOR.exec(seg)?.[0] ?? ch;
+    const fd = fdPrefixLength(seg, i);
+    i += op.length - 1;
+    rest = `${fd > 0 ? rest.slice(0, rest.length - fd) : rest} `;
+    if (op.endsWith("&")) {
+      FD_DUP.lastIndex = i + 1;
+      const dup = FD_DUP.exec(seg)?.[0];
+      if (dup !== undefined) {
+        i += dup.length;
+        continue;
       }
-      const { word, end } = readWord(seg, i + 1);
-      i = end - 1;
-      const target = words(word)[0] ?? "";
-      (op.startsWith("<<") ? docs : op.startsWith(">") ? outs : ins).push(target);
-    } else rest += ch;
+    }
+    const { word, end } = readWord(seg, i + 1, kind);
+    i = end - 1;
+    const target = words(word)[0] ?? "";
+    (op.startsWith("<<") ? docs : op.startsWith(">") ? outs : ins).push(target);
   }
   return { rest, outs, ins, docs };
 }
@@ -777,6 +656,23 @@ interface Parsed {
 function parseSegment(seg: string): Parsed {
   const { rest, outs, ins, docs } = splitRedirects(seg);
   return { ...program(rest), outs, ins, docs };
+}
+
+/**
+ * Does this command run text it is handed on stdin (a heredoc, or a pipe) as a shell script? A shell, `eval`,
+ * `source`/`.`, `at`/`batch`, or any of those named as an argument (`docker exec -i c sh <<EOF`). Such a
+ * heredoc body is a script to judge line by line; every other body is text (`git commit -F - <<EOF`).
+ * Interpreters (`python3 -`, `node -`) are not here: their body is read as text by `scriptTextVerdict`.
+ */
+const SCRIPT_READER = /^(eval|source|\.|at|batch)$/;
+function readsShellScript(segment: string): boolean {
+  const parsed = parseSegment(segment);
+  // `$SHELL <<EOF`, `$(which sh) <<EOF`: a program the guard cannot name may be a shell.
+  if (/[$`]/.test(parsed.prog)) return true;
+  return [parsed.prog, ...parsed.args].some((word) => {
+    const name = word.replace(/^.*\//, "");
+    return NESTED_SHELL.test(name) || SCRIPT_READER.test(name);
+  });
 }
 
 const MAX_BRACE_ALTERNATIVES = 256;
@@ -1243,7 +1139,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   work.chars -= c.length;
   if (work.chars < 0) work.spent = true;
   if (outOfTime()) return ask(WORK_BUDGET_REASON);
-  const { parts, sequential } = splitSegments(c);
+  const { parts, sequential, incomplete } = splitSegments(c);
   const parsedParts = parts.map((part) => parseSegment(part.text));
 
   // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
@@ -1262,6 +1158,14 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
   // judged against every directory the command could be running in (see `Cwd`), and so are the whole-tree reads.
   const verdicts: BashVerdict[] = [];
+  // The text ends inside a quote, substitution or heredoc: the shell would wait for more, so what ran is unknown.
+  if (incomplete !== null) {
+    verdicts.push(
+      ask(
+        `The command has ${incomplete}, so the guard cannot tell what the shell would run. A human decides.`,
+      ),
+    );
+  }
   let after = start; // where the next command runs when the one before it succeeded
   let anywhere = start; // everywhere any later command could run
   let scriptOnStdin = false;
