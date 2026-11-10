@@ -738,7 +738,29 @@ function parseSegment(seg: string): Parsed {
 
 const MAX_BRACE_ALTERNATIVES = 256;
 const MAX_BRACE_GROUPS = 16;
-const BRACE_GROUP = /^(.*?)\{([^{}]*,[^{}]*)\}(.*)$/s;
+/**
+ * The first `{a,b}` group in `word` that has no brace inside it, split into the text before, its body and
+ * the text after; null when there is none. One pass: a regex for this backtracks quadratically on `{,,,,`.
+ */
+function firstBraceGroup(word: string): { pre: string; body: string; post: string } | null {
+  let open = -1;
+  let comma = false;
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i];
+    if (ch === "{") {
+      open = i;
+      comma = false;
+    } else if (ch === ",") comma ||= open >= 0;
+    else if (ch === "}") {
+      if (open >= 0 && comma) {
+        return { pre: word.slice(0, open), body: word.slice(open + 1, i), post: word.slice(i + 1) };
+      }
+      open = -1;
+      comma = false;
+    }
+  }
+  return null;
+}
 
 /** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
 function expandBraces(word: string): string[] {
@@ -747,14 +769,13 @@ function expandBraces(word: string): string[] {
     const next: string[] = [];
     let changed = false;
     for (const w of out) {
-      const m = BRACE_GROUP.exec(w);
-      if (!m || next.length >= MAX_BRACE_ALTERNATIVES) {
+      const group = next.length >= MAX_BRACE_ALTERNATIVES ? null : firstBraceGroup(w);
+      if (!group) {
         next.push(w);
         continue;
       }
       changed = true;
-      const [, pre = "", body = "", post = ""] = m;
-      for (const alt of body.split(",")) next.push(`${pre}${alt}${post}`);
+      for (const alt of group.body.split(",")) next.push(`${group.pre}${alt}${group.post}`);
     }
     out = next;
     if (!changed) break;
@@ -765,6 +786,17 @@ function expandBraces(word: string): string[] {
 /** What the shell does to a word before the program sees it: remove backslashes, expand braces. */
 const unescapeWord = (t: string): string => t.replace(/\\(.)/gs, "$1");
 
+const isQuote = (ch: string | undefined): boolean => ch === "'" || ch === '"' || ch === "`";
+
+/** `t` without the quote characters at either end. A regex for this backtracks on a long run of quotes. */
+function trimQuotes(t: string): string {
+  let start = 0;
+  let end = t.length;
+  while (start < end && isQuote(t[start])) start++;
+  while (end > start && isQuote(t[end - 1])) end--;
+  return t.slice(start, end);
+}
+
 /**
  * File-ish arguments: not flags, quotes and redirection operators stripped (`<.env` reads it, `>.env`
  * writes it), backslashes removed and braces expanded the way the shell would. Globs and `$( )` are KEPT:
@@ -774,8 +806,7 @@ function fileArgs(args: readonly string[]): string[] {
   return args
     .map((t) =>
       unescapeWord(
-        t
-          .replace(/^['"`]+|['"`]+$/g, "")
+        trimQuotes(t)
           .replace(/^--?[a-z-]+=/i, "")
           .replace(/^[<>]+/, ""),
       ),
@@ -801,39 +832,91 @@ const SECRET_NAME_SAMPLES = [
   "server.pem",
 ];
 
+/** One unit of a shell wildcard: `*`, `?`, a `[set]` or a literal character. */
+type GlobToken =
+  | { readonly kind: "star" | "any" }
+  | { readonly kind: "set"; readonly negated: boolean; readonly body: string }
+  | { readonly kind: "char"; readonly ch: string };
+
+const GLOB_STAR: GlobToken = { kind: "star" };
+const GLOB_ANY: GlobToken = { kind: "any" };
+
+/** The tokens of a wildcard word; an unclosed `[` is a literal, as in the shell. Linear, and a run of `*` is one. */
+function globTokens(word: string): GlobToken[] {
+  const out: GlobToken[] = [];
+  const lastClose = word.lastIndexOf("]");
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i] as string;
+    if (ch === "*") {
+      if (out.at(-1) !== GLOB_STAR) out.push(GLOB_STAR);
+    } else if (ch === "?") out.push(GLOB_ANY);
+    else if (ch === "[" && lastClose > i) {
+      const end = word.indexOf("]", i + 1);
+      const body = word.slice(i + 1, end);
+      const negated = body.startsWith("!") || body.startsWith("^");
+      out.push({ kind: "set", negated, body: negated ? body.slice(1) : body });
+      i = end;
+    } else out.push({ kind: "char", ch });
+  }
+  return out;
+}
+
+function inGlobSet(body: string, negated: boolean, c: string): boolean {
+  let hit = false;
+  for (let k = 0; k < body.length; k++) {
+    if (body[k + 1] === "-" && k + 2 < body.length) {
+      hit ||= c >= (body[k] as string) && c <= (body[k + 2] as string);
+      k += 2;
+    } else hit ||= body[k] === c;
+  }
+  return hit !== negated;
+}
+
+function globUnitMatches(token: GlobToken, c: string): boolean {
+  if (token.kind === "any") return true;
+  if (token.kind === "set") return inGlobSet(token.body, token.negated, c);
+  return token.kind === "char" && token.ch === c;
+}
+
+/** Does the wildcard match the whole of `name`? The classic two-pointer match: no regex, no backtracking blow-up. */
+function globMatches(tokens: readonly GlobToken[], name: string): boolean {
+  let t = 0;
+  let n = 0;
+  let star = -1;
+  let resume = 0;
+  while (n < name.length) {
+    const token = tokens[t];
+    if (token === GLOB_STAR) {
+      star = t++;
+      resume = n;
+    } else if (token && globUnitMatches(token, name[n] as string)) {
+      t++;
+      n++;
+    } else if (star >= 0) {
+      t = star + 1;
+      n = ++resume;
+    } else return false;
+  }
+  while (tokens[t] === GLOB_STAR) t++;
+  return t === tokens.length;
+}
+
 /** Does the wildcard word `t` expand onto a secret file name? (`.e*`, `.env?*`, `.[e]nv`, `*.env`). */
 export function globReachesSecret(t: string): boolean {
   if (!/[*?[]/.test(t)) return false;
-  const base = t.replace(/^.*\//, "");
+  const base = t.slice(t.lastIndexOf("/") + 1);
+  const tokens = globTokens(base);
   // A wildcard with nothing literal to anchor it (`*`, `feat/*`, `???`) names no secret in particular.
-  const literals = base.split(/[*?]|\[[^\]]*\]/);
-  if (!base.startsWith(".") && !literals.some((l) => l.length >= 2)) return false;
-  let re = "";
-  for (let i = 0; i < base.length; i++) {
-    const ch = base[i] as string;
-    if (ch === "*") re += ".*";
-    else if (ch === "?") re += ".";
-    else if (ch === "[") {
-      const end = base.indexOf("]", i + 1);
-      if (end < 0) re += "\\[";
-      else {
-        re += `[${base
-          .slice(i + 1, end)
-          .replace(/^!/, "^")
-          .replace(/\\/g, "\\\\")}]`;
-        i = end;
-      }
-    } else re += ch.replace(/[.+^${}()|\\]/g, "\\$&");
+  let run = 0;
+  let longestLiteral = 0;
+  for (const token of tokens) {
+    run = token.kind === "char" ? run + 1 : 0;
+    longestLiteral = Math.max(longestLiteral, run);
   }
-  let rx: RegExp;
-  try {
-    rx = new RegExp(`^${re}$`);
-  } catch {
-    return false;
-  }
+  if (!base.startsWith(".") && longestLiteral < 2) return false;
   // The shell never lets a leading `*`, `?` or `[` match a leading dot.
   return SECRET_NAME_SAMPLES.some(
-    (n) => rx.test(n) && !(n.startsWith(".") && !base.startsWith(".")),
+    (n) => globMatches(tokens, n) && !(n.startsWith(".") && !base.startsWith(".")),
   );
 }
 
@@ -966,7 +1049,19 @@ const MAX_JUDGED_COMMAND_LINES = 300;
 let judgeBudget = MAX_JUDGED_COMMAND_LINES;
 const MAX_SUBSTITUTIONS = 32;
 
+/**
+ * Longest command the guard will parse. Every rule below is linear in the command, but the hook is killed at
+ * its timeout and Claude Code then lets the call run, so size is bounded before any work is done. A real
+ * command, even one with a here-doc, is far shorter.
+ */
+export const MAX_COMMAND_CHARS = 64 * 1024;
+
 export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): BashVerdict {
+  if (cmd.length > MAX_COMMAND_CHARS) {
+    return ask(
+      `This command is longer than ${MAX_COMMAND_CHARS / 1024} KB, too large for the guard to check in time. Run it in smaller pieces, or let a human run it.`,
+    );
+  }
   if (depth === 0) judgeBudget = MAX_JUDGED_COMMAND_LINES;
   const start = startingDir(ctx);
   return judge(cmd, ctx, depth, { seq: start, any: [start] });
@@ -1115,7 +1210,7 @@ function interactiveInvocation(p: Parsed): boolean {
           a === "--command" ||
           a.startsWith("--command=") ||
           /^-c.+/.test(a) ||
-          /^-[^-]+c[^-]*$/.test(a),
+          isShortClusterWithC(a),
       )
     )
       return true;
@@ -1360,8 +1455,26 @@ function protectedTouch(rel: string, t: WriteTarget): boolean {
 const baseName = (p: string): string => p.replace(/\/+\.?$/, "").replace(/^.*\//, "");
 /** `src/.`, `src/` and `.` copy a directory's CONTENTS onto the destination. */
 const isContentsSource = (s: string): boolean => /(^|\/)\.?$/.test(s);
-const INPLACE = /^-[A-Za-z]*i|^--in-place/;
-const RECURSIVE_FLAG = /^-[A-Za-z]*[rRa][A-Za-z]*$|^--(recursive|archive)$/;
+
+const SHORT_FLAGS = /^-[A-Za-z]+$/;
+/**
+ * Is `arg` a short-flag cluster (`-rf`) holding one of `letters`? Two `[A-Za-z]*` around the letter backtrack
+ * quadratically on a long word, and the hook fails OPEN at its timeout, so this is one anchored test and a scan.
+ */
+function clusterHas(arg: string, letters: string, cluster: RegExp = SHORT_FLAGS): boolean {
+  if (!cluster.test(arg)) return false;
+  for (const letter of letters) if (arg.includes(letter)) return true;
+  return false;
+}
+const isRecursive = (arg: string): boolean =>
+  clusterHas(arg, "rRa") || arg === "--recursive" || arg === "--archive";
+const RG_SHORT_FLAGS = /^-[A-Za-z.]+$/;
+/** `-ec`, `-xc`: a short cluster with `c` after its first letter (a bare `-c` is matched on its own). */
+const isShortClusterWithC = (arg: string): boolean =>
+  arg.startsWith("-") && !arg.includes("-", 1) && arg.indexOf("c", 2) >= 2;
+/** `sed -i`, `-ni`, `-i.bak`: the leading run of letters holds an `i`. */
+const isInPlace = (arg: string): boolean =>
+  (/^-([A-Za-z]*)/.exec(arg)?.[1] ?? "").includes("i") || arg.startsWith("--in-place");
 const FIND_WRITER = /^(rm|truncate|mv|cp|tee|chmod|chown|shred|unlink|ln|install|touch|dd|rsync)$/;
 
 /** Destination and sources of cp/mv/ln/install/rsync, honouring `-t DIR` / `--target-directory=DIR`. */
@@ -1401,9 +1514,7 @@ function findWrites(args: readonly string[]): WriteTarget[] {
     rest.some((a, i) => {
       if (!/^-(exec|execdir|ok|okdir)$/.test(a)) return false;
       const next = rest[i + 1] ?? "";
-      return (
-        FIND_WRITER.test(next) || (next === "sed" && rest.slice(i + 2).some((x) => INPLACE.test(x)))
-      );
+      return FIND_WRITER.test(next) || (next === "sed" && rest.slice(i + 2).some(isInPlace));
     });
   return destructive ? fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true)) : [];
 }
@@ -1416,7 +1527,7 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
     return eq ?? (k >= 0 ? args[k + 1] : undefined);
   };
   if (prog === "unzip") {
-    const listing = args.some((a) => /^-[A-Za-z]*[ltZpv][A-Za-z]*$/.test(a));
+    const listing = args.some((a) => clusterHas(a, "ltZpv"));
     return listing ? [] : [wt(flagValue("-d", "--directory") ?? ".", true, true)];
   }
   const extract = args.some(
@@ -1430,7 +1541,7 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
 /** Every path one simple command writes, deletes, moves or re-modes (redirections are added by the caller). */
 function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   const files = fileArgs(args);
-  const recursive = args.some((a) => RECURSIVE_FLAG.test(a));
+  const recursive = args.some(isRecursive);
   if (/^(rm|unlink|shred|rmdir)$/.test(prog)) return files.map((f) => wt(f, true));
   if (prog === "mv") {
     return [
@@ -1443,7 +1554,7 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
   if (/^(chmod|chown)$/.test(prog)) return files.map((f) => wt(f, recursive));
   if (/^(sed|perl)$/.test(prog)) {
-    return args.some((a) => INPLACE.test(a)) ? files.map((f) => wt(f)) : [];
+    return args.some(isInPlace) ? files.map((f) => wt(f)) : [];
   }
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
   if (prog === "find") return findWrites(args);
@@ -1588,7 +1699,7 @@ function gitWriteVerdict(
     );
   }
   if (sub === "clean") {
-    if (rest.some((a) => /^(--dry-run|-[A-Za-z]*n[A-Za-z]*)$/.test(a))) return null;
+    if (rest.some((a) => a === "--dry-run" || clusterHas(a, "n"))) return null;
     return ask(
       "`git clean` deletes untracked files, and with -x the ignored ones too (the audit ledger, .claude/.cache). A human decides.",
     );
@@ -1732,8 +1843,8 @@ function recursiveSearchVerdict(
   const grep = /^(grep|egrep|fgrep)$/.test(prog);
   if (!grep && prog !== "rg") return null;
   if (grep) {
-    const recursive = args.some((a) =>
-      /^-[A-Za-z]*[rR][A-Za-z]*$|^--(dereference-)?recursive$/.test(a),
+    const recursive = args.some(
+      (a) => clusterHas(a, "rR") || a === "--recursive" || a === "--dereference-recursive",
     );
     const globs = args.flatMap((a, k) =>
       a.startsWith("--include=")
@@ -1744,8 +1855,9 @@ function recursiveSearchVerdict(
     );
     if (!recursive || (globs.length > 0 && globs.every((g) => SAFE_INCLUDE.test(g)))) return null;
   } else if (
-    !args.some((a) =>
-      /^-[A-Za-z.]*[u.][A-Za-z.]*$|^--(unrestricted|hidden|no-ignore(-.*)?)$/.test(a),
+    !args.some(
+      (a) =>
+        clusterHas(a, "u.", RG_SHORT_FLAGS) || /^--(unrestricted|hidden|no-ignore(-.*)?)$/.test(a),
     )
   ) {
     return null;

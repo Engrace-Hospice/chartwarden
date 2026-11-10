@@ -98,3 +98,104 @@ describe("4 — `~` and `$HOME` spelled paths onto the repo", () => {
     expect(d("echo x > scripts/harness/pre-tool-guard.ts", { root: ROOT, home: "" })).toBe("ask");
   });
 });
+
+// The guard fails OPEN when the hook is killed at its 10 s timeout, so no input may make it slow. Each case
+// below took 0.5 s to minutes at e9f9688c6; the fixed classifier answers in a few milliseconds, so the bound
+// is generous.
+describe("2 and 7 — bounded work on hostile input", () => {
+  const FAST_MS = 1000;
+  const LIMIT = 64 * 1024;
+  const timed = (cmd: string) => {
+    const started = performance.now();
+    const verdict = v(cmd);
+    return { verdict, ms: performance.now() - started };
+  };
+  const repeat = (unit: string, chars: number): string =>
+    unit.repeat(Math.floor(chars / unit.length));
+
+  it.each([22, 30, 5000])(
+    "denies the secret read and answers fast beside a %i-star glob",
+    (stars) => {
+      const { verdict, ms } = timed(`cat .env; echo .${"*".repeat(stars)}zz`);
+      expect(verdict.decision).toBe("deny");
+      expect(ms).toBeLessThan(FAST_MS);
+    },
+  );
+
+  it.each([
+    ["a glob word", `cat .${"*".repeat(30)}zz`],
+    ["find -name", `find . -name '.${"*".repeat(30)}zz'`],
+    ["stars between literals", `cat ${"*a".repeat(2000)}*zz`],
+    ["a run of unclosed brackets", `cat .${"[".repeat(60_000)}zz`],
+    ["question marks", `cat ${"?".repeat(60_000)}env`],
+  ])("judges %s quickly", (_name, cmd) => {
+    expect(timed(cmd).ms).toBeLessThan(FAST_MS);
+  });
+
+  it.each([
+    ["cat .e*", "deny"],
+    ["cat .?nv", "deny"],
+    ["cat *.env", "deny"],
+    ["cat .[e]nv", "deny"],
+    ["cat .[!x]nv", "deny"],
+    ["cat .[a-f]nv", "deny"],
+    ["cat .env*", "deny"],
+    ["cat .e**v", "deny"],
+    ["cat .*", "deny"],
+    ["cat backend.e*", "deny"],
+    ["cat *", "allow"],
+    ["cat feat/*", "allow"],
+    ["cat ???", "allow"],
+    ["cat src/*.ts", "allow"],
+    ["cat .git*", "allow"],
+    ["cat .[x-z]nv", "allow"],
+    ["cat .[nv", "allow"],
+  ])("still reads the wildcard %s as %s", (cmd, decision) => {
+    expect(d(cmd)).toBe(decision);
+  });
+
+  it("answers ask at once for a command longer than 64 KB, before parsing it", () => {
+    const { verdict, ms } = timed(repeat("cd a;", LIMIT + 4_000));
+    expect(verdict.decision).toBe("ask");
+    expect(verdict.reason).toMatch(/too (long|large)/i);
+    expect(ms).toBeLessThan(100);
+    expect(d(`cat .env${" ".repeat(LIMIT)}`)).toBe("ask");
+  });
+
+  it("still judges a command that fits in 64 KB", () => {
+    expect(d(`echo ${"a".repeat(LIMIT - 10)}`)).toBe("allow");
+    expect(d(`cat .env; echo ${"a".repeat(LIMIT - 20)}`)).toBe("deny");
+  });
+
+  it("keeps a 60 KB chain of cd linear", () => {
+    const { verdict, ms } = timed(`${repeat("cd a;", 60_000)}ls`);
+    expect(verdict.decision).toBe("allow");
+    expect(ms).toBeLessThan(500);
+    expect(timed(`${repeat("cd a/b/c/d/e/f/g/h/i/j;", 60_000)}ls`).ms).toBeLessThan(500);
+  });
+
+  it.each([
+    ["an open brace group of commas", `cat {${",".repeat(60_000)}`],
+    ["the same in a redirect", `echo x > {${",".repeat(60_000)}`],
+    ["a run of two-way groups", `cat ${"{a,b}".repeat(12_000)}`],
+    ["a run of unclosed braces", `cat ${"{".repeat(60_000)}`],
+    ["rm with a long flag word", `rm -${"a".repeat(60_000)}1 x`],
+    ["grep with a long flag word", `grep -${"r".repeat(60_000)}1 foo .`],
+    ["rg with a long flag word", `rg -${"u".repeat(60_000)}1 foo`],
+    ["unzip with a long flag word", `unzip -${"l".repeat(60_000)}1 x.zip`],
+    ["git clean with a long flag word", `git clean -${"n".repeat(60_000)}1`],
+    ["chmod with a long flag word", `chmod -${"R".repeat(60_000)}1 755 x`],
+    ["cp with a long flag word", `cp -${"a".repeat(60_000)}1 x y`],
+    ["bash with a long flag word", `bash -${"c".repeat(60_000)}1 x`],
+  ])("judges %s quickly", (_name, cmd) => {
+    expect(timed(cmd).ms).toBeLessThan(FAST_MS);
+  });
+
+  it("expands braces as before", () => {
+    expect(d("cat .en{v,}")).toBe("deny");
+    expect(d("cat {.env,x}")).toBe("deny");
+    expect(d("cat {a,{.env,b}}")).toBe("deny");
+    expect(d("cat {a,b}{c,d}")).toBe("allow");
+    expect(d("cat {a}{b}")).toBe("allow");
+  });
+});
