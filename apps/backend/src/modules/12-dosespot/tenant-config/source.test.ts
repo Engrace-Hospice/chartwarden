@@ -180,7 +180,7 @@ describe("DoseSpot tenant config source", () => {
     expect(opens).toBe(3);
   });
 
-  describe("an unsealed credential does not outlive its five minutes in a process that stops asking (ADR-0111 D2)", () => {
+  describe("an unsealed credential does not outlive its life (about six minutes at most) in a process that stops asking (ADR-0111 D2)", () => {
     afterEach(() => vi.useRealTimers());
 
     it("an org that left the active set has its entry swept by the source itself, then the sweep stops", async () => {

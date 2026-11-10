@@ -239,9 +239,25 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   old behaviour on purpose (parking every patient's demographics for the day it switches DoseSpot on is worse than a failed row); a transient vendor
   failure backs off by attempt count and ends the row after 8 attempts (`jobs/sync-outcome.ts`).
 - The unsealed credential and the bearer tokens outlived their TTL in an idle process (same review, LOW): the 5-minute check ran only when the same org was
-  looked up again, so a tenant that left the active enumeration kept its clinic key and live tokens in memory until the process exited (ADR-0111 D2 says
+  looked up again, so a tenant that left the active enumeration kept its clinic key and live tokens in memory until the process exited (ADR-0111 D2 said
   five minutes at most). Every lookup/mint now prunes the whole cache and an unref'd one-minute sweep runs while a cache holds anything
-  (`createExpirySweeper`, `client/token-cache.ts`).
+  (`createExpirySweeper`, `client/token-cache.ts`). The bound is therefore about SIX minutes, not five (re-review LOW): the five-minute cache life plus up to
+  one minute for the sweep (an entry added while the timer is already armed waits for its next run); ADR-0111 D2 now says so.
 - Boot warnings for the two platform flags (compliance review, MEDIUM): `DOSESPOT_SANDBOX_ENABLED` on `NODE_ENV=production` and `DOSESPOT_PRODUCTION_ENABLED`
   are operating policy (CW-AC-21, CW-BA-01), not machine-checked, so the boot says so loudly once per process (`describeM12PlatformFlagWarnings`); there is no
   hard refusal (the demo VPS runs the sandbox on a production build).
+- Re-review of the fix round (MEDIUM x3, LOW x3, UNCERTAIN x2, on 3717fe9ee..0fb682534): (1) the adapter's per-process map of a created-but-unsent prescription
+  survived a clinic move and was served in preference to the cleared persisted id, so the old clinic's id was sent under the new one on the same worker: the entry
+  now records the clinic it was created under and is served only under it (tested through the real HTTP client). (2) A round trip that began under the old clinic
+  could write its id AFTER the clear (an enrolment's `recordVendorId`, `rememberCreated`, a patient sync's `recordPatientSyncSuccess`) and nothing cleared it
+  again: each now captures the registration's target before the call and writes only while it still holds, under an advisory lock the clear takes exclusively
+  (`tenant-config/registration-target.ts`); the lock tests fail without the lock. (3) `classifySyncFault` persisted a raw `.message` into
+  `dosespot_sync_queue.last_error` (copied into audit_event, and a Drizzle error's message embeds its bound parameters, the MedHx ingest being inside the same try):
+  now `safeErrorMessage`; no other raw message is persisted or logged in M12. (4) A waiting order (prescriber on the roster with no vendor id) was claimed and
+  put back every tick, 3 audited writes each, and 25 of them starved the batch: the claim now skips them. (5) The clear kept a created id only on a HELD transmission;
+  one whose call had begun (stamped, worker possibly dead) was nulled before the drain could hold it: a begun call keeps its id, and a live worker that sees the move
+  clears its own. (6) The credential and token sweep bound is about six minutes, not five. UNCERTAIN (a): the clear gives a waiting transmission a fresh idempotency
+  key (nothing reads the column back: the sign-time enqueue runs only for an order not yet queued), so DoseSpot, if it dedupes by key across clinics, never sees the
+  old one; the dedupe itself stays unverified. UNCERTAIN (b): the admission trigger enqueues a MedHx fetch only, never a patient sync, so a fetch for a patient with no
+  vendor id already ended failed ("prior patient-sync has not succeeded yet") before the reset existed; after a reset it now says the patient is not registered at the
+  current clinic. Deferring instead would re-claim the row every two minutes for as long as no patient sync runs, for no gain; auto-registering patients was refused.

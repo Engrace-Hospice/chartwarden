@@ -76,7 +76,7 @@ export function createDrizzleTenantConfigSource(
   const expired = (entry: { readonly at: number }): boolean =>
     now() - entry.at >= CREDENTIAL_CACHE_TTL_MS;
   // An org that left the active set (suspended, closed, its key ring shredded) is never looked up again, so its entry would otherwise keep an
-  // unsealed clinic key in memory until the process exits (ADR-0111 D2: five minutes at most). Every lookup prunes the whole cache, and an
+  // unsealed clinic key in memory until the process exits (ADR-0111 D2: about six minutes at most, the five-minute life plus up to a minute for the sweep). Every lookup prunes the whole cache, and an
   // unref'd timer does it for a process that no longer asks at all.
   const armSweep = createExpirySweeper(built, expired);
 
