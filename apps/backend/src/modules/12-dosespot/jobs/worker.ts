@@ -157,6 +157,8 @@ async function processRow(
 
   let outcome: { kind: "completed" } | SyncFaultOutcome;
   let errorClass = "unknown";
+  /** The clinic a patient upsert began under, once it has (see below): a failure after the registration moved off it may be the move's doing. */
+  let roundTripTarget: string | undefined;
   try {
     if (row.kind === "patient_sync") {
       const snapshot = await snapshotResolver.resolve(row.organizationId, row.patientId);
@@ -171,6 +173,7 @@ async function processRow(
           { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
           (tx) => readRegistrationTarget(tx as DbClient, row.organizationId),
         );
+        roundTripTarget = target;
         // GAP-037 — a patient already known to DoseSpot is EDITED, never re-created (no duplicate chart).
         const knownDosespotPatientId = await dosespotPatientIdResolver.resolve(
           row.organizationId,
@@ -180,7 +183,9 @@ async function processRow(
           ...buildPatientUpsertPayload(snapshot),
           ...(knownDosespotPatientId ? { existingDosespotPatientId: knownDosespotPatientId } : {}),
         };
-        const idempotencyKey = patientSyncIdempotencyKey(row.patientId, snapshot.updatedAt);
+        // scoped to the clinic this round trip began under: the patient's `updated_at` does not move with the registration, so the bare key would
+        // be the one the OLD clinic already answered (plan.ts says why; only a digest of the target is in it)
+        const idempotencyKey = patientSyncIdempotencyKey(row.patientId, snapshot.updatedAt, target);
         // Reached (past this point) only once the vendor client is real — today it always throws here.
         const response = await doseSpotClient.upsertPatient(
           row.organizationId,
@@ -311,15 +316,34 @@ async function processRow(
     { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
     async (tx) => {
       const repo = new DosespotSyncQueueRepository(tx as DbClient);
-      if (outcome.kind === "completed") await repo.markCompleted(row.id, now());
-      else if (outcome.kind === "failed") await repo.markFailed(row.id, outcome.error, now());
-      else if (outcome.kind === "defer") await repo.defer(row.id, outcome.error);
-      else await repo.requeue(row.id, outcome.error);
+      let settled = outcome;
+      // A patient upsert that FAILED after the registration moved to another clinic may have failed because of it (an edit of the old clinic's patient
+      // id, refused under the new one, is refused for good): it must not end the row. It waits and runs again under the new registration, like a
+      // success that overlapped the move (a plain read: nothing is written on this verdict, so it needs no lock).
+      if (
+        (settled.kind === "failed" || settled.kind === "requeue") &&
+        roundTripTarget !== undefined &&
+        (await readRegistrationTarget(tx as DbClient, row.organizationId)) !== roundTripTarget
+      ) {
+        deps.warn?.(
+          {
+            organizationId: row.organizationId,
+            patientId: row.patientId,
+            class: "registration_moved",
+          },
+          "M12 sync drain: a patient sync failed after the DoseSpot registration moved to another clinic; the row waits and runs again",
+        );
+        settled = { kind: "defer", error: REGISTRATION_MOVED_SYNC_TEXT };
+      }
+      if (settled.kind === "completed") await repo.markCompleted(row.id, now());
+      else if (settled.kind === "failed") await repo.markFailed(row.id, settled.error, now());
+      else if (settled.kind === "defer") await repo.defer(row.id, settled.error);
+      else await repo.requeue(row.id, settled.error);
       // §2.6 "on failure": record the sync outcome + bump `retry_count` (no id is ever invented). A row that only WAITS for the registration
       // (`defer`) did not fail: the patient's last outcome is left as it was.
       if (
         row.kind === "patient_sync" &&
-        (outcome.kind === "failed" || outcome.kind === "requeue")
+        (settled.kind === "failed" || settled.kind === "requeue")
       ) {
         await recordPatientSyncFailure(tx as DbClient, {
           organizationId: row.organizationId,

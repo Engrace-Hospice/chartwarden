@@ -1121,29 +1121,45 @@ describe.skipIf(!DB_URL)(
         ).toBeGreaterThan(0);
       });
 
+      const clinicService = createDoseSpotClinicService({
+        probe: { probe: async () => "ok" },
+        env: { DOSESPOT_SANDBOX_ENABLED: "true" },
+      });
+      /** The tenant moves to another DoseSpot clinic (the real PUT: the registration changes and the old clinic's vendor ids are cleared). */
+      const move = () =>
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: USER }, (tx) =>
+          clinicService.put(
+            createDrizzleConfigStore(tx as unknown as DbClient),
+            { organizationId: ORG_A, userId: USER, membershipId: memberOf[ORG_A] as string },
+            { environment: "production", clinicId: "clinic-new" },
+            1,
+          ),
+        );
+
       it("a patient upsert that overlapped a clinic move records NO vendor id (the old clinic's): the row waits and runs again under the new registration", async () => {
         await registerClinic(ORG_A, "active");
-        const clinicService = createDoseSpotClinicService({
-          probe: { probe: async () => "ok" },
-          env: { DOSESPOT_SANDBOX_ENABLED: "true" },
-        });
-        const move = () =>
-          withOrgContext(handle.db, { organizationId: ORG_A, userId: USER }, (tx) =>
-            clinicService.put(
-              createDrizzleConfigStore(tx as unknown as DbClient),
-              { organizationId: ORG_A, userId: USER, membershipId: memberOf[ORG_A] as string },
-              { environment: "production", clinicId: "clinic-new" },
-              1,
-            ),
-          );
+        /** The idempotency key of every upsert, in order (the Fake does not keep it). */
+        const upsertKeys: Array<string | undefined> = [];
         class MovingVendor extends FakeDoseSpotVendor {
           override async upsertPatient(
             orgId: string,
             payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
+            idempotencyKey?: string,
           ) {
+            upsertKeys.push(idempotencyKey);
             const out = await super.upsertPatient(orgId, payload);
             if (this.calls.filter((c) => c.method === "upsertPatient").length === 1) await move();
             return out;
+          }
+        }
+        class KeyLoggingVendor extends FakeDoseSpotVendor {
+          override async upsertPatient(
+            orgId: string,
+            payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
+            idempotencyKey?: string,
+          ) {
+            upsertKeys.push(idempotencyKey);
+            return super.upsertPatient(orgId, payload);
           }
         }
         const patientId = await seedPatient(ORG_A);
@@ -1163,15 +1179,50 @@ describe.skipIf(!DB_URL)(
         ).toHaveLength(0);
 
         // the registration is the new clinic's now: the same row runs again and records the id the NEW clinic issues
-        const next = new FakeDoseSpotVendor({ dosespotPatientId: "new-clinic-patient-1" });
+        const next = new KeyLoggingVendor({ dosespotPatientId: "new-clinic-patient-1" });
         await runDoseSpotSyncQueueDrain(workerDeps([ORG_A], { doseSpotClient: next }));
         expect((await rowOf(job)).status).toBe("completed");
+        // the patient did not change, but the clinic did: the second upsert does NOT carry the key the old clinic already answered
+        expect(upsertKeys).toHaveLength(2);
+        expect(upsertKeys[0]).toMatch(/^patient:[0-9a-f-]+:.+:[0-9a-f]{16}$/);
+        expect(upsertKeys[1]).toMatch(/^patient:[0-9a-f-]+:.+:[0-9a-f]{16}$/);
+        expect(upsertKeys[1]).not.toBe(upsertKeys[0]);
+        expect(upsertKeys.join(" ")).not.toContain("clinic-");
         expect(
           await q(
             "SELECT last_dosespot_patient_id id FROM dosespot_patient_sync WHERE patient_id=$1",
             [patientId],
           ),
         ).toEqual([{ id: "new-clinic-patient-1" }]);
+      });
+
+      it("a patient upsert that FAILS for good after a clinic move (the old clinic's patient id refused under the new one) does not end the row: it waits and runs again", async () => {
+        await registerClinic(ORG_A, "active");
+        class MoveThenRefuse extends FakeDoseSpotVendor {
+          override async upsertPatient(orgId: string): Promise<never> {
+            this.calls.push({ method: "upsertPatient", orgId });
+            await move();
+            throw new DegradedError(
+              "dosespot",
+              "upsertPatient",
+              false,
+              "DoseSpot rejected the request (HTTP 404).",
+              "c7",
+            );
+          }
+        }
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        const warned: Array<Record<string, string | number>> = [];
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], {
+            doseSpotClient: new MoveThenRefuse(),
+            warn: (fields) => warned.push(fields),
+          }),
+        );
+        expect(await rowOf(job)).toMatchObject({ status: "pending", attempt_count: 0 }); // not failed, no attempt spent
+        expect(await syncRows(patientId)).toEqual([]); // and no sync failure recorded for the patient
+        expect(warned).toEqual([{ organizationId: ORG_A, patientId, class: "registration_moved" }]);
       });
 
       it("a MedHx fetch for a patient whose vendor id a clinic move cleared ends with a message that says so; one for a never-synced patient keeps its own", async () => {

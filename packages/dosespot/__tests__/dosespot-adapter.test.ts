@@ -465,6 +465,34 @@ describe("patient-sync planner (§2.6 D4)", () => {
     );
   });
 
+  describe("the key is scoped to the registration target (a clinic move must not replay the old clinic's answer)", () => {
+    const UPDATED_AT = "2026-06-22T12:00:00.000Z";
+    const key = (target: string) => patientSyncIdempotencyKey("p-1", UPDATED_AT, target);
+
+    it("is stable for the same target and changes with the clinic or the environment", () => {
+      expect(key("sandbox:clinic-old")).toBe(key("sandbox:clinic-old"));
+      expect(key("sandbox:clinic-new")).not.toBe(key("sandbox:clinic-old"));
+      expect(key("production:clinic-old")).not.toBe(key("sandbox:clinic-old"));
+      expect(key("env")).not.toBe(key("sandbox:clinic-old"));
+    });
+
+    it("keeps the patient and the time (an unchanged patient still coalesces) and carries only a digest of the target, never the clinic id", () => {
+      expect(key("sandbox:clinic-old")).toMatch(
+        /^patient:p-1:2026-06-22T12:00:00\.000Z:[0-9a-f]{16}$/,
+      );
+      expect(key("sandbox:clinic-old")).not.toContain("clinic-old");
+      expect(key("sandbox:clinic-old")).not.toContain("sandbox");
+      expect(patientSyncIdempotencyKey("p-2", UPDATED_AT, "sandbox:clinic-old")).not.toBe(
+        key("sandbox:clinic-old"),
+      );
+    });
+
+    it("planPatientSync carries the target-scoped key when it is given the target", () => {
+      const plan = planPatientSync(snapshot, "sandbox:clinic-old");
+      expect(plan.idempotencyKey).toBe(key("sandbox:clinic-old"));
+    });
+  });
+
   it("builds the upsert payload keyed on chartwardenPatientId and drops absent optionals", () => {
     const payload = buildPatientUpsertPayload(snapshot);
     expect(payload.chartwardenPatientId).toBe("p-1");
