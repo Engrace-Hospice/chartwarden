@@ -13,6 +13,7 @@ export {
   createCommitTracker,
   currentCommitTracker,
   instrumentPoolForCommits,
+  mayHaveCommitted,
   resetCommitTracker,
   runWithCommitTracker,
 } from "./commit-tracker";
