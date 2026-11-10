@@ -338,8 +338,13 @@ describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", ()
   it("the pinned Codex command still refuses a secret read with a hostile tsconfig.json", () => {
     const dir = hostile("tsconfig.json");
     const r = hook(codexCommand, dir);
-    const denied = JSON.parse(r.stdout || "{}").hookSpecificOutput?.permissionDecision === "deny";
-    expect(denied || r.status === 2, `${r.stdout} ${r.stderr}`).toBe(true);
+    // The guard's own deny, not the wrapper's exit 2: a guard that crashed or never started would also exit 2, and
+    // that is not the guard having read the call.
+    const out = JSON.parse(r.stdout || "{}").hookSpecificOutput;
+    expect(out?.permissionDecision, `${r.stdout} ${r.stderr}`).toBe("deny");
+    expect(out?.permissionDecisionReason).toMatch(/\.env/);
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toMatch(/the guard failed or timed out/);
   });
   it("without the override flag the same hostile config is silent (the hijack is real)", () => {
     const dir = hostile("tsconfig.json");

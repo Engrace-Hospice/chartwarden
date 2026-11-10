@@ -233,6 +233,7 @@ interface Settings {
  * would apply it to every developer.
  */
 export const FORBIDDEN_ENV = [
+  "ECC_GATEGUARD",
   "CW_HARNESS_FAIL_OPEN",
   "CW_AGENT_LEDGER",
   "CW_STOP_GATE",
@@ -250,6 +251,14 @@ export const FORBIDDEN_ENV = [
   "ENV",
   "PATH",
 ] as const;
+
+/**
+ * The only shared-settings `env` variables allowed: ECC's own switches and Claude Code's. A deny-list names what
+ * someone thought of (and the list above still gives those a specific message); everything else a committed `env`
+ * entry could set (`ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`, an `LD_*` loader variable) changes what runs before
+ * the hook, so it fails the gate by default, with its name in the message.
+ */
+export const ALLOWED_ENV_PREFIXES = ["ECC_", "CLAUDE_CODE_"] as const;
 
 /** The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. */
 const CLAUDE_GUARD_TIMEOUT_RANGE = [5, 30] as const;
@@ -403,6 +412,13 @@ export const SHARED_PROBE_PATHS: readonly string[] = [
   ".claude/agents/x.md",
   ".claude/skills/x/SKILL.md",
   ".env.example",
+  // The guard, the register and what reviews them: an ignored one is never committed, and a clone has no control.
+  "scripts/harness/pre-tool-guard.ts",
+  "compliance/controls.yaml",
+  ".githooks/pre-commit",
+  ".github/CODEOWNERS",
+  "CLAUDE.md",
+  "AGENTS.md",
 ];
 /** Local state git MUST ignore: a path that is not ignored can be committed by `git add -A`. */
 export const LOCAL_PROBE_PATHS: readonly string[] = [
@@ -416,6 +432,8 @@ export const LOCAL_PROBE_PATHS: readonly string[] = [
   ".claude/plans/x.md",
   ".claude/settings.local.json",
   ".env",
+  ".env.local",
+  "apps/backend/.env.local",
   "apps/backend/.env.production",
 ];
 
@@ -619,6 +637,11 @@ export function checkHarness(files: HarnessFiles): string[] {
     if (p.event === "PreToolUse") continue;
     const [min, max] = CLAUDE_OTHER_HOOK_TIMEOUT_RANGE;
     for (const h of hooksFor(s, p.event).filter((x) => (x.command ?? "").includes(script))) {
+      // The Stop gate blocks the end of a turn; run async it blocks nothing.
+      if (p.event === "Stop" && h.async === true)
+        v.push(
+          `.claude/settings.json: the Stop gate (${script}) must not be async: it would no longer hold the turn`,
+        );
       if (h.timeout === undefined) continue;
       if (!Number.isInteger(h.timeout) || h.timeout < min || h.timeout > max)
         v.push(
@@ -667,6 +690,14 @@ export function checkHarness(files: HarnessFiles): string[] {
     if (Object.hasOwn(s.env ?? {}, key))
       v.push(
         `.claude/settings.json: env.${key} must not be set in the shared settings (a human's per-session switch, or the guard's test seam: it would apply to every developer)`,
+      );
+  for (const key of Object.keys(s.env ?? {}))
+    if (
+      !(FORBIDDEN_ENV as readonly string[]).includes(key) &&
+      !ALLOWED_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+    )
+      v.push(
+        `.claude/settings.json: env.${key} is not allowed in the shared settings (only ${ALLOWED_ENV_PREFIXES.map((x) => `${x}*`).join(" and ")} variables are: an env entry reaches every developer's session, and one such as PATH, BASH_ENV, ZDOTDIR, NODE_OPTIONS, HOME or SHELL changes what runs before the hook)`,
       );
   const disabled = new Set((s.env?.ECC_DISABLED_HOOKS ?? "").split(",").map((x) => x.trim()));
   for (const h of REQUIRED_DISABLED_ECC_HOOKS)

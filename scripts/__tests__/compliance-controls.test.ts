@@ -775,12 +775,50 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       }).join("\n");
       expect(v).toMatch(new RegExp(`env\\.${key} must not be set`));
     });
-    it("accepts an unrelated env entry", () => {
+    // The `env` block is an ALLOW-list: ECC_* and Claude Code's own CLAUDE_CODE_* variables, and nothing else. A deny-list
+    // of names only ever holds the ones somebody thought of.
+    it.each([
+      "ZDOTDIR",
+      "NODE_OPTIONS",
+      "HOME",
+      "SHELL",
+      "TMPDIR",
+      "XDG_CONFIG_HOME",
+      "GIT_CONFIG_GLOBAL",
+      "CHARTWARDEN_DEMO",
+      "DEBUG",
+    ])("fails an env entry for %s, naming it, because it is not on the allow-list", (key) => {
+      const v = withSettings((s) => {
+        s.env[key] = "x";
+      }).join("\n");
+      expect(v).toMatch(new RegExp(`env\\.${key} is not allowed`));
+    });
+    it("fails ECC_GATEGUARD even though ECC_ variables are allowed: it switches a guard off", () => {
+      const v = withSettings((s) => {
+        s.env.ECC_GATEGUARD = "off";
+      }).join("\n");
+      expect(v).toMatch(/env\.ECC_GATEGUARD must not be set/);
+    });
+    it("accepts the env entries the committed settings carry, and other ECC_ and CLAUDE_CODE_ variables", () => {
+      expect(Object.keys(JSON.parse(settings).env).length).toBeGreaterThan(0);
+      expect(run()).toEqual([]);
       expect(
         withSettings((s) => {
-          s.env.CHARTWARDEN_DEMO = "1";
+          s.env.ECC_SESSION_RETENTION_DAYS = "7";
+          s.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = "1";
         }),
       ).toEqual([]);
+    });
+  });
+
+  describe("(c2) the Stop gate holds the turn", () => {
+    it("fails an async Stop gate, and still allows the async ledger", () => {
+      const v = withSettings((s) => {
+        s.hooks.Stop[0].hooks[0].async = true;
+      }).join("\n");
+      expect(v).toMatch(/Stop gate .*must not be async/);
+      expect(JSON.parse(settings).hooks.PostToolUse[0].hooks[0].async).toBe(true);
+      expect(run()).toEqual([]);
     });
   });
 
@@ -857,6 +895,38 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
         "`.codex/hooks.json` ignored again",
         [".codex/hooks.json"],
         /ignores `\.codex\/hooks\.json`/,
+      ],
+      [
+        "`scripts/harness/` is ignored, so the guard itself is never committed",
+        ["scripts/harness/"],
+        /ignores `scripts\/harness\/pre-tool-guard\.ts`/,
+      ],
+      [
+        "`compliance/` is ignored, so the register is never committed",
+        ["compliance/"],
+        /ignores `compliance\/controls\.yaml`/,
+      ],
+      [
+        "`.githooks/` is ignored, so the pre-commit scan is never committed",
+        [".githooks/"],
+        /ignores `\.githooks\/pre-commit`/,
+      ],
+      ["`CLAUDE.md` is ignored", ["CLAUDE.md"], /ignores `CLAUDE\.md`/],
+      ["`AGENTS.md` is ignored", ["AGENTS.md"], /ignores `AGENTS\.md`/],
+      [
+        "`.github/CODEOWNERS` is ignored, so nobody must review the harness",
+        [".github/CODEOWNERS"],
+        /ignores `\.github\/CODEOWNERS`/,
+      ],
+      [
+        "`!**/.env.local` makes a live env file committable",
+        ["!**/.env.local"],
+        /does not ignore `\.env\.local`/,
+      ],
+      [
+        "`!apps/backend/.env.local` makes the backend's live env file committable",
+        ["!apps/backend/.env.local"],
+        /does not ignore `apps\/backend\/\.env\.local`/,
       ],
     ])("fails when %s", (_name, extra, re) => {
       expect(verdict(withLines(...extra))).toMatch(re);
