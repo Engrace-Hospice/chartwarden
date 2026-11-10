@@ -4,7 +4,6 @@
 import { Button, InlineAlert, LoadingSpinner, useApiClient, useLoad } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import type { JSX } from "react";
-import { formatCents } from "../../35-subscription/billing-status";
 import { statusLabel } from "../saas-status";
 import type { StepPanelProps } from "./panel-props";
 import { ONBOARDING_KEYS } from "./permissions";
@@ -22,7 +21,19 @@ const MODE_LABEL: Record<Contract["billingServiceMode"], string> = {
 };
 /** What the panel shows when the person may not read the plan: nothing is requested. */
 const noPricing: Pricing = { contract: null, latestStatement: null };
+const CENTS_PER_UNIT = 100;
 const BPS_PER_PERCENT = 100;
+
+/**
+ * Integer cents as a currency string. The subscription module has the same helper (35-subscription/billing-status.ts), but a module may not
+ * import another module (arch:boundaries, module-34-boundary), so this one is local until the helper is hoisted into the shared kit.
+ */
+export function formatCents(cents: number, currencyCode = "USD"): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currencyCode || "USD",
+  }).format(cents / CENTS_PER_UNIT);
+}
 
 const censusBand = (band: Contract["bands"][number]): string =>
   band.maxAdc === null

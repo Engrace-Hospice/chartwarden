@@ -2,7 +2,7 @@
 // Step 2, Plan and contract: read only. The tenant sees what ChartWarden set up and is told to ask ChartWarden to change it.
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { PlanContractPanel } from "./plan-contract-panel";
+import { PlanContractPanel, formatCents } from "./plan-contract-panel";
 import {
   COMPLIANCE_OFFICER,
   ORG_ADMIN,
@@ -90,5 +90,9 @@ describe("PlanContractPanel", () => {
     mount(client, COMPLIANCE_OFFICER);
     expect(screen.getByText(/your role cannot see the plan and contract/i)).toBeTruthy();
     expect(client.GET).not.toHaveBeenCalled();
+  });
+
+  it("formats money in the plan's currency", () => {
+    expect(formatCents(12_345, "USD")).toBe("$123.45");
   });
 });

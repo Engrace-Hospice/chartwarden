@@ -36,7 +36,7 @@ export function FailureNotice({
     failure.kind === "validation"
       ? failure.details.filter((d) => !inputFields.includes(d.field))
       : [];
-  const ownSentence = failure.code !== null && failure.code in WIZARD_ERROR_COPY;
+  const ownSentence = failure.code !== null && Object.hasOwn(WIZARD_ERROR_COPY, failure.code);
   const quoteReference =
     (failure.kind === "unavailable" || failure.kind === "unknown") &&
     failure.correlationId !== null;
