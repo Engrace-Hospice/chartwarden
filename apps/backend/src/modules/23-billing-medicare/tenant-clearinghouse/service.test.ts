@@ -19,6 +19,7 @@ const ACTOR: ClearinghouseActor = {
   organizationId: ORG,
   userId: "33333333-3333-4333-8333-333333333333",
   membershipId: "44444444-4444-4444-8444-444444444444",
+  lane: "tenant",
 };
 const FAKE_KEY = "fake-key-not-a-secret#1";
 const OPERATOR: ClearinghouseActor = {

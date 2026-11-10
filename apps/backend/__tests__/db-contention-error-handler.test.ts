@@ -4,7 +4,10 @@
 import { DrizzleQueryError } from "drizzle-orm/errors";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
+import {
+  CONCURRENT_UPDATE_MESSAGE,
+  applyErrorHandler,
+} from "../src/bootstrap/plugins/error-handler";
 import { buildLoggerOptions } from "../src/bootstrap/plugins/logger";
 
 const SECRET = "Nakamura-MRN-000123";
@@ -45,13 +48,32 @@ describe("database contention is a retryable 409, not a 500", () => {
         const { res, log } = await respond(thrown);
         expect(res.statusCode).toBe(409);
         expect(res.json().error.code).toBe("CONCURRENT_UPDATE");
-        expect(res.json().error.message).toMatch(/retry/i);
+        expect(res.json().error.message).toBe(CONCURRENT_UPDATE_MESSAGE);
         expect(res.body).not.toContain(SECRET);
         expect(log).not.toContain(SECRET);
         expect(log).not.toContain("unhandled error");
+        // The body names no SQLSTATE, no table and no statement: it is the fixed text, the correlation id and a docs link.
+        expect(res.body).not.toContain(code);
+        expect(res.body).not.toContain("tenant_go_live_attestation");
+        expect(res.body).not.toMatch(/\b(?:update|insert|select)\b/i);
+        expect(Object.keys(res.json().error).sort()).toEqual([
+          "code",
+          "correlationId",
+          "documentationUrl",
+          "message",
+        ]);
       }
     },
   );
+
+  it("the message is true when an earlier transaction of the request committed: it says this step was not applied, that an earlier step may have been, and to check before retrying", () => {
+    expect(CONCURRENT_UPDATE_MESSAGE).toMatch(/was not applied/);
+    expect(CONCURRENT_UPDATE_MESSAGE).toMatch(
+      /earlier step of the same request may have been applied/,
+    );
+    expect(CONCURRENT_UPDATE_MESSAGE).toMatch(/check the current state before retrying/);
+    expect(CONCURRENT_UPDATE_MESSAGE).not.toMatch(/nothing was saved/i);
+  });
 
   it("leaves every other database error exactly as it was (a 500)", async () => {
     const { res } = await respond(wrapped(pgError("42501", "permission denied for table x")));

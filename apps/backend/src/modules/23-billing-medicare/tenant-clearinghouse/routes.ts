@@ -7,8 +7,11 @@
 // a billing manager scoped to one provider entity must not be able to re-route EVERY entity's PHI to another vendor.
 // A first PUT omits `If-Match`; a change carries the version last read (428 / 412). The credential is write-only (sealed,
 // never returned). Org and membership binding is server-side. A tenant admin may keep editing after go-live (like every other
-// billing setting); vendor and mode lock (409) while a production submission is in flight or was sent in the last 90 days. The tenant records its own vendor BAA
-// (`POST …/baa`); a platform operator verifies it, and activation refuses until then.
+// billing setting); vendor and mode lock (409) while a production submission is in flight or was sent in the last 90 days, EXCEPT
+// while a platform operator has revoked the config's vendor BAA: then the tenant (this lane only) may change vendor or mode or switch to
+// `outside` although production traffic is recent, and the vendor it left no longer locks the next one (attempts reserved before the
+// departure are set aside; the new config's own traffic locks as ever). The tenant records its own vendor BAA (`POST …/baa`, which
+// also clears a revocation: a new agreement, unverified again); a platform operator verifies it, and activation refuses until then.
 import {
   actorOf,
   optionalIfMatchVersionOf,

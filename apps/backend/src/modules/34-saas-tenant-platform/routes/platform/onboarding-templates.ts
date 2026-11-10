@@ -7,7 +7,6 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 // `tenant_lifecycle_platform_ops` ABAC predicate; the write route additionally requires §6 step-up.
 // The catalog is platform-shared/org-less, so reads run under `withPlatformContext` (F03/F09, audited)
 // in prod. Mirrors the M22 route-plugin shape.
-import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import {
   type PreHandler,
   actorOf,
@@ -17,6 +16,7 @@ import {
 } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { splitReason } from "./onboarding-data-typebox";
+import { screenFreeText, screenNames } from "../free-text";
 import {
   OnboardingTemplateListQuerySchema,
   UpsertOnboardingTemplateRequest,
@@ -52,20 +52,6 @@ const WRITE_GUARDS: PreHandler[] = [
   requireIdempotencyKey() as PreHandler,
 ];
 
-/**
- * A step's title and description are shown in EVERY tenant's wizard (and the title is copied into the audit trail), so the words an
- * operator types here go to all tenants: they pass the same patient-identifier screen as the reason, before anything is written
- * (422 EVIDENCE_LOOKS_LIKE_PHI, never echoing the value). The key is a slug, not free text.
- */
-function assertCatalogTextHasNoIdentifier(fields: {
-  readonly title: string;
-  readonly description?: string | undefined;
-}): void {
-  assertNoPatientIdentifier("title", fields.title);
-  if (fields.description !== undefined)
-    assertNoPatientIdentifier("description", fields.description);
-}
-
 /** Register the §4.1 platform-ops onboarding-template catalog routes. */
 export function registerOnboardingTemplateRoutes(
   app: FastifyInstance,
@@ -92,7 +78,8 @@ export function registerOnboardingTemplateRoutes(
     async (request, reply) => {
       const operator = writeActorOf(request);
       const { reason, fields } = splitReason(parse(UpsertOnboardingTemplateRequest, request.body));
-      assertCatalogTextHasNoIdentifier(fields);
+      screenFreeText({ description: fields.description });
+      screenNames({ title: fields.title });
       const res = await service.upsertOnboardingTemplate(operator.userId, {
         key: fields.key,
         title: fields.title,

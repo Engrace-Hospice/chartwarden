@@ -28,6 +28,10 @@ import type { OnboardingDataService, OnboardingOperator } from "./onboarding-dat
 import {
   BAA_UPLOAD_BODY_LIMIT_BYTES,
   OnboardingBaaDocumentUploadRequest,
+  ONBOARDING_REASON_MAX,
+  ONBOARDING_REASON_MIN,
+  OnboardingBaaRevokeRequest,
+  OnboardingBaaVerifyRequest,
   OnboardingClearinghousePutRequest,
   OnboardingClearinghouseVerifyRequest,
   OnboardingLocationCreateRequest,
@@ -53,6 +57,12 @@ export interface OnboardingDataRouteDeps {
    * same oracle the tenant's own PUT is capped for). Production wires it fail-CLOSED. Absent = unlimited (tests only).
    */
   readonly clearinghousePutRateLimit?: PreHandler;
+  /**
+   * Cap on the BAA revoke: per operator (the blast radius of one session or one compromised operator, whichever tenants it targets)
+   * and per target tenant. Production wires it fail-OPEN: a stop that cannot fire while the limiter's store is down is the worse
+   * failure, and every revoke still writes its audit row and raises the tenant alert and the platform-ops notice. Absent = unlimited.
+   */
+  readonly clearinghouseRevokeBaaRateLimit?: PreHandler;
 }
 
 const READ_KEY = "tenant_onboarding_data.read_platform";
@@ -63,6 +73,8 @@ const CLEARINGHOUSE_READ_KEY = "tenant_clearinghouse.read_platform";
 const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
 /** Owner decision D2: verifying the BAA a tenant recorded for its own vendor account is its own permission key (the platform_ops role holds them all). */
 const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
+/** Owner decision "build it" (2026-11-09): revoking the BAA a tenant recorded (the vendor ended it) is its own permission key (the platform_ops role holds them all). */
+const CLEARINGHOUSE_REVOKE_BAA_KEY = "tenant_clearinghouse.revoke_baa_platform";
 /** Owner decision 2026-11-08: releasing the clearinghouse credentials a tenant still holds is its own permission key (the platform_ops role holds them all). */
 const CLEARINGHOUSE_RELEASE_KEY = "tenant_clearinghouse.release_credential_platform";
 /** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own permission key (the platform_ops role holds them all). */
@@ -106,6 +118,14 @@ const CLEARINGHOUSE_VERIFY_BAA: readonly PreHandler[] = [
   P(CLEARINGHOUSE_VERIFY_BAA_KEY),
   OPS(CLEARINGHOUSE_VERIFY_BAA_KEY),
   requireStepUp(CLEARINGHOUSE_VERIFY_BAA_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey(),
+];
+
+const CLEARINGHOUSE_REVOKE_BAA: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_REVOKE_BAA_KEY),
+  OPS(CLEARINGHOUSE_REVOKE_BAA_KEY),
+  requireStepUp(CLEARINGHOUSE_REVOKE_BAA_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey(),
 ];
@@ -253,6 +273,9 @@ export function registerOnboardingDataRoutes(
   const CLEARINGHOUSE_PUT: readonly PreHandler[] = deps.clearinghousePutRateLimit
     ? [...CLEARINGHOUSE_WRITE, deps.clearinghousePutRateLimit]
     : CLEARINGHOUSE_WRITE;
+  const CLEARINGHOUSE_REVOKE: readonly PreHandler[] = deps.clearinghouseRevokeBaaRateLimit
+    ? [...CLEARINGHOUSE_REVOKE_BAA, deps.clearinghouseRevokeBaaRateLimit]
+    : CLEARINGHOUSE_REVOKE_BAA;
   const slugOf = (request: FastifyRequest): string =>
     parse(OrgSlugParamsSchema, request.params).orgSlug;
   const idParamsOf = (request: FastifyRequest) =>
@@ -432,11 +455,36 @@ export function registerOnboardingDataRoutes(
     { preHandler: [...CLEARINGHOUSE_VERIFY_BAA] },
     async (request) => {
       const op = operatorOf(request);
-      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      const body = parse(OnboardingBaaVerifyRequest, request.body);
+      const { reason } = splitReason(body);
       return service.verifyClearinghouseBaa(
         op,
         slugOf(request),
         reason,
+        requiredRecordedAtPin(request, "BAA record"),
+        { acknowledgePreviousRevocation: body.acknowledgePreviousRevocation === true },
+      );
+    },
+  );
+
+  // POST baa/revoke — the operator revokes the vendor BAA the tenant recorded (the vendor ended it): the verification is voided and a
+  // live config leaves `active` in the same transaction as the audit row and the tenant's announcement, so claims, NOE, NOTR and
+  // transfer notices are held and no new job or tick sends. Its own key. Not gated on the tenant's onboarding status (a live tenant is
+  // the point). Pinned like the verification: `If-Match` is the record's recordedAt, so an operator never revokes a record it did not
+  // read. NO FREE TEXT: the body is a closed `reasonCode` and a `ticketRef` (the tenant reads the audit trail, and a durable column
+  // copies both), validated here against the closed set and the ticket pattern before anything is written or audited. 409
+  // CLEARINGHOUSE_BAA_NOT_RECORDED / CLEARINGHOUSE_BAA_REVOKED for a record that is not there or is already revoked. Rate limited per
+  // operator and across the platform (fail-open: see the dep's note).
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke",
+    { preHandler: [...CLEARINGHOUSE_REVOKE] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reasonCode, ticketRef } = parse(OnboardingBaaRevokeRequest, request.body);
+      return service.revokeClearinghouseBaa(
+        op,
+        slugOf(request),
+        { reasonCode, ticketRef },
         requiredRecordedAtPin(request, "BAA record"),
       );
     },

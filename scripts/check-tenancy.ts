@@ -102,9 +102,14 @@ const ACK_ACTOR_GUARD_HEAD =
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);
 // M23 migration 1437 (security review of cfd943e82, L2): `app.clearinghouse_release` is the transaction-local marker the platform-ops
 // credential release sets; the reservation release guard reads it. The same backstop rule: that one function head, never a policy.
+// M23 migration 1468 (BAA revoke): `app.clearinghouse_baa_revocation` is the transaction-local marker only the config store sets for a
+// patch that touches a revocation column; the config's revocation guard trigger reads it. Same rule: that one function head, never a policy.
 const RELEASE_GUARD_HEAD =
-  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?tenant_clearinghouse_credential_reservation_release_guard\s*\(/i;
-const RELEASE_GUARD_VARS = new Set<string>(["app.clearinghouse_release"]);
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:tenant_clearinghouse_credential_reservation_release_guard|tenant_clearinghouse_config_revocation_guard)\s*\(/i;
+const RELEASE_GUARD_VARS = new Set<string>([
+  "app.clearinghouse_release",
+  "app.clearinghouse_baa_revocation",
+]);
 // M3 migration 1439: `app.system_role_writer` is the transaction-local marker only M3's auditor grant sets; the system-managed role key
 // guard (1415) reads it, because the app role can write every column the system row's facts rest on. The same backstop rule: that one
 // function head, never a policy.

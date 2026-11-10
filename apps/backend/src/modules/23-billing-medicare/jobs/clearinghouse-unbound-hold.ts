@@ -12,18 +12,26 @@
 // A held NOE / NOTR / transfer notice may cost a CMS deadline, and shadow mode does not shield it (the hold is a transport fact, not a
 // claims-billing enforcement one): its alert is CRITICAL (`severity`), a held claim's only `warn`. Each severity has its own quiet
 // window, so a claim's warning never silences a notice's critical alert.
-// The quiet window starts only AFTER a dispatch that went out: this alert is the one signal that the org's work is held, so a router
-// that threw must be tried again on the next held job, not silenced for six hours.
+// The quiet window starts only AFTER a dispatch that went out and resolved a recipient: this alert is the one signal that the org's
+// work is held, so a router that threw, or an alert nobody was addressed by, must be tried again on the next held job, not silenced for
+// six hours. "Went out" is PERSISTED by M36's emitter, not delivered: out-of-band delivery follows each recipient's own preferences.
+// The emitter absorbs a repeat of the same (org, correlation id), so the correlation id the composition root sends carries the severity,
+// queue, reason and six-hour window (cron-alert-correlation.ts): a held NOE's critical alert is not absorbed by a held claim's warning,
+// and the re-alert after a window reaches the tenant again.
 // ponytail: the once-per-window alert memory is per process; a durable one only if several workers must share it.
-import { ChartWardenError } from "@chartwarden/types";
+import {
+  CLEARINGHOUSE_HOLD_ALERT_CODES,
+  CLEARINGHOUSE_HOLD_ALERT_WINDOW_MS,
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { UnboundReason } from "@chartwarden/x12-837-client";
 import { DelayedError } from "bullmq";
 import { CLAIMS_BILLING_HOLD_MS, type HoldableJob } from "../../../bootstrap/claims-billing-gate";
 import { type M23TransportDeps, transportForOrg } from "./clearinghouse-submission";
 
-export const CLEARINGHOUSE_UNBOUND_ALERT = "m23.clearinghouse.unbound_hold";
+export const CLEARINGHOUSE_UNBOUND_ALERT = CLEARINGHOUSE_HOLD_ALERT_CODES.m23;
 /** One alert per (org, reason) per window: a held job asks again every 15 minutes and must not page every time. */
-const ALERT_QUIET_MS = 6 * 60 * 60_000;
+const ALERT_QUIET_MS = CLEARINGHOUSE_HOLD_ALERT_WINDOW_MS;
 
 export type ClearinghouseState =
   | { readonly state: "bound" }

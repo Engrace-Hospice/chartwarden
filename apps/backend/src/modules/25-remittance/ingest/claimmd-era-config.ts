@@ -58,9 +58,20 @@ export function eraPullBindingForOrg<
     readonly vendor: string | null;
     readonly account?: "tenant";
     readonly transport: unknown;
+    readonly unboundReason?: string;
   },
->(bound: B, flags: EraFlags): B | { readonly transport: B["transport"]; readonly vendor: null } {
+>(
+  bound: B,
+  flags: EraFlags,
+):
+  | B
+  | { readonly transport: B["transport"]; readonly vendor: null; readonly unboundReason?: string } {
   return shouldRunLegacyEraPullFor(bound, flags)
     ? bound
-    : { transport: bound.transport, vendor: null };
+    : {
+        transport: bound.transport,
+        vendor: null,
+        // an unbound binding keeps its reason (`baa_revoked`): the pull reports a revoked org's possibly-owed responses
+        ...(bound.unboundReason ? { unboundReason: bound.unboundReason } : {}),
+      };
 }

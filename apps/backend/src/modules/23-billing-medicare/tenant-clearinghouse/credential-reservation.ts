@@ -127,13 +127,28 @@ export async function reserveCredential(
  * {@link RELEASE_QUIET_DAYS}. The one clock behind both the credential release and the vendor / mode lock (a lock that never expired
  * would strand a tenant whose old vendor has long since gone quiet).
  */
+/** The start of the window in which a vendor's responses for a production submission may still be arriving. */
+export const responseWindowStart = (now: Date): Date =>
+  new Date(now.getTime() - RELEASE_QUIET_DAYS * DAY_MS);
+
 export function hasRecentProductionTraffic(
   store: ConfigStore,
   organizationId: string,
   now: Date,
+  /**
+   * The vendor lock only: when the tenant left a revoked vendor. Attempts reserved earlier are that vendor's, and a BAA revoked for it
+   * must not lock the NEXT config for 90 days (attempt rows carry no vendor, so the departure time is the cut); attempts the new
+   * config made itself, after the cut, lock it as they always did. The credential release never passes it.
+   */
+  notBefore?: Date | null,
 ): Promise<boolean> {
-  const since = new Date(now.getTime() - RELEASE_QUIET_DAYS * DAY_MS);
-  return store.hasRecentProductionAttempts(organizationId, since);
+  const since = responseWindowStart(now);
+  const cut = notBefore ?? undefined;
+  return store.hasRecentProductionAttempts(
+    organizationId,
+    cut !== undefined && cut.getTime() > since.getTime() ? cut : since,
+    cut,
+  );
 }
 
 /** The release refuses while vendor responses for the organization's production claims may still be arriving. */
