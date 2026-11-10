@@ -276,6 +276,9 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const permissions = orgId
       ? [...(await resolveActorPermissions({ organizationId: orgId, userId: actor.userId }))]
       : [];
+    // The shell's "is this organization still being onboarded?" signal: the authenticate hook's own cached answer. A session
+    // with no organization yet is confined by nothing, so it reads `live`.
+    const confined = orgId ? ((await deps.organizationStage?.isConfined(orgId)) ?? false) : false;
     return {
       userId: actor.userId,
       organizationId: orgId,
@@ -287,6 +290,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       orgWidePatientScope: hasOrgWideScope(actor.roles),
       isAdmin: membership?.isAdmin ?? false,
       permissions,
+      organizationStage: confined ? "onboarding" : "live",
     };
   });
 

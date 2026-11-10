@@ -747,6 +747,13 @@ export interface IdentityRouteDeps {
    */
   onboardingTenants?: { isOnboarding(organizationId: string): Promise<boolean> | boolean };
   /**
+   * The organization stage reader the authenticate hook confines a not-yet-live session by (bootstrap/onboarding-org-gate.ts; M2 may
+   * not import bootstrap, so the composition root injects the same cached reader structurally). `GET /auth/context` reports
+   * `organizationStage` from it: confined = `onboarding`, otherwise `live`. Omitted (slice boots, unit tests): `live`, because no
+   * gate exists to confine the session. A read that throws propagates: the shell is never told `live` on a guess.
+   */
+  organizationStage?: { isConfined(organizationId: string): Promise<boolean> };
+  /**
    * GAP-005 - the MFA matrix gate (M2 section 2.3). Present: `select-organization` refuses to bind an organization
    * whose roles require a second factor the user has not enrolled (403 MFA_ENROLMENT_REQUIRED). Omitted (slice
    * boots, unit tests) means no enforcement at bind time; the authenticate hook is the second, independent gate.

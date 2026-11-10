@@ -65,6 +65,18 @@ export const CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
 };
 
 /**
+ * M23 `POST /billing/mac-credentials/:providerEntityId/test` (an outbound call to the platform's MAC gateway per request, reachable by a
+ * not-yet-live organization): 6/min/user and 30/min/org, like the clearinghouse verify. Fail-CLOSED (7A security review L3): with the
+ * limiter's store down the route answers a typed 503 (DEGRADED) rather than become an unmetered gateway call.
+ */
+export const MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 6,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "closed",
+};
+
+/**
  * M23 `PUT /tenant/clearinghouse`: 10/min/user and 30/min/org. Its 409 CLEARINGHOUSE_ACCOUNT_IN_USE tells a caller that a key is held
  * elsewhere, so the cap bounds that as an oracle (security review of migration 1434, LOW-2). Fail-CLOSED (security review of cfd943e82,
  * L5): with the limiter's store down the oracle would be unbounded, so the PUT answers a typed 503 (DEGRADED) instead.

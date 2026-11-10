@@ -96,6 +96,14 @@ export const OnboardingLocationPatchRequest = Type.Composite([
 ]);
 
 /**
+ * The identifier pattern of M23's `UpsertMacCredentialBodySchema` (billing-typebox.ts `MAC_IDENTIFIER_PATTERN`), copied because M34 may
+ * not import M23; a test pins the two strings equal. A separator-formed SSN shape in an id is refused (422 EVIDENCE_LOOKS_LIKE_PHI).
+ */
+const MAC_IDENTIFIER_PATTERN = String.raw`^(?![\s\S]*(?<![0-9\uFF10-\uFF19])[0-9\uFF10-\uFF19]{3}[\s.\-\u2010-\u2015\u2212\uFF0D\uFF0E][0-9\uFF10-\uFF19]{2}[\s.\-\u2010-\u2015\u2212\uFF0D\uFF0E][0-9\uFF10-\uFF19]{4}(?![0-9\uFF10-\uFF19]))`;
+const MAC_IDENTIFIER_NOTE =
+  "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.";
+
+/**
  * The MAC credential body is M23's (`UpsertMacCredentialBodySchema`, which M34 may not import); M23 re-validates it
  * with that schema, so this is the published copy. `clientSecret` is write-only.
  */
@@ -108,15 +116,36 @@ export const OnboardingMacCredentialUpsertRequest = Type.Composite([
       description:
         "The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422.",
     }),
-    submitterId: Type.String({ minLength: 1, maxLength: 64 }),
-    tradingPartnerId: Type.String({ minLength: 1, maxLength: 64 }),
-    clientId: Type.String({ minLength: 1, maxLength: 256 }),
+    submitterId: Type.String({
+      minLength: 1,
+      maxLength: 64,
+      pattern: MAC_IDENTIFIER_PATTERN,
+      description: MAC_IDENTIFIER_NOTE,
+    }),
+    tradingPartnerId: Type.String({
+      minLength: 1,
+      maxLength: 64,
+      pattern: MAC_IDENTIFIER_PATTERN,
+      description: MAC_IDENTIFIER_NOTE,
+    }),
+    clientId: Type.String({
+      minLength: 1,
+      maxLength: 256,
+      pattern: MAC_IDENTIFIER_PATTERN,
+      description: MAC_IDENTIFIER_NOTE,
+    }),
     clientSecret: Type.String({
       minLength: 1,
       maxLength: 4096,
       description: "Write-only: sealed under the tenant's own key and never returned.",
     }),
-    baaRecordRef: Type.Optional(Type.String({ maxLength: 256 })),
+    baaRecordRef: Type.Optional(
+      Type.String({
+        maxLength: 256,
+        description:
+          "Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error.",
+      }),
+    ),
     credentialExpiresAt: Type.Optional(Type.String({ format: "date-time" })),
   }),
   OnboardingReasonSchema,
@@ -133,7 +162,10 @@ export const OnboardingMacCredentialViewSchema = Type.Object({
   hasSecret: Type.Boolean({ description: "The secret itself is never projected." }),
   baaRecordRef: Nullable(Type.String()),
   credentialExpiresAt: Nullable(Iso),
-  lastSandboxTestAt: Nullable(Iso),
+  lastSandboxTestAt: Type.Union([Iso, Type.Null()], {
+    description:
+      "When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
+  }),
   version: Type.Integer(),
   createdAt: Iso,
   updatedAt: Iso,

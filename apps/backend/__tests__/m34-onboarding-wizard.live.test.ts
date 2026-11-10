@@ -17,6 +17,12 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  createInMemoryEffectivePermissionStore,
+  registerEffectivePermissionResolver,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
@@ -30,7 +36,7 @@ import {
   createComplianceOfficerRoleBinder,
   createComplianceOfficerRoleUnbinder,
 } from "../src/bootstrap/bind-compliance-officer-role";
-import { createSessionAuthenticate } from "../src/bootstrap/index";
+import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { createOrganizationStageReader } from "../src/bootstrap/onboarding-org-gate";
 import { buildDrizzleOrgProfilePort } from "../src/bootstrap/org-profile";
 import {
@@ -38,11 +44,20 @@ import {
   buildOrgSeedFactsReader,
 } from "../src/bootstrap/org-spine-facts";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { m34PlatformBypassAuditor } from "../src/index";
+import { m34PlatformBypassAuditor, voidGoLiveOnBillingWrite } from "../src/index";
+import { buildClearinghouseAuditPort } from "../src/m23-clearinghouse-audit";
 import {
+  createContextActorResolver,
+  createInMemoryAuditExecutor,
+  createInMemoryCollaboratorLinkStore,
+  createInMemoryInvitationStore,
+  createInMemoryMembershipRepository,
+  createInMemorySessionWriter,
+  createInMemoryUserDirectory,
   createOrgDataWriteScope,
   createOrganizationActivator,
   createOrganizationStatusReader,
+  registerIdentityRoutes,
 } from "../src/modules/02-identity";
 import {
   isTenantBaaDocumentFiled,
@@ -52,6 +67,11 @@ import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
+import { buildMacSecretCipherFromEnv } from "../src/modules/23-billing-medicare/routes/secret-cipher";
+import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/routes/write-service-drizzle";
+import { buildClearinghouseSecretCipher } from "../src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
+import { createTenantClearinghouseService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/service";
+import { buildDrizzleTenantClearinghouseRouteService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   createOnboardingAdvancer,
@@ -61,9 +81,10 @@ import {
 } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 import { evaluateGoLiveGuards } from "../src/modules/34-saas-tenant-platform/onboarding/go-live";
 import { voidPendingGoLiveForDataChange } from "../src/modules/34-saas-tenant-platform/onboarding/go-live-void";
-import type {
-  PlatformActor,
-  TenantActor,
+import {
+  GO_LIVE_DATA_CHANGED_REVOKE_REASON,
+  type PlatformActor,
+  type TenantActor,
 } from "../src/modules/34-saas-tenant-platform/onboarding/model";
 import { createOnboardingTenantReader } from "../src/modules/34-saas-tenant-platform/onboarding/onboarding-tenant-reader";
 import {
@@ -3678,6 +3699,323 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       );
       expect(trail.rows).toHaveLength(1);
       await admin.query("DELETE FROM onboarding_task_template WHERE key = 'named_actor_step'");
+    });
+  });
+  describe("7A: tenant-lane billing writes void a pending go-live attestation, and auth/context reports the stage", () => {
+    const ORG_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a701";
+    const T_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a702";
+    const ORG_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a703";
+    const T_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a704";
+    const PE_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a705";
+    let adminH: TenantActor;
+    let officerH: TenantActor;
+    let adminI: TenantActor;
+
+    /** A tenant ready to go live (every gating step done, a long BAA, an assigned officer) whose organization is `created`. */
+    async function readyTenant(org: string, tenant: string, slug: string, label: string) {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+        [org, slug],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding',$3,'b@x.test','p@x.test')",
+        [tenant, org, slug],
+      );
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status)
+         SELECT $1, $2, key, CASE WHEN key = 'go_live_checklist_complete' THEN 'pending' ELSE 'done' END::onboarding_task_status
+           FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [org, tenant],
+      );
+      await admin.query(
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [org, tenant, await fileDocument(org)],
+      );
+      const orgAdmin = await person(org, `admin-${label}`, ["org_admin"]);
+      const officer = await person(org, `officer-${label}`, ["compliance_officer"]);
+      await admin.query(
+        "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
+        [tenant, officer.membershipId],
+      );
+      return { orgAdmin, officer };
+    }
+
+    // The M23 services exactly as the composition root builds them for the tenant routes (apps/backend/src/index.ts).
+    const clearinghouse = () =>
+      buildDrizzleTenantClearinghouseRouteService({
+        db: app.db,
+        service: createTenantClearinghouseService({
+          cipher: buildClearinghouseSecretCipher(Buffer.alloc(32, 21)),
+          probes: { claimmd: async () => "ok" },
+        }),
+        audit: buildClearinghouseAuditPort(),
+        onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+      });
+    const macCredentials = () =>
+      buildDrizzleM23WriteService(app.db, {
+        onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+        secretCipher: buildMacSecretCipherFromEnv({
+          M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 22).toString("base64"),
+        }),
+      });
+    const writeActor = (a: TenantActor, organizationId: string) => ({
+      organizationId,
+      userId: a.userId,
+      membershipId: a.membershipId,
+      roles: [...a.roles],
+      stepUpRecent: true,
+      actorKind: "user",
+    });
+    const MAC_ARGS = {
+      providerEntityId: PE_H,
+      macJurisdiction: "cgs_j15",
+      submitterId: "SUB-1",
+      tradingPartnerId: "TP-1",
+      clientId: "client-1",
+      clientSecret: "synthetic-mac-client-secret-0001",
+    };
+
+    /** A fresh pending attestation: a leftover one (a case whose write did not void it) is closed first, so every case stands alone. */
+    const attestPending = async (): Promise<void> => {
+      await admin.query(
+        `UPDATE tenant_go_live_attestation
+            SET status='revoked', revoked_by_user_id=$2, revoked_at=now(), revoke_reason='reset between test cases'
+          WHERE organization_id=$1 AND status='pending'`,
+        [ORG_H, officerH.userId],
+      );
+      await admin.query(
+        `UPDATE onboarding_task SET status='pending', started_at=NULL
+          WHERE organization_id=$1 AND template_key='go_live_checklist_complete'`,
+        [ORG_H],
+      );
+      const view = await wizard(false).attestGoLive(officerH, ORG_H, "all checks reviewed");
+      expect(view.goLive.state).toBe("awaiting_approval");
+    };
+    const latestAttestation = async (org: string) =>
+      (
+        await admin.query(
+          `SELECT status, revoke_reason, revoked_by_user_id FROM tenant_go_live_attestation
+            WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 1`,
+          [org],
+        )
+      ).rows[0] as {
+        status: string;
+        revoke_reason: string | null;
+        revoked_by_user_id: string | null;
+      };
+    const expectVoidedBy = async (org: string, actor: TenantActor): Promise<void> => {
+      expect(await latestAttestation(org)).toEqual({
+        status: "revoked",
+        revoke_reason: GO_LIVE_DATA_CHANGED_REVOKE_REASON,
+        revoked_by_user_id: actor.userId,
+      });
+    };
+
+    beforeAll(async () => {
+      ({ orgAdmin: adminH, officer: officerH } = await readyTenant(ORG_H, T_H, "wiz-h", "h"));
+      ({ orgAdmin: adminI } = await readyTenant(ORG_I, T_I, "wiz-i", "i"));
+      await admin.query(
+        `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,$2,'999701','Hotel Hospice','1234567893','sealed-elsewhere','1231')`,
+        [PE_H, ORG_H],
+      );
+    }, 60_000);
+
+    it("a clearinghouse choice (PUT) by the tenant's admin revokes a pending attestation", async () => {
+      await attestPending();
+      await clearinghouse().put(
+        writeActor(adminH, ORG_H),
+        { vendor: "claimmd", mode: "test", secret: "synthetic-claimmd-key-0001" },
+        undefined,
+      );
+      await expectVoidedBy(ORG_H, adminH);
+    });
+
+    it("recording the vendor BAA revokes a pending attestation", async () => {
+      await attestPending();
+      await clearinghouse().recordBaa(writeActor(adminH, ORG_H), {
+        heldBy: "tenant",
+        effectiveDate: "2026-01-02",
+        documentRef: "BAA folder 2026",
+      });
+      await expectVoidedBy(ORG_H, adminH);
+    });
+
+    it("verifying the connection revokes a pending attestation", async () => {
+      await attestPending();
+      const done = await clearinghouse().verify(writeActor(adminH, ORG_H), {});
+      expect(done.view.status).toBe("verified");
+      await expectVoidedBy(ORG_H, adminH);
+    });
+
+    it("activating the clearinghouse revokes a pending attestation", async () => {
+      // the operator's verification of the tenant's BAA (the platform lane's own write) is what lets the tenant activate
+      await admin.query(
+        "UPDATE tenant_clearinghouse_config SET baa_verified_at = now(), baa_verified_by_membership_id = $2 WHERE organization_id = $1",
+        [ORG_H, officerH.membershipId],
+      );
+      await attestPending();
+      const view = await clearinghouse().activate(writeActor(adminH, ORG_H));
+      expect(view.status).toBe("active");
+      await expectVoidedBy(ORG_H, adminH);
+    });
+
+    it("saving a MAC credential revokes a pending attestation", async () => {
+      await attestPending();
+      await macCredentials().upsertMacCredential(writeActor(adminH, ORG_H), MAC_ARGS);
+      await expectVoidedBy(ORG_H, adminH);
+    });
+
+    it("a refused write changes nothing: the attestation stays pending (the void rolls back with the write)", async () => {
+      await attestPending();
+      await expect(
+        // the credential row is bound to one MAC jurisdiction: a different one is a 409 before anything is written
+        macCredentials().upsertMacCredential(writeActor(adminH, ORG_H), {
+          ...MAC_ARGS,
+          macJurisdiction: "ngs_j6",
+          expectedVersion: 1,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect((await latestAttestation(ORG_H)).status).toBe("pending");
+    });
+
+    it("an organization with nothing pending: a billing write is a no-op for the attestation table", async () => {
+      const before = (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM tenant_go_live_attestation WHERE organization_id=$1",
+          [ORG_I],
+        )
+      ).rows[0].n;
+      await clearinghouse().put(writeActor(adminI, ORG_I), { vendor: "outside" }, undefined);
+      const after = (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM tenant_go_live_attestation WHERE organization_id=$1",
+          [ORG_I],
+        )
+      ).rows[0].n;
+      expect(after).toBe(before);
+    });
+
+    it("GET /api/v1/auth/context says `onboarding` while the organization is created, then `live` after go-live approval", async () => {
+      const reader = createOrganizationStageReader(() =>
+        createOrganizationStatusReader(app.db)(ORG_I),
+      );
+      const memberRepo = createInMemoryMembershipRepository([
+        {
+          membershipId: adminI.membershipId,
+          userId: adminI.userId,
+          organizationId: ORG_I,
+          organizationName: "wiz-i",
+          status: "active",
+          isAdmin: true,
+          defaultLocationIds: [],
+        },
+      ]);
+      const actor: ResolvedActor = {
+        userId: adminI.userId,
+        membershipId: adminI.membershipId,
+        organizationId: ORG_I,
+        roles: ["org_admin"],
+        providerEntityIds: [],
+        locationIds: [],
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
+        deviceAttestation: null,
+        externalActorId: null,
+      };
+      registerEffectivePermissionResolver(
+        createInMemoryEffectivePermissionStore([
+          {
+            orgId: ORG_I,
+            userId: adminI.userId,
+            grants: [
+              {
+                roleKey: "org_admin",
+                enabled: true,
+                expiresAt: null,
+                permissionKeys: ["onboarding.read_own"],
+              },
+            ],
+          },
+        ]).store,
+      );
+      // The REAL authenticate hook (the not-yet-live gate on the real status reader) in front of the REAL identity routes.
+      const app2 = buildServer({
+        authenticate: createSessionAuthenticate({
+          getSnapshot: async () => ({
+            sessionId: "s-ctx",
+            userId: adminI.userId,
+            activeOrganizationId: ORG_I,
+          }),
+          getResolver: () => ({
+            resolveActor: async () => actor,
+            resolveStepUpState: async () => null,
+            resolveStepUpPolicy: async () => ({
+              qualifyingFactors: STEP_UP_POLICY.qualifyingFactors,
+              maxAgeSec: STEP_UP_POLICY.defaultMaxAgeSec,
+            }),
+          }),
+          organizationStage: reader,
+        }),
+        security: { rateLimitEnabled: false },
+      });
+      registerIdentityRoutes(app2, {
+        actors: createContextActorResolver(),
+        memberships: memberRepo.repo,
+        sessions: createInMemorySessionWriter().writer,
+        invitations: createInMemoryInvitationStore().store,
+        collaborators: createInMemoryCollaboratorLinkStore().store,
+        users: createInMemoryUserDirectory(memberRepo.repo).directory,
+        audit: createInMemoryAuditExecutor().executor,
+        organizationStage: reader,
+      });
+      try {
+        const stageOf = async () => {
+          const res = await app2.inject({ method: "GET", url: "/api/v1/auth/context" });
+          expect(res.statusCode, res.body).toBe(200);
+          return res.json().organizationStage as string;
+        };
+        expect(await stageOf()).toBe("onboarding");
+
+        const officerI = (
+          await admin.query(
+            "SELECT compliance_officer_membership_id AS id FROM tenant_account WHERE id=$1",
+            [T_I],
+          )
+        ).rows[0].id as string;
+        const officer: TenantActor = {
+          kind: "tenant",
+          userId: (await admin.query("SELECT user_id FROM membership WHERE id=$1", [officerI]))
+            .rows[0].user_id,
+          membershipId: officerI,
+          roles: ["compliance_officer"],
+        };
+        await wizard(false).attestGoLive(officer, ORG_I, "all checks reviewed");
+        expect(await stageOf()).toBe("onboarding"); // an attestation opens nothing
+
+        const activateOrg = createOrganizationActivator(
+          app.db,
+          createOnboardingTenantReader(app.db),
+          undefined,
+          (org) => reader.invalidate(org),
+        );
+        await wizard(false, {
+          activateOrganization: async ({ organizationId, operator, reason }) => {
+            await activateOrg(organizationId, {
+              reason: `go-live approved: ${reason}`,
+              actorUserId: operator.userId,
+              actorMembershipId: operator.membershipId,
+            });
+          },
+        }).approveGoLive("wiz-i", OPS, "reviewed the evidence and the BAA");
+        expect(await stageOf()).toBe("live");
+      } finally {
+        await app2.close();
+        resetAuthorizationContract();
+        resetRbacEngine();
+      }
     });
   });
 });

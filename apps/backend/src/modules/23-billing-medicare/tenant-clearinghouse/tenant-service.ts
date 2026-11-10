@@ -8,11 +8,14 @@
 // `verify` is three steps in two transactions (service.ts): read and decrypt, then the vendor probe with NO transaction open,
 // then lock and compare-and-set. After a change COMMITS the optional `onChanged` hook runs (the composition root binds it to
 // the M34 onboarding advance pass, so choosing a vendor settles wizard step 7 at once); a failure there is logged and never
-// fails the change.
+// fails the change. The optional `onOnboardingDataChanged` hook is different: it runs INSIDE each write's transaction (the
+// composition root binds it to M34's go-live void), so a write and the revoke of the attestation it made stale commit or roll
+// back together, and a refused write voids nothing.
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "../routes/actor";
+import type { OnboardingDataChangedHook } from "../routes/onboarding-data-change";
 import {
   CLEARINGHOUSE_AUDIT_EVENTS,
   type ClearinghouseAuditEvent,
@@ -52,6 +55,12 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly service: TenantClearinghouseService;
   /** The field-level audit writer (required: a change is never silently un-audited). */
   readonly audit: ClearinghouseAuditPort;
+  /**
+   * Runs on the SAME transaction as each successful write (put, BAA record, verify, activate), after it: any write to the tenant's
+   * clearinghouse is onboarding data, so a pending go-live attestation is revoked with it (the operator lane does the same). A throw
+   * rolls the write back. Unbound, a tenant could change its choice under a pending attestation (the composition root binds it).
+   */
+  readonly onOnboardingDataChanged?: OnboardingDataChangedHook;
   /** Post-commit, best effort. */
   readonly onChanged?: (organizationId: string) => Promise<void>;
   /** `onChanged` failed after the change committed: the wizard step did not settle (the change itself stands). */
@@ -80,6 +89,15 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
   const then = async <T>(organizationId: string, result: T): Promise<T> => {
     await changed(organizationId);
     return result;
+  };
+
+  /** The write's own transaction says onboarding data changed (see {@link deps.onOnboardingDataChanged}). */
+  const dataChanged = async (tx: DbClient, actor: M23WriteActor): Promise<void> => {
+    await deps.onOnboardingDataChanged?.(tx, {
+      organizationId: actor.organizationId,
+      userId: actor.userId,
+      membershipId: actor.membershipId,
+    });
   };
 
   /** The audit row of one change, on the change's own transaction. The row exists after any successful write. */
@@ -162,6 +180,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
             status: done.view.status ?? "none",
           });
         }
+        await dataChanged(tx, actor);
         return { created: done.created, view: done.view };
       }).catch(async (err: unknown) => {
         throw await refused(actor, err, body.vendor);
@@ -177,6 +196,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
             status: done.view.status ?? "none",
           });
         }
+        await dataChanged(tx, actor);
         return done.view;
       }).catch(async (err: unknown) => {
         throw await refused(actor, err);
@@ -201,6 +221,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           kind: plan.evidence === null ? "connection_test" : "attested",
           ...(done.test ? { outcome: done.test.outcome } : {}),
         });
+        await dataChanged(tx, actor);
         return done;
       }).catch(async (err: unknown) => {
         throw await refused(actor, err);
@@ -214,6 +235,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
         await record(tx, actor, CLEARINGHOUSE_AUDIT_EVENTS.activated, [], {
           status: done.status ?? "none",
         });
+        await dataChanged(tx, actor);
         return done;
       }).catch(async (err: unknown) => {
         throw await refused(actor, err);

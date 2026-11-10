@@ -23,6 +23,7 @@ const ORG_BOUND: ActorContextResponse = {
   orgWidePatientScope: false,
   isAdmin: false,
   permissions: ["patient.read", "messaging.read"],
+  organizationStage: "live",
 };
 
 describe("FB-T15 toSession — maps the live actor context into the shell Session", () => {
@@ -52,6 +53,7 @@ describe("FB-T15 toSession — maps the live actor context into the shell Sessio
       orgWidePatientScope: false,
       isAdmin: false,
       permissions: [],
+      organizationStage: "live",
     });
     expect(s.organizationId).toBe("");
     expect(s.membershipId).toBeUndefined();
@@ -73,6 +75,7 @@ describe("needsOrgSelection — shell pre-org guard", () => {
       orgWidePatientScope: false,
       isAdmin: false,
       permissions: [],
+      organizationStage: "live",
     });
     expect(needsOrgSelection(preOrg)).toBe(true);
   });
