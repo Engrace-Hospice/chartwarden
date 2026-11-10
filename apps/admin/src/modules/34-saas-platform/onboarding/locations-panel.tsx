@@ -13,6 +13,7 @@ import {
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { bodyFingerprint } from "./body-digest";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
@@ -21,6 +22,7 @@ import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { isAboutAnInput } from "./wizard-errors";
 
 interface Location {
   id: string;
@@ -136,6 +138,8 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const [form, setForm] = useState<Form>(restored?.form ?? BLANK);
   const [errors, setErrors] = useState<Errors>({});
   const [asking, setAsking] = useState(false);
+  // The reason typed before a field refusal closed the prompt: the operator fixes the field and confirms again, not types it twice.
+  const [lastReason, setLastReason] = useState("");
   const write = useOpsWrite();
 
   const entityList = entities.data?.items ?? [];
@@ -150,6 +154,7 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     setEditing({ id: location?.id ?? null });
   }
   function askForReason(): void {
+    write.clear(); // an earlier refusal has been read; this attempt starts clean
     const found = validate(form);
     setErrors(found);
     if (Object.keys(found).length === 0) setAsking(true);
@@ -162,7 +167,8 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       id === null
         ? { providerEntityId: form.providerEntityId, ...fieldsOf(form), reason }
         : { ...fieldsOf(form), reason };
-    const outcome = await write.run(JSON.stringify(body), (key) =>
+    setLastReason(reason);
+    const outcome = await write.run(await bodyFingerprint(body), (key) =>
       id === null
         ? client.POST("/api/v1/platform/tenants/{orgSlug}/locations", {
             params: { path: { orgSlug }, header: { "Idempotency-Key": key } },
@@ -175,8 +181,11 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     );
     if (outcome.ok) {
       setAsking(false);
+      setLastReason("");
       setEditing(null);
       await Promise.all([locations.reload(true), ctx.refresh()]);
+    } else if (isAboutAnInput(outcome.failure)) {
+      setAsking(false); // the form is still open with what was typed; the error is read beside its input
     }
   }
 
@@ -279,6 +288,7 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
                   value: e.id,
                   label: `${e.legalName} (${e.ccn})`,
                 }))}
+                error={fieldError("providerEntityId")}
               />
             ) : null}
             <TextField
@@ -297,6 +307,7 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               label="Address line 2 (optional)"
               value={form.addressLine2}
               onChange={set("addressLine2")}
+              error={fieldError("addressLine2")}
             />
             <TextField
               label="City"
@@ -316,8 +327,18 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               onChange={set("postalCode")}
               error={fieldError("postalCode")}
             />
-            <TextField label="Phone (optional)" value={form.phone} onChange={set("phone")} />
-            <TextField label="Fax (optional)" value={form.fax} onChange={set("fax")} />
+            <TextField
+              label="Phone (optional)"
+              value={form.phone}
+              onChange={set("phone")}
+              error={fieldError("phone")}
+            />
+            <TextField
+              label="Fax (optional)"
+              value={form.fax}
+              onChange={set("fax")}
+              error={fieldError("fax")}
+            />
             <TextField
               label="Time zone"
               hint="An IANA name, for example America/Denver."
@@ -327,7 +348,14 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
             />
           </div>
           <div className="wx-drawer-actions">
-            <Button tone="secondary" onClick={() => setEditing(null)}>
+            <Button
+              tone="secondary"
+              onClick={() => {
+                setLastReason("");
+                write.clear();
+                setEditing(null);
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit">Save location</Button>
@@ -344,10 +372,12 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Save"
         write={write}
         orgSlug={orgSlug}
+        initialReason={lastReason}
         onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form, id: editing?.id ?? null })}
         onConfirm={(reason) => void save(reason)}
         onCancel={() => {
           write.clear();
+          setLastReason("");
           setAsking(false);
         }}
       />

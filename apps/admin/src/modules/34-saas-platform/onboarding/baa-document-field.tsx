@@ -6,6 +6,7 @@
 import { Button, InlineAlert, TextField, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { sha256Hex } from "./body-digest";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -69,12 +70,6 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-/** SHA-256 (hex) of the file's content, as the base64 text the request carries (one-to-one with the bytes). */
-async function contentDigest(contentBase64: string): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(contentBase64));
-  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 const sizeLabel = (bytes: number): string =>
   bytes >= BYTES_PER_MB
     ? `${(bytes / BYTES_PER_MB).toFixed(1)} MB`
@@ -120,7 +115,8 @@ export function BaaDocumentField({
     }
     try {
       const contentBase64 = await readBase64(file);
-      const digest = await contentDigest(contentBase64);
+      // SHA-256 of the base64 text the request carries (one-to-one with the bytes)
+      const digest = await sha256Hex(contentBase64);
       if (!isCurrent()) return;
       setPicked({ name: file.name, mimeType, size: file.size, contentBase64, digest });
     } catch {

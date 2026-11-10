@@ -14,6 +14,7 @@ import {
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { bodyFingerprint } from "./body-digest";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
@@ -22,6 +23,7 @@ import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
+import { isAboutAnInput } from "./wizard-errors";
 
 interface Credential {
   credentialId: string;
@@ -111,6 +113,8 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const [clientSecret, setClientSecret] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [asking, setAsking] = useState(false);
+  // The reason typed before a field refusal closed the prompt: the operator fixes the field and confirms again, not types it twice.
+  const [lastReason, setLastReason] = useState("");
   const write = useOpsWrite();
 
   const entityList = entities.data?.items ?? [];
@@ -139,6 +143,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   }
 
   function askForReason(): void {
+    write.clear(); // an earlier refusal has been read; this attempt starts clean
     const found = validate(form, clientSecret);
     setErrors(found);
     if (Object.keys(found).length === 0) setAsking(true);
@@ -157,7 +162,10 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       reason,
     };
     const pinned = editing.pinnedVersion;
-    const outcome = await write.run(`${pinned ?? "new"}:${JSON.stringify(body)}`, (key) =>
+    setLastReason(reason);
+    // a digest, not the body: the client secret is in it and is never held outside its input
+    const fingerprint = `${pinned ?? "new"}:${await bodyFingerprint(body)}`;
+    const outcome = await write.run(fingerprint, (key) =>
       client.POST("/api/v1/platform/tenants/{orgSlug}/mac-credentials", {
         params: {
           path: { orgSlug },
@@ -171,13 +179,18 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     );
     if (outcome.ok) {
       setAsking(false);
+      setLastReason("");
       setEditing(null);
       setClientSecret("");
       await Promise.all([credentials.reload(true), ctx.refresh()]);
+    } else if (isAboutAnInput(outcome.failure)) {
+      // The form is still open with what was typed: the prompt gets out of the way so the error is read beside its input.
+      setAsking(false);
     } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
       // Someone changed it since it was read (409 STALE_VERSION), or no pin was sent (428): the form's pin is stale, so the prompt AND the form
       // close, the record is read again, and the operator opens the form on what it says now and enters the secret again.
       setAsking(false);
+      setLastReason("");
       setEditing(null);
       setClientSecret("");
       await credentials.reload(true);
@@ -292,6 +305,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               value={form.macJurisdiction}
               onChange={set("macJurisdiction")}
               options={JURISDICTIONS}
+              error={fieldError("macJurisdiction")}
             />
             <TextField
               label="Submitter id"
@@ -324,6 +338,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               label="BAA record reference (optional)"
               value={form.baaRecordRef}
               onChange={set("baaRecordRef")}
+              error={fieldError("baaRecordRef")}
             />
           </div>
           <div className="wx-drawer-actions">
@@ -332,6 +347,8 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               onClick={() => {
                 // the write-only secret never outlives the form it was typed into
                 setClientSecret("");
+                setLastReason("");
+                write.clear();
                 setEditing(null);
               }}
             >
@@ -351,6 +368,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Save"
         write={write}
         orgSlug={orgSlug}
+        initialReason={lastReason}
         onReverify={() =>
           stashStepUpDraft(draftKey(orgSlug), {
             form,
@@ -360,6 +378,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         onConfirm={(reason) => void save(reason)}
         onCancel={() => {
           write.clear();
+          setLastReason("");
           setAsking(false);
         }}
       />

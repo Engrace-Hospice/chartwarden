@@ -314,3 +314,59 @@ describe("MacPanel: coming back from Re-verify", () => {
     expect(init.body).toMatchObject({ providerEntityId: "pe-1", clientSecret: TYPED_VALUE });
   });
 });
+
+describe("MacPanel: a server refusal of one field", () => {
+  it("closes the prompt so the error is read beside its field, keeps the form and the typed reason, and asks again", async () => {
+    let calls = 0;
+    const { client } = mount([], {
+      POST: {
+        [MAC]: () => {
+          calls += 1;
+          return calls === 1
+            ? refused(422, "VALIDATION_FAILED", "invalid", [
+                {
+                  field: "submitterId",
+                  code: "INVALID",
+                  message: "That submitter id is not one M23 accepts.",
+                },
+              ])
+            : ok(CRED, 201);
+        },
+      },
+    });
+    await screen.findByText(/No MAC credential yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add MAC credential" }));
+    fill();
+    save("Customer sent their Noridian enrolment");
+
+    expect(await screen.findByText("That submitter id is not one M23 accepts.")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Reason/)).toBeNull();
+    expect((screen.getByLabelText(/^Submitter id/) as HTMLInputElement).value).toBe("SUB123");
+    expect((screen.getByLabelText(/^Client secret/) as HTMLInputElement).value).toBe(TYPED_VALUE);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+    expect((screen.getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(
+      "Customer sent their Noridian enrolment",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not leave the refusal on the page once the form is cancelled", async () => {
+    mount([], {
+      POST: {
+        [MAC]: () =>
+          refused(422, "VALIDATION_FAILED", "invalid", [
+            { field: "clientId", code: "INVALID", message: "That client id is not valid." },
+          ]),
+      },
+    });
+    await screen.findByText(/No MAC credential yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add MAC credential" }));
+    fill();
+    save("Customer sent their Noridian enrolment");
+    await screen.findByText("That client id is not valid.");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/Some details need attention/)).toBeNull();
+  });
+});

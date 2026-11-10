@@ -4,6 +4,10 @@ import { InlineAlert, type OpsFailure, ReverifyLink } from "@chartwarden/ui";
 import { createContext, useContext } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { guardFailureLines } from "./wizard-errors";
+
+/** The go-live approval's refusal that lists what still fails: a coded 409 the kit classes "refused", whose details are the point. */
+const GUARDS_FAILED_CODE = "ACTIVATION_GUARDS_FAILED";
 
 /** The wizard's step titles, so a message can name "Organisation" rather than `account_created`. */
 export const StepTitlesContext = createContext<(key: string) => string>((key) => key);
@@ -29,7 +33,13 @@ export function FailureNotice({
         {fieldsShown ? "Some details need attention." : failure.message}
         {quoteReference ? ` Reference: ${failure.correlationId}.` : ""}
       </InlineAlert>
-      {failure.kind === "conflict" && failure.details.length > 0 ? (
+      {failure.code === GUARDS_FAILED_CODE && failure.details.length > 0 ? (
+        <ul>
+          {guardFailureLines(failure.details).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : failure.kind === "conflict" && failure.details.length > 0 ? (
         <ul>
           {failure.details.map((d) => (
             <li key={`${d.field}:${d.message}`}>{d.message}</li>

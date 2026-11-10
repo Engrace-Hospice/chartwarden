@@ -2,9 +2,13 @@
 // The server's sentence is the fallback (the envelope never carries record content); these say what to DO next. Authorization-class
 // codes (step-up, forbidden) are not here: `describeOpsError` gives them their own kinds.
 import { CLEARINGHOUSE_RELEASE_QUIET_DAYS } from "@chartwarden/types";
-import type { OpsErrorCopy } from "@chartwarden/ui";
+import type { OpsErrorCopy, OpsErrorDetail, OpsFailure } from "@chartwarden/ui";
 
 export const WIZARD_ERROR_COPY: OpsErrorCopy = {
+  ACTIVATION_GUARDS_FAILED:
+    "The tenant cannot go live yet: the checks below do not pass right now. The step has been reloaded.",
+  GO_LIVE_ATTESTATION_STALE:
+    "The attestation no longer stands (its attester is no longer the assigned compliance officer). The step has been reloaded. Revoke the attestation so the compliance officer can attest again.",
   ONBOARDING_STEP_OUT_OF_ORDER: "An earlier step is not finished yet. Steps are done in order.",
   ONBOARDING_STEP_ALREADY_SETTLED: "This step is already done. Re-open it to change it.",
   ONBOARDING_STEP_NOT_ATTESTABLE:
@@ -55,3 +59,40 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   STALE_VERSION:
     "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
 };
+
+/** A refusal that is about an input (not the reason itself): the prompt gets out of the way so the error is read beside that input. */
+export const isAboutAnInput = (failure: Pick<OpsFailure, "kind" | "fieldErrors">): boolean =>
+  failure.kind === "validation" &&
+  Object.keys(failure.fieldErrors).some((field) => field !== "reason");
+
+/**
+ * The codes that say the step, or the tenant, is no longer in the state the operator was looking at (another operator or the tenant
+ * moved it): the wizard view on screen is out of date, so the action that met one re-reads it. The copy for these says "reloaded".
+ */
+const VIEW_MOVED_CODES: ReadonlySet<string> = new Set([
+  "ONBOARDING_TASK_CHANGED",
+  "ONBOARDING_STEP_ALREADY_SETTLED",
+  "ONBOARDING_STEP_NOT_SETTLED",
+  "TENANT_NOT_ONBOARDING",
+  "GO_LIVE_NOT_ATTESTED",
+  "GO_LIVE_ATTESTATION_STALE",
+  "GO_LIVE_ATTESTATION_EXPIRED",
+  "ACTIVATION_GUARDS_FAILED",
+]);
+export const viewHasMoved = (failure: Pick<OpsFailure, "code">): boolean =>
+  failure.code !== null && VIEW_MOVED_CODES.has(failure.code);
+
+/** The activation guards the go-live approval re-judges, in the operator's words. */
+export const GUARD_COPY: Readonly<Record<string, string>> = {
+  canonicalTasksComplete: "Every required step is done or skipped",
+  baaExecuted: "The latest BAA is executed, with the signed agreement filed for this tenant",
+  baaExpiryClearsNinetyDays: "The executed BAA has more than 90 days left",
+};
+
+/** One failing guard as a sentence: never a raw key, and a guard this screen has no words for still shows (with its name). */
+export const guardLabel = (guard: string, serverSentence?: string): string =>
+  GUARD_COPY[guard] ?? serverSentence ?? `A go-live check does not pass (${guard})`;
+
+/** The refusal's per-guard lines (ACTIVATION_GUARDS_FAILED): each failing guard, then each earlier step still open. */
+export const guardFailureLines = (details: readonly OpsErrorDetail[]): string[] =>
+  details.map((d) => (d.field === "guard" ? guardLabel(d.code, d.message) : d.message));

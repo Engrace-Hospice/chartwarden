@@ -260,3 +260,68 @@ describe("LocationsPanel: coming back from Re-verify", () => {
     expect(init.body).toMatchObject({ providerEntityId: "pe-1", name: "Main office" });
   });
 });
+
+describe("LocationsPanel: a server refusal of one field", () => {
+  const fillNew = (timezone: string) => {
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Main office" } });
+    fireEvent.change(screen.getByLabelText("Address line 1"), {
+      target: { value: "1 Valley Way" },
+    });
+    fireEvent.change(screen.getByLabelText("City"), { target: { value: "Reno" } });
+    fireEvent.change(screen.getByLabelText("State"), { target: { value: "NV" } });
+    fireEvent.change(screen.getByLabelText(/^ZIP code/), { target: { value: "89501" } });
+    fireEvent.change(screen.getByLabelText(/^Time zone/), { target: { value: timezone } });
+  };
+  const saveWithReason = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save location" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer listed their sites on the kickoff call" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  };
+
+  it("a time-zone typo is read beside the Time zone box: the prompt closes, the form and the reason stay", async () => {
+    const { client } = mount([], {
+      POST: {
+        [LOCATIONS]: () =>
+          refused(422, "VALIDATION_FAILED", "invalid", [
+            {
+              field: "timezone",
+              code: "INVALID",
+              message: "timezone must be an IANA zone, e.g. America/Los_Angeles.",
+            },
+          ]),
+      },
+    });
+    await screen.findByText(/No location yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add location" }));
+    fillNew("America/Denvr");
+    saveWithReason();
+
+    expect(await screen.findByText(/must be an IANA zone/)).toBeTruthy();
+    expect(screen.queryByLabelText(/^Reason/)).toBeNull();
+    expect((screen.getByLabelText(/^Time zone/) as HTMLInputElement).value).toBe("America/Denvr");
+    fireEvent.click(screen.getByRole("button", { name: "Save location" }));
+    expect((screen.getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(
+      "Customer listed their sites on the kickoff call",
+    );
+    expect(client.POST).toHaveBeenCalledTimes(1);
+  });
+
+  it("a refused phone number is shown under the Phone box (every field carries its error)", async () => {
+    mount([], {
+      POST: {
+        [LOCATIONS]: () =>
+          refused(422, "VALIDATION_FAILED", "invalid", [
+            { field: "phone", code: "INVALID", message: "That phone number is not valid." },
+          ]),
+      },
+    });
+    await screen.findByText(/No location yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add location" }));
+    fillNew("America/Denver");
+    fireEvent.change(screen.getByLabelText(/^Phone/), { target: { value: "x" } });
+    saveWithReason();
+    expect(await screen.findByText("That phone number is not valid.")).toBeTruthy();
+  });
+});

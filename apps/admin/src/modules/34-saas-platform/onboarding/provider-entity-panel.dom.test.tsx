@@ -307,3 +307,59 @@ describe("ProviderEntityPanel: coming back from Re-verify", () => {
     });
   });
 });
+
+describe("ProviderEntityPanel: a server refusal of one field", () => {
+  it("an NPI that fails the check digit is read beside the NPI box: the prompt closes, the form and the reason stay", async () => {
+    const { client } = mount([], {
+      POST: {
+        [LIST]: () =>
+          refused(422, "VALIDATION_FAILED", "invalid", [
+            {
+              field: "npi",
+              code: "INVALID",
+              message: "That NPI is not valid (10 digits with a correct check digit).",
+            },
+          ]),
+      },
+    });
+    await screen.findByText(/No provider entity yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add provider entity" }));
+    fillNew();
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer asked support to enter their CMS identity" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(/correct check digit/)).toBeTruthy();
+    expect(screen.queryByLabelText(/^Reason/)).toBeNull();
+    expect((screen.getByLabelText(/^NPI/) as HTMLInputElement).value).toBe("1679576722");
+    // the next attempt is asked with the reason already typed
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    expect((screen.getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(
+      "Customer asked support to enter their CMS identity",
+    );
+    expect(client.POST).toHaveBeenCalledTimes(1);
+  });
+
+  it("an edit refused on the optional iQIES id shows the message under that box", async () => {
+    mount([ENTITY], {
+      PATCH: {
+        [PATCH]: () =>
+          refused(422, "VALIDATION_FAILED", "invalid", [
+            { field: "iqiesFacilityId", code: "INVALID", message: "That iQIES id is not valid." },
+          ]),
+      },
+    });
+    await screen.findByRole("table", { name: "Provider entities" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit 444444" }));
+    fireEvent.change(screen.getByLabelText(/^iQIES facility id/), { target: { value: "bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer corrected their iQIES id" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("That iQIES id is not valid.")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Reason/)).toBeNull();
+  });
+});
