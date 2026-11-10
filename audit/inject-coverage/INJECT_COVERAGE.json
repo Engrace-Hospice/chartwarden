@@ -581,6 +581,7 @@
         "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m35-pricing-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
+        "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
       "directRoutesReferenced": 72
