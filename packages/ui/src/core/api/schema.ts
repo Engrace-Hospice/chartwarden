@@ -97774,7 +97774,7 @@ export interface operations {
                             skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -97875,7 +97875,7 @@ export interface operations {
                             skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -98489,7 +98489,7 @@ export interface operations {
                             skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -98560,7 +98560,7 @@ export interface operations {
                             skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -98637,7 +98637,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -98711,7 +98711,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -98785,7 +98785,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117001,7 +117001,7 @@ export interface operations {
                             skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -117360,7 +117360,7 @@ export interface operations {
                             skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -117430,7 +117430,7 @@ export interface operations {
                             skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
-                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                             tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
@@ -117507,7 +117507,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117580,7 +117580,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117657,7 +117657,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117730,7 +117730,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117806,7 +117806,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
@@ -117877,7 +117877,7 @@ export interface operations {
                         skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
-                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
                         tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
