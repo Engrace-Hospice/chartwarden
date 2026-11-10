@@ -1089,7 +1089,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   work.chars -= c.length;
   if (work.chars < 0) work.spent = true;
   if (outOfTime()) return ask(WORK_BUDGET_REASON);
-  const { parts, sequential, incomplete } = splitSegments(c);
+  const { parts, incomplete } = splitSegments(c);
   const parsedParts = parts.map((part) => parseSegment(part.text));
 
   // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
@@ -1125,7 +1125,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     if (outOfTime()) return;
     const parsed = parsedParts[index] as Parsed;
     // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
-    const shellIn = sequential && part.joiner === "&&" ? after : anywhere;
+    const shellIn = part.chained && part.joiner === "&&" ? after : anywhere;
     // `env -C DIR cmd` runs `cmd` in DIR, not the shell around it.
     const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
     const v = classifySegment(part.text, parsed, ctx, here);

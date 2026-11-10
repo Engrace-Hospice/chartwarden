@@ -588,6 +588,13 @@ export function substitutions(text: string, limit: number): string[] {
 export interface Segment {
   readonly text: string;
   readonly joiner: string;
+  /**
+   * Can the `&&` before this command be trusted to mean "the commands before it ran in the shell itself and
+   * succeeded"? False once a group, a pipe or a `&` (or the lines of a script a shell reads) comes at or before
+   * the previous command: a `cd` there moved a subshell, not the shell. What comes AFTER this command does not
+   * matter, so `cd x && sed -i … && git diff | head` still trusts the `sed`.
+   */
+  readonly chained: boolean;
 }
 
 export interface SplitCommand {
@@ -652,11 +659,11 @@ export function splitCommand(
   const scan = scanShell(cmd);
   const raw = splitRaw(cmd, scan);
   const parts = raw.segments
-    .map((p) => ({ text: ungroup(p.text), joiner: p.joiner, docs: p.docs }))
+    .map((p) => ({ text: ungroup(p.text), joiner: p.joiner, docs: p.docs, chained: p.chained }))
     .filter((p) => p.text !== "");
   const expanded = expandScripts(parts, readsScript, level);
   return {
-    parts: expanded.parts.map(({ text, joiner }) => ({ text, joiner })),
+    parts: expanded.parts.map(({ text, joiner, chained }) => ({ text, joiner, chained })),
     sequential: raw.sequential && expanded.sequential,
     incomplete: scan.unfinished ?? expanded.incomplete,
   };
@@ -670,10 +677,15 @@ function splitRaw(cmd: string, scan: Scan): { segments: RawSegment[]; sequential
   let curDocs: Heredoc[] = [];
   let nextDoc = 0;
   let sequential = !scan.grouped;
+  let isolated = false; // a group, pipe or `&` has come: a later `&&` no longer means "in this shell"
+  let curChained = true; // `isolated` as this command began
   let open = 0; // bare `(` not yet closed within the current command
   let startsCommand = false; // the outermost open `(` stands where a command (or a `case` pattern) starts
   const cut = (next: string): void => {
-    segments.push({ text: cur, joiner, docs: curDocs });
+    segments.push({ text: cur, joiner, docs: curDocs, chained: curChained });
+    // The command just pushed is a stage of a pipeline or a background job: what it did stays in its subshell.
+    if (next === "|" || next === "&") isolated = true;
+    curChained = !isolated;
     cur = "";
     joiner = next;
     curDocs = [];
@@ -696,6 +708,7 @@ function splitRaw(cmd: string, scan: Scan): { segments: RawSegment[]; sequential
       i++;
       continue;
     }
+    if (ch === "(") isolated = true;
     if (ch === "(") {
       if (open === 0) startsCommand = AT_COMMAND_START.test(cur.slice(-TAIL));
       open++;
@@ -730,6 +743,8 @@ function splitRaw(cmd: string, scan: Scan): { segments: RawSegment[]; sequential
 
 interface Part extends Segment {
   readonly docs: readonly Heredoc[];
+  /** A line of a script body that a shell reads, put after its owner. */
+  readonly inserted?: true;
 }
 
 /** Put the body lines of every heredoc that a shell reads after the command that owns it. */
@@ -756,12 +771,25 @@ function expandScripts(
       sequential &&= body.sequential;
       incomplete ??= body.incomplete;
       body.parts.forEach((p, n) => {
-        inserted.push({ text: p.text, joiner: n === 0 ? "\n" : p.joiner, docs: [] });
+        // The script runs in a shell of its own: its first line starts where the owner is, and a `cd` in it
+        // does not move the commands after the heredoc (they lose the `&&` trust below).
+        inserted.push({
+          text: p.text,
+          joiner: n === 0 ? "\n" : p.joiner,
+          docs: [],
+          chained: n === 0 ? false : p.chained,
+          inserted: true,
+        });
       });
     }
     out.splice((chainEnd[k] as number) + 1, 0, ...inserted);
   }
-  return { parts: out, sequential, incomplete };
+  let afterScript = false;
+  const marked = out.map((p) => {
+    if (p.inserted) afterScript = true;
+    return afterScript && !p.inserted ? { ...p, chained: false } : p;
+  });
+  return { parts: marked, sequential, incomplete };
 }
 
 /**
