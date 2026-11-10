@@ -3,7 +3,11 @@
 // (the same value the M34 screen's tests use). No real-looking identifier appears anywhere.
 import { describe, expect, it } from "vitest";
 import {
+  VALUE_SCREEN_MAX_CHARS,
+  VALUE_SCREEN_MAX_DEPTH,
+  VALUE_SCREEN_MAX_STRINGS,
   assertNoPatientIdentifier,
+  assertNoPatientIdentifierInValue,
   looksLikeMbi,
   looksLikePatientIdentifier,
   looksLikeSsn,
@@ -207,5 +211,55 @@ describe("assertNoPatientIdentifier", () => {
     ]) {
       expect(() => assertNoPatientIdentifier("reason", text)).not.toThrow();
     }
+  });
+});
+
+describe("assertNoPatientIdentifierInValue: a structured value is screened leaf by leaf, within bounds", () => {
+  const refused = (value: unknown): { code?: string; statusCode?: number } => {
+    try {
+      assertNoPatientIdentifierInValue("value", value);
+    } catch (err) {
+      return err as { code?: string; statusCode?: number };
+    }
+    return {};
+  };
+
+  it("refuses an SSN-shaped string anywhere: top level, nested object, array, or as an object key", () => {
+    for (const value of [
+      "900-12-3456",
+      { note: "call 900 12 3456 back" },
+      { a: { b: [{ c: ["fine", "id 900-12-3456"] }] } },
+      { "900-12-3456": true },
+    ]) {
+      expect(refused(value)).toMatchObject({ code: "EVIDENCE_LOOKS_LIKE_PHI", statusCode: 422 });
+    }
+  });
+
+  it("lets ordinary values through: booleans, numbers, null, plain strings and nested config", () => {
+    for (const value of [
+      true,
+      42,
+      null,
+      "enabled for the pilot",
+      { rollout: [10, 20], label: "beta", on: false },
+    ]) {
+      expect(refused(value)).toEqual({});
+    }
+  });
+
+  it("refuses a value that is too deep, has too many strings or is too long, rather than leaving it unscreened", () => {
+    let deep: unknown = "x";
+    for (let i = 0; i <= VALUE_SCREEN_MAX_DEPTH; i += 1) deep = { next: deep };
+    const many = Array.from({ length: VALUE_SCREEN_MAX_STRINGS + 1 }, () => "a");
+    const long = ["a".repeat(VALUE_SCREEN_MAX_CHARS + 1)];
+    for (const value of [deep, many, long]) {
+      expect(refused(value)).toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+    }
+  });
+
+  it("the bound is generous enough for real configuration", () => {
+    let nested: unknown = "leaf";
+    for (let i = 0; i < VALUE_SCREEN_MAX_DEPTH - 1; i += 1) nested = { next: nested };
+    expect(refused(nested)).toEqual({});
   });
 });

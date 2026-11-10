@@ -32,7 +32,7 @@
 // an MBI (its squash keeps ASCII letters and digits only); more than ten NON-whitespace separators between two groups; an
 // UNBROKEN run of ten to twelve digits that contains an SSN ("9001234567": NPIs, phone numbers and ticket numbers pass on
 // purpose); a 3-3-3 value with one separator and another number on either side ("900 123 456 5 days" reads as a longer chain).
-import { ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ValidationError } from "@chartwarden/types";
 
 const ND = "\\p{Nd}"; // any decimal digit, of any script
 const SEP = "[^\\p{L}\\p{N}]"; // anything that is neither a letter nor a number
@@ -108,4 +108,47 @@ export function assertNoPatientIdentifier(field: string, text: string, message?:
       `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title or a ticket number. Long ids and UUIDs can also trip this check: cite them by title instead.`;
     throw new ChartWardenError(code, refusal, 422, [{ field, code, message: refusal }]);
   }
+}
+
+/** How far a structured value is walked: deeper, more strings or more characters than this is refused, never skipped. */
+export const VALUE_SCREEN_MAX_DEPTH = 8;
+export const VALUE_SCREEN_MAX_STRINGS = 500;
+export const VALUE_SCREEN_MAX_CHARS = 20_000;
+
+/**
+ * Screens every string in a structured value (a JSON flag value, say): each string leaf AND each object key goes through
+ * {@link assertNoPatientIdentifier} under `field`. The walk is bounded (depth, string count, total characters) and a value that
+ * exceeds a bound is refused with a 422 rather than left partly unscreened.
+ */
+export function assertNoPatientIdentifierInValue(
+  field: string,
+  value: unknown,
+  message?: string,
+): void {
+  let strings = 0;
+  let chars = 0;
+  const tooLarge = () => {
+    const text = `${field} is too deeply nested or too large to be screened for patient identifiers`;
+    return new ValidationError(text, [{ field, code: "VALUE_TOO_LARGE", message: text }]);
+  };
+  const visit = (node: unknown, depth: number): void => {
+    if (typeof node === "string") {
+      strings += 1;
+      chars += node.length;
+      if (strings > VALUE_SCREEN_MAX_STRINGS || chars > VALUE_SCREEN_MAX_CHARS) throw tooLarge();
+      assertNoPatientIdentifier(field, node, message);
+      return;
+    }
+    if (node === null || typeof node !== "object") return;
+    if (depth >= VALUE_SCREEN_MAX_DEPTH) throw tooLarge();
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    for (const [key, item] of Object.entries(node)) {
+      visit(key, depth + 1);
+      visit(item, depth + 1);
+    }
+  };
+  visit(value, 0);
 }

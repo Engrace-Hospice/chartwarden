@@ -12,10 +12,21 @@ its full description there. Newest first.
 Some fields were screened and some were not.
 
 - These fields are now refused with `422 EVIDENCE_LOOKS_LIKE_PHI` (the same code, status and envelope as the fields that were already
-  screened; the error names the field and never echoes the value) when they hold an SSN- or MBI-shaped value: the platform
-  DEK-rotation `reason`, the feature-flag `rationale`, the support-session close `note`, the signup-intent rejection
-  `rejectionReason`, the DSAR extension `reason` and denial `narrative`, the onboarding org-profile `displayName` (both surfaces), and
-  M35's refund `reasonDetail` and refund-denial `reason`.
+  screened; the error names the field and never echoes the value) when they hold an SSN- or MBI-shaped value:
+  - platform: the tenant status-transition, offboard and shred `transitionReason`; the feature-flag `rationale` and every string
+    (and object key) inside the flag `value`; the signup-intent rejection `rejectionReason`; the oversized-export `approvalReason`;
+    the onboarding-template `title` and `description`; the provision `legalBusinessName` and `firstAdminFullName` and the qualify
+    `firstAdminFullName`; the onboarding-data `reason` (it is now screened as typed, before control characters are stripped);
+  - tenant: the support-consent grant `grantReason` and `revocationReason`, the tenant-export `justification`, the DSAR request
+    `requestorIdentityVerificationEvidence` and the DSAR denial `narrative`, the onboarding org-profile `displayName` (both surfaces);
+  - public: the self-serve signup `legalBusinessName`;
+  - M35: the refund `reasonDetail`, the refund-denial `reason`, and the plan `name` and `description` (create and update).
+  A flag `value` nested deeper than 8 levels, with more than 500 strings or more than 20,000 characters is refused with `422
+  VALIDATION_FAILED` rather than left partly unscreened.
+- Accepted and NOT stored, so not screened: the DEK-rotation `reason`, the support-session close `note` and the DSAR extension
+  `reason`. Closing a session is always permitted and is never refused for its note.
+- Wizard and onboarding text that is stored now has zero-width and bidi format characters removed (U+200B, U+200E/F, U+202A-E,
+  U+2060-4, U+2066-9, U+FEFF), as it already had control characters; U+200C and U+200D are kept.
 - The screen itself is stricter: a nine-digit value is no longer excused because a bare number sits near it ("SSN 900 123 456, 5 days"),
   a long run of spaces between groups no longer hides it, and the refusal text now says to cite documents by title or ticket number and
   that long ids and UUIDs can also trip the check. If a legitimate note is refused, cite the document by its title.

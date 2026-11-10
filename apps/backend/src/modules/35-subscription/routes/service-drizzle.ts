@@ -407,6 +407,18 @@ function pageOf<T extends { readonly id: string }>(
   };
 }
 
+/** A plan's name and description are typed by platform ops, stored and shown to tenants: the shared identifier screen, name-style text for the name. */
+function screenPlanText(args: { readonly name?: string; readonly description?: string }): void {
+  if (args.name !== undefined) {
+    assertNoPatientIdentifier(
+      "name",
+      args.name,
+      "name must not contain a patient identifier number (a Social Security or Medicare number); a name is a name, not a record.",
+    );
+  }
+  if (args.description !== undefined) assertNoPatientIdentifier("description", args.description);
+}
+
 /**
  * Build the Drizzle-backed {@link M35RouteService} over a `db` handle + the boot-bound ports. Tenant
  * methods scope to `actor.organizationId` under RLS; platform-ops methods run through `platformRunner`.
@@ -1200,6 +1212,7 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminCreatePlan(_actor, args: CreatePlanArgs) {
+      screenPlanText(args); // the catalog entry is stored and tenant-readable: no place for a patient (422, no transaction opened)
       return platform(async (tx) => {
         const [plan] = await tx
           .insert(PL)
@@ -1220,6 +1233,7 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminUpdatePlan(_actor, planId, args: UpdatePlanArgs) {
+      screenPlanText(args);
       return platform(async (tx) => {
         const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!plan) throw new NotFoundError("plan not found");
