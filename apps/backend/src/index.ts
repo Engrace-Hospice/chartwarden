@@ -1168,8 +1168,8 @@ import {
   mountM23Routes,
   priorElectionClosureForOrg,
   readClaimMdEraCandidateEvidence,
-  readM23HistoricalEraCandidates,
   readClaimMdEraSubmissionFacts,
+  readM23HistoricalEraCandidates,
   registerBillingErasers,
   registerDdeAgingAlertWorker,
   registerDdeDailyChangeWorker,
@@ -1943,6 +1943,7 @@ import {
   createScheduleProbe,
   createSharedDrainReadiness,
   mountM41Routes,
+  readM41HistoricalEraCandidates,
   registerM41AckWorker,
   registerM41QuarantinePruneWorker,
   registerM41SubmissionWorker,
@@ -1951,7 +1952,6 @@ import {
   scheduleM41QuarantinePrune,
   scheduleWithRetry,
   wireM41Tenancy,
-  readM41HistoricalEraCandidates,
 } from "./modules/41-billing-commercial/index";
 import { applyCommercialClaimMdReceipt } from "./modules/41-billing-commercial/services/claimmd-ack-adapter";
 import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
@@ -7252,15 +7252,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       "claimmd-era-stage:v1",
                     ),
                     claimMdEraStore,
-                    [async (query) => {
-                      const evidenceRows = await readClaimMdEraCandidateEvidence(query);
-                      const [medicare, commercial] = await Promise.all([
-                        readM23HistoricalEraCandidates(query),
-                        readM41HistoricalEraCandidates({ ...query, evidenceRows }),
-                      ]);
-                      return [...medicare, ...commercial];
-                    }],
-                    { ingestService: m25IngestService, enabled: claimMdEraConfig.controlledPostingEnabled },
+                    [
+                      async (query) => {
+                        const evidenceRows = await readClaimMdEraCandidateEvidence(query);
+                        const [medicare, commercial] = await Promise.all([
+                          readM23HistoricalEraCandidates(query),
+                          readM41HistoricalEraCandidates({ ...query, evidenceRows }),
+                        ]);
+                        return [...medicare, ...commercial];
+                      },
+                    ],
+                    {
+                      ingestService: m25IngestService,
+                      enabled: claimMdEraConfig.controlledPostingEnabled,
+                    },
                   ),
                 }
               : {}),
