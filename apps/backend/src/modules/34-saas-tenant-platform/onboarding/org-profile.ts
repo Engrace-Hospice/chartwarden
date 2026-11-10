@@ -4,6 +4,7 @@
 // to M1/M2. M34 reaches them through this port (the composition root binds `bootstrap/org-profile.ts`, the
 // `org-spine-facts.ts` precedent), never through the table. The validators here are the authority on what is accepted.
 import { organizationSettingsReader } from "@chartwarden/db";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { isValidTimeZone } from "@chartwarden/shared/dates";
 import { ChartWardenError } from "@chartwarden/types";
 import { Value } from "@sinclair/typebox/value";
@@ -53,6 +54,8 @@ export function validateDisplayName(value: unknown): string {
       `displayName must be 1 to ${DISPLAY_NAME_MAX} characters`,
     );
   }
+  // Typed by an operator (or the org's own admin) into the tenant-visible profile: no place for a patient identifier.
+  assertNoPatientIdentifier("displayName", name);
   return name;
 }
 
