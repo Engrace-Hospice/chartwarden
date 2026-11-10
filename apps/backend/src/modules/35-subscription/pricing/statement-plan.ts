@@ -114,6 +114,19 @@ export function planMonths(facts: ContractFacts, at: Date): MonthWork[] {
 
 const NO_COLLECTIONS: NetCollections = { netCents: 0, remittanceCount: 0, pendingCount: 0 };
 
+/**
+ * A closed month is flagged for review when fewer than this percentage of its live days has a census observation. The ADC is the mean
+ * of the days OBSERVED, so a sweep that was down for most of the month still bills, on a mean of the few days it did see, and a final
+ * statement is frozen (migration 1412), so nobody can correct it afterwards: the flag is what makes an operator look before that
+ * happens to the next one. 80% tolerates a day or two lost to a deploy (one missed day of 30 is 97%), and flags a real outage (25 of 30
+ * days down leaves 17%). A draft is never flagged on this: an open month has not had its days yet.
+ */
+export const MIN_CENSUS_COVERAGE_PERCENT = 80;
+
+/** True when `observedDays` of a month's `daysLive` live days is below {@link MIN_CENSUS_COVERAGE_PERCENT}. */
+export const isSparseCensus = (observedDays: number, daysLive: number): boolean =>
+  daysLive > 0 && observedDays * 100 < daysLive * MIN_CENSUS_COVERAGE_PERCENT;
+
 /** The prior-period lines for a statement of `target`: every FINAL earlier statement whose month collected more since it closed. */
 export function priorPeriodLinesFor(
   target: MonthPeriod,
@@ -239,10 +252,12 @@ export function buildStatementValues(input: BuildInput) {
     priorPeriodLines: priorLines,
     priorPeriodFeeCents: amounts.priorPeriodFeeCents,
     totalCents: amounts.totalCents,
-    // The staff count fell back to the unfiltered ledger, or a remittance of the month had not posted when it closed.
+    // The staff count fell back to the unfiltered ledger, a remittance of the month had not posted when it closed, or the census of a
+    // closed month is sparse (see MIN_CENSUS_COVERAGE_PERCENT).
     needsReview:
       meters.staff.basis === "ledger_unfiltered" ||
-      (work.finalize && meters.collections.pendingCount > 0),
+      (work.finalize && meters.collections.pendingCount > 0) ||
+      (work.finalize && isSparseCensus(adc.days, work.daysLive)),
     computedAt: at,
     finalizedAt: work.finalize ? at : null,
   };

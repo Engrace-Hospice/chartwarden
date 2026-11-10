@@ -44,6 +44,7 @@ import {
   type MonthWork,
   buildStatementValues,
   figuresOf,
+  isSparseCensus,
   planMonths,
   priorPeriodLinesFor,
 } from "./statement-plan";
@@ -166,15 +167,24 @@ interface MonthResult {
   readonly written?: StatementRow;
 }
 
+type ReviewReason = typeof SSR.$inferInsert.reason;
+
+const REVIEW_LOG_MESSAGES: Readonly<Record<ReviewReason, string>> = {
+  no_census: "m35 statement month closed with no census day; not billed, flagged for review",
+  sparse_census:
+    "m35 statement month closed on a sparse census; billed on the days observed, flagged for review",
+};
+
 /**
- * A closed month of a live subscription with no census day: record it ONCE (the table is unique on subscription, month, reason) and
- * log it once, with the organisation, when the row is new. A rerun every hour finds the row and says nothing.
+ * A closed month an operator must look at: record it ONCE (the table is unique on subscription, month, reason) and log it once, with
+ * the organisation, when the row is new. A rerun every hour finds the row and says nothing.
  */
-async function flagNoCensus(
+async function flagForReview(
   tx: WriteTx,
   deps: StatementDeps,
   contract: ContractFacts,
   periodYearMonth: string,
+  reason: ReviewReason,
 ): Promise<void> {
   const inserted = await tx
     .insert(SSR)
@@ -182,12 +192,12 @@ async function flagNoCensus(
       subjectOrganizationId: contract.organizationId,
       subscriptionId: contract.subscriptionId,
       periodYearMonth,
-      reason: "no_census",
+      reason,
     })
     .onConflictDoNothing()
     .returning({ id: SSR.id });
   if (inserted.length === 0) return;
-  deps.log?.("m35 statement month closed with no census day; not billed, flagged for review", {
+  deps.log?.(REVIEW_LOG_MESSAGES[reason], {
     organizationId: contract.organizationId,
     subscriptionId: contract.subscriptionId,
     periodYearMonth,
@@ -212,7 +222,7 @@ async function runMonth(
   if (!work.settlement && meters.daily.length === 0) {
     // The org was live and swept none of the month: not billed (a missing census is not a census of zero). A CLOSED month is a data
     // hole an operator must see: flagged once per subscription-month, not logged every hour.
-    if (work.finalize) await flagNoCensus(tx, deps, contract, key);
+    if (work.finalize) await flagForReview(tx, deps, contract, key, "no_census");
     return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "no_census" } };
   }
   const priorLines = priorPeriodLinesFor(work.period, statements, net);
@@ -234,6 +244,14 @@ async function runMonth(
   }
   const [row] = await upsertStatement(tx, values, at);
   if (!row) return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "final" } };
+  // The month closes on this write and is frozen from here on: a census that covered too few of its days is the operator's to see now.
+  if (
+    row.status === "final" &&
+    !work.settlement &&
+    isSparseCensus(meters.daily.length, work.daysLive)
+  ) {
+    await flagForReview(tx, deps, contract, key, "sparse_census");
+  }
   return {
     outcome: { outcome: "written", statement: toStatementView(row, contract.currencyCode) },
     written: row,

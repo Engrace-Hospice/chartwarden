@@ -18,8 +18,10 @@ import {
 import {
   type ContractFacts,
   type ExistingStatement,
+  MIN_CENSUS_COVERAGE_PERCENT,
   buildStatementValues,
   figuresOf,
+  isSparseCensus,
   planMonths,
   priorPeriodLinesFor,
 } from "../pricing/statement-plan";
@@ -533,6 +535,45 @@ describe("buildStatementValues: the figures of a statement", () => {
       at: d("2026-12-07T00:00:00Z"),
     });
     expect(closing).toMatchObject({ status: "final", needsReview: true });
+  });
+
+  describe("a closed month billed on a sparse census is flagged for review (the month freezes on the mean of the days observed)", () => {
+    const fullMonth = facts({ liveFrom: d("2026-10-20T00:00:00Z") });
+    const nov = planMonths(fullMonth, d("2026-12-07T00:00:00Z")).find(
+      (w) => w.period.key === "2026-11",
+    )!;
+    const closeOn = (observedDays: number, finalize = true) =>
+      buildStatementValues({
+        facts: fullMonth,
+        work: { ...nov, finalize },
+        meters: {
+          daily: Array.from({ length: observedDays }, () => 12),
+          staff: { count: 4, basis: "identity_filtered" as const },
+          // nothing pending, so the census is the only reason a statement could be flagged
+          collections: { netCents: 1_500_050, remittanceCount: 3, pendingCount: 0 },
+        },
+        priorLines: [],
+        isFirstStatement: false,
+        at: d("2026-12-07T00:00:00Z"),
+      });
+
+    it("25 of 30 days down (5 observed) is flagged; one missed day (29 observed) is not", () => {
+      expect(closeOn(5)).toMatchObject({ status: "final", adcDaysObserved: 5, needsReview: true });
+      expect(closeOn(29)).toMatchObject({ status: "final", needsReview: false });
+    });
+
+    it("the threshold is MIN_CENSUS_COVERAGE_PERCENT of the live days: exactly 80% passes, one day less is flagged", () => {
+      expect(MIN_CENSUS_COVERAGE_PERCENT).toBe(80);
+      expect(closeOn(24).needsReview).toBe(false); // 24 of 30
+      expect(closeOn(23).needsReview).toBe(true);
+      expect(isSparseCensus(8, 10)).toBe(false);
+      expect(isSparseCensus(7, 10)).toBe(true);
+      expect(isSparseCensus(0, 0)).toBe(false); // no live day, nothing expected
+    });
+
+    it("an open month is never flagged on it: its days have not happened yet", () => {
+      expect(closeOn(5, false)).toMatchObject({ status: "draft", needsReview: false });
+    });
   });
 
   it("a settlement statement reads no meter: zero staff, no census, no collections, no platform fee, no one-time fee, only its prior-period lines", () => {
