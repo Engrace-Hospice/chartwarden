@@ -10,7 +10,9 @@ import {
   TableScroll,
   TextAreaField,
   isStepUpRequired,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM NPI VERIFICATION (ADR-0053 amendment 2026-11-05, precondition 2).
@@ -52,11 +54,20 @@ const failure = (error: unknown, fallback: string): Outcome =>
         message: (error as { error?: { message?: string } })?.error?.message ?? fallback,
       };
 
+/** A write whose request got no answer at all: the change may or may not have landed. */
+const UNREACHABLE: Outcome = {
+  ok: false,
+  message:
+    "Could not reach the server. Check your connection, and confirm the current state before trying again.",
+};
+
 const formatDate = (iso: string | null): string =>
   iso ? new Date(iso).toLocaleDateString("en-US", { dateStyle: "medium" }) : "—";
 
 export function NpiVerifications(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [verifying, setVerifying] = useState<Row | null>(null);
@@ -77,25 +88,32 @@ export function NpiVerifications(): JSX.Element {
     async (row: Row) => {
       setBusyId(row.providerEntityId);
       setOutcome(null);
-      const res = await client.POST(
-        "/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke",
-        {
-          params: { path: { providerEntityId: row.providerEntityId } },
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-        },
-      );
-      setBusyId(null);
-      if (res.error) {
-        setOutcome(failure(res.error, "Could not revoke the verification."));
-        return;
+      try {
+        // Success is "no error AND response.ok", and a rejected request (offline) is a failure, never an exception.
+        const sent = await sendWrite(keeper, `revoke:${row.providerEntityId}:${row.npi}`, (key) =>
+          client.POST("/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke", {
+            params: { path: { providerEntityId: row.providerEntityId } },
+            headers: { "Idempotency-Key": key },
+          }),
+        );
+        if (sent.status !== "ok") {
+          setOutcome(
+            sent.status === "unreachable"
+              ? UNREACHABLE
+              : failure(sent.res.error, "Could not revoke the verification."),
+          );
+          return;
+        }
+        setOutcome({
+          ok: true,
+          message: `Revoked NPI ${row.npi}. Its enrollment reports are no longer routed.`,
+        });
+        await load();
+      } finally {
+        setBusyId(null); // also when the reload after a landed write throws: the row never stays locked
       }
-      setOutcome({
-        ok: true,
-        message: `Revoked NPI ${row.npi}. Its enrollment reports are no longer routed.`,
-      });
-      await load();
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   return (
@@ -245,6 +263,7 @@ function VerifyDialog({
   onDone: (message: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
+  const keeper = useIdempotencyKeeper();
   const [evidence, setEvidence] = useState("");
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -259,17 +278,22 @@ function VerifyDialog({
     if (evidence.trim().length < 3) return;
     setBusy(true);
     setError(null);
-    const res = await client.POST(
-      "/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify",
-      {
+    const body = { npi: row.npi, evidence: evidence.trim() };
+    // One key per verification (entity + NPI + evidence): a retry after no answer replays it, a changed evidence text is a new one.
+    const sent = await sendWrite(keeper, `${row.providerEntityId}:${JSON.stringify(body)}`, (key) =>
+      client.POST("/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify", {
         params: { path: { providerEntityId: row.providerEntityId } },
-        body: { npi: row.npi, evidence: evidence.trim() },
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-      },
+        body,
+        headers: { "Idempotency-Key": key },
+      }),
     );
     setBusy(false);
-    if (res.error) {
-      setError(failure(res.error, "Could not verify the NPI."));
+    if (sent.status !== "ok") {
+      setError(
+        sent.status === "unreachable"
+          ? UNREACHABLE
+          : failure(sent.res.error, "Could not verify the NPI."),
+      );
       return;
     }
     await onDone(`Verified NPI ${row.npi} for ${row.legalName}.`);

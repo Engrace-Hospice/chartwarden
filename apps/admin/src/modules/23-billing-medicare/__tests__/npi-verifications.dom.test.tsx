@@ -138,4 +138,89 @@ describe("NPI verification (ADR-0053 amendment)", () => {
     expect(await screen.findByText(/needs a fresh verification/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Re-verify" })).toBeTruthy();
   });
+
+  describe("writes that get no answer, or an empty-body failure", () => {
+    const UNREACHABLE = /Could not reach the server/;
+    const writeKeys = (seen: Seen[]): Array<string | null> =>
+      seen.filter((s) => s.method === "POST").map((s) => s.idempotencyKey);
+    /** The first write attempt drops (no answer); later ones fall through to the normal answer. */
+    const dropFirst = (): ((path: string) => Response | undefined) => {
+      let attempts = 0;
+      return () => {
+        attempts += 1;
+        if (attempts === 1) throw new TypeError("Failed to fetch");
+        return undefined;
+      };
+    };
+    const revokeButton = (): HTMLButtonElement =>
+      screen.getByRole("button", { name: /Revoke NPI 1999999984/ }) as HTMLButtonElement;
+    const pressRevoke = async (): Promise<void> => {
+      await waitFor(() => expect(revokeButton().disabled).toBe(false));
+      fireEvent.click(revokeButton());
+    };
+
+    it("revoke: no answer releases the row and says the server was not reached; the retry replays the same key", async () => {
+      const seen = mount(dropFirst());
+      await screen.findByRole("button", { name: /Revoke NPI 1999999984/ });
+      await pressRevoke();
+      expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+      await waitFor(() => expect(revokeButton().disabled).toBe(false));
+      await pressRevoke();
+      expect(await screen.findByText(/Revoked NPI 1999999984/)).toBeTruthy();
+      const keys = writeKeys(seen);
+      expect(keys).toHaveLength(2);
+      expect(keys[0]).toBeTruthy();
+      expect(keys[1]).toBe(keys[0]);
+    });
+
+    it("revoke: a refusal is an answer, so the next attempt is a new intent on a new key", async () => {
+      const seen = mount(() => json({ error: { code: "FORBIDDEN", message: "no" } }, 403));
+      await screen.findByRole("button", { name: /Revoke NPI 1999999984/ });
+      await pressRevoke();
+      await screen.findByText("no");
+      await pressRevoke();
+      await waitFor(() => expect(writeKeys(seen)).toHaveLength(2));
+      const keys = writeKeys(seen);
+      expect(keys[1]).not.toBe(keys[0]);
+    });
+
+    it("revoke: an empty-body 502 is a failure, not 'Revoked'", async () => {
+      mount(() => new Response(null, { status: 502, headers: { "content-length": "0" } }));
+      fireEvent.click(await screen.findByRole("button", { name: /Revoke NPI 1999999984/ }));
+      expect(await screen.findByText("Could not revoke the verification.")).toBeTruthy();
+      expect(screen.queryByText(/Revoked NPI/)).toBeNull();
+    });
+
+    it("verify: no answer keeps the dialog usable; the same evidence replays its key, changed evidence gets a new one", async () => {
+      let attempts = 0;
+      const seen = mount(() => {
+        attempts += 1;
+        if (attempts <= 2) throw new TypeError("Failed to fetch");
+        return undefined;
+      });
+      fireEvent.click(await screen.findByRole("button", { name: /Verify NPI 1234567893/ }));
+      const dialog = await screen.findByRole("dialog");
+      const evidence = (text: string): void => {
+        fireEvent.change(within(dialog).getByLabelText(/How you confirmed it/), {
+          target: { value: text },
+        });
+      };
+      const submit = async (): Promise<void> => {
+        const button = within(dialog).getByRole("button", { name: "Verify NPI" });
+        await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(button);
+      };
+      evidence("NPPES record matches");
+      await submit();
+      expect(await within(dialog).findByText(UNREACHABLE)).toBeTruthy();
+      await submit();
+      await waitFor(() => expect(writeKeys(seen)).toHaveLength(2));
+      evidence("NPPES record matches; called the listed contact");
+      await submit();
+      expect(await screen.findByText(/Verified NPI 1234567893/)).toBeTruthy();
+      const keys = writeKeys(seen);
+      expect(keys[1]).toBe(keys[0]);
+      expect(keys[2]).not.toBe(keys[0]);
+    });
+  });
 });
