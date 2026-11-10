@@ -3,9 +3,9 @@
 //
 // An organization can hold several subscriptions over time (a canceled one and the one signed after it; an old paused one and a new one).
 // "The current subscription" is the NEWEST by `started_at`, and every reader and writer must pick it the same way, or two of them act on
-// different rows: the tenant's view, the m2 lifecycle consumer, the tenant's own resume and the hourly pause-resume sweep. `started_at` is
-// `now()` (the TRANSACTION's start), so two subscriptions inserted by one transaction (a seed, an import, a fixture) share it: the id breaks
-// the tie, which makes the choice total and the same on every path. Nothing in module 35 orders the current subscription any other way.
+// different rows: the tenant's view, the m2 lifecycle consumer, the tenant's own resume and the hourly pause-resume sweep. Writers either
+// supply their application-clock start instant or use the database default; the id tie-break makes the choice total when two rows share that
+// instant. Subscription readers and writers use this ordering; contract selection has its own created_at/id ordering.
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq, ne, notInArray } from "drizzle-orm";
 

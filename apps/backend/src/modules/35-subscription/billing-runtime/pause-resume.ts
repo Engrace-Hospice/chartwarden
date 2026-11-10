@@ -114,9 +114,7 @@ export async function runPauseResumeForOrg(
       const tx = scoped as unknown as DbClient;
       const peeked = await selectNewestSubscription(tx, organizationId);
       if (!peeked || !isPauseLapsed(peeked, now)) return { kind: "none" };
-      await tx.execute(
-        sql`SELECT set_config('lock_timeout', ${String(lockTimeoutMs)}, true)`,
-      );
+      await tx.execute(sql`SELECT set_config('lock_timeout', ${String(lockTimeoutMs)}, true)`);
       const sub = await lockNewestSubscription(tx, organizationId);
       if (!sub || !isPauseLapsed(sub, now)) return { kind: "none" };
       const endedAt = sub.pausedUntil;

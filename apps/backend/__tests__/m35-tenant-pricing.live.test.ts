@@ -86,6 +86,7 @@ const ORG_N = "ae000000-0000-4000-8000-0000000000ae"; // re-signed: two contract
 const ORG_O = "af000000-0000-4000-8000-0000000000af"; // an operator's dated pause that the hourly sweep resumes: the statement must not move
 const ORG_P = "b0000000-0000-4000-8000-0000000000b0"; // an operator's dated pause still running when the platform suspends the org
 const ORG_Q = "b1000000-0000-4000-8000-0000000000b1"; // an older live subscription beside the newest, paused one: the operator's resume is refused
+const ORG_R = "b2000000-0000-4000-8000-0000000000b2"; // two paused subscriptions: the superseded older one cannot be resurrected
 const OPERATOR_USER = "0a000000-0000-4000-8000-000000000001";
 const OPERATOR_MEMBERSHIP = "0b000000-0000-4000-8000-000000000001";
 const KEY = {
@@ -3057,6 +3058,42 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ).toEqual({ status: "active" });
     });
 
+    it("PRC-5: the operator cannot resume a superseded older paused subscription while the newest subscription is paused", async () => {
+      await seedOrg(ORG_R, "pricing-r", "onboarding");
+      const older = "c2000000-0000-4000-8000-000000000001";
+      const newest = "c2000000-0000-4000-8000-000000000002";
+      await admin.query(
+        `INSERT INTO subscription (id, organization_id, plan_id, status, started_at, paused_at)
+         VALUES ($1,$2,$3,'paused','2026-09-01T00:00:00Z','2026-09-10T00:00:00Z'),
+                ($4,$2,$3,'paused','2026-11-01T00:00:00Z','2026-11-10T00:00:00Z')`,
+        [older, ORG_R, planV2Id, newest],
+      );
+      const route = operatorRoute("2026-12-20T00:00:00Z");
+
+      await expect(route.adminResumeSubscription(operator, older)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_SUPERSEDED",
+        statusCode: 409,
+      });
+      expect(
+        await q<{ id: string; status: string }>(
+          "SELECT id, status FROM subscription WHERE organization_id=$1 ORDER BY started_at, id",
+          [ORG_R],
+        ),
+      ).toEqual([
+        { id: older, status: "paused" },
+        { id: newest, status: "paused" },
+      ]);
+      expect(
+        await q("SELECT 1 FROM subscription_state_history WHERE subscription_id=$1", [older]),
+      ).toHaveLength(0);
+      expect(
+        await q(
+          "SELECT 1 FROM audit_event WHERE event_type='m35.subscription.platform_resumed' AND resource_id=$1",
+          [older],
+        ),
+      ).toHaveLength(0);
+    });
+
     it("MEDIUM: a platform operator's pause, resume and cancel name the operator in the PLATFORM audit row and NOT in the tenant-readable history or its audit copy", async () => {
       const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
       // The admin pause / resume / cancel run on the REAL platform carrier (`platformRunner` is `chartwarden_platform_login`, the pool
@@ -3145,7 +3182,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       );
       const before = await subscriptionFootprint(canceledId);
       await expect(route.adminResumeSubscription(operator, canceledId)).rejects.toMatchObject({
-        code: "SUBSCRIPTION_NOT_PAUSED",
+        code: "SUBSCRIPTION_CANCELED",
         statusCode: 409,
       });
       await expect(route.adminPauseSubscription(operator, canceledId, null)).rejects.toMatchObject({

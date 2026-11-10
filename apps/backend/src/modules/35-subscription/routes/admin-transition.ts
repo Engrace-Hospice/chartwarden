@@ -4,7 +4,7 @@ import { schema } from "@chartwarden/db";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { WriteTx } from "../pricing/ports";
-import { findOtherLiveSubscriptionId } from "./current-subscription";
+import { findOtherLiveSubscriptionId, selectNewestSubscription } from "./current-subscription";
 
 type SubRow = typeof schema.subscriptionRow.$inferSelect;
 
@@ -99,6 +99,16 @@ export async function lockSubscription(tx: WriteTx, subscriptionId: string): Pro
 
 /** The stable code of the 409 a resume answers when the organization already has another live subscription (see {@link refuseWhenOtherLive}). */
 export const SUBSCRIPTION_OTHER_LIVE_EXISTS = "SUBSCRIPTION_OTHER_LIVE_EXISTS";
+const SUBSCRIPTION_ORG_ACTIVE_UQ = "subscription_org_active_uq";
+type ResumeAudience = "operator" | "tenant";
+
+const otherLiveConflict = (audience: ResumeAudience): ChartWardenError =>
+  conflict(
+    SUBSCRIPTION_OTHER_LIVE_EXISTS,
+    audience === "tenant"
+      ? "this subscription cannot be resumed right now; contact support"
+      : "the organization already has another live subscription; cancel or pause it first, then resume this one",
+  );
 
 /**
  * Refuse to resume a paused subscription while another subscription of its organization is live: `subscription_org_active_uq` allows one,
@@ -108,15 +118,13 @@ export const SUBSCRIPTION_OTHER_LIVE_EXISTS = "SUBSCRIPTION_OTHER_LIVE_EXISTS";
 export async function refuseWhenOtherLive(
   tx: WriteTx,
   sub: Pick<SubRow, "id" | "organizationId">,
+  audience: ResumeAudience = "operator",
 ): Promise<void> {
   if ((await findOtherLiveSubscriptionId(tx, sub)) === null) return;
-  throw conflict(
-    SUBSCRIPTION_OTHER_LIVE_EXISTS,
-    "the organization already has another live subscription; cancel or pause it first, then resume this one",
-  );
+  throw otherLiveConflict(audience);
 }
 
-/** A canceled subscription is final: a typed 409 (the tenant's resume refuses it before anything else; `verb` completes "it cannot be ..."). */
+/** A canceled subscription is final: a typed 409; `verb` completes "it cannot be ...". */
 export function refuseCanceledIsFinal(sub: Pick<SubRow, "status">, verb: string): void {
   if (sub.status === "canceled") {
     throw conflict(
@@ -126,6 +134,32 @@ export function refuseCanceledIsFinal(sub: Pick<SubRow, "status">, verb: string)
   }
 }
 
+/** Refuse an operator attempt to resurrect a paused row that is no longer the organization's current subscription. */
+export async function refuseUnlessNewestSubscription(
+  tx: WriteTx,
+  sub: Pick<SubRow, "id" | "organizationId">,
+): Promise<void> {
+  const newest = await selectNewestSubscription(tx, sub.organizationId);
+  if (!newest || newest.id === sub.id) return;
+  throw conflict(
+    "SUBSCRIPTION_SUPERSEDED",
+    "a superseded subscription cannot be resumed; resume the organization's current subscription instead",
+  );
+}
+
+/** Map only the partial unique index's resume race; every other database failure keeps its original identity. */
+export function rethrowOtherLiveRace(err: unknown, audience: ResumeAudience): never {
+  let cursor: unknown = err;
+  for (let depth = 0; depth < 5 && cursor instanceof Error; depth += 1) {
+    const candidate = cursor as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (candidate.code === "23505" && candidate.constraint === SUBSCRIPTION_ORG_ACTIVE_UQ) {
+      throw otherLiveConflict(audience);
+    }
+    cursor = candidate.cause;
+  }
+  throw err;
+}
+
 /**
  * A typed 409 (stable code) when `sub`'s status does not allow the transition, so nothing is written, audited or announced for it.
  * Mirrors what the org-lifecycle consumer already treats as a no-op (pause of a paused or canceled subscription, resume of one that is
@@ -133,6 +167,7 @@ export function refuseCanceledIsFinal(sub: Pick<SubRow, "status">, verb: string)
  * never resumed, paused or canceled again (its `canceled_at` and its history are the record the final statement is priced from).
  */
 export function refuseAdminTransition(sub: Pick<SubRow, "status">, action: AdminTransition): void {
+  if (action === "resume") refuseCanceledIsFinal(sub, "resumed");
   if (action === "resume" && sub.status !== "paused") {
     throw conflict(
       "SUBSCRIPTION_NOT_PAUSED",
