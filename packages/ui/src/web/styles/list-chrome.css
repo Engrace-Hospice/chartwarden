@@ -882,9 +882,16 @@
     font: inherit;
     font-weight: 700;
     text-align: left;
+  }
+  /* Only a title that acts looks it: a button, a link, or the title of a row that opens a drawer (`tr[role="button"]`, which is
+     the row's pointer cursor, inherited). A title that is plain text (a span, a heading) keeps the default cursor and no hover. */
+  button.wx-row-title,
+  a.wx-row-title {
     cursor: pointer;
   }
-  .wx-row-title:hover {
+  button.wx-row-title:hover,
+  a.wx-row-title:hover,
+  tr[role="button"] .wx-row-title:hover {
     color: var(--color-primary);
   }
   .wx-row-sub {

@@ -130,6 +130,29 @@ describe("Alert deliveries", () => {
   });
 });
 
+describe("read-only tables", () => {
+  // `wx-list-table` gives every row a pointer cursor and a hover tint; these rows open nothing, so they use the static variant.
+  const isStatic = (table: HTMLElement): boolean =>
+    table.classList.contains("wx-list-table-static");
+
+  it("alert deliveries do not look clickable", async () => {
+    mount(() => json({ items: [delivery("d1")], nextBefore: null }), <AlertDeliveries />);
+    await screen.findByText("cat-d1");
+    expect(isStatic(screen.getByRole("table"))).toBe(true);
+  });
+
+  it("channel members do not look clickable", async () => {
+    mount(
+      () =>
+        json({ members: [{ userId: "u1", role: "owner", source: "manual", displayName: "Dana" }] }),
+      <ChannelMembers />,
+      `/m/${CH}`,
+    );
+    await screen.findByText("Dana");
+    expect(isStatic(screen.getByRole("table"))).toBe(true);
+  });
+});
+
 describe("Channel members", () => {
   const MEMBERS = {
     members: [

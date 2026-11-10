@@ -97,6 +97,12 @@ describe("AlertRules", () => {
     expect(await screen.findByLabelText(/^Sfv due enabled/)).toBeTruthy();
   });
 
+  it("is a static table: the rows open nothing, so they must not look clickable", async () => {
+    mount(<AlertRules />, () => json({ rules: [RULE] }));
+    await screen.findByLabelText(/^Sfv due enabled/);
+    expect(screen.getByRole("table").classList.contains("wx-list-table-static")).toBe(true);
+  });
+
   it("names each toggle with its rule and visible state, so the accessible name contains the On/Off text", async () => {
     mount(<AlertRules />, () => json({ rules: [RULE] }));
     // The visible "On" is a separate span inside the label; the sr-only prefix completes the name (WCAG 2.5.3 Label in Name).

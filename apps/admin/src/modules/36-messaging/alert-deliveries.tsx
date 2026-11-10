@@ -150,7 +150,7 @@ export function AlertDeliveries(): JSX.Element {
           ) : (
             <>
               <div className="wx-list-table-wrap">
-                <table className="wx-list-table">
+                <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">Alert deliveries</caption>
                   <thead>
                     <tr>

@@ -141,7 +141,7 @@ export function ChannelMembers(): JSX.Element {
             <StateEmpty icon="users">This channel has no members.</StateEmpty>
           ) : (
             <div className="wx-list-table-wrap">
-              <table className="wx-list-table">
+              <table className="wx-list-table wx-list-table-static">
                 <caption className="wx-sr-only">Channel members</caption>
                 <thead>
                   <tr>
