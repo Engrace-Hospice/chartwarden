@@ -14,6 +14,7 @@ import type { repositories } from "@chartwarden/billing";
 import type { BillsOutsidePort } from "../services/external-notice-filing";
 import type { PriorLiveEndedStayPort } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
+import type { OnboardingDataChangedHook } from "./onboarding-data-change";
 import type {
   ClaimDetailView,
   ClaimSubmissionKind,
@@ -157,6 +158,13 @@ export interface M23WriteServicePorts {
    * Absent (no launch gateway configured) the route answers a typed 503 rather than a fabricated "ok".
    */
   readonly macSandbox?: MacSandboxProbePort;
+  /**
+   * Runs on the SAME transaction as a tenant-lane MAC credential save (`upsertMacCredential`), after it: the credential is onboarding
+   * step 8's data, so a pending go-live attestation is revoked with the write (M34's void, bound at the composition root; M23 does
+   * not import M34). A throw rolls the save back. The operator lane's `upsertMacCredentialOnTx` does NOT run it: that route voids on
+   * its own transaction. Unbound, a tenant could save a credential under a pending attestation.
+   */
+  readonly onOnboardingDataChanged?: OnboardingDataChangedHook;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
 }

@@ -11,8 +11,9 @@
 // prefix (`/api/v1/tenant`, `/api/v1/orgs`, ...) was too wide: it exposed the DSAR / tenant export downloads, the support-consent
 // grants, the care-team staff list, member credentials and direct user provisioning to a session that is not live yet. Listed
 // here is only what onboarding needs: sign-in, session and step-up plumbing; the M34 tenant wizard (onboarding steps, org profile,
-// compliance officer, go-live attestation, account, BAA attestation); and the identity administration its staffing steps need
-// (members, invitations, role grants, provider entities, locations). `bootstrap/onboarding-org-gate-routes.test` (apps/backend/
+// compliance officer, go-live attestation, account, BAA attestation); the tenant clearinghouse, MAC credential and pricing-read
+// routes the billing steps need; and the identity administration its staffing steps need (members, invitations, role grants,
+// provider entities, locations). `bootstrap/onboarding-org-gate-routes.test` (apps/backend/
 // __tests__/onboarding-org-gate-routes.test.ts) fails when an entry names a route that does not exist.
 //
 // FAIL CLOSED, twice over. It is an ALLOWlist: a route added later is refused until someone adds it here on purpose. And a request
@@ -50,6 +51,24 @@ export const PRE_ACTIVATION_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/v1/tenant/account",
   "GET /api/v1/tenant/baa",
   "POST /api/v1/tenant/baa/:id/attest",
+  // ── the billing steps (7: clearinghouse, 8: MAC credential, and the plan the tenant reads on step 2) ─────
+  // The tenant settles these itself, so its session has to reach them before go-live. Every write keeps its own guards (the
+  // billing.clearinghouse / billing.mac_credential permission, a fresh step-up, the AI-actor block, an Idempotency-Key), and
+  // each write voids a pending go-live attestation in its own transaction. Exact pairs, no prefix.
+  "GET /api/v1/tenant/clearinghouse",
+  "PUT /api/v1/tenant/clearinghouse",
+  "POST /api/v1/tenant/clearinghouse/baa",
+  "POST /api/v1/tenant/clearinghouse/verify",
+  "POST /api/v1/tenant/clearinghouse/activate",
+  "GET /api/v1/subscription/pricing", // the tenant's own plan and latest statement, read-only (it cannot change a contract)
+  "GET /api/v1/billing/mac-credentials",
+  "GET /api/v1/billing/mac-credentials/:providerEntityId",
+  "POST /api/v1/billing/mac-credentials",
+  "POST /api/v1/billing/mac-credentials/:providerEntityId/test",
+  // DELIBERATELY NOT here, so a confined session still cannot reach them: the generic `/api/v1/tenant/support-consent-grants*`
+  // and `/api/v1/tenant/support-sessions*` routes (they would let a not-yet-live organization issue PHI-scoped consent), the DSAR
+  // and tenant export downloads, and every other `/api/v1/billing/*` route (claims, rate tables, payers: clinical billing opens
+  // at go-live with the rest of the app).
   // ── the identity administration the wizard's staffing steps need ────────────────────────────────────────
   "GET /api/v1/orgs/:id/members",
   "GET /api/v1/orgs/:id/invitations",

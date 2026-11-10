@@ -99,6 +99,17 @@ describe("preActivationMayCall: exact METHOD + route template pairs", () => {
     ["GET", "/api/v1/tenant/account"],
     ["GET", "/api/v1/tenant/baa"],
     ["POST", "/api/v1/tenant/baa/:id/attest"],
+    // 7A: the billing steps (clearinghouse choice, MAC credential, the plan the tenant reads)
+    ["GET", "/api/v1/tenant/clearinghouse"],
+    ["PUT", "/api/v1/tenant/clearinghouse"],
+    ["POST", "/api/v1/tenant/clearinghouse/baa"],
+    ["POST", "/api/v1/tenant/clearinghouse/verify"],
+    ["POST", "/api/v1/tenant/clearinghouse/activate"],
+    ["GET", "/api/v1/subscription/pricing"],
+    ["GET", "/api/v1/billing/mac-credentials"],
+    ["GET", "/api/v1/billing/mac-credentials/:providerEntityId"],
+    ["POST", "/api/v1/billing/mac-credentials"],
+    ["POST", "/api/v1/billing/mac-credentials/:providerEntityId/test"],
     ["GET", "/api/v1/orgs/:id/members"],
     ["POST", "/api/v1/orgs/:id/invitations"],
     ["GET", "/api/v1/locations"],
@@ -120,6 +131,8 @@ describe("preActivationMayCall: exact METHOD + route template pairs", () => {
     ["POST", "/api/v1/tenant/tenant-export-jobs"],
     ["POST", "/api/v1/tenant/support-consent-grants"],
     ["POST", "/api/v1/tenant/support-consent-grants/:id/revoke"],
+    ["GET", "/api/v1/tenant/support-consent-grants"],
+    ["GET", "/api/v1/tenant/support-sessions"],
     ["GET", "/api/v1/tenant/feature-flags"],
     ["POST", "/api/v1/tenant/feature-flags/:flagKey"],
     ["GET", "/api/v1/orgs/:id/care-team-staff"],
@@ -140,6 +153,15 @@ describe("preActivationMayCall: exact METHOD + route template pairs", () => {
     ["POST", "/api/v1/tenant/account"],
     ["GET", "/api/v1/tenants"],
     ["GET", "/api/v1/tenant-export"],
+    // 7A: only the exact billing pairs are open, never the method or sibling route beside them
+    ["DELETE", "/api/v1/tenant/clearinghouse"],
+    ["POST", "/api/v1/tenant/clearinghouse"],
+    ["GET", "/api/v1/tenant/clearinghouse/verify"],
+    ["PUT", "/api/v1/billing/mac-credentials"],
+    ["GET", "/api/v1/billing/mac-credentials/:providerEntityId/test"],
+    ["POST", "/api/v1/subscription/pricing"],
+    ["GET", "/api/v1/billing/rate-tables"],
+    ["POST", "/api/v1/billing/rate-tables"],
   ])("refuses %s %s", (method, template) => {
     expect(may(method, template)).toBe(false);
   });

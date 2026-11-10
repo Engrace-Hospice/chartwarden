@@ -4014,12 +4014,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },
-  // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
-  "POST /api/v1/billing/mac-credentials": {
-    summary:
-      "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
-    body: UpsertMacCredentialBodySchema,
-  },
+  // ── MAC credentials (mac-credentials.routes.ts, §3.6): the POST upsert is enriched beside its view schema, near the GETs ──
   // ── EDI profile (edi-profile.routes.ts; migration 1268) ──
   "PUT /api/v1/billing/edi-profiles/:providerEntityId/:routeKey": {
     summary:
@@ -13833,6 +13828,15 @@ const M23ValidationOverrideAuditPage = Type.Object({
   hasMore: Type.Boolean(),
 });
 const M23MacCredentialByProviderResponse = Type.Union([M23MacCredentialView, Type.Null()]);
+/** The upsert pins the version it changes: absent on a first save, required on a change (428 / 409). */
+const M23_MAC_CREDENTIAL_WRITE_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save.",
+  },
+};
 
 const M23ArAgingDto = Type.Object({
   bucket0to30Cents: Type.Integer(),
@@ -13919,8 +13923,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/billing/mac-credentials/:providerEntityId/test": {
     summary:
-      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up; Idempotency-Key required (§4.1 #36)",
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M23MacCredentialTestResponse,
+  },
+  "POST /api/v1/billing/mac-credentials": {
+    summary:
+      "Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35)",
+    body: UpsertMacCredentialBodySchema,
+    headers: M23_MAC_CREDENTIAL_WRITE_HEADERS,
+    status: 201,
+    response: M23MacCredentialView,
   },
   "GET /api/v1/billing/validation-overrides": {
     summary:

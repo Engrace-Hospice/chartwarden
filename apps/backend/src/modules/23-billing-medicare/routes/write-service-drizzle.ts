@@ -1363,7 +1363,18 @@ export function buildDrizzleM23WriteService(
       requireStepUp(actor);
       return mapUniqueViolation(
         "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",
-      )(() => inOrgCtx(actor, (tx) => upsertMacCredentialRow(tx, actor, args)));
+      )(() =>
+        inOrgCtx(actor, async (tx) => {
+          const saved = await upsertMacCredentialRow(tx, actor, args);
+          // Step 8's data changed: a pending go-live attestation is revoked in this same transaction (see the port's doc).
+          await ports.onOnboardingDataChanged?.(tx, {
+            organizationId: actor.organizationId,
+            userId: actor.userId,
+            membershipId: actor.membershipId,
+          });
+          return saved;
+        }),
+      );
     },
 
     // The SAME upsert on the CALLER'S transaction: the platform onboarding route keeps the write, the tenant-status

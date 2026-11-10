@@ -36,6 +36,11 @@ describe("the onboarding-org allowlist against the registered route table", () =
     ["GET", "/api/v1/tenant/tenant-export-jobs/:id/download"],
     ["POST", "/api/v1/tenant/support-consent-grants"],
     ["POST", "/api/v1/tenant/support-consent-grants/:id/revoke"],
+    ["GET", "/api/v1/tenant/support-consent-grants"],
+    ["GET", "/api/v1/tenant/support-sessions"],
+    ["GET", "/api/v1/tenant/support-sessions/:id/events"],
+    ["GET", "/api/v1/billing/rate-tables"],
+    ["POST", "/api/v1/billing/rate-tables"],
     ["GET", "/api/v1/tenant/feature-flags"],
     ["GET", "/api/v1/orgs/:id/care-team-staff"],
     ["GET", "/api/v1/memberships/:membershipId/credentials"],
@@ -59,6 +64,8 @@ describe("the onboarding-org allowlist against the registered route table", () =
       "/api/v1/tenant/go-live",
       "/api/v1/tenant/account",
       "/api/v1/tenant/baa",
+      // 7A: the tenant's own clearinghouse choice, for the billing steps
+      "/api/v1/tenant/clearinghouse",
     ];
     const open = routes
       .filter((r) => r.path.startsWith("/api/v1/tenant/"))
@@ -70,6 +77,36 @@ describe("the onboarding-org allowlist against the registered route table", () =
         `${entry} is open but is not a wizard route`,
       ).toBe(true);
     }
+  });
+
+  it("the billing steps' routes are open and are exactly the clearinghouse, MAC credential and pricing-read pairs", () => {
+    const billingStepRoutes = [
+      "GET /api/v1/tenant/clearinghouse",
+      "PUT /api/v1/tenant/clearinghouse",
+      "POST /api/v1/tenant/clearinghouse/baa",
+      "POST /api/v1/tenant/clearinghouse/verify",
+      "POST /api/v1/tenant/clearinghouse/activate",
+      "GET /api/v1/subscription/pricing",
+      "GET /api/v1/billing/mac-credentials",
+      "GET /api/v1/billing/mac-credentials/:providerEntityId",
+      "POST /api/v1/billing/mac-credentials",
+      "POST /api/v1/billing/mac-credentials/:providerEntityId/test",
+    ];
+    for (const entry of billingStepRoutes) {
+      expect(registered.has(entry), `${entry} must be a real route`).toBe(true);
+      const [method, path] = entry.split(" ") as [string, string];
+      expect(allowed(method, path), entry).toBe(true);
+    }
+    // nothing else under the billing root or the subscription root is open
+    const openBillingOrSubscription = [...PRE_ACTIVATION_ALLOWED_ROUTES].filter((entry) => {
+      const path = entry.split(" ")[1] ?? "";
+      return path.startsWith("/api/v1/billing/") || path.startsWith("/api/v1/subscription/");
+    });
+    expect(openBillingOrSubscription.sort()).toEqual(
+      billingStepRoutes
+        .filter((e) => e.includes("/billing/") || e.includes("/subscription/"))
+        .sort(),
+    );
   });
 
   it("no clinical, patient, billing, messaging or platform route is on the list", () => {
@@ -84,8 +121,11 @@ describe("the onboarding-org allowlist against the registered route table", () =
       "/api/v1/platform",
       "/api/v1/billing",
     ];
+    // 7A: the MAC credential routes are the one billing exception (the wizard's step 8 needs them); every other billing route stays out.
+    const billingStepRoot = "/api/v1/billing/mac-credentials";
     for (const entry of PRE_ACTIVATION_ALLOWED_ROUTES) {
       const path = entry.split(" ")[1] ?? "";
+      if (path === billingStepRoot || path.startsWith(`${billingStepRoot}/`)) continue;
       expect(
         forbiddenRoots.some((root) => path === root || path.startsWith(`${root}/`)),
         entry,

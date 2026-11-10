@@ -1236,6 +1236,7 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
+import type { OnboardingDataChangedHook } from "./modules/23-billing-medicare/routes/onboarding-data-change";
 import { m23RouteClasses } from "./modules/23-billing-medicare/routes/route-classes";
 import {
   buildClaim837iPersistencePort,
@@ -3187,6 +3188,20 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
     severity: event.severity,
     correlationId: `platform-bypass:${event.jobId}:${randomUUID()}`,
     context: { jobId: event.jobId, reason: event.reason },
+  });
+};
+
+/**
+ * A tenant-lane billing write (the clearinghouse choice, its BAA record, verify and activate; the MAC credential) is onboarding
+ * data: a pending go-live attestation said that data was ready, so the write revokes it IN THE WRITE'S OWN TRANSACTION (M23 may
+ * not import M34, so it takes this as `onOnboardingDataChanged`). The write and the void commit or roll back together; with
+ * nothing pending it is a no-op. The operator's lane voids on its own transaction (`onboarding-data-service.ts`).
+ */
+export const voidGoLiveOnBillingWrite: OnboardingDataChangedHook = async (tx, change) => {
+  await voidPendingGoLiveForDataChange(tx, {
+    organizationId: change.organizationId,
+    revokedByUserId: change.userId,
+    revokedByMembershipId: change.membershipId,
   });
 };
 
@@ -6161,6 +6176,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(mfaGate ? { mfaGate } : {}),
             // `select-organization` admits a `created` organization whose tenant is still onboarding (its first admin).
             onboardingTenants: createOnboardingTenantReader(dbHandle.db),
+            // `GET /auth/context` tells the shell whether the organization is still being onboarded: the authenticate hook's own
+            // cached stage reader, so the signal and the gate cannot disagree.
+            ...(organizationStage ? { organizationStage } : {}),
             funeralCases: {
               read: (organizationId, patientId) =>
                 funeralCaseForOrg(dbHandle.db, organizationId, patientId),
@@ -7651,6 +7669,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
                   audit: buildClearinghouseAuditPort(),
+                  // Each write voids a pending go-live attestation in its own transaction (step 7's data changed).
+                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
                   onChanged: settleOnboardingForOrg,
                   logError: (cause, context) =>
                     app.log.error(
@@ -7689,6 +7709,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 writeService: buildDrizzleM23WriteService(dbHandle.db, {
                   outbox: m23OutboxPublisher,
+                  // The tenant's own MAC credential save voids a pending go-live attestation in the same transaction (step 8's data).
+                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
                   // Owner decision D4: an org that bills outside ChartWarden files its NOE / NOTR itself, so submit parks the
                   // notice and the tenant records the date. Read lazily per call (the reader seam registers after this is built);
                   // a throw fails closed with a typed 503, never a transmission.

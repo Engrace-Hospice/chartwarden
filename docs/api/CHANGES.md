@@ -6,6 +6,30 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — A not-yet-live organization reaches its billing steps; `auth/context` says which stage it is in
+
+**Reachable during onboarding.** A session on an organization that is not live yet (go-live not approved) may now call the routes
+the clearinghouse and MAC credential steps need, and nothing else beside them: `GET|PUT /api/v1/tenant/clearinghouse`,
+`POST /api/v1/tenant/clearinghouse/baa|verify|activate`, `GET /api/v1/subscription/pricing`, `GET /api/v1/billing/mac-credentials`,
+`GET /api/v1/billing/mac-credentials/{providerEntityId}`, `POST /api/v1/billing/mac-credentials` and
+`POST /api/v1/billing/mac-credentials/{providerEntityId}/test`. Before, each answered `403 ORGANIZATION_ONBOARDING`. Every other
+billing route, the support-consent grant and support-session routes, and the DSAR and export downloads still do. Each route keeps
+its own guards (permission, fresh step-up, AI-actor block, `Idempotency-Key`).
+
+**Stage signal.** `GET /api/v1/auth/context` gains `organizationStage`: `onboarding` while the organization is confined to the
+onboarding routes, `live` otherwise (also for a session that is not bound to an organization yet).
+
+**A billing write voids a pending go-live attestation.** The tenant's own clearinghouse writes (choice, BAA record, verify,
+activate) and a MAC credential save now revoke a pending go-live attestation in the write's own transaction, with the reason
+`onboarding data changed after attestation`, as the operator's writes and the org-profile write already did. The compliance
+officer attests again. A refused write voids nothing.
+
+**MAC credential routes typed.** `POST /api/v1/billing/mac-credentials` now documents its `Idempotency-Key` and optional `If-Match`
+(a first save omits it, a change sends the credential's `version`), answers `201` on a first save and `200` on a change, and returns the
+credential view (never the secret). `POST /api/v1/billing/mac-credentials/{providerEntityId}/test` documents its `Idempotency-Key`.
+
+---
+
 ## 2026-11-09 — Slice 7 contract: help requests, support-session reads, the tenant's own skip (routes registered, services still being built)
 
 The wire contract of the tenant onboarding slice is frozen so clients can be built against real types. **Every route below
