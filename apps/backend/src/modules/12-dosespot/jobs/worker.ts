@@ -339,8 +339,8 @@ async function processRow(
       }
       if (settled.kind === "completed") await repo.markCompleted(row.id, now());
       else if (settled.kind === "failed") await repo.markFailed(row.id, settled.error, now());
-      else if (settled.kind === "defer") await repo.defer(row.id, settled.error);
-      else await repo.requeue(row.id, settled.error);
+      else if (settled.kind === "defer") await repo.defer(row.id, settled.error, now());
+      else await repo.requeue(row.id, settled.error, now());
       // §2.6 "on failure": record the sync outcome + bump `retry_count` (no id is ever invented). A row that only WAITS for the registration
       // (`defer`) did not fail: the patient's last outcome is left as it was.
       if (
@@ -355,6 +355,33 @@ async function processRow(
         });
       }
     },
+  );
+}
+
+/**
+ * A claimed row whose outcome could not be written (a database fault inside its settle, rolled back whole): it is still `processing`. End it as `failed`
+ * with the error's class only, and say so with ids and the class. If even that cannot be written the database is unreachable: the error propagates, which
+ * fails the org's pass (the job's own retry then runs the drain again) rather than pretending the row was settled.
+ */
+async function endUnrecordableRow(
+  deps: DoseSpotSyncWorkerDeps,
+  row: DosespotSyncQueueRow,
+  error: unknown,
+): Promise<void> {
+  const cause = error instanceof Error ? error.name : "unknown";
+  deps.warn?.(
+    { organizationId: row.organizationId, patientId: row.patientId, cause },
+    "M12 sync drain: a row's outcome could not be recorded; it was ended as failed and the org's other rows went on",
+  );
+  await withOrgContext(
+    deps.db,
+    { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
+    (tx) =>
+      new DosespotSyncQueueRepository(tx as DbClient).markFailed(
+        row.id,
+        `the drain could not record this row's outcome (${cause})`,
+        (deps.now ?? (() => new Date()))(),
+      ),
   );
 }
 
@@ -394,7 +421,13 @@ export async function runDoseSpotSyncQueueDrain(deps: DoseSpotSyncWorkerDeps): P
         },
       );
       for (const row of claimed) {
-        await processRow(deps, row, preflight.orgHasRegistration);
+        try {
+          await processRow(deps, row, preflight.orgHasRegistration);
+        } catch (error) {
+          // one row whose outcome could not be recorded must not strand the rest of the batch in `processing` (the claim takes only `pending` rows,
+          // so nothing would release them): end it, with the error's class only (never its message), and go on
+          await endUnrecordableRow(deps, row, error);
+        }
       }
     } catch (error) {
       failures.push(error);

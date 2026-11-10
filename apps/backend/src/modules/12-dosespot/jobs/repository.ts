@@ -142,21 +142,69 @@ export class DosespotSyncQueueRepository {
 
   /**
    * Not this row's fault (the tenant's registration is not live, or its config could not be read): back to `pending` with NO attempt spent,
-   * so the row waits for the registration instead of ending. `last_error` says why it is waiting.
+   * so the row waits for the registration instead of ending. `last_error` says why it is waiting. If a pending sibling for the same
+   * (organization, kind, patient) exists by then, the row ends instead (see {@link backToPendingUnlessSuperseded}).
    */
-  async defer(id: string, error: string): Promise<void> {
-    await this.db.update(Q).set({ status: "pending", lastError: error }).where(eq(Q.id, id));
+  async defer(id: string, error: string, now: Date = new Date()): Promise<void> {
+    await this.backToPendingUnlessSuperseded(id, { lastError: error }, false, now);
   }
 
   /**
    * Retryable failure: back to `pending` (the next drain tick re-attempts), bump `attempt_count`, record
-   * `last_error`. Reachable only once a real vendor client can return `DegradedError(retryable: true)` —
-   * unexercised in this environment today, where the deny-stub client always answers `retryable: false`.
+   * `last_error`. If a pending sibling exists by then, the row ends instead (see {@link backToPendingUnlessSuperseded}).
    */
-  async requeue(id: string, error: string): Promise<void> {
+  async requeue(id: string, error: string, now: Date = new Date()): Promise<void> {
+    await this.backToPendingUnlessSuperseded(
+      id,
+      { attemptCount: sql`${Q.attemptCount} + 1`, lastError: error },
+      true,
+      now,
+    );
+  }
+
+  /**
+   * `dosespot_sync_queue_pending_uq` allows one PENDING row per (organization, kind, patient), and an enqueue collapses only onto a row that is already
+   * pending, so a change that arrives while a row is `processing` inserts a second, pending one. When the processing row then goes back to `pending`
+   * it would collide with it (23505), the whole settle would throw and the rest of the drain's batch would stay `processing`. The pending sibling
+   * carries the same work (it runs against the patient's latest state), so this row ENDS instead: `completed`, with a fixed text saying why. The
+   * attempt is attempted inside a savepoint, so the collision is answered whether the sibling was already there or committed while this statement
+   * waited, and the outer transaction stays usable.
+   */
+  private async backToPendingUnlessSuperseded(
+    id: string,
+    set: { readonly lastError: string; readonly attemptCount?: ReturnType<typeof sql> },
+    spentAttempt: boolean,
+    now: Date,
+  ): Promise<void> {
+    try {
+      await this.db.transaction(async (savepoint) => {
+        await savepoint
+          .update(Q)
+          .set({ status: "pending", ...set })
+          .where(eq(Q.id, id));
+      });
+      return;
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+    }
     await this.db
       .update(Q)
-      .set({ status: "pending", attemptCount: sql`${Q.attemptCount} + 1`, lastError: error })
+      .set({
+        status: "completed",
+        processedAt: now,
+        lastError: SUPERSEDED_TEXT,
+        ...(spentAttempt ? { attemptCount: sql`${Q.attemptCount} + 1` } : {}),
+      })
       .where(eq(Q.id, id));
   }
+}
+
+/** Why a row that went back to pending ended instead (fixed text: it names no value). */
+export const SUPERSEDED_TEXT = "superseded by a newer pending job for the same patient";
+
+/** A PostgreSQL unique violation (SQLSTATE 23505), on the error or anywhere on its `cause` chain (a Drizzle query error wraps the driver's). */
+function isUniqueViolation(error: unknown, depth = 0): boolean {
+  if (depth > 3 || typeof error !== "object" || error === null) return false;
+  const shaped = error as { code?: unknown; cause?: unknown };
+  return shaped.code === "23505" || isUniqueViolation(shaped.cause, depth + 1);
 }

@@ -963,6 +963,8 @@ describe.skipIf(!DB_URL)(
 
     // ── ADR-0111 D6: a tenant that registered DoseSpot but is not live keeps its rows; a transient failure backs off and ends ───────────
     describe("a tenant that is not live yet keeps its sync rows pending; a transient failure backs off and ends", () => {
+      /** Stands for a value that must never reach a persisted or logged message. */
+      const MARKER_DRUG_FOR_FAULT = "Morphine-MARKER-5d3";
       /** A vendor whose patient upsert always throws `fault()` (the call is logged first: a test can assert it was never reached). */
       class FailingVendor extends FakeDoseSpotVendor {
         constructor(private readonly fault: () => Error) {
@@ -1231,6 +1233,97 @@ describe.skipIf(!DB_URL)(
         expect(await rowOf(job)).toMatchObject({ status: "pending", attempt_count: 0 }); // not failed, no attempt spent
         expect(await syncRows(patientId)).toEqual([]); // and no sync failure recorded for the patient
         expect(warned).toEqual([{ organizationId: ORG_A, patientId, class: "registration_moved" }]);
+      });
+
+      // `dosespot_sync_queue_pending_uq` allows one PENDING row per (org, kind, patient). A demographic change enqueues a pending row while the first is
+      // still processing; when the processing row then goes back to `pending` (a defer or a requeue) it would collide with it.
+      describe("a processing row that goes back to pending while a sibling is already pending ends instead of colliding with it", () => {
+        const siblingThenFail = (patientId: string, fault: () => Error) =>
+          class extends FailingVendor {
+            constructor() {
+              super(fault);
+            }
+            override async upsertPatient(orgId: string): Promise<never> {
+              await enqueueAs(ORG_A, "patient_sync", patientId); // the change lands while this row is processing: a pending sibling
+              return super.upsertPatient(orgId);
+            }
+          };
+
+        it("a DEFER (the registration is not live mid-batch): no unique violation, the row ends, the sibling stays pending, the drain does not throw", async () => {
+          await registerClinic(ORG_A, "active");
+          const patientId = await seedPatient(ORG_A);
+          const first = await enqueueAs(ORG_A, "patient_sync", patientId);
+          const Vendor = siblingThenFail(patientId, notEnabled);
+          await runDoseSpotSyncQueueDrain(workerDeps([ORG_A], { doseSpotClient: new Vendor() }));
+          expect(await rowOf(first)).toMatchObject({
+            status: "completed",
+            last_error: "superseded by a newer pending job for the same patient",
+          });
+          expect(
+            await q(
+              "SELECT status FROM dosespot_sync_queue WHERE patient_id=$1 AND id<>$2 ORDER BY enqueued_at",
+              [patientId, first],
+            ),
+          ).toEqual([{ status: "pending" }]);
+        });
+
+        it("a REQUEUE (a transient vendor failure) does the same, and the attempt it spent is counted", async () => {
+          await registerClinic(ORG_A, "active");
+          const patientId = await seedPatient(ORG_A);
+          const first = await enqueueAs(ORG_A, "patient_sync", patientId);
+          const Vendor = siblingThenFail(
+            patientId,
+            () => new DegradedError("dosespot", "upsertPatient", true, "Vendor busy.", "c8"),
+          );
+          await runDoseSpotSyncQueueDrain(workerDeps([ORG_A], { doseSpotClient: new Vendor() }));
+          expect(await rowOf(first)).toMatchObject({ status: "completed", attempt_count: 1 });
+          expect(
+            (
+              await q(
+                "SELECT count(*)::int n FROM dosespot_sync_queue WHERE patient_id=$1 AND status='pending'",
+                [patientId],
+              )
+            )[0]?.n,
+          ).toBe(1);
+        });
+      });
+
+      it("a row whose outcome cannot be recorded is ended as failed (a class only, no message) and the org's later rows still run", async () => {
+        await registerClinic(ORG_A, "active");
+        const [p1, p2] = [await seedPatient(ORG_A), await seedPatient(ORG_A)];
+        const r1 = await enqueueAs(ORG_A, "patient_sync", p1);
+        const r2 = await enqueueAs(ORG_A, "patient_sync", p2);
+        let armed = false;
+        class ArmingVendor extends FakeDoseSpotVendor {
+          override async upsertPatient(
+            orgId: string,
+            payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
+          ) {
+            if (payload.chartwardenPatientId === p1) armed = true; // the NEXT clock read is the first row's settle
+            return super.upsertPatient(orgId, payload);
+          }
+        }
+        const warned: Array<Record<string, string | number>> = [];
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], {
+            doseSpotClient: new ArmingVendor(),
+            warn: (fields) => warned.push(fields),
+            now: () => {
+              if (armed) {
+                armed = false;
+                throw new Error(`clock fault ${MARKER_DRUG_FOR_FAULT}`);
+              }
+              return new Date();
+            },
+          }),
+        );
+        const ended = await rowOf(r1);
+        expect(ended.status).toBe("failed");
+        expect(ended.last_error).toContain("Error"); // the class
+        expect(ended.last_error).not.toContain(MARKER_DRUG_FOR_FAULT); // never the message
+        expect((await rowOf(r2)).status).toBe("completed"); // not stranded in `processing`
+        expect(warned.filter((w) => w.patientId === p1)).toHaveLength(1);
+        expect(JSON.stringify(warned)).not.toContain(MARKER_DRUG_FOR_FAULT);
       });
 
       it("a MedHx fetch for a patient whose vendor id a clinic move cleared ends with a message that says so; one for a never-synced patient keeps its own", async () => {
