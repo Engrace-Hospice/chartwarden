@@ -315,15 +315,23 @@ const PINNED_CLAUDE_HOOKS = [
  * - `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session
  *   directory would otherwise run before the guard and could silence it, and a `tsconfig.json` `paths` map
  *   would replace the guard's own imports (see {@link BUN_HARDENED});
- * - `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs the call when a hook times out (its limit here
- *   is 10 s, which {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a
- *   failed `exec` (no `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0,
- *   which is an ALLOW;
+ * - `perl -e 'alarm 8; ...'`: Codex runs the call when a hook times out (its limit here is 10 s, which
+ *   {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a failed `exec` (no
+ *   `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0, which is an ALLOW;
+ * - the script is found by walking up from the session directory (`Cwd::getcwd`, the real path) to the nearest
+ *   directory that holds `.git`, `.codex/hooks.json` AND `scripts/harness/pre-tool-guard.ts`, and NOT with
+ *   `git rev-parse --show-toplevel`: that follows `core.worktree`, so `git config core.worktree /tmp/x` (or a
+ *   line appended to `.git/config`) made the hook run `/tmp/x/scripts/harness/pre-tool-guard.ts` and two allowed
+ *   commands switched the Codex guard off. Reading no git configuration at all leaves nothing to redirect; a
+ *   nested `git init` below the session directory must also plant the hook config and the script (both
+ *   protected paths at any depth) to win; nothing found means exit 127, and the wrapper below refuses the call;
  * - `|| { ...; exit 2; }`: exit 2 with a message BLOCKS in Codex; any other failure (bun not on the hook's
  *   PATH, a crash, the alarm) is "failed, and the call proceeds".
  */
 export const CODEX_ALARM_SECONDS = 8;
-export const CODEX_GUARD_COMMAND = `perl -e 'alarm ${CODEX_ALARM_SECONDS}; exec @ARGV or exit 127' ${BUN_HARDENED} "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
+const CODEX_FIND_ROOT_AND_EXEC =
+  'use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127';
+export const CODEX_GUARD_COMMAND = `perl -e 'alarm ${CODEX_ALARM_SECONDS}; ${CODEX_FIND_ROOT_AND_EXEC}' ${BUN_HARDENED} || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
 
 /** PURE — `.codex/hooks.json` must hold exactly the one guard hook, and nothing that could shadow it. */
 export function checkCodexHooks(text: string | undefined): string[] {

@@ -289,7 +289,7 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
   it("runs the Codex guard through `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null`", () => {
     const command = JSON.parse(codexHooks).hooks.PreToolUse[0].hooks[0].command;
     expect(command).toContain(
-      ' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse',
+      "' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null || {",
     );
   });
   it("fails when .codex/hooks.json is missing or unparsable", () => {
@@ -672,8 +672,10 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       // whatever the constant is, and the 9 s timeout floor below is derived from that same constant.
       expect(CODEX_ALARM_SECONDS).toBe(8);
       expect(CODEX_GUARD_COMMAND).toBe(
-        `perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
+        `perl -e 'alarm 8; use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
       );
+      // The script is found without reading git configuration: `core.worktree` redirected `rev-parse --show-toplevel`.
+      expect(CODEX_GUARD_COMMAND).not.toMatch(/rev-parse|git -|git config/);
     });
     it.each([1, 5, 8])(
       "fails a timeout of %s: Codex's own timeout would fire first and let the call run",
