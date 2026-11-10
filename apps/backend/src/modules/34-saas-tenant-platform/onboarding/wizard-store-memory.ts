@@ -25,9 +25,12 @@ import type { PlatformAuditEntry, TaskPatch, WizardRunner, WizardStore } from ".
 /** An attestation row with the organisation the real table scopes it by. */
 export type MemoryGoLive = GoLiveAttestation & { organizationId: string };
 
-/** A BAA as the memory store keeps it: the writer and document fields are optional (absent = a legacy row). */
+/**
+ * A BAA as the memory store keeps it: the writer and document fields are optional (absent = a legacy row). The memory store has no
+ * document check, so a row is a filed one unless a test says `documentFiled: false`.
+ */
 export type MemoryBaa = Pick<GoverningBaa, "baaStatus" | "expiresOn"> &
-  Partial<Pick<GoverningBaa, "documentId" | "recordedByUserId" | "updatedByUserId">>;
+  Partial<Pick<GoverningBaa, "documentId" | "documentFiled" | "recordedByUserId" | "updatedByUserId">>;
 
 export interface MemoryWizardState {
   tenants: TenantRef[];
@@ -216,6 +219,7 @@ export function createMemoryWizardStore(
       return baa
         ? {
             documentId: null,
+            documentFiled: true,
             recordedByUserId: null,
             updatedByUserId: null,
             ...baa,

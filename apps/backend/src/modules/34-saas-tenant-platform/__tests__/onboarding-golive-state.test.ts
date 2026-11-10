@@ -56,7 +56,7 @@ const TEMPLATES = [
   tpl("go_live_checklist_complete", 4, { owner: "compliance_officer" }),
 ];
 const NOW = new Date("2026-11-05T00:00:00Z");
-const BAA_OK = { baaStatus: "executed", expiresOn: "2027-12-31" };
+const BAA_OK = { baaStatus: "executed", expiresOn: "2027-12-31", documentFiled: true };
 
 const att = (over: Partial<GoLiveAttestation> = {}): GoLiveAttestation => ({
   id: "att-1",

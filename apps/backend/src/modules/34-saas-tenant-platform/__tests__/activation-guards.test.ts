@@ -9,6 +9,7 @@ const canonical = ["account_created", "ccn_registered"];
 const executedBaa = (expiresOn: string | null) => ({
   baaStatus: "executed" as const,
   expiresOn,
+  documentFiled: true,
 });
 
 describe("evaluateActivationGuards", () => {
@@ -46,18 +47,25 @@ describe("evaluateActivationGuards", () => {
       latestBaa: { ...executedBaa("2027-12-31"), documentFiled: false },
     });
     expect(unverified).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
-    // verified, and not judged at all (no adapter bound), are both an executed BAA
-    for (const documentFiled of [true, undefined]) {
-      expect(
-        evaluateActivationGuards({
-          ...input,
-          latestBaa: {
-            ...executedBaa("2027-12-31"),
-            ...(documentFiled === undefined ? {} : { documentFiled }),
-          },
-        }),
-      ).toMatchObject({ baaExecuted: true, baaExpiryClearsNinetyDays: true });
-    }
+    // a verified document is an executed BAA
+    expect(
+      evaluateActivationGuards({ ...input, latestBaa: executedBaa("2027-12-31") }),
+    ).toMatchObject({ baaExecuted: true, baaExpiryClearsNinetyDays: true });
+  });
+
+  it("an input that does not say whether the document verifies is not an executed BAA (fail closed, as the sweep does)", () => {
+    const { documentFiled: _omitted, ...unjudged } = executedBaa("2027-12-31");
+    const guards = evaluateActivationGuards({
+      canonicalTemplateKeys: canonical,
+      tasks: [
+        { templateKey: "account_created", status: "done" },
+        { templateKey: "ccn_registered", status: "done" },
+      ],
+      // the type requires the field; a caller that casts its way around it must still fail closed
+      latestBaa: unjudged as never,
+      today: TODAY,
+    });
+    expect(guards).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
   });
 
   it("is incomplete while a canonical task is pending or has no row at all", () => {
@@ -101,7 +109,7 @@ describe("evaluateActivationGuards", () => {
     const pending = evaluateActivationGuards({
       canonicalTemplateKeys: [],
       tasks: [],
-      latestBaa: { baaStatus: "pending", expiresOn: null },
+      latestBaa: { baaStatus: "pending", expiresOn: null, documentFiled: true },
       today: TODAY,
     });
     const none = evaluateActivationGuards({
@@ -185,7 +193,7 @@ describe("activation guards fail closed", () => {
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: [],
       tasks: [],
-      latestBaa: { baaStatus: "executed", expiresOn: null },
+      latestBaa: { baaStatus: "executed", expiresOn: null, documentFiled: true },
       today: new Date("2026-10-13T00:00:00Z"),
     });
 
