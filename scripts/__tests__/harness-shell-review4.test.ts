@@ -228,3 +228,97 @@ describe("an abbreviated long output option writes its file as the full spelling
     expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });
+
+// A harness switch (a variable that turns the guard, the ledger or the Stop gate off, or re-points the tree or the
+// hook configuration an agent loads) must ask however it is spelled. Narrowing the rule to "an assignment word"
+// let indirect and wrapped spellings through that the original text match (`\bNAME=` anywhere in the command)
+// caught: a nested Codex without hooks could be started. The default is inverted: the name followed by `=` asks
+// anywhere in a command, except when the command only searches or prints text that mentions it.
+describe("a harness switch asks however it is spelled, where the original text rule asked", () => {
+  /** The rule on main before the narrowing, verbatim: the name and `=` anywhere in the command text. */
+  const MAIN_TEXT_RULE =
+    /\b(CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR)=/;
+
+  const SPELLINGS = [
+    // direct
+    "CW_STOP_GATE=off claude",
+    "CODEX_HOME=/tmp/h codex exec hi",
+    "FOO=1 CLAUDE_CONFIG_DIR=/tmp/c claude",
+    "ECC_DISABLED_HOOKS= claude",
+    "ECC_GATEGUARD=off claude -p hi",
+    "CW_HARNESS_ROOT_FOR_TESTS=/tmp/r bun scripts/harness/pre-tool-guard.ts",
+    "cd apps && CLAUDE_PROJECT_DIR=/tmp/x bun run y",
+    "export CW_STOP_GATE=off",
+    "declare -x CODEX_HOME=/tmp/h",
+    "env CW_HARNESS_FAIL_OPEN=1 ls",
+    "env -i CODEX_HOME=/tmp/x codex exec hi",
+    // indirect: the assignment is built, or fed in, by something the classifier does not run
+    "export $(echo CW_STOP_GATE=off)",
+    "X=CODEX_HOME=/tmp/x; env $X codex exec hi",
+    "env $(echo CODEX_HOME=/tmp/x) codex exec hi",
+    'eval "$(echo CW_STOP_GATE=off)"',
+    "xargs -I{} env CODEX_HOME={} codex < list.txt",
+    // wrapped: a program that runs a command line it is given as one string
+    "script -c 'CODEX_HOME=/tmp/x codex exec hi' /dev/null",
+    "watch -n1 'CW_STOP_GATE=off ls'",
+    "su -c 'CW_STOP_GATE=off ls' root",
+    "ssh localhost 'CW_AGENT_LEDGER=off ls'",
+    "taskset 1 env CW_STOP_GATE=off ls",
+    "timeout 5 env CODEX_HOME=/tmp/x codex exec hi",
+    "nohup env CODEX_HOME=/tmp/x codex &",
+    "exec env CW_STOP_GATE=off ls",
+    "command env CLAUDE_CONFIG_DIR=/tmp/c claude",
+    "find . -maxdepth 0 -exec env CODEX_HOME=/tmp/x codex exec hi ;",
+    "sudo -E CLAUDE_PROJECT_DIR=/tmp bun x.ts",
+    // nested
+    "bash -c 'CLAUDE_CONFIG_DIR=/tmp/c claude'",
+    'sh -c "export CODEX_HOME=/tmp/h; codex"',
+    "echo $(CODEX_HOME=/tmp/h codex)",
+    // written down for the next shell, or mentioned in a command that is not a search or a print
+    "echo 'export CODEX_HOME=/tmp/h' >> ~/.zshrc",
+    "printf 'CODEX_HOME=/tmp/h\\n' > ~/.zshenv",
+    "echo CODEX_HOME=/tmp/h | tee -a ~/.zshrc",
+    "sed -i 's/^/CODEX_HOME=\\/tmp\\/h /' run.sh",
+    "git config alias.x '!CODEX_HOME=/tmp/h codex'",
+  ];
+
+  it("lists at least 25 spellings, each one the original text rule asked about", () => {
+    expect(SPELLINGS.length).toBeGreaterThanOrEqual(25);
+    for (const cmd of SPELLINGS) expect(MAIN_TEXT_RULE.test(cmd), cmd).toBe(true);
+  });
+
+  it.each(SPELLINGS)("asks before %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(["ask", "deny"], `${cmd} -> ${verdict.decision}`).toContain(verdict.decision);
+  });
+
+  // The closures the narrowing was made for: a name inside the arguments of a search or print tool is text.
+  it.each([
+    "rg CLAUDE_PROJECT_DIR= scripts",
+    "grep -rn 'CODEX_HOME=' docs",
+    "git log -S'CLAUDE_PROJECT_DIR=' --oneline",
+    "echo CODEX_HOME=x",
+    "grep -n CW_HARNESS_FAIL_OPEN= docs/compliance/AGENT_HARNESS.md",
+    "git grep -n 'CODEX_HOME=' -- docs",
+    "git show HEAD:docs/x.md | rg 'CODEX_HOME='",
+    "cat scripts/harness/pre-tool-guard.ts | rg 'CLAUDE_PROJECT_DIR=' | head -5",
+    "printf '%s\\n' CODEX_HOME=x",
+    "sed -n '/CODEX_HOME=/p' docs/x.md",
+    'git commit -m "docs: say what CODEX_HOME=... does"',
+  ])("keeps the search or print %s allowed, as the text rule's false positive", (cmd) => {
+    expect(MAIN_TEXT_RULE.test(cmd), `${cmd} is a text-rule false positive`).toBe(true);
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+
+  it("does not let a search or print carry the mention anywhere else", () => {
+    for (const cmd of [
+      "rg foo > ~/.zshrc; echo CODEX_HOME=x >> ~/.zshrc",
+      "echo CODEX_HOME=x | sh",
+      "echo CODEX_HOME=x | bash -s",
+      "CODEX_HOME=x rg foo docs",
+    ]) {
+      expect(d(cmd), cmd).not.toBe("allow");
+    }
+  });
+});
