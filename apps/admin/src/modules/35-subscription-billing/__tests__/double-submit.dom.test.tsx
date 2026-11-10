@@ -1,5 +1,7 @@
 import {
   ApiClientProvider,
+  Glyph,
+  type GlyphName,
   ToastProvider,
   createApiClient,
   discardStepUpDrafts,
@@ -388,12 +390,28 @@ describe("refund decision", () => {
     }
   });
 
-  it("a denial or failure does not wear the success tick", () => {
-    // The icon is decorative (aria-hidden), so the mapping that picks it is what can be asserted.
-    expect(DECIDED_REFUND_ICON.approved).toBeTruthy();
-    expect(DECIDED_REFUND_ICON.denied).not.toBe(DECIDED_REFUND_ICON.approved);
-    expect(DECIDED_REFUND_ICON.executed_failed).not.toBe(DECIDED_REFUND_ICON.approved);
-    expect(DECIDED_REFUND_ICON.executed_failed).not.toBe(DECIDED_REFUND_ICON.denied);
+  it("a denial or failure does not wear the success tick", async () => {
+    // The icon is decorative (aria-hidden), so compare what is drawn: the glyph's path, against each expected glyph rendered alone.
+    const glyphPath = (name: GlyphName): string | null => {
+      const { container, unmount } = render(<Glyph name={name} />);
+      const d = container.querySelector("path")?.getAttribute("d") ?? null;
+      unmount();
+      return d;
+    };
+    const shown = async (status: string): Promise<string | null> => {
+      await open(status);
+      const d = document.querySelector(".wx-list-state svg path")?.getAttribute("d") ?? null;
+      cleanup();
+      return d;
+    };
+    const tick = glyphPath("check-circle");
+    expect(tick).toBeTruthy();
+    expect(await shown("approved")).toBe(tick);
+    expect(await shown("executed_success")).toBe(tick);
+    expect(await shown("denied")).toBe(glyphPath("x-circle"));
+    expect(await shown("executed_failed")).toBe(glyphPath("alert-circle"));
+    expect(glyphPath("x-circle")).not.toBe(tick);
+    expect(glyphPath("alert-circle")).not.toBe(tick);
   });
 });
 
@@ -510,7 +528,7 @@ describe("after a successful write", () => {
     expect(toastText()).toBe("Refund request created — awaiting a distinct approver (four-eyes).");
   });
 
-  it("refund decision: approving and denying each replace the page and toast their own outcome", async () => {
+  it("refund decision: approving replaces the page and toasts its outcome", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     getReply = () => json(requested);
     mount(`/admin/refunds/${REFUND}/approve`);
@@ -520,6 +538,23 @@ describe("after a successful write", () => {
     expect(where()).toBe("/admin/refunds");
     expect(how()).toBe("REPLACE");
     expect(toastText()).toBe("Refund approved — queued for execution.");
+    expect(posted.map((p) => p.path)).toEqual([`/api/admin/refunds/${REFUND}/approve`]);
+  });
+
+  it("refund decision: denying replaces the page and toasts its own outcome", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    getReply = () => json(requested);
+    mount(`/admin/refunds/${REFUND}/approve`);
+    await advance(FLUSH_MS);
+    fireEvent.change(screen.getByLabelText(/Deny reason/), {
+      target: { value: "Duplicate of #4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Deny refund/ }));
+    await advance(FLUSH_MS);
+    expect(where()).toBe("/admin/refunds");
+    expect(how()).toBe("REPLACE");
+    expect(toastText()).toBe("Refund denied.");
+    expect(posted.map((p) => p.path)).toEqual([`/api/admin/refunds/${REFUND}/deny`]);
   });
 
   it("a write that lands after the operator left the page toasts but pulls nobody back", async () => {
