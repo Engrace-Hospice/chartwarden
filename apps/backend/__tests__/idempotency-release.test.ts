@@ -1,6 +1,6 @@
 /**
  * A retryable failure must not be replayed. The error handler answers a deadlock / serialization failure with
- * `409 CONCURRENT_UPDATE` ("nothing was saved; retry it"), and any 5xx says the write did not complete. The
+ * `409 CONCURRENT_UPDATE` ("this step was not applied ... check the current state before retrying"), and any 5xx says the write did not complete. The
  * idempotency middleware used to `complete` every response, so a same-key retry got the cached failure back for the
  * whole 24h TTL while the write never ran. These outcomes now RELEASE the claim, so the same key runs again, PROVIDED the
  * request committed nothing (these handlers fail before any write; the committed-then-failed half is

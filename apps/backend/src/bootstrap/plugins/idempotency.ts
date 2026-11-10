@@ -21,8 +21,8 @@
 // (`@chartwarden/db` commit-tracker.ts, fed by the pool every query goes through) saw a write commit, or may have, after the
 // claim, and also whenever there is no tracker to ask or the ambient one is not this request's (the async context was lost, so
 // its writes were not seen). A SELECT that calls a function counts as a write unless the function is a known read-only
-// builtin. Released, the same key runs again once the store is reachable; if the release itself fails (a database outage that caused the 5xx usually breaks it too) the key stays `pending` and a retry
-// answers 409 in flight until the record's 24h TTL ends. What the tracker cannot see (an outbound call, a queue or object-store
+// builtin. Released, the same key runs again once the store is reachable; if the release itself fails (a database outage that
+// caused the 5xx usually breaks it too) the key stays `pending` and a retry answers 409 in flight until the record's 24h TTL ends. What the tracker cannot see (an outbound call, a queue or object-store
 // write made directly in a route) is not counted: those belong behind the outbox, after the commit.
 import {
   createCommitTracker,
@@ -56,7 +56,7 @@ const pendingCaptures = new WeakMap<
   { orgId: string; key: string; requestHash: string }
 >();
 
-/** The error code of the retryable deadlock/serialization 409 (error-handler.ts): "nothing was saved; retry it". */
+/** The error code of the retryable deadlock/serialization 409 (error-handler.ts): "this step was not applied; check, then retry". */
 const RETRYABLE_CONFLICT_CODE = "CONCURRENT_UPDATE";
 
 /** The per-request commit trackers: opened in `onRequest` (so the ambient store covers the whole request), read in `onSend`. */

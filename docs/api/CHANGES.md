@@ -16,6 +16,10 @@ so a same-key retry never ran the write.
 - If any write of the request had already committed (a post-commit step threw, a response failed to serialize, a second
   transaction deadlocked after the first committed), the response is stored and replayed exactly as before: the retry
   answers the same failure and does not write twice. Read the failure, check the resource, and use a new key for a new attempt.
+- The `409 CONCURRENT_UPDATE` text no longer says "nothing was saved". It now reads "This step conflicted with another change in
+  progress and was not applied. An earlier step of the same request may have been applied: check the current state before
+  retrying." The code and the status are unchanged. A request can run several transactions; only the one the database aborted is
+  known not to have applied, so check the resource before you retry.
 - While the idempotency store is unreachable (the usual companion of a database outage) the key cannot be freed; it stays
   `pending`, and a retry answers `409` "still being processed" until the key's 24-hour record expires.
 - Not tracked: an effect outside Postgres made directly in a route (an outbound call, a queue or object-store write). Those
@@ -59,7 +63,8 @@ change what the existing routes refuse.
   and `/revoke` (the `ccn_registered` step's data) also revoke a pending go-live attestation in the same transaction, like every
   other write to the onboarding data. An operator's void records their user (a membership is recorded only when it is the
   user's own active membership of that organization).
-- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE` ("retry it"; nothing was saved), not a 500.
+- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE`, not a 500. (Its text was reworded on
+  2026-11-09: see the `Idempotency-Key` note above.)
 - Go-live approval takes the exclusive onboarding lock before it reads anything and judges the attestation as it is under that
   lock; activation re-checks that the attester is still the assigned officer (`409 GO_LIVE_ATTESTATION_STALE`).
 - A session on an organization that is not `active` (created, suspended, closed or unknown) is confined to an exact list of
