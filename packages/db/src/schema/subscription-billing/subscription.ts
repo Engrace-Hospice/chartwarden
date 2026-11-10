@@ -11,6 +11,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -54,6 +55,7 @@ export const subscriptionRow = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    idOrgPlanUq: unique("subscription_id_org_plan_uq").on(t.id, t.organizationId, t.planId),
     orgActiveUq: uniqueIndex(SUBSCRIPTION_ORG_ACTIVE_UQ)
       .on(t.organizationId)
       .where(sql`status NOT IN ('canceled', 'paused')`),

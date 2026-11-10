@@ -6,6 +6,7 @@ import {
   firstOfNextMonthIso,
   modeChangeEffectiveOn,
   modeInForceOn,
+  nextModeCreatedAt,
   pendingModeAfter,
 } from "../pricing/contract-mode";
 import { type Transition, lifetimeFromTransitions } from "../pricing/statement-inputs";
@@ -119,6 +120,13 @@ describe("the billing service mode history (D6): a change takes effect from the 
       { ...row("none", "2026-12-01", at), id: "00000000-0000-4000-8000-000000000002" },
     ];
     expect(modeInForceOn(history, "2026-12-01")).toBe("none");
+  });
+
+  it("timestamps the serialized append after the history even when its request transaction started first", () => {
+    const history = [row("billing_software", "2026-11-01", "2026-11-28T10:00:00.000Z")];
+    expect(nextModeCreatedAt(d("2026-11-28T09:59:59.000Z"), history).toISOString()).toBe(
+      "2026-11-28T10:00:00.001Z",
+    );
   });
 
   it("a recorded change that has not taken effect is pending; once its date passes it is not", () => {

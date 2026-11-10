@@ -5,6 +5,12 @@
 -- write could therefore put another tenant's billing inputs behind the wrong tenant's RLS boundary. The trigger now checks the tuple on
 -- INSERT and refuses any later ownership rewrite while retaining the final-row and one-way Stripe-push rules from migration 1464.
 -- Declared `contract`: writes that previously could create or restamp an inconsistent ownership tuple are now rejected.
+ALTER TABLE "subscription" ADD CONSTRAINT "subscription_id_org_plan_uq"
+  UNIQUE ("id", "organization_id", "plan_id");--> statement-breakpoint
+ALTER TABLE "subscription_statement" ADD CONSTRAINT "subscription_statement_ownership_fk"
+  FOREIGN KEY ("subscription_id", "organization_id", "plan_id")
+  REFERENCES "subscription" ("id", "organization_id", "plan_id") ON DELETE restrict;--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION subscription_statement_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN

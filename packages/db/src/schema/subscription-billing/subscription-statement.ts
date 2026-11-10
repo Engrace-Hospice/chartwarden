@@ -6,6 +6,7 @@
 import {
   bigint,
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -89,6 +90,11 @@ export const subscriptionStatement = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    ownershipFk: foreignKey({
+      name: "subscription_statement_ownership_fk",
+      columns: [t.subscriptionId, t.organizationId, t.planId],
+      foreignColumns: [subscriptionRow.id, subscriptionRow.organizationId, subscriptionRow.planId],
+    }).onDelete("restrict"),
     periodUq: unique("subscription_statement_period_uq").on(t.subscriptionId, t.periodYearMonth),
     orgPeriodIx: index("subscription_statement_org_period_ix").on(
       t.organizationId,

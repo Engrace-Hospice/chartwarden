@@ -41,6 +41,19 @@ export interface PendingMode {
 }
 
 /**
+ * Timestamp an append strictly after every row observed under the tenant's serialization lock.
+ * PostgreSQL `now()` is the transaction start, so leaving the default in place can make a later
+ * lock winner sort before the decision it supersedes.
+ */
+export function nextModeCreatedAt(at: Date, history: readonly ModeHistoryRow[]): Date {
+  const latest = history.reduce(
+    (max, row) => Math.max(max, row.createdAt.getTime()),
+    Number.NEGATIVE_INFINITY,
+  );
+  return Number.isFinite(latest) && at.getTime() <= latest ? new Date(latest + 1) : at;
+}
+
+/**
  * The change that has been recorded but has not taken effect yet as of `todayIso` (the newest row of the latest pending date), else
  * null. A pending row that names the mode already in force is no change at all (an operator who changed their mind and set the
  * current mode again has withdrawn the pending one), so it is not reported.
