@@ -120,6 +120,55 @@ const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
 const ORG_H = "a8000000-0000-4000-8000-0000000000a8"; // tries to seal org A's Claim.MD account (migration 1434)
 const ORG_I = "a9000000-0000-4000-8000-0000000000a9"; // races ORG_J to seal one new key (migration 1435's index serialises them)
 const ORG_J = "aa000000-0000-4000-8000-0000000000aa";
+/**
+ * The vendor / mode lock window against the real query (`hasRecentProductionAttempts`): one organization per case, each with ONE
+ * attempt row and a draft Claim.MD config that tries to switch to Stedi. The lock holds while a production attempt is `reserved` (any
+ * age: it is in flight) or `sent` within CLEARINGHOUSE_RELEASE_QUIET_DAYS (90); nothing else locks.
+ */
+const LOCK_WINDOW_CASES = [
+  {
+    org: "b1000000-0000-4000-8000-0000000000b1",
+    usage: "production",
+    status: "sent",
+    daysAgo: 89,
+    locked: true,
+  },
+  {
+    org: "b2000000-0000-4000-8000-0000000000c2",
+    usage: "production",
+    status: "sent",
+    daysAgo: 91,
+    locked: false,
+  },
+  {
+    org: "b3000000-0000-4000-8000-0000000000c3",
+    usage: "production",
+    status: "reserved",
+    daysAgo: 120,
+    locked: true,
+  },
+  {
+    org: "b4000000-0000-4000-8000-0000000000c4",
+    usage: "test",
+    status: "sent",
+    daysAgo: 1,
+    locked: false,
+  },
+  {
+    org: "b5000000-0000-4000-8000-0000000000c5",
+    usage: "production",
+    status: "released",
+    daysAgo: 1,
+    locked: false,
+  },
+  {
+    org: "b6000000-0000-4000-8000-0000000000c6",
+    usage: "production",
+    status: "voided",
+    daysAgo: 1,
+    locked: false,
+  },
+] as const;
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
@@ -249,6 +298,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_H, "ch-h"],
       [ORG_I, "ch-i"],
       [ORG_J, "ch-j"],
+      ...LOCK_WINDOW_CASES.map((c, i) => [c.org, `ch-lock-${i}`] as const),
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -417,18 +467,20 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
             },
           ],
         },
-        ...[ORG_A, ORG_B, ORG_G, ORG_H, ORG_I, ORG_J].map((orgId) => ({
-          orgId,
-          userId: TENANT_ADMIN,
-          grants: [
-            {
-              roleKey: "org_admin",
-              enabled: true,
-              expiresAt: null,
-              permissionKeys: ["billing.clearinghouse.read", "billing.clearinghouse.admin"],
-            },
-          ],
-        })),
+        ...[ORG_A, ORG_B, ORG_G, ORG_H, ORG_I, ORG_J, ...LOCK_WINDOW_CASES.map((c) => c.org)].map(
+          (orgId) => ({
+            orgId,
+            userId: TENANT_ADMIN,
+            grants: [
+              {
+                roleKey: "org_admin",
+                enabled: true,
+                expiresAt: null,
+                permissionKeys: ["billing.clearinghouse.read", "billing.clearinghouse.admin"],
+              },
+            ],
+          }),
+        ),
         // D3: a billing manager scoped to one provider entity holds the entity-scoped MAC credential keys and NOT the org-level pair
         ...[ORG_A, ORG_B].map((orgId) => ({
           orgId,
@@ -1155,6 +1207,61 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     });
     expect(await claimsBillingVerdict(ORG_A, {})).toEqual({ allow: true });
   });
+
+  // CH-1: the lock follows the real `hasRecentProductionAttempts` SQL, not the in-memory store's copy of the rule. A production attempt
+  // that is `reserved` locks whatever its age; one that is `sent` locks for 90 days from its reservation; a sandbox (test) attempt, a
+  // released one and a voided one never lock.
+  it.each(LOCK_WINDOW_CASES.map((c, i) => ({ ...c, i })))(
+    "the vendor lock against the real table: a $usage attempt, $status, $daysAgo days ago (locked: $locked)",
+    async (c) => {
+      const i = c.i;
+      const created = await tenantCall("PUT", c.org, "", {
+        vendor: "claimmd",
+        mode: "production",
+        secret: `fake-claimmd-key-lock-${i}#live-1`,
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      await q(
+        `INSERT INTO clearinghouse_submission_attempt
+           (organization_id, provider_entity_id, scope, usage, idempotency_key, control_number, kind, identity, status,
+            clearinghouse_submission_id, received_at, reserved_at)
+         VALUES ($1, gen_random_uuid(), $2, $3, $4, $5, 'claim', repeat('b', 64), $6::text,
+                 CASE WHEN $6::text = 'sent' THEN 'fake-vendor-submission' END,
+                 CASE WHEN $6::text = 'sent' THEN now() END,
+                 now() - make_interval(days => $7::int))`,
+        [
+          c.org,
+          `scope-lock-${i}`,
+          c.usage,
+          `k-lock-${i}`,
+          String(800000000 + i),
+          c.status,
+          c.daysAgo,
+        ],
+      );
+
+      const switched = await tenantCall(
+        "PUT",
+        c.org,
+        "",
+        { vendor: "stedi", mode: "production", secret: `fake-stedi-key-lock-${i}-live` },
+        { "if-match": "1" },
+      );
+
+      if (c.locked) {
+        expect(switched.statusCode, switched.body).toBe(409);
+        expect(errorCode(switched)).toBe("CLEARINGHOUSE_VENDOR_LOCKED");
+        const [row] = await q<{ vendor: string }>(
+          "SELECT vendor FROM tenant_clearinghouse_config WHERE organization_id=$1",
+          [c.org],
+        );
+        expect(row?.vendor).toBe("claimmd"); // nothing was written
+      } else {
+        expect(switched.statusCode, switched.body).toBe(200);
+        expect(switched.json()).toMatchObject({ vendor: "stedi", status: "draft" });
+      }
+    },
+  );
 
   it("audit: the trigger says THAT the sealed credential changed (secret_changed), and the tenant route writes a field-level row (names only)", async () => {
     const rows = await q<{ event_type: string; context: Record<string, unknown> }>(
