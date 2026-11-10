@@ -16,7 +16,7 @@ import { schema } from "@chartwarden/db";
 import type { PatientCensusReader } from "@chartwarden/types";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
-import { selectNewestContract } from "./contract-select";
+import { selectContracts } from "./contract-select";
 
 const PCD = schema.patientCensusDaily;
 
@@ -32,33 +32,77 @@ export interface DailyCensusResult {
   readonly count?: number;
 }
 
+/** One organisation's count as M5 reported it, not yet written. */
+export interface DailyCensusObservation {
+  readonly organizationId: string;
+  readonly count: number;
+  readonly observedAt: Date;
+}
+
 /** `YYYY-MM-DD` of the UTC day containing `at`. */
 export const utcDateOf = (at: Date): string => at.toISOString().slice(0, 10);
+
+/**
+ * M5's own count for one org, read under that org's RLS (no platform transaction). A failure throws and fails this org's pass (the
+ * fan-out reports it and retries on the next sweep); it is never recorded as zero.
+ */
+export async function observeDailyCensus(
+  deps: Pick<DailyCensusDeps, "census" | "now">,
+  organizationId: string,
+): Promise<DailyCensusObservation> {
+  const observedAt = (deps.now ?? (() => new Date()))();
+  return {
+    organizationId,
+    count: await deps.census.activePatientCount(organizationId),
+    observedAt,
+  };
+}
+
+/**
+ * Write the observations in ONE platform transaction (every platform runner call is an audited cross-tenant bypass, so the sweep writes
+ * its orgs' counts together instead of one transaction per org). Only an org with a live contract is recorded; the sweep passes only
+ * those, and this is the backstop that asks the same shared question (a canceled contract is not "a contract": see contract-select.ts).
+ * Results are in the order of `observations`.
+ */
+export async function recordDailyCensusBatch(
+  deps: Pick<DailyCensusDeps, "platformRunner" | "now">,
+  observations: readonly DailyCensusObservation[],
+): Promise<DailyCensusResult[]> {
+  if (observations.length === 0) return [];
+  const at = (deps.now ?? (() => new Date()))();
+  return deps.platformRunner(async (tx) => {
+    const live = new Set(
+      (await selectContracts(tx, "live", at)).map((r) => r.contract.organizationId),
+    );
+    const results: DailyCensusResult[] = [];
+    for (const { organizationId, count, observedAt } of observations) {
+      if (!live.has(organizationId)) {
+        results.push({ recorded: false });
+        continue;
+      }
+      const censusDate = utcDateOf(observedAt);
+      await tx
+        .insert(PCD)
+        .values({ organizationId, censusDate, activePatientCount: count, observedAt })
+        .onConflictDoUpdate({
+          target: [PCD.organizationId, PCD.censusDate],
+          set: { activePatientCount: count, observedAt },
+          // The latest observation of the day wins; a late retry of an older one changes nothing.
+          setWhere: sql`${PCD.observedAt} < ${observedAt}`,
+        });
+      results.push({ recorded: true, censusDate, count });
+    }
+    return results;
+  });
+}
 
 export async function recordDailyCensusForOrg(
   deps: DailyCensusDeps,
   organizationId: string,
 ): Promise<DailyCensusResult> {
-  const at = (deps.now ?? (() => new Date()))();
-  // M5's own count, read under the org's RLS before the platform write. A failure throws and fails this org's pass (the fan-out reports
-  // it and retries on the next sweep); it is never recorded as zero.
-  const count = await deps.census.activePatientCount(organizationId);
-  const censusDate = utcDateOf(at);
-  return deps.platformRunner(async (tx) => {
-    // One transaction: only an org with a live contract is recorded. The sweep passes only those; this is the backstop, and it asks
-    // the same shared question (a canceled contract is not "a contract": see contract-select.ts).
-    if (!(await selectNewestContract(tx, "live", at, organizationId))) return { recorded: false };
-    await tx
-      .insert(PCD)
-      .values({ organizationId, censusDate, activePatientCount: count, observedAt: at })
-      .onConflictDoUpdate({
-        target: [PCD.organizationId, PCD.censusDate],
-        set: { activePatientCount: count, observedAt: at },
-        // The latest observation of the day wins; a late retry of an older one changes nothing.
-        setWhere: sql`${PCD.observedAt} < ${at}`,
-      });
-    return { recorded: true, censusDate, count };
-  });
+  const observation = await observeDailyCensus(deps, organizationId);
+  const [result] = await recordDailyCensusBatch(deps, [observation]);
+  return result ?? { recorded: false };
 }
 
 /** The org's daily counts for the UTC days in [window.start, window.end). Platform transaction: explicit org filter. */

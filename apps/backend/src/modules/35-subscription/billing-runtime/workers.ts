@@ -7,10 +7,14 @@
 import type { PseudonymKeyProvider } from "@chartwarden/subscription-billing";
 import type { NetCollectionsReader, PatientCensusReader } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { recordDailyCensusForOrg } from "../pricing/census-daily";
+import {
+  type DailyCensusObservation,
+  observeDailyCensus,
+  recordDailyCensusBatch,
+} from "../pricing/census-daily";
 import { listContractedOrgIds } from "../pricing/contract-select";
 import type { GoLiveReader } from "../pricing/ports";
-import { type StatementStripePort, runStatementsForOrg } from "../pricing/statement-service";
+import { type StatementStripePort, runStatementSweep } from "../pricing/statement-service";
 import { type CensusDeps, aggregateAddonForOrg, runPatientCensusForOrg } from "./census";
 import {
   type M35JobDeps,
@@ -169,69 +173,67 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
     const pricing = deps.pricing;
     workers.push(
       worker(M35_QUEUES.patientCensus, async () => {
-        // Slice 2 asks ONCE who is contracted (one audited platform call per sweep, not one per org).
+        // Slice 2 asks ONCE who is contracted, and writes the day's counts ONCE (every platform call is an audited bypass: two per sweep,
+        // not one per org).
         const contracted = pricing
           ? await listContractedOrgIds(jobs.platformRunner, "live", nowOf(jobs))
           : new Set<string>();
-        await runM35Fanout(
-          jobs,
-          async (o) => {
-            await runPatientCensusForOrg(census, o);
-            // The same sweep, the same reader: one active-patient count per contracted org per UTC day for the ADC.
-            if (pricing && contracted.has(o)) {
-              await recordDailyCensusForOrg(
-                {
-                  platformRunner: jobs.platformRunner,
-                  census: pricing.census,
-                  ...(jobs.now ? { now: jobs.now } : {}),
-                },
-                o,
-              );
-            }
-          },
-          "patient_census",
+        const observed: DailyCensusObservation[] = [];
+        let fanoutFailure: unknown;
+        try {
+          await runM35Fanout(
+            jobs,
+            async (o) => {
+              await runPatientCensusForOrg(census, o);
+              // The same sweep, the same reader: one active-patient count per contracted org per UTC day for the ADC.
+              if (pricing && contracted.has(o)) {
+                observed.push(
+                  await observeDailyCensus(
+                    { census: pricing.census, ...(jobs.now ? { now: jobs.now } : {}) },
+                    o,
+                  ),
+                );
+              }
+            },
+            "patient_census",
+          );
+        } catch (error) {
+          fanoutFailure = error; // the orgs that did answer are still recorded below; the failure is rethrown after
+        }
+        await recordDailyCensusBatch(
+          { platformRunner: jobs.platformRunner, ...(jobs.now ? { now: jobs.now } : {}) },
+          observed,
         );
+        if (fanoutFailure) throw fanoutFailure;
       }),
     );
   }
   if (deps.pricing) {
     const pricing = deps.pricing;
     workers.push(
-      worker(M35_QUEUES.pricingStatement, async () => {
+      worker(M35_QUEUES.pricingStatement, () =>
         // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
         // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
-        const contracted = await listContractedOrgIds(
-          jobs.platformRunner,
-          "statements",
-          nowOf(jobs),
-        );
-        await runM35Fanout(
+        runStatementSweep(
           {
-            ...jobs,
-            listOrgs: async () => [...contracted].map((organizationId) => ({ organizationId })),
+            platformRunner: jobs.platformRunner,
+            keyProvider: pricing.keyProvider,
+            netCollections: pricing.netCollections,
+            goLive: pricing.goLive,
+            ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
+            ...(jobs.now ? { now: jobs.now } : {}),
+            ...(jobs.log ? { log: jobs.log } : {}),
           },
-          (o) =>
+          // The outside-mode backstop runs for every org BEFORE its statement (a failure of it never blocks the statement).
+          (organizationId, statement) =>
             reconcileThenStatement(
               pricing.reconcileOutsideMode,
               jobs.log,
-              (org) =>
-                runStatementsForOrg(
-                  {
-                    platformRunner: jobs.platformRunner,
-                    keyProvider: pricing.keyProvider,
-                    netCollections: pricing.netCollections,
-                    goLive: pricing.goLive,
-                    ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
-                    ...(jobs.now ? { now: jobs.now } : {}),
-                    ...(jobs.log ? { log: jobs.log } : {}),
-                  },
-                  org,
-                ),
-              o,
+              statement,
+              organizationId,
             ),
-          "pricing_statement",
-        );
-      }),
+        ),
+      ),
     );
   }
   return workers;

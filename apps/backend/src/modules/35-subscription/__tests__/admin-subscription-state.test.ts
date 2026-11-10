@@ -22,10 +22,11 @@ const operator: M35WriteActor = {
 };
 
 /** A transaction whose every select returns the one subscription row, and which records the writes and the lock modes it was asked for. */
-function recordingTx(status: string) {
+function recordingTx(status: string, extra: Record<string, unknown> = {}) {
   const writes: string[] = [];
+  const inserted: Record<string, unknown>[] = [];
   const locks: unknown[][] = [];
-  const row = { id: SUBSCRIPTION_ID, organizationId: ORG_ID, status };
+  const row = { id: SUBSCRIPTION_ID, organizationId: ORG_ID, status, ...extra };
   const chain = (rows: unknown[]): unknown => {
     const proxy: unknown = new Proxy(() => undefined, {
       get: (_target, prop) => {
@@ -45,7 +46,13 @@ function recordingTx(status: string) {
     select: () => chain([row]),
     insert: () => {
       writes.push("insert");
-      return chain([]);
+      const rows = chain([]) as { values: (v: Record<string, unknown>) => unknown };
+      return {
+        values: (v: Record<string, unknown>) => {
+          inserted.push(v);
+          return rows;
+        },
+      };
     },
     update: () => {
       writes.push("update");
@@ -56,11 +63,16 @@ function recordingTx(status: string) {
       return chain([]);
     },
   } as unknown as WriteTx;
-  return { tx, writes, locks };
+  return { tx, writes, inserted, locks };
 }
 
-function serviceOver(status: string, withAudit = true) {
-  const recorded = recordingTx(status);
+function serviceOver(
+  status: string,
+  withAudit = true,
+  now?: () => Date,
+  rowExtra: Record<string, unknown> = {},
+) {
+  const recorded = recordingTx(status, rowExtra);
   const audited: PlatformAuditEntry[] = [];
   let runnerCalls = 0;
   const platformRunner: PlatformRunner = async (fn) => {
@@ -69,6 +81,7 @@ function serviceOver(status: string, withAudit = true) {
   };
   const service = buildDrizzleM35RouteService({} as never, {
     platformRunner,
+    ...(now ? { now } : {}),
     ...(withAudit ? { audit: { record: async (_tx, entry) => void audited.push(entry) } } : {}),
   });
   return { service, ...recorded, audited, runnerCalls: () => runnerCalls };
@@ -130,4 +143,60 @@ describe("admin pause / resume / cancel fail closed when the platform audit writ
       expect(t.writes).toEqual([]);
     },
   );
+});
+
+describe("admin pause with an end date: the date must be a future instant, and the ledger keeps it", () => {
+  const NOW = new Date("2026-12-01T00:00:00Z");
+
+  it.each([
+    ["in the past", "2026-11-30T23:59:59Z"],
+    ["exactly now", "2026-12-01T00:00:00Z"],
+    ["not an instant", "next tuesday"],
+  ])(
+    "a pausedUntil %s -> 422 PAUSE_UNTIL_NOT_FUTURE, before the runner is opened and with no write",
+    async (_label, value) => {
+      const t = serviceOver("active", true, () => NOW);
+      const failure = await t.service.adminPauseSubscription(operator, SUBSCRIPTION_ID, value).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(failure).toBeInstanceOf(ChartWardenError);
+      expect(failure).toMatchObject({ code: "PAUSE_UNTIL_NOT_FUTURE", statusCode: 422 });
+      expect(t.runnerCalls()).toBe(0);
+      expect(t.writes).toEqual([]);
+      expect(t.audited).toEqual([]);
+    },
+  );
+
+  it("a future pausedUntil is stored on the row's history entry as paused_until=<ISO instant>", async () => {
+    const t = serviceOver("active", true, () => NOW);
+    // the view the double cannot build (one row answers every select) throws AFTER the ledger insert, which is what is asserted
+    await t.service
+      .adminPauseSubscription(operator, SUBSCRIPTION_ID, "2026-12-15T00:00:00Z")
+      .catch(() => undefined);
+    const ledger = t.inserted.find((row) => row.reasonCode === "platform_ops_pause");
+    expect(ledger).toMatchObject({ reasonDetail: "paused_until=2026-12-15T00:00:00.000Z" });
+  });
+
+  it("an open-ended pause writes no end date into the ledger", async () => {
+    const t = serviceOver("active", true, () => NOW);
+    await t.service.adminPauseSubscription(operator, SUBSCRIPTION_ID, null).catch(() => undefined);
+    const ledger = t.inserted.find((row) => row.reasonCode === "platform_ops_pause");
+    expect(ledger).toMatchObject({ reasonDetail: null });
+  });
+});
+
+describe("a tenant cannot burn a promo redemption on a contracted subscription", () => {
+  const tenant: M35WriteActor = { ...operator, organizationId: ORG_ID, roles: ["org_admin"] };
+
+  it("applyPromoTenant on a census_banded subscription -> 403 PLAN_ASSIGNED_BY_OPERATIONS, with nothing written", async () => {
+    const t = serviceOver("active", true, undefined, { tier: "census_banded" });
+    const failure = await t.service.applyPromoTenant(tenant, "WELCOME10").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(failure).toBeInstanceOf(ChartWardenError);
+    expect(failure).toMatchObject({ code: "PLAN_ASSIGNED_BY_OPERATIONS", statusCode: 403 });
+    expect(t.writes).toEqual([]);
+  });
 });

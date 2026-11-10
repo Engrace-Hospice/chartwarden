@@ -11,7 +11,9 @@
 // Every write runs on the platform runner, validates with the same pure rules the math uses, takes the operator and a reason, and
 // writes one structured audit row beside the row-level audit trigger. The legacy flat-tier routes (`/api/admin/plans`) cannot create
 // or publish a census_banded plan, so none of these rules can be bypassed through them.
+import { createHash } from "node:crypto";
 import { schema } from "@chartwarden/db";
+import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import {
   type CensusBand,
   type PlanPricing,
@@ -151,6 +153,15 @@ type PlanRow = typeof PL.$inferSelect;
 const statusOf = (p: PlanRow): PricingPlanStatus =>
   p.deprecatedAt ? "archived" : p.publishedAt ? "published" : "draft";
 
+/**
+ * `plan.slug` is `<family>-v<version>`, so two operators creating the same family, or versioning the same family at the same moment,
+ * collide on `plan_slug_uq` AFTER the reads that were meant to refuse them (a draft and a version number are read, then written, and a
+ * row inserted by the other transaction is not in this one's snapshot). That is a conflict the operator can retry, not a 500.
+ */
+const onPlanSlugRace = (message: string): Record<string, () => Error> => ({
+  plan_slug_uq: () => new ConflictError(message),
+});
+
 /** Bands in ascending order, each with the last whole patient it covers (null for the open-ended top band). */
 export function bandViews(bands: readonly CensusBand[]): PricingBandView[] {
   const ascending = [...bands].sort((a, b) => a.minAdc - b.minAdc);
@@ -236,6 +247,30 @@ function planText(input: PlanPricingInput): { name: string; description: string 
   };
 }
 
+/**
+ * The prices a plan row carries, as flat audit-detail fields, with a SHA-256 over them (prices are not PHI). The row-level audit trigger
+ * holds the before and after of the plan row but not who changed it (the platform transaction sets no user), and the structured audit
+ * row used to hold only the plan's slug and version: so "who set this price, and to what" was not answerable from either. Now this
+ * row names the operator AND the figures, and the digest joins it to a row-trigger diff or an invoice query without comparing columns.
+ */
+export function planFiguresDetail(plan: PricingPlanView): Record<string, string | number | null> {
+  const figures = {
+    currencyCode: plan.currencyCode,
+    perUserPriceCents: plan.perUserPriceCents,
+    billingSoftwareBps: plan.billingSoftwareBps,
+    managedBillingBps: plan.managedBillingBps,
+    minimumMonthlyCents: plan.minimumMonthlyCents,
+    contractTermMonths: plan.contractTermMonths,
+    implementationFeeCents: plan.implementationFeeCents,
+    // `minAdc:monthlyFeeCents`, lowest band first
+    bands: plan.bands.map((b) => `${b.minAdc}:${b.monthlyFeeCents}`).join(","),
+  };
+  return {
+    ...figures,
+    figuresSha256: createHash("sha256").update(JSON.stringify(figures)).digest("hex"),
+  };
+}
+
 /** The cheapest band's fee: the plan's "from" price, kept in the legacy `base_price_cents` so the MRR snapshot and plan lists read a floor. */
 const floorPriceCents = (bands: readonly CensusBand[]): number =>
   [...bands].sort((a, b) => a.minAdc - b.minAdc)[0]?.monthlyFeeCents ?? 0;
@@ -249,7 +284,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
     tx: WriteTx,
     actor: M35WriteActor,
     eventType: string,
-    plan: Pick<PricingPlanView, "id" | "slug" | "version">,
+    plan: PricingPlanView,
     reason: string,
   ): Promise<void> {
     await audit().record(tx, {
@@ -259,7 +294,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
       organizationId: null,
       operator: { userId: actor.userId, membershipId: actor.membershipId },
       reason,
-      detail: { planSlug: plan.slug, version: plan.version },
+      detail: { planSlug: plan.slug, version: plan.version, ...planFiguresDetail(plan) },
     });
   }
 
@@ -359,6 +394,13 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
         const view = toPricingPlanView(plan, input.bands);
         await record(tx, actor, "m35.plan.draft_created", view, reason);
         return view;
+      }).catch((error: unknown) => {
+        throw mapUniqueViolation(
+          error,
+          onPlanSlugRace(
+            "that plan family was created at the same time; create a new version of it",
+          ),
+        );
       });
     },
 
@@ -487,6 +529,13 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
         const view = toPricingPlanView(plan, bands);
         await record(tx, actor, "m35.plan.version_created", view, reason);
         return view;
+      }).catch((error: unknown) => {
+        throw mapUniqueViolation(
+          error,
+          onPlanSlugRace(
+            "another version of this plan family was created at the same time; reload it",
+          ),
+        );
       });
     },
 
