@@ -155,7 +155,8 @@ describe("AlertRules", () => {
       c.method === "GET" ? json({ rules: [RULE] }) : denied(403, "Rule is system locked"),
     );
     fireEvent.click(await screen.findByLabelText(/^Sfv due enabled/));
-    expect(await screen.findByText(/Rule is system locked/)).toBeTruthy();
+    // The server REFUSED it: "undone" is true here.
+    expect(await screen.findByText(/Rule is system locked.*The change was undone\./)).toBeTruthy();
     expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(true);
   });
 
@@ -406,16 +407,25 @@ describe("a settings write whose request never gets an answer", () => {
     ).toBe(false);
   });
 
-  it("alert rules: undoes the optimistic change and clears the pending row", async () => {
-    mount(<AlertRules />, (c) => (c.method === "GET" ? json({ rules: [RULE] }) : offline()));
+  it("alert rules: with no answer it does not claim the change was undone, shows the rule as it was, and re-reads the rules", async () => {
+    const calls = mount(<AlertRules />, (c) =>
+      c.method === "GET" ? json({ rules: [RULE] }) : offline(),
+    );
     const box = (await screen.findByLabelText(/^Sfv due enabled/)) as HTMLInputElement;
     fireEvent.click(box);
-    expect(
-      await screen.findByText(/Could not reach the server.*The change was undone/),
-    ).toBeTruthy();
+    const notice = await screen.findByText(/Could not reach the server/);
+    // The PATCH may already have applied: say it could not be confirmed, never that it was undone.
+    expect(notice.textContent).toMatch(/could not be confirmed/);
+    expect(notice.textContent).not.toMatch(/undone/);
     const row = screen.getByLabelText(/^Sfv due enabled/).closest("tr");
     expect(row?.getAttribute("aria-busy")).toBeNull();
     expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(true);
+    // And the page asks the server what it holds now.
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c.method === "GET" && c.path === "/api/v1/alert-rules"),
+      ).toHaveLength(2),
+    );
   });
 });
 

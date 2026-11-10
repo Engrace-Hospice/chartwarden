@@ -5,7 +5,13 @@ import { type ReadResult, UNREACHABLE_MESSAGE } from "../ui";
 
 export type ApiResult<T> =
   | { readonly ok: true; readonly data: T }
-  | { readonly ok: false; readonly forbidden: boolean; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly forbidden: boolean;
+      readonly message: string;
+      /** The request got no answer at all: the change may or may not have landed (never set when the server refused it). */
+      readonly unreachable?: boolean;
+    };
 
 interface FetchLike<T> {
   data?: T;
@@ -42,7 +48,7 @@ export async function settleResult<T>(
   try {
     res = await request;
   } catch {
-    return { ok: false, forbidden: false, message: UNREACHABLE_MESSAGE };
+    return { ok: false, forbidden: false, message: UNREACHABLE_MESSAGE, unreachable: true };
   }
   return toResult(res, fallback);
 }

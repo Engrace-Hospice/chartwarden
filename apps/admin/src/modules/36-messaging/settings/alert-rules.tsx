@@ -51,7 +51,7 @@ export function AlertRules(): JSX.Element {
         : result,
     );
   }, [client]);
-  const { state, reload, setData } = useLoad(load);
+  const { state, reload, refresh, setData } = useLoad(load);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const [banner, setBanner] = useState<Banner | null>(null);
 
@@ -80,7 +80,15 @@ export function AlertRules(): JSX.Element {
       );
     } else {
       put(rule);
-      setBanner({ ok: false, message: `${result.message} The change was undone.` });
+      setBanner({
+        ok: false,
+        // "Undone" is only true when the server refused the change. With no answer the PATCH may already have applied: say it could
+        // not be confirmed, show the rule as it was, and re-read the rules so the page settles on what the server holds.
+        message: result.unreachable
+          ? `${result.message} Whether the change to ${humanize(rule.eventType)} was saved could not be confirmed; check the rule below before changing it again.`
+          : `${result.message} The change was undone.`,
+      });
+      if (result.unreachable) refresh();
     }
   };
 
