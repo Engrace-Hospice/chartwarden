@@ -52,6 +52,9 @@ import type { WriteOutboxPort } from "../routes/service-drizzle";
 const S = schema.subscriptionRow;
 const SH = schema.subscriptionStateHistory;
 
+/** The ledger row that records an operator's pause ending at its own end date because a suspension arrived after that date. */
+const PAUSE_LAPSED_REASON_CODE = "platform_ops_pause_lapsed";
+
 export const M35_ORG_LIFECYCLE_CONSUMER = {
   eventNames: [
     "m2.organization.activated",
@@ -107,7 +110,13 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
         const at = now();
 
         if (event.eventType === "m2.organization.suspended") {
-          if (sub.status === "paused" || sub.status === "canceled") return; // idempotent no-op
+          if (sub.status === "canceled") return; // idempotent no-op
+          // An operator's pause with an end date whose date has passed is over for billing (nothing resumes it: the row stays `paused`),
+          // so the organization is billing again and THIS suspension is a new pause, not a no-op on the old one. A pause that is still
+          // running (open-ended, or its date ahead) already covers the suspension: idempotent.
+          const lapsed =
+            sub.status === "paused" && sub.pausedUntil !== null && sub.pausedUntil <= at;
+          if (sub.status === "paused" && !lapsed) return; // idempotent no-op
           const updated = await tx
             .update(S)
             .set({ status: "paused", pausedAt: at, pausedUntil: null, updatedAt: at })
@@ -115,12 +124,29 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
             .returning({ id: S.id });
           if (updated.length === 0) return; // lost a race to another writer — leave it alone.
 
+          let suspendedAt = at;
+          if (sub.status === "paused" && sub.pausedUntil !== null) {
+            // The ledger must show the old pause ended where its date says before the new one begins, or the statement would read one
+            // unbroken pause and the days between the date and now would not bill. The two rows need distinct instants (the ledger is
+            // ordered by instant): the suspension is never dated at or before the date it follows.
+            await tx.insert(SH).values({
+              subscriptionId: sub.id,
+              organizationId,
+              fromStatus: "paused",
+              toStatus: "active",
+              transitionedAt: sub.pausedUntil,
+              actorMembershipId: null,
+              reasonCode: PAUSE_LAPSED_REASON_CODE,
+              reasonDetail: null,
+            });
+            suspendedAt = at > sub.pausedUntil ? at : new Date(sub.pausedUntil.getTime() + 1);
+          }
           await tx.insert(SH).values({
             subscriptionId: sub.id,
             organizationId,
-            fromStatus: sub.status,
+            fromStatus: sub.status === "paused" ? "active" : sub.status,
             toStatus: "paused",
-            transitionedAt: at,
+            transitionedAt: suspendedAt,
             actorMembershipId: null,
             reasonCode: "org_suspended_by_platform_admin",
             reasonDetail: reason.length > 0 ? reason : null,
@@ -130,7 +156,7 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
             payload: {
               subscriptionId: sub.id,
               organizationId,
-              pausedAt: isoReq(at),
+              pausedAt: isoReq(suspendedAt),
               pausedUntil: null,
             },
             organizationId,
