@@ -1513,7 +1513,8 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           // the new registration is tested and activated, with its own sealed key
           await h.admin.query(
             `UPDATE dosespot_clinic_registration SET status='active', secret_cipher='sealed', secret_dek_ref='dek-1', service_clinician_id='900',
-               verified_at=now(), verified_by_membership_id=$2, activated_at=now(), activated_by_membership_id=$2 WHERE organization_id=$1`,
+               registered_at=now(), registered_by_membership_id=$2, verified_at=now(), verified_by_membership_id=$2, activated_at=now(),
+               activated_by_membership_id=$2 WHERE organization_id=$1`,
             [ORG_A, h.memberOf[ORG_A]],
           );
         };
