@@ -103,6 +103,7 @@ export {
   useStepUpDraft,
   useStepUpMemoryDraft,
 } from "./components/step-up-draft";
+export { SECRET_INPUT_PROPS } from "./components/secret-input-props";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";
 // Wizard kit (2026-11 tenant onboarding): the step rail, "what settles this step", and the prompt every platform write goes through
@@ -113,12 +114,17 @@ export type { Fact, FactListProps, FactState } from "./components/fact-list";
 // Hoisted from the admin onboarding wizard so the tenant wizard shares them: one read (`useLoad`), the lane-neutral rail/progress
 // helpers, and step 7's clearinghouse model + choice form (the view schema is the same on both lanes).
 export { useLoad } from "./hooks/use-load";
+export { refocusEditorReturn, useEditorFocus } from "./hooks/use-editor-focus";
+export { StaleNotice } from "./components/stale-notice";
+export { WriteFailureNotice } from "./components/write-failure-notice";
+export type { WriteFailureNoticeProps } from "./components/write-failure-notice";
+export { PendingAttestationWarning } from "./components/pending-attestation-warning";
+export type { PendingAttestationAudience } from "./components/pending-attestation-warning";
 export type { Loaded } from "./hooks/use-load";
 export {
   OUTSIDE_SKIP_RATIONALE,
   defaultStepKey,
   gatingProgress,
-  isGatingStep,
   isSettledStep,
   isSystemSkip,
   railItemsOf,
@@ -126,17 +132,22 @@ export {
 export type { WizardOwnerKey, WizardRailStep, WizardRailView } from "./onboarding-wizard";
 export {
   MODE_LABEL,
+  OPERATOR_WORDING,
   VENDOR_LABEL,
   clearinghouseActions,
   clearinghouseFacts,
+  isChosen,
   isTransmitting,
   needsSecret,
+  testOutcomeText,
 } from "./clearinghouse/clearinghouse-model";
 export type {
   ClearinghouseActions,
   ClearinghouseMode,
+  ClearinghouseSharedView,
   ClearinghouseVendor,
   ClearinghouseView,
+  ClearinghouseWording,
 } from "./clearinghouse/clearinghouse-model";
 export {
   BLANK_CHOICE,
@@ -154,6 +165,7 @@ export type {
   ChoiceContext,
   ChoiceErrors,
   ChoiceForm,
+  ChoiceFormCopy,
 } from "./clearinghouse/clearinghouse-choice-form";
 export { ReasonDialog } from "./components/reason-dialog";
 export type { ReasonDialogProps, ReasonDialogRecordLine } from "./components/reason-dialog";

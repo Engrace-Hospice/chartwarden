@@ -2,9 +2,17 @@
 // The server's sentence is the fallback (the envelope never carries record content); these say what to DO next. Authorization-class
 // codes (step-up, forbidden) are not here: `describeOpsError` gives them their own kinds.
 import { CLEARINGHOUSE_RELEASE_QUIET_DAYS } from "@chartwarden/types";
-import type { OpsErrorCopy, OpsErrorDetail, OpsFailure } from "@chartwarden/ui";
+import {
+  COMMON_OPS_ERROR_COPY,
+  type OpsErrorCopy,
+  type OpsErrorDetail,
+  type OpsFailure,
+  isAboutAnInput as isAboutAnInputToRender,
+} from "@chartwarden/ui";
 
 export const WIZARD_ERROR_COPY: OpsErrorCopy = {
+  // One sentence per code the lanes share: stale versions, the PHI screen, the rate limit, a tenant that is not onboarding.
+  ...COMMON_OPS_ERROR_COPY,
   ACTIVATION_GUARDS_FAILED:
     "The tenant cannot go live yet: the checks below do not pass right now. The step has been reloaded.",
   GO_LIVE_ATTESTATION_STALE:
@@ -17,9 +25,6 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   ONBOARDING_STEP_NOT_SETTLED: "Only a step that is done or skipped can be re-opened.",
   ONBOARDING_TASK_CHANGED:
     "This step changed while you were looking at it. It has been reloaded. Review it and try again.",
-  TENANT_NOT_ONBOARDING: "This tenant is not in onboarding, so onboarding changes are closed.",
-  EVIDENCE_LOOKS_LIKE_PHI:
-    "That text looks like it contains a patient identifier. Describe what was checked without naming a patient.",
   GO_LIVE_PENDING:
     "A go-live attestation is pending. Revoke it first, then re-open the step. The compliance officer will need to attest again.",
   GO_LIVE_SAME_PERSON:
@@ -48,22 +53,14 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   BAA_DOCUMENT_REQUIRED: "An executed BAA needs the document id of the signed agreement.",
   INVALID_ORG_TIMEZONE: "That is not a valid time zone. Use an IANA name such as America/Denver.",
   INVALID_DISPLAY_NAME: "That display name is not valid.",
-  IF_MATCH_REQUIRED:
-    "This record changed while you were looking at it. It has been reloaded. Review what it says now and enter your change again.",
   CLEARINGHOUSE_RESPONSES_PENDING: `This tenant may still receive vendor responses on its earlier keys, so they stay reserved. Try again once it has had no production claim in flight and none sent for ${CLEARINGHOUSE_RELEASE_QUIET_DAYS} days.`,
   CLEARINGHOUSE_CREDENTIAL_LIMIT:
     "This tenant holds the most earlier clearinghouse keys it may keep. Release the ones it no longer uses at the vendor (Release earlier credentials, on the Clearinghouse card of the tenant's page), then save the new key.",
-  VERSION_CONFLICT:
-    "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
-  // The route kit's stale If-Match (409): the MAC credential save answers it where the clearinghouse and BAA routes answer 412.
-  STALE_VERSION:
-    "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
 };
 
 /** A refusal that is about an input (not the reason itself): the prompt gets out of the way so the error is read beside that input. */
 export const isAboutAnInput = (failure: Pick<OpsFailure, "kind" | "fieldErrors">): boolean =>
-  failure.kind === "validation" &&
-  Object.keys(failure.fieldErrors).some((field) => field !== "reason");
+  isAboutAnInputToRender(failure, (field) => field !== "reason");
 
 /**
  * The codes that say the step, or the tenant, is no longer in the state the operator was looking at (another operator or the tenant

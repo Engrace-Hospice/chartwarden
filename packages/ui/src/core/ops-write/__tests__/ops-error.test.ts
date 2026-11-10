@@ -1,7 +1,7 @@
 // What an operator is told when a platform write is refused. Each refusal the console meets has one meaning and one next step:
 // re-verify, re-read, fix a field, finish an earlier step, or try again. Nothing is retried for the operator.
 import { describe, expect, it } from "vitest";
-import { describeOpsError } from "../ops-error";
+import { describeOpsError, isAboutAnInput } from "../ops-error";
 
 const envelope = (
   code: string,
@@ -195,5 +195,58 @@ describe("describeOpsError", () => {
     expect(describeOpsError(envelope("BAA_UPLOAD_TOO_LARGE", "x"), { status: 413 }).code).toBe(
       "BAA_UPLOAD_TOO_LARGE",
     );
+  });
+});
+
+describe("Retry-After", () => {
+  const response = (status: number, retryAfter: string | null) => ({
+    status,
+    headers: { get: (name: string) => (name === "Retry-After" ? retryAfter : null) },
+  });
+
+  it("carries the wait the server asked for on a 429", () => {
+    const failure = describeOpsError(
+      envelope("RATE_LIMITED", "Too many requests"),
+      response(429, "30"),
+    );
+    expect(failure.retryAfterSeconds).toBe(30);
+  });
+
+  it.each([["soon"], ["0"], ["-5"], ["999999"], [null]])(
+    "carries no wait for an unusable header (%s)",
+    (header) => {
+      const failure = describeOpsError(envelope("RATE_LIMITED", "x"), response(429, header));
+      expect("retryAfterSeconds" in failure).toBe(false);
+    },
+  );
+
+  it("is fine with a response that has no headers at all", () => {
+    expect("retryAfterSeconds" in describeOpsError(envelope("X", "y"), { status: 500 })).toBe(
+      false,
+    );
+  });
+});
+
+describe("isAboutAnInput", () => {
+  const failure = (kind: "validation" | "conflict", fieldErrors: Record<string, string>) => ({
+    kind,
+    fieldErrors,
+  });
+
+  it("is about an input when a validation refusal names a field the screen renders", () => {
+    expect(isAboutAnInput(failure("validation", { secret: "no" }), (f) => f === "secret")).toBe(
+      true,
+    );
+  });
+
+  it("is NOT about an input when it names only fields the screen does not render (the server's (root))", () => {
+    expect(
+      isAboutAnInput(failure("validation", { "(root)": "bad shape" }), (f) => f === "secret"),
+    ).toBe(false);
+  });
+
+  it("reads any field as rendered by default, and never a refusal of another kind", () => {
+    expect(isAboutAnInput(failure("validation", { anything: "x" }))).toBe(true);
+    expect(isAboutAnInput(failure("conflict", { secret: "x" }))).toBe(false);
   });
 });
