@@ -1,6 +1,7 @@
 import type { DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotClient,
+  type DoseSpotTenantConfigResolver,
   buildPatientUpsertPayload,
   createUnboundDoseSpotClient,
   isDegradedError,
@@ -71,6 +72,8 @@ import {
 } from "./patient-sync-store";
 import { DosespotSyncQueueRepository } from "./repository";
 import { invalidateRxBenefitCacheForPatient } from "./rx-benefit-prewarm";
+import { type SyncFaultOutcome, classifySyncFault } from "./sync-outcome";
+import { syncPreflight } from "./sync-preflight";
 import {
   type DosespotPatientIdResolver,
   type DosespotSyncDemographicsForOrg,
@@ -107,6 +110,13 @@ export interface DoseSpotSyncWorkerDeps {
   /** Publishes `m12.dosespot_patient_synced` on a real (future) successful upsert. Optional — a missing
    *  port just means the completion event is not announced; the row is still marked completed. */
   readonly outbox?: DoseSpotWriteOutboxPort;
+  /**
+   * The same resolver the client reads. With it, a tenant that registered DoseSpot but is not live (deactivated, rotating its key, not yet
+   * activated) or whose config cannot be read has its rows left `pending` and untouched (`sync-preflight.ts`); without it every org is drained.
+   */
+  readonly config?: Pick<DoseSpotTenantConfigResolver, "configFor">;
+  /** A structured warning (pino's `(fields, message)` shape): org ids and error classes only, never a message that could carry a value. */
+  readonly warn?: (fields: Record<string, string | number>, message: string) => void;
   readonly batchSize?: number;
   readonly now?: () => Date;
   readonly connection?: ConnectionOptions;
@@ -114,7 +124,11 @@ export interface DoseSpotSyncWorkerDeps {
 
 /** One claimed row's outcome, processed OUTSIDE any held DB transaction (the vendor call is network I/O;
  *  holding a Postgres lock across it would serialize the whole org's queue behind the slowest call). */
-async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRow): Promise<void> {
+async function processRow(
+  deps: DoseSpotSyncWorkerDeps,
+  row: DosespotSyncQueueRow,
+  orgHasRegistration: boolean,
+): Promise<void> {
   const doseSpotClient = deps.doseSpotClient ?? createUnboundDoseSpotClient();
   const snapshotResolver =
     deps.snapshotResolver ??
@@ -131,10 +145,7 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
     deps.dosespotPatientIdResolver ?? createDrizzleDosespotPatientIdResolver(deps.db);
   const now = deps.now ?? (() => new Date());
 
-  let outcome:
-    | { kind: "completed" }
-    | { kind: "failed"; error: string }
-    | { kind: "requeue"; error: string };
+  let outcome: { kind: "completed" } | SyncFaultOutcome;
   let errorClass = "unknown";
   try {
     if (row.kind === "patient_sync") {
@@ -252,16 +263,7 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
       : error instanceof Error
         ? error.name
         : "unknown";
-    if (isDegradedError(error)) {
-      outcome = error.retryable
-        ? { kind: "requeue", error: error.customerMessage }
-        : { kind: "failed", error: error.customerMessage };
-    } else if (error instanceof Error) {
-      // A plain Error is deterministic and non-retryable — reported as-is.
-      outcome = { kind: "failed", error: error.message };
-    } else {
-      outcome = { kind: "failed", error: String(error) };
-    }
+    outcome = classifySyncFault(error, { attemptCount: row.attemptCount, orgHasRegistration });
   }
 
   await withOrgContext(
@@ -271,9 +273,14 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
       const repo = new DosespotSyncQueueRepository(tx as DbClient);
       if (outcome.kind === "completed") await repo.markCompleted(row.id, now());
       else if (outcome.kind === "failed") await repo.markFailed(row.id, outcome.error, now());
+      else if (outcome.kind === "defer") await repo.defer(row.id, outcome.error);
       else await repo.requeue(row.id, outcome.error);
-      // §2.6 "on failure": record the sync outcome + bump `retry_count` (no id is ever invented).
-      if (row.kind === "patient_sync" && outcome.kind !== "completed") {
+      // §2.6 "on failure": record the sync outcome + bump `retry_count` (no id is ever invented). A row that only WAITS for the registration
+      // (`defer`) did not fail: the patient's last outcome is left as it was.
+      if (
+        row.kind === "patient_sync" &&
+        (outcome.kind === "failed" || outcome.kind === "requeue")
+      ) {
         await recordPatientSyncFailure(tx as DbClient, {
           organizationId: row.organizationId,
           patientId: row.patientId,
@@ -294,6 +301,20 @@ export async function runDoseSpotSyncQueueDrain(deps: DoseSpotSyncWorkerDeps): P
   const failures: unknown[] = [];
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
     try {
+      const preflight = await syncPreflight(deps, organizationId);
+      if (!preflight.drain) {
+        // a registered tenant that is not live (or whose config cannot be read): its rows wait, unclaimed and unchanged
+        if (preflight.fault !== null) {
+          deps.warn?.(
+            {
+              organizationId,
+              cause: preflight.fault instanceof Error ? preflight.fault.name : "unknown",
+            },
+            "M12 sync drain: the org's DoseSpot config could not be read; its rows were left pending",
+          );
+        }
+        continue;
+      }
       const claimed = await withOrgContext(
         deps.db,
         { organizationId, userId: CONSUMER_USER_ID },
@@ -307,7 +328,7 @@ export async function runDoseSpotSyncQueueDrain(deps: DoseSpotSyncWorkerDeps): P
         },
       );
       for (const row of claimed) {
-        await processRow(deps, row);
+        await processRow(deps, row, preflight.orgHasRegistration);
       }
     } catch (error) {
       failures.push(error);

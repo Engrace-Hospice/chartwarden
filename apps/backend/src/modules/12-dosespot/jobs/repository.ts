@@ -12,6 +12,9 @@ type DosespotSyncQueueRow = schema.DosespotSyncQueueRow;
 
 const Q = schema.dosespotSyncQueue;
 
+/** The longest wait between two attempts of one row. */
+export const SYNC_MAX_BACKOFF_MINUTES = 60;
+
 export interface EnqueueInput {
   readonly organizationId: string;
   readonly kind: DosespotSyncQueueKind;
@@ -93,10 +96,15 @@ export class DosespotSyncQueueRepository {
     limit = 25,
     now: Date = new Date(),
   ): Promise<readonly DosespotSyncQueueRow[]> {
+    // A row that already failed transiently waits out a backoff measured from its last claim (1, 2, 4 ... capped minutes by attempts
+    // spent): a vendor that is down is not retried every tick. A fresh row, and one deferred without an attempt, is due at once.
     const due = await this.db.execute(sql`
       SELECT id FROM dosespot_sync_queue
       WHERE organization_id = ${organizationId}
         AND status = 'pending'
+        AND (attempt_count = 0 OR claimed_at IS NULL
+          OR claimed_at + make_interval(mins => LEAST(power(2, GREATEST(0, attempt_count - 1)), ${SYNC_MAX_BACKOFF_MINUTES})::int)
+            <= ${now.toISOString()}::timestamptz)
       ORDER BY enqueued_at
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -130,6 +138,14 @@ export class DosespotSyncQueueRepository {
         processedAt: now,
       })
       .where(eq(Q.id, id));
+  }
+
+  /**
+   * Not this row's fault (the tenant's registration is not live, or its config could not be read): back to `pending` with NO attempt spent,
+   * so the row waits for the registration instead of ending. `last_error` says why it is waiting.
+   */
+  async defer(id: string, error: string): Promise<void> {
+    await this.db.update(Q).set({ status: "pending", lastError: error }).where(eq(Q.id, id));
   }
 
   /**
