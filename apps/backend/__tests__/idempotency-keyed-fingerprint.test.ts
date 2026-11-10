@@ -7,8 +7,8 @@
  * replays the same request and still conflicts on another body or another user, so a retry across the deploy is not re-executed; a
  * record under another server key is a clean 409; and production refuses to boot without a real secret.
  */
-import { createHash } from "node:crypto";
-import type { IdempotencyStore } from "@chartwarden/shared";
+import { createHash, createHmac } from "node:crypto";
+import { type IdempotencyStore, idempotencyKeyId } from "@chartwarden/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
@@ -197,6 +197,20 @@ describe("the server key", () => {
     expect(
       a.equals(idempotencyHmacKey({ BETTER_AUTH_SECRET: `${SECRET}x`, NODE_ENV: "production" })),
     ).toBe(false);
+  });
+
+  it("is a domain-separated subkey, HMAC(secret, fixed label): the stored key id and tag are never computed under the session-signing root itself", () => {
+    const subkey = idempotencyHmacKey({ BETTER_AUTH_SECRET: SECRET, NODE_ENV: "production" });
+    expect(
+      subkey.equals(
+        createHmac("sha256", SECRET)
+          .update("chartwarden:idempotency:request-fingerprint:v1")
+          .digest(),
+      ),
+    ).toBe(true);
+    // what a table reader sees (the key id) is a function of the subkey, so it is not a value keyed by BETTER_AUTH_SECRET itself.
+    // It does NOT stop a reader testing candidate secrets offline (the derivation is public): entropy stays the control (CW-SEC-02).
+    expect(idempotencyKeyId(subkey)).not.toBe(idempotencyKeyId(SECRET));
   });
 
   it("production refuses to boot without the secret (or with a short one)", () => {

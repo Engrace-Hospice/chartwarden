@@ -139,8 +139,11 @@ export function applyIdempotency(
     // The legacy arm is chosen from the STORED record (no `h1:` prefix), never from anything the request says. What it matches is
     // what origin/main's middleware wrote: the plain SHA-256 of `${orgId}|${userId}` (as the scope), key and body, and nothing
     // else (no method, route, params, query string or If-Match). Good enough for the 24 h a pre-deploy row lives: a retry of a
-    // pre-deploy request replays, another body or another user is a 409, and nothing is ever re-run.
-    // REMOVAL: remove this arm and `legacyIdempotencyHash` after 2026-11-16, once every environment has passed one TTL after deploy.
+    // pre-deploy request replays, another body or another user is a 409, and nothing is ever re-run. It recognises ONLY origin/main's
+    // plain hash: a row an intermediate release wrote (the clearinghouse branch's plain SHA-256 over the JSON scope) is a different
+    // value, so a retry of such a row answers 409 IDEMPOTENCY_CONFLICT (safe: never a replay, never a re-run) and no further weak arm is added.
+    // REMOVAL: remove this arm, `legacyIdempotencyHash` and `LEGACY_ARM_REMOVE_AFTER` once every environment has passed one TTL after deploy;
+    // a test in packages/shared fails after that constant's date while the arm still exists.
     const legacyScope = `${orgId}|${request.context?.userId ?? ""}`;
     const cached = await claimIdempotencyKey(store, orgId, key, requestHash, () =>
       legacyIdempotencyHash(legacyScope, key, request.body ?? null),

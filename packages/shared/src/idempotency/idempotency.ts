@@ -62,9 +62,18 @@ export function idempotencyKeyIsStale(stored: string, requestHash: string): bool
 }
 
 /**
+ * The date (UTC, inclusive) by which the legacy plain-SHA-256 arm must be gone. The real trigger is "one idempotency TTL after the keyed
+ * fingerprint is deployed everywhere"; this is the calendar proxy for it. If the keyed fingerprint ships later than a TTL before it, move
+ * the date in the same change that moves the deploy, and the compliance row's `review_by` (CW-SEC-02) with it.
+ */
+export const LEGACY_ARM_REMOVE_AFTER = "2026-11-16";
+
+/**
  * The fingerprint this module stored BEFORE it was keyed: plain SHA-256 hex. Only ever COMPUTED, to recognise a record written
  * before the deploy that introduced the keyed hash (records live 24 h), so a client's retry of an in-flight or completed request
- * still replays instead of being re-executed. It is never written. REMOVAL: remove this function and the legacy arm that uses it after 2026-11-16, once every environment has passed one TTL after deploy.
+ * still replays instead of being re-executed. It is never written. REMOVAL: remove this function, the legacy arm that uses it and
+ * {@link LEGACY_ARM_REMOVE_AFTER} once every environment has passed one TTL (24 h) after the keyed fingerprint deployed there; a test
+ * fails after that date while this function still exists, so the arm cannot be forgotten.
  */
 export function legacyIdempotencyHash(organizationId: string, key: string, body: unknown): string {
   return createHash("sha256")

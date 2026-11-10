@@ -14,6 +14,7 @@ import {
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
+  LEGACY_ARM_REMOVE_AFTER,
   computeIdempotencyHash,
   idempotencyHashMatches,
   idempotencyKeyId,
@@ -134,6 +135,23 @@ describe("a fingerprint stored before the keyed hash (plain SHA-256)", () => {
     const plain = legacyIdempotencyHash(ORG, "k1", { a: 1 });
     expect(idempotencyHashMatches(plain, other, () => plain)).toBe(true);
     expect(idempotencyHashMatches(plain, other, () => "0".repeat(64))).toBe(false);
+  });
+});
+
+describe("the legacy plain-SHA-256 arm has a removal date and it is enforced", () => {
+  it("is removed once LEGACY_ARM_REMOVE_AFTER has passed: this fails after that date while legacyIdempotencyHash still exists", () => {
+    const endOfRemovalDay = Date.parse(`${LEGACY_ARM_REMOVE_AFTER}T23:59:59.999Z`);
+    expect(Number.isNaN(endOfRemovalDay), "LEGACY_ARM_REMOVE_AFTER must be a YYYY-MM-DD date").toBe(
+      false,
+    );
+    const overdue = Date.now() > endOfRemovalDay;
+    // Delete `legacyIdempotencyHash`, the middleware's legacy arm (apps/backend/src/bootstrap/plugins/idempotency.ts), this test and
+    // LEGACY_ARM_REMOVE_AFTER together. If the keyed fingerprint has not yet been live everywhere for a full TTL, move the date instead,
+    // with CW-SEC-02's review_by.
+    expect(
+      overdue && typeof legacyIdempotencyHash === "function",
+      `the legacy idempotency arm outlived ${LEGACY_ARM_REMOVE_AFTER}: remove it (or move the date, with CW-SEC-02's review_by)`,
+    ).toBe(false);
   });
 });
 
