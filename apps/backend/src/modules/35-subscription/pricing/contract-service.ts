@@ -22,7 +22,7 @@ import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BillingServiceMode } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { refuseForeignAmbientOrg } from "../../../bootstrap/ambient-org-guard";
 import { currentSubscriptionOrder } from "../routes/current-subscription";
 import type { M35WriteActor } from "../routes/service";
@@ -32,6 +32,7 @@ import {
   type ModeHistoryRow,
   modeChangeEffectiveOn,
   modeInForceOn,
+  nextModeCreatedAt,
   pendingModeAfter,
 } from "./contract-mode";
 import { type ContractRecord, loadModeHistory, selectNewestContract } from "./contract-select";
@@ -467,6 +468,7 @@ async function insertModeChange(
   record: ContractRecord,
   mode: BillingServiceMode,
   at: Date,
+  createdAt: Date,
 ) {
   const [statement] = await tx
     .select({ id: SS.id })
@@ -484,6 +486,7 @@ async function insertModeChange(
       contractId: record.contract.id,
       billingServiceMode: mode,
       effectiveFrom: effectiveOn,
+      createdAt,
     })
     .returning();
   if (!row) throw new ChartWardenError("PERSIST_FAILED", "the mode write returned no row", 500);
@@ -606,14 +609,13 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (!tenant) throw new NotFoundError("tenant");
         const at = now();
         const today = utcDateOf(at);
-        // Serialize mode changes for this tenant before reading its history. Without this lock, two
-        // operators can both judge the same history and append competing rows for one effective date.
-        await tx
-          .select({ id: SC.id })
-          .from(SC)
-          .where(eq(SC.organizationId, tenant.organizationId))
-          .orderBy(desc(SC.createdAt), desc(SC.id))
-          .for("update");
+        // Serialize mode changes for this tenant before reading its history. The platform carrier
+        // deliberately has no UPDATE privilege on the immutable contract table, so a row-level
+        // `FOR UPDATE` lock would be refused. A transaction-scoped advisory lock needs no broader
+        // table grant and is released automatically on commit/rollback.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenant.organizationId}, 35))`,
+        );
         const found = await loadContract(tx, "live", at, tenant.organizationId);
         if (!found) throw new NotFoundError("this organization has no contracted subscription");
         const { record } = found;
@@ -624,7 +626,14 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (mode === (pending?.billingServiceMode ?? current)) {
           return platformViewOf(record, found.bands, found.history, today, signature);
         }
-        const { row, effectiveOn } = await insertModeChange(tx, tenant, record, mode, at);
+        const { row, effectiveOn } = await insertModeChange(
+          tx,
+          tenant,
+          record,
+          mode,
+          at,
+          nextModeCreatedAt(at, found.history),
+        );
         await audit.record(tx, {
           eventType: "m35.subscription.billing_service_mode_changed",
           resourceKind: "subscription",
