@@ -39,7 +39,8 @@
  *         Bash, apply_patch and MCP tools, synchronous, with a timeout) and `.gitignore` allow-lists
  *         `.codex/` (and `.agents/`) at every depth, each re-include AFTER the ignore line;
  *     18. the three Claude hook commands (guard, ledger, Stop gate) are pinned byte for byte, each run with
- *         `--config=/dev/null --no-env-file` so a `bunfig.toml` preload cannot run first.
+ *         `--config=/dev/null --no-env-file --tsconfig-override=/dev/null` so neither a `bunfig.toml` preload
+ *         nor a `tsconfig.json` `paths` map can run or replace code before the hook script.
  *
  * Run:   bun run scripts/check-compliance-controls.ts
  * CI:    exits 1 on any violation (arch:fitness stage).
@@ -220,10 +221,14 @@ export const CODEX_GUARD_MATCHER = "Bash|write_stdin|apply_patch|mcp__.*";
 /**
  * Claude's three hook commands, pinned byte for byte like {@link CODEX_GUARD_COMMAND}. `--config=/dev/null
  * --no-env-file`: a `preload` in a `bunfig.toml` in the session directory would otherwise run BEFORE the hook
- * script and could silence it. Deliberately no perl alarm and no `|| exit 2` wrapper (Codex needs them, Claude
- * does not): a missing `perl` would lock out every Claude tool call, and Claude Code has its own timeout.
+ * script and could silence it. `--tsconfig-override=/dev/null`: bun applies `compilerOptions.paths` from the
+ * `tsconfig.json` (or `jsconfig.json`) in the session directory, and the one it extends, to the script's OWN
+ * imports, so `"paths": {"*": ["./evil.ts"]}` made the guard exit 0 without reading its input; an empty
+ * override leaves no `paths` to apply. Deliberately no perl alarm and no `|| exit 2` wrapper (Codex needs
+ * them, Claude does not): a missing `perl` would lock out every Claude tool call, and Claude Code has its own
+ * timeout.
  */
-const BUN_HARDENED = "bun --config=/dev/null --no-env-file";
+const BUN_HARDENED = "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null";
 export const CLAUDE_GUARD_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts`;
 export const CLAUDE_LEDGER_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/post-tool-ledger.ts`;
 export const CLAUDE_STOP_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/stop-gate.ts`;
@@ -247,15 +252,16 @@ const PINNED_CLAUDE_HOOKS = [
 /**
  * The one hook command that keeps Codex behind the guard, pinned byte for byte (a loose "contains the script
  * name" check passes `exit 0; bun ...guard`, a no-op `echo`, or `... || true`). Each part is load-bearing:
- * - `--config=/dev/null --no-env-file`: a `bunfig.toml` `preload` in the session directory would otherwise
- *   run before the guard and could silence it (one patch adds both, and neither file is guarded by a hook);
+ * - `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session
+ *   directory would otherwise run before the guard and could silence it, and a `tsconfig.json` `paths` map
+ *   would replace the guard's own imports (see {@link BUN_HARDENED});
  * - `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs the call when a hook times out (its limit here
  *   is 10 s), so the guard is killed first; and a failed `exec` (no `bun` on the hook's PATH) would
  *   otherwise fall off the end of the script and exit 0, which is an ALLOW;
  * - `|| { ...; exit 2; }`: exit 2 with a message BLOCKS in Codex; any other failure (bun not on the hook's
  *   PATH, a crash, the alarm) is "failed, and the call proceeds".
  */
-export const CODEX_GUARD_COMMAND = `perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
+export const CODEX_GUARD_COMMAND = `perl -e 'alarm 8; exec @ARGV or exit 127' ${BUN_HARDENED} "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
 
 /** PURE — `.codex/hooks.json` must hold exactly the one guard hook, and nothing that could shadow it. */
 export function checkCodexHooks(text: string | undefined): string[] {
@@ -278,7 +284,7 @@ export function checkCodexHooks(text: string | undefined): string[] {
     v.push('.codex/hooks.json: the guard hook must have type "command"');
   if (hook?.command !== CODEX_GUARD_COMMAND)
     v.push(
-      ".codex/hooks.json: the guard command must be exactly CODEX_GUARD_COMMAND from scripts/check-compliance-controls.ts (pinned bun config, 8 s alarm, exit 2 on failure)",
+      ".codex/hooks.json: the guard command must be exactly CODEX_GUARD_COMMAND from scripts/check-compliance-controls.ts (pinned bun config and tsconfig override, 8 s alarm, exit 2 on failure)",
     );
   if (typeof hook?.timeout !== "number" || hook.timeout < 1 || hook.timeout > 30)
     v.push(".codex/hooks.json: the guard needs a timeout of 1 to 30 seconds");
@@ -393,7 +399,7 @@ export function checkHarness(files: HarnessFiles): string[] {
     if (commands.length === 0) v.push(`.claude/settings.json: ${p.event} does not run ${script}`);
     else if (commands.some((c) => c !== p.command))
       v.push(
-        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`bun --config=/dev/null --no-env-file\`: a bunfig.toml preload would otherwise run before it)`,
+        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`${BUN_HARDENED}\`: a bunfig.toml preload or a tsconfig.json paths map would otherwise run or replace code before it)`,
       );
   }
   for (const d of REQUIRED_DENIES)

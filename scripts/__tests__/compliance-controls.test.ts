@@ -282,6 +282,12 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
   it("accepts the committed .codex/hooks.json", () => {
     expect(checkCodexHooks(codexHooks)).toEqual([]);
   });
+  it("runs the Codex guard through `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null`", () => {
+    const command = JSON.parse(codexHooks).hooks.PreToolUse[0].hooks[0].command;
+    expect(command).toContain(
+      ' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse',
+    );
+  });
   it("fails when .codex/hooks.json is missing or unparsable", () => {
     expect(run({ codexHooks: undefined }).join()).toMatch(/hooks\.json is missing/);
     expect(run({ codexHooks: "{" }).join()).toMatch(/does not parse/);
@@ -297,6 +303,11 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
       `${CODEX_GUARD_COMMAND} || true`,
       "bun scripts/harness/pre-tool-guard.ts",
       CODEX_GUARD_COMMAND.replace("--config=/dev/null ", ""),
+      CODEX_GUARD_COMMAND.replace(" --tsconfig-override=/dev/null", ""),
+      CODEX_GUARD_COMMAND.replace(
+        "--tsconfig-override=/dev/null",
+        "--tsconfig-override=./tsconfig.json",
+      ),
       CODEX_GUARD_COMMAND.replace("alarm 8; ", ""),
       CODEX_GUARD_COMMAND.replace(" or exit 127", ""),
       CODEX_GUARD_COMMAND.replace("exit 2", "exit 0"),
@@ -420,11 +431,14 @@ describe("the Claude hooks are pinned like the Codex one (a bunfig.toml preload 
     return JSON.stringify(parsed);
   };
 
-  it("runs each hook through `bun --config=/dev/null --no-env-file` in the committed settings", () => {
+  it("runs each hook through `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null` in the committed settings", () => {
     const parsed = JSON.parse(settings);
     for (const h of hooks) {
       expect(parsed.hooks[h.event][0].hooks[0].command).toBe(h.command);
-      expect(h.command).toMatch(/^bun --config=\/dev\/null --no-env-file "\$CLAUDE_PROJECT_DIR"\//);
+      // Spelled out, not built from the gate's own constant: weakening the constant must fail here too.
+      expect(h.command).toMatch(
+        /^bun --config=\/dev\/null --no-env-file --tsconfig-override=\/dev\/null "\$CLAUDE_PROJECT_DIR"\//,
+      );
       expect(h.command).toContain(`scripts/harness/${h.script}.ts`);
     }
     expect(run(settings)).toEqual([]);
@@ -447,6 +461,8 @@ describe("the Claude hooks are pinned like the Codex one (a bunfig.toml preload 
         `${h.command} #`,
         h.command.replace(" --config=/dev/null", ""),
         h.command.replace(" --no-env-file", ""),
+        h.command.replace(" --tsconfig-override=/dev/null", ""),
+        h.command.replace("--tsconfig-override=/dev/null", "--tsconfig-override=./tsconfig.json"),
         h.command.replace("--config=/dev/null", "--config=./bunfig.toml"),
         h.command.replace(/^bun/, "echo"),
         `bun "$CLAUDE_PROJECT_DIR"/scripts/harness/${h.script}.ts`, // the form before the pin

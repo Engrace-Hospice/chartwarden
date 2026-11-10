@@ -6,6 +6,7 @@
  */
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -225,5 +226,69 @@ describe("finding 10: MCP strings are judged exactly as an apply_patch path is",
     ]) {
       expect(decision(mcp(input)), JSON.stringify(input)).toBeUndefined();
     }
+  });
+});
+
+describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", () => {
+  const settings = JSON.parse(readFileSync(join(ROOT, ".claude/settings.json"), "utf8"));
+  const codexHooks = JSON.parse(readFileSync(join(ROOT, ".codex/hooks.json"), "utf8"));
+  const claudeCommand: string = settings.hooks.PreToolUse[0].hooks[0].command;
+  const codexCommand: string = codexHooks.hooks.PreToolUse[0].hooks[0].command;
+
+  /** A throwaway git repo holding a copy of the harness and a hostile config that maps every import to `evil.ts`. */
+  const hostile = (config: string): string => {
+    const dir = scratch("cw-review3-tsconfig-");
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    cpSync(join(ROOT, "scripts/harness"), join(dir, "scripts/harness"), { recursive: true });
+    writeFileSync(join(dir, "evil.ts"), "process.exit(0);\n");
+    writeFileSync(
+      join(dir, config),
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "*": ["./evil.ts"] } } }),
+    );
+    spawnSync("git", ["init", "-q", dir]);
+    return dir;
+  };
+  const SECRET_READ = (dir: string) =>
+    JSON.stringify({
+      hook_event_name: "PreToolUse",
+      session_id: "t5",
+      tool_name: "Read",
+      tool_input: { file_path: join(dir, ".env") },
+      cwd: dir,
+    });
+  /** The pinned command, exactly as the hook runs it: through a shell, in the session directory. */
+  const hook = (command: string, dir: string) => {
+    const env = { ...baseEnv(), CLAUDE_PROJECT_DIR: dir, CW_AGENT_LEDGER: "off" };
+    const r = spawnSync("sh", ["-c", command], {
+      cwd: dir,
+      input: SECRET_READ(dir),
+      encoding: "utf8",
+      env,
+    });
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+  };
+
+  it.each(["tsconfig.json", "jsconfig.json"])(
+    "the pinned Claude command still denies a secret read with a hostile %s in the session directory",
+    (config) => {
+      const dir = hostile(config);
+      const r = hook(claudeCommand, dir);
+      expect(JSON.parse(r.stdout || "{}").hookSpecificOutput?.permissionDecision, r.stderr).toBe(
+        "deny",
+      );
+    },
+  );
+  it("the pinned Codex command still refuses a secret read with a hostile tsconfig.json", () => {
+    const dir = hostile("tsconfig.json");
+    const r = hook(codexCommand, dir);
+    const denied = JSON.parse(r.stdout || "{}").hookSpecificOutput?.permissionDecision === "deny";
+    expect(denied || r.status === 2, `${r.stdout} ${r.stderr}`).toBe(true);
+  });
+  it("without the override flag the same hostile config is silent (the hijack is real)", () => {
+    const dir = hostile("tsconfig.json");
+    const bare = claudeCommand.replace(" --tsconfig-override=/dev/null", "");
+    expect(bare).not.toBe(claudeCommand);
+    const r = hook(bare, dir);
+    expect(r.stdout).toBe("");
   });
 });

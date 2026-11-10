@@ -77,15 +77,23 @@ from Codex's hook protocol:
   is the test-only seam; production never sets it, and a developer must not export it. Claude Code still
   takes its root from `CLAUDE_PROJECT_DIR`, which Claude Code itself sets.
 - **The hook command is pinned byte for byte** (`CODEX_GUARD_COMMAND` in
-  `scripts/check-compliance-controls.ts`), and each part matters. `bun --config=/dev/null --no-env-file`:
-  a `bunfig.toml` `preload` in the session directory would otherwise run before the guard and could silence
-  it (`bunfig.toml` is protected for that reason). `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs
+  `scripts/check-compliance-controls.ts`), and each part matters. `bun --config=/dev/null --no-env-file
+  --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session directory would otherwise run
+  before the guard and could silence it (`bunfig.toml` is protected for that reason), and bun applies the
+  `compilerOptions.paths` of the `tsconfig.json` (or `jsconfig.json`) in the session directory, or of the
+  file it extends, to the guard script's OWN imports: `"paths": {"*": ["./evil.ts"]}` beside an `evil.ts`
+  that calls `process.exit(0)` made the guard exit 0 without reading its input, so every secret read was
+  allowed. An empty override leaves no `paths` to apply, wherever the session directory is (checked against
+  a root, a nested and an extended config); the hostile-fixture test in
+  `scripts/__tests__/harness-guard-review3.test.ts` runs the real pinned commands against such a config.
+  The flag changes the pinned Codex command, so each developer re-trusts it with `/hooks`.
+  `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs
   the call when a hook times out (10 s here) and when `exec` fails perl would exit 0, an allow. `|| exit 2`:
   exit 2 with a message blocks in Codex, so a guard that cannot start, crashes or times out blocks the call.
   `perl` and `bun` must be on the hook's PATH; without them every shell call and patch is refused, loudly.
   Claude's own three hooks (guard, ledger, Stop gate) are pinned the same way (`CLAUDE_GUARD_COMMAND`,
-  `CLAUDE_LEDGER_COMMAND`, `CLAUDE_STOP_COMMAND`) and run with the same `--config=/dev/null --no-env-file`,
-  for the same reason. They deliberately have no perl alarm and no `|| exit 2`: Claude Code has its own
+  `CLAUDE_LEDGER_COMMAND`, `CLAUDE_STOP_COMMAND`) and run with the same
+  `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`, for the same reason. They deliberately have no perl alarm and no `|| exit 2`: Claude Code has its own
   timeout, and a missing `perl` would otherwise lock out every Claude tool call.
 - **The hook layer is a guardrail, not a boundary.** Each developer must trust the hook once (`/hooks`, tied
   to its hash, so a changed hook is skipped until re-trusted) and the project `.codex/` layer must be
