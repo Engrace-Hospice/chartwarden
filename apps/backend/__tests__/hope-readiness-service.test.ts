@@ -1,3 +1,4 @@
+import { REQUIRED_SECTIONS_BY_RFA } from "@chartwarden/hope";
 import { describe, expect, it } from "vitest";
 import {
   effectiveHopeJ2051TriggerStateForReview,
@@ -76,6 +77,7 @@ function ctx(values: Record<string, string>): HopeValidationContext {
       isc: "HA",
       correctsAssessmentId: null,
     },
+    presentSections: REQUIRED_SECTIONS_BY_RFA["01_admission"],
     activeItems,
     answers,
     applicability: createHopeApplicabilityEngine("1.00.1").evaluate({

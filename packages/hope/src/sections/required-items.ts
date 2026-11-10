@@ -83,6 +83,18 @@ export function missingRequiredSections(
   return REQUIRED_SECTIONS_BY_RFA[rfaKind].filter((s) => !present.has(s));
 }
 
+/**
+ * Whether `section` belongs to the CMS required-items matrix for `rfaKind`.
+ *
+ * Consumers that validate individual answers use this predicate to scope their finer-grained edits;
+ * keeping that decision here prevents readiness and submission from growing separate RFA rosters.
+ */
+export function isRequiredHopeSection(rfaKind: HopeRfaKind, section: string): boolean {
+  return REQUIRED_SECTIONS_BY_RFA[rfaKind].includes(
+    section.trim().toUpperCase() as HopeSectionLetter,
+  );
+}
+
 // Compile-time exhaustiveness: every HopeRfaKind has a matrix entry.
 const _matrixCoversEveryRfa: readonly HopeRfaKind[] = HOPE_RFA_KINDS.filter(
   (k) => REQUIRED_SECTIONS_BY_RFA[k] !== undefined,

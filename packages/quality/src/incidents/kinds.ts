@@ -3,7 +3,7 @@
 // The incident taxonomy (V-14; the module spec's six-kind V-14 lock plus `restraint_use`, added F-185
 // #248) as a PURE domain catalog: per-kind metadata, the required
 // `kind_data` members each kind must carry before submission, the allowed `exposure_event` subkinds, and
-// the sentinel-eligibility flag that drives the WF-11 alert path. There is NO Fastify TypeBox here — the
+// the incident metadata used by the lifecycle. There is NO Fastify TypeBox here — the
 // route-layer per-kind request schemas land in a later phase; this file is the framework-free domain
 // source of truth those schemas (and the lifecycle machine's submission guard) project from.
 //
@@ -11,6 +11,10 @@
 // / patientQuote / staffQuote are §3.6 audit-denylisted). The validation predicates below check only that
 // the per-kind STRUCTURAL required members are present and non-empty — clinical content is never inspected.
 import type { schema } from "@chartwarden/db";
+import {
+  M30_ABUSE_INCIDENT_KIND,
+  M30_SENTINEL_INCIDENT_SEVERITY,
+} from "@chartwarden/types";
 import type { IncidentKind, IncidentSeverity } from "../contracts";
 
 /**
@@ -44,7 +48,7 @@ export const MANDATORY_REPORT_EXPOSURE_SUBKINDS = [
 /** An `exposure_event` subkind that forces the mandatory-reporter gate (V-15). */
 export type MandatoryReportExposureSubkind = (typeof MANDATORY_REPORT_EXPOSURE_SUBKINDS)[number];
 
-/** Per-kind domain definition (D8): required `kind_data` members + sentinel/mandatory posture. */
+/** Per-kind domain definition (D8): required `kind_data` members + mandatory-report posture. */
 export interface IncidentKindDefinition {
   /** The §2.3 kind code (V-14). */
   readonly kind: IncidentKind;
@@ -57,8 +61,6 @@ export interface IncidentKindDefinition {
   readonly requiredKindDataFields: ReadonlyArray<string>;
   /** The enumerated `kind_data.subkind` values this kind admits (omitted ⇒ subkind not used). */
   readonly allowedSubkinds?: ReadonlyArray<string>;
-  /** This kind may be escalated to a sentinel event (WF-11) at `severity=critical`. */
-  readonly sentinelEligible: boolean;
   /** This kind ALWAYS forces the mandatory-reporter gate regardless of subkind (V-15: allegation_of_abuse). */
   readonly alwaysMandatoryReport: boolean;
   /** The default severity an auto-created draft of this kind opens at (operator may raise at triage). */
@@ -74,7 +76,6 @@ export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDe
     kind: "fall",
     label: "Fall",
     requiredKindDataFields: ["narrativeText"],
-    sentinelEligible: true,
     alwaysMandatoryReport: false,
     defaultSeverity: "moderate",
   },
@@ -84,7 +85,6 @@ export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDe
     kind: "medication_error",
     label: "Medication error",
     requiredKindDataFields: ["medicationOrderId", "narrativeText"],
-    sentinelEligible: true,
     alwaysMandatoryReport: false,
     defaultSeverity: "moderate",
   },
@@ -92,17 +92,14 @@ export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDe
     kind: "complaint",
     label: "Complaint / grievance",
     requiredKindDataFields: ["narrativeText"],
-    sentinelEligible: false,
     alwaysMandatoryReport: false,
     defaultSeverity: "minor",
   },
   allegation_of_abuse: {
-    // V-15: always mandatory-report (state DHS/APS). Always sentinel-eligible; any state change audits
-    // at severity=critical (§2.2).
+    // V-15: always mandatory-report (state DHS/APS); any state change audits at severity=critical (§2.2).
     kind: "allegation_of_abuse",
     label: "Allegation of abuse / neglect / exploitation",
     requiredKindDataFields: ["narrativeText"],
-    sentinelEligible: true,
     alwaysMandatoryReport: true,
     defaultSeverity: "severe",
   },
@@ -112,7 +109,6 @@ export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDe
     label: "Exposure event",
     requiredKindDataFields: ["subkind", "narrativeText"],
     allowedSubkinds: [...MANDATORY_REPORT_EXPOSURE_SUBKINDS],
-    sentinelEligible: true,
     alwaysMandatoryReport: false,
     defaultSeverity: "moderate",
   },
@@ -120,7 +116,6 @@ export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDe
     kind: "other_safety_event",
     label: "Other safety event",
     requiredKindDataFields: ["narrativeText"],
-    sentinelEligible: false,
     alwaysMandatoryReport: false,
     defaultSeverity: "minor",
   },
@@ -134,7 +129,6 @@ export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDe
     kind: "restraint_use",
     label: "Restraint use",
     requiredKindDataFields: ["narrativeText"],
-    sentinelEligible: true,
     alwaysMandatoryReport: false,
     defaultSeverity: "moderate",
   },
@@ -180,14 +174,10 @@ export function isAllowedSubkind(kind: IncidentKind, subkind: string | undefined
 }
 
 /**
- * True iff an incident of this `kind`/`severity` is a SENTINEL event (WF-11 — drives the immediate
- * `incident_sentinel` / `incident_abuse_allegation` alert on submit). `allegation_of_abuse` is always
- * sentinel; the other sentinel-eligible kinds qualify only at `severity=critical`.
+ * True iff an incident of this `kind`/`severity` triggers immediate WF-11 paging. The shared M30
+ * alert constants are also used by M36's initial-page consumer and M30's repeat sweep: every critical
+ * incident pages, regardless of kind, and every abuse allegation pages, regardless of severity.
  */
 export function isSentinelIncident(kind: IncidentKind, severity: IncidentSeverity): boolean {
-  if (kind === "allegation_of_abuse") return true;
-  return (
-    INCIDENT_KIND_CATALOG[kind].sentinelEligible &&
-    INCIDENT_SEVERITY_RANK[severity] >= INCIDENT_SEVERITY_RANK.critical
-  );
+  return kind === M30_ABUSE_INCIDENT_KIND || severity === M30_SENTINEL_INCIDENT_SEVERITY;
 }
