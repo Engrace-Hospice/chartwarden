@@ -36,6 +36,7 @@ const step = (key: string, sequence: number, over: Partial<WizardStep> = {}): Wi
   skipRationale: null,
   systemSkipped: false,
   skippedBy: null,
+  skippedByLabel: null,
   skippable: false,
   tenantSkippable: false,
   createdAt: "2026-11-01T00:00:00.000Z",

@@ -9,10 +9,12 @@ import {
 } from "./evidence";
 import {
   GO_LIVE_TEMPLATE_KEY,
-  type PlatformActor,
+  SYSTEM_MEMBERSHIP_ID,
+  type SkipActorKind,
   type StepTask,
   type WizardActor,
   isSkippableStep,
+  isTenantSkippableStep,
 } from "./model";
 import { assertStepActionable, isSettled } from "./sequence";
 import {
@@ -21,6 +23,7 @@ import {
   conflict,
   refuse,
   requireOnboarding,
+  stepOf,
   targetOf,
 } from "./wizard-core";
 import type { AttestInput } from "./wizard-types";
@@ -82,13 +85,33 @@ export function createStepOperations(now: () => Date) {
     return updated;
   }
 
+  /** Who is skipping: the tenant's org_admin, a platform operator, or the system (the clearinghouse sync acts under the system membership). */
+  const skipKindOf = (actor: WizardActor): SkipActorKind => {
+    if (actor.kind === "tenant") return "tenant";
+    return actor.membershipId === SYSTEM_MEMBERSHIP_ID ? "system" : "platform_ops";
+  };
+
+  /**
+   * Settles a step that does not apply, with a recorded rationale and the kind of actor who said so. A platform operator may skip any
+   * step `isSkippableStep` names; the tenant's own org_admin only those `isTenantSkippableStep` names (409
+   * ONBOARDING_STEP_NOT_TENANT_SKIPPABLE otherwise, before the owner rule and the sequence: that answer is final whatever is open).
+   * A skip is onboarding data: a pending go-live attestation (which a skippable gating step being open would normally rule out) is
+   * voided in the same transaction, so no change of onboarding data keeps an approval that rested on the old state.
+   */
   async function skip(
     ctx: Loaded,
-    actor: PlatformActor,
+    actor: WizardActor,
     taskId: string,
     rationale: string,
   ): Promise<StepTask> {
     requireOnboarding(ctx.tenant);
+    if (actor.kind === "tenant" && !isTenantSkippableStep(stepOf(ctx, taskId).template)) {
+      throw refuse(
+        "ONBOARDING_STEP_NOT_TENANT_SKIPPABLE",
+        "the organization may skip only MAC credentials, payer enrollment and DoseSpot kickoff; ask ChartWarden about any other step",
+        409,
+      );
+    }
     const { task, template } = targetOf(ctx, taskId, actor);
     if (template.key === GO_LIVE_TEMPLATE_KEY) {
       throw refuse(
@@ -114,6 +137,7 @@ export function createStepOperations(now: () => Date) {
       );
     assertStepActionable(ctx.templates, ctx.tasks, template.key);
     const at = now();
+    const kind = skipKindOf(actor);
     const updated = await ctx.store.updateTask(task.id, task.status, {
       status: "skipped",
       blockerReason: null,
@@ -123,11 +147,20 @@ export function createStepOperations(now: () => Date) {
           rationale: why,
           skippedByMembershipId: actor.membershipId,
           skippedByUserId: actor.userId,
+          skippedByActorKind: kind,
           skippedAt: at.toISOString(),
         },
       },
     });
     if (!updated) throw conflict();
+    // The system acts for no user, so it has no attestation to void and nobody to name; a person's skip names them.
+    if (kind !== "system") {
+      await ctx.store.voidPendingGoLiveForDataChange({
+        organizationId: ctx.tenant.organizationId,
+        revokedByUserId: actor.userId,
+        revokedByMembershipId: actor.membershipId,
+      });
+    }
     return updated;
   }
 

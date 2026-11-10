@@ -16,9 +16,10 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
+import { STEP_UP_POLICY } from "@chartwarden/types";
 import type { FastifyRequest, LightMyRequestResponse } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildServer } from "../src/bootstrap/index";
+import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
 import {
   HELP_REQUEST_ROUTE_RATE_LIMIT,
@@ -27,8 +28,15 @@ import {
 import {
   type TenantPlatformAbacResolver,
   buildTenantPlatformAbacPredicates,
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+  createOnboardingWizard,
+  memoryTask,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
+import type { StepTemplate } from "../src/modules/34-saas-tenant-platform/onboarding/model";
+import type { OnboardingWizard } from "../src/modules/34-saas-tenant-platform/onboarding/wizard-service";
 
 const PLATFORM_ORG = "99999999-9999-4999-8999-999999999999";
 const TENANT_ORG = "11111111-1111-4111-8111-111111111111";
@@ -70,7 +78,41 @@ const OPS_KEYS = ["support_session.list_platform", "support_session.close"];
 
 type Headers = Record<string, string>;
 
-function makeServer(opts: { fileRateLimit?: boolean } = {}) {
+/**
+ * The REAL authenticate hook over a stub session, for a tenant whose organization is still `created`: every request is the org_admin of
+ * TENANT_ORG with a fresh step-up, and the organization-stage gate (bootstrap/onboarding-org-gate.ts) judges the route template.
+ */
+const createdOrgAuthenticate = createSessionAuthenticate({
+  getSnapshot: async (request) =>
+    request.headers["x-test-user"]
+      ? { sessionId: "s-1", userId: "admin", activeOrganizationId: TENANT_ORG }
+      : null,
+  getResolver: () => ({
+    resolveActor: async () => ({
+      userId: "admin",
+      membershipId: "30000000-0000-4000-8000-0000000000ad",
+      organizationId: TENANT_ORG,
+      roles: ["org_admin"],
+      providerEntityIds: [],
+      locationIds: [],
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
+      deviceAttestation: null,
+      externalActorId: null,
+    }),
+    resolveStepUpState: async () => ({ lastStepUpAt: new Date(), lastStepUpFactor: "totp" }),
+    resolveStepUpPolicy: async () => ({
+      qualifyingFactors: STEP_UP_POLICY.qualifyingFactors,
+      maxAgeSec: STEP_UP_POLICY.defaultMaxAgeSec,
+    }),
+  }),
+  organizationStage: { isConfined: async () => true },
+});
+
+function makeServer(
+  opts: { fileRateLimit?: boolean; wizard?: OnboardingWizard; createdOrg?: boolean } = {},
+) {
   const grant = (orgId: string, userId: string, permissionKeys: string[]) => ({
     orgId,
     userId,
@@ -106,12 +148,16 @@ function makeServer(opts: { fileRateLimit?: boolean } = {}) {
   }
   reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
-  const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const app = buildServer({
+    authenticate: opts.createdOrg ? createdOrgAuthenticate : headerAuth,
+    security: { rateLimitEnabled: false },
+  });
   const registered: { method: string | string[]; url: string; config: unknown }[] = [];
   app.addHook("onRoute", (route) => {
     registered.push({ method: route.method, url: route.url, config: route.config });
   });
   mountTenantPlatformRoutes(app, {} as DbClient, {
+    ...(opts.wizard ? { onboarding: { wizard: opts.wizard } } : {}),
     help: opts.fileRateLimit
       ? {
           fileRateLimit: createRouteRateLimit({
@@ -272,29 +318,180 @@ describe("tenant support-session reads", () => {
   });
 });
 
+// The tenant skip is built (piece 7K): the same route, now over a seeded in-memory wizard, through the real guard chain.
 describe("tenant skip", () => {
-  const skip = `/api/v1/tenant/onboarding/${ID}/skip`;
+  const TENANT_ACCOUNT = "22222222-2222-4222-8222-222222222222";
+  const MAC_TASK = ID;
+  const tpl = (key: string, sequence: number, over: Partial<StepTemplate> = {}): StepTemplate => ({
+    key,
+    title: key,
+    description: "",
+    sequence,
+    owner: "either",
+    completionMode: "attestation",
+    optional: false,
+    canonical: true,
+    ...over,
+  });
+  const TEMPLATES = [
+    tpl("account_created", 1, { owner: "platform_ops" }),
+    tpl("mac_configured", 2),
+    tpl("payer_enrollment", 3),
+    tpl("sample_data_loaded", 4, { owner: "platform_ops", optional: true }),
+  ];
+
+  function seeded() {
+    const state = createMemoryWizardState({
+      tenants: [
+        {
+          tenantAccountId: TENANT_ACCOUNT,
+          organizationId: TENANT_ORG,
+          orgSlug: "acme",
+          status: "onboarding",
+          legalBusinessName: "Acme",
+          complianceOfficerMembershipId: null,
+        },
+      ],
+      templates: TEMPLATES,
+      tasks: [
+        memoryTask(TENANT_ACCOUNT, "account_created", "done"),
+        memoryTask(TENANT_ACCOUNT, "mac_configured", "pending", { id: MAC_TASK }),
+        memoryTask(TENANT_ACCOUNT, "payer_enrollment", "pending"),
+        memoryTask(TENANT_ACCOUNT, "sample_data_loaded", "pending"),
+      ],
+      baa: new Map([[TENANT_ACCOUNT, { baaStatus: "executed", expiresOn: "2028-01-01" }]]),
+      profiles: new Map([[TENANT_ORG, { displayName: "Acme", orgTimezone: "America/New_York" }]]),
+    });
+    const wizard = createOnboardingWizard({
+      activateOrganization: async () => undefined,
+      runner: createMemoryWizardRunner(state),
+      orgProfile: createMemoryOrgProfile(state),
+    });
+    return { state, wizard };
+  }
+  const skipUrl = (taskId: string) => `/api/v1/tenant/onboarding/${taskId}/skip`;
   const body = { skipRationale: "We bill outside the system" };
+  const stepped = { ...ADMIN, ...FRESH };
 
   it("is the org_admin's, under a fresh step-up, as a human, once per Idempotency-Key", async () => {
-    const { app, send } = makeServer();
-    const stepped = { ...ADMIN, ...FRESH };
-    expect((await send("POST", skip, { ...stepped, ...key() }, body)).statusCode).toBe(501);
-    // No permission key.
-    expect((await send("POST", skip, { ...MEMBER, ...FRESH, ...key() }, body)).statusCode).toBe(
-      403,
-    );
+    const { wizard, state } = seeded();
+    const { app, send } = makeServer({ wizard });
+    const url = skipUrl(MAC_TASK);
+    // No permission key: refused before anything is read.
+    expect((await send("POST", url, { ...MEMBER, ...FRESH, ...key() }, body)).statusCode).toBe(403);
     // The key without the org_admin role: the ABAC predicate refuses.
     const notAdmin = { ...ADMIN, "x-test-roles": "administrator", ...FRESH, ...key() };
-    expect((await send("POST", skip, notAdmin, body)).statusCode).toBe(403);
-    const noStepUp = await send("POST", skip, { ...ADMIN, ...key() }, body);
+    expect((await send("POST", url, notAdmin, body)).statusCode).toBe(403);
+    const noStepUp = await send("POST", url, { ...ADMIN, ...key() }, body);
     expect(noStepUp.statusCode).toBe(403);
     expect(noStepUp.json().error.code).toBe("STEP_UP_REQUIRED");
-    expect((await send("POST", skip, { ...stepped, ...AI, ...key() }, body)).statusCode).toBe(403);
-    expect((await send("POST", skip, stepped, body)).statusCode).toBe(400);
+    const ai = await send("POST", url, { ...stepped, ...AI, ...key() }, body);
+    expect(ai.statusCode).toBe(403);
+    expect(ai.json().error.message).toContain("AI principals");
+    const noKey = await send("POST", url, stepped, body);
+    expect(noKey.statusCode).toBe(400);
+    expect(noKey.json().error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
     expect(
-      (await send("POST", skip, { ...stepped, ...key() }, { skipRationale: "short" })).statusCode,
+      (await send("POST", url, { ...stepped, ...key() }, { skipRationale: "short" })).statusCode,
     ).toBe(422);
+    // Every refusal above stopped before the service: the step is untouched.
+    expect(state.tasks.find((t) => t.id === MAC_TASK)?.status).toBe("pending");
+    await app.close();
+  });
+
+  it("skips the step as the tenant, shows the tenant its own skip and nothing of an operator", async () => {
+    const { wizard, state } = seeded();
+    const { app, send } = makeServer({ wizard });
+    const res = await send("POST", skipUrl(MAC_TASK), { ...stepped, ...key() }, body);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      key: "mac_configured",
+      status: "skipped",
+      skipRationale: body.skipRationale,
+      skippedBy: "tenant",
+      skippedByLabel: "Your organization",
+      systemSkipped: false,
+      tenantSkippable: false,
+    });
+    expect(state.tasks.find((t) => t.id === MAC_TASK)?.completionEvidence.skip).toMatchObject({
+      skippedByActorKind: "tenant",
+      skippedByUserId: "admin",
+    });
+    await app.close();
+  });
+
+  it("answers the typed envelope for each refusal of the service", async () => {
+    const { wizard, state } = seeded();
+    const { app, send } = makeServer({ wizard });
+    const taskOf = (key: string) =>
+      (state.tasks.find((t) => t.templateKey === key) as { id: string }).id;
+    const fresh = () => ({ ...stepped, ...key() });
+    const refused = async (taskId: string, payload = body) => {
+      const res = await send("POST", skipUrl(taskId), fresh(), payload);
+      return { status: res.statusCode, code: res.json().error.code as string };
+    };
+    // sample data is the operator's: a tenant never skips it
+    expect(await refused(taskOf("sample_data_loaded"))).toEqual({
+      status: 409,
+      code: "ONBOARDING_STEP_NOT_TENANT_SKIPPABLE",
+    });
+    expect(await refused(taskOf("account_created"))).toEqual({
+      status: 409,
+      code: "ONBOARDING_STEP_NOT_TENANT_SKIPPABLE",
+    });
+    // out of order: payer enrollment waits for MAC credentials
+    expect(await refused(taskOf("payer_enrollment"))).toEqual({
+      status: 409,
+      code: "ONBOARDING_STEP_OUT_OF_ORDER",
+    });
+    // an identifier in the rationale
+    expect(await refused(MAC_TASK, { skipRationale: "not needed for 900-12-3456" })).toEqual({
+      status: 422,
+      code: "EVIDENCE_LOOKS_LIKE_PHI",
+    });
+    expect(await refused("70000000-0000-4000-8000-0000000000ff")).toEqual({
+      status: 404,
+      code: "NOT_FOUND",
+    });
+    // settled
+    expect((await send("POST", skipUrl(MAC_TASK), fresh(), body)).statusCode).toBe(200);
+    expect(await refused(MAC_TASK)).toEqual({
+      status: 409,
+      code: "ONBOARDING_STEP_ALREADY_SETTLED",
+    });
+    await app.close();
+  });
+
+  it("replays the cached answer for the same Idempotency-Key and body, and refuses the key with another body", async () => {
+    const { wizard, state } = seeded();
+    const { app, send } = makeServer({ wizard });
+    const headers = { ...stepped, ...key() };
+    const first = await send("POST", skipUrl(MAC_TASK), headers, body);
+    expect(first.statusCode).toBe(200);
+    // Without the cache a second skip would be 409 ONBOARDING_STEP_ALREADY_SETTLED.
+    const replay = await send("POST", skipUrl(MAC_TASK), headers, body);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toEqual(first.json());
+    const other = await send("POST", skipUrl(MAC_TASK), headers, {
+      skipRationale: "A different rationale entirely",
+    });
+    expect(other.statusCode).toBe(409);
+    expect(other.json().error.code).toBe("IDEMPOTENCY_CONFLICT");
+    expect(state.tasks.find((t) => t.id === MAC_TASK)?.status).toBe("skipped");
+    await app.close();
+  });
+
+  it("does not raise ORGANIZATION_ONBOARDING for a session on a created organization, which the gate confines to its allowlist", async () => {
+    const { wizard } = seeded();
+    const { app, send } = makeServer({ wizard, createdOrg: true });
+    const session = { "x-test-user": "admin" };
+    const res = await send("POST", skipUrl(MAC_TASK), { ...session, ...key() }, body);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "skipped", skippedBy: "tenant" });
+    // The same session is still refused a route that is not on the list: the gate is on, and this route is on it by name.
+    const clinical = await send("GET", "/api/v1/tenant/support-sessions", session);
+    expect(clinical.statusCode).toBe(403);
+    expect(clinical.json().error.code).toBe("ORGANIZATION_ONBOARDING");
     await app.close();
   });
 });

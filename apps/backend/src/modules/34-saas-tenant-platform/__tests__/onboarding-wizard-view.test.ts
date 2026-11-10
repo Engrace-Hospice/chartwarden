@@ -3,14 +3,24 @@
 import { describe, expect, it } from "vitest";
 import {
   PLATFORM_OPERATOR_LABEL,
+  TENANT_OWN_LABEL,
   type WizardView,
   redactStepForTenant,
   redactViewForTenant,
 } from "../onboarding/wizard-view";
 
 const AT = "2026-11-05T12:00:00.000Z";
+const ADMIN_VIEWER = { roles: ["org_admin"] };
 const step = (attestedBy: WizardView["steps"][number]["attestedBy"]): WizardView["steps"][number] =>
-  ({ id: "t1", key: "billing", status: "done", attestedBy }) as WizardView["steps"][number];
+  ({
+    id: "t1",
+    key: "billing",
+    status: "done",
+    attestedBy,
+    skippedBy: null,
+    skippedByLabel: null,
+    tenantSkippable: false,
+  }) as WizardView["steps"][number];
 
 const attestation = (over: Partial<NonNullable<WizardView["goLive"]["attestation"]>> = {}) =>
   ({
@@ -53,6 +63,7 @@ describe("redactStepForTenant", () => {
   it("replaces a platform operator's membership with the organisation's name and keeps the time", () => {
     const out = redactStepForTenant(
       step({ membershipId: "m-ops", actorKind: "platform_ops", label: null, at: AT }),
+      ADMIN_VIEWER,
     );
     expect(out.attestedBy).toEqual({
       membershipId: null,
@@ -65,8 +76,46 @@ describe("redactStepForTenant", () => {
 
   it("leaves a tenant member's own attestation, and an unattested step, as they are", () => {
     const own = step({ membershipId: "m-admin", actorKind: "tenant", label: null, at: AT });
-    expect(redactStepForTenant(own)).toEqual(own);
-    expect(redactStepForTenant(step(null))).toEqual(step(null));
+    expect(redactStepForTenant(own, ADMIN_VIEWER)).toEqual(own);
+    expect(redactStepForTenant(step(null), ADMIN_VIEWER)).toEqual(step(null));
+  });
+
+  const skipped = (skippedBy: "system" | "tenant" | "platform_ops") =>
+    ({
+      ...step(null),
+      status: "skipped",
+      skippedBy,
+      skipRationale: "does not apply to us",
+    }) as WizardView["steps"][number];
+
+  it("shows an operator's skip as ChartWarden operations and the tenant's own as the organization's, keeping the rationale", () => {
+    expect(redactStepForTenant(skipped("platform_ops"), ADMIN_VIEWER)).toMatchObject({
+      skippedBy: "platform_ops",
+      skippedByLabel: PLATFORM_OPERATOR_LABEL,
+      skipRationale: "does not apply to us",
+    });
+    expect(redactStepForTenant(skipped("tenant"), ADMIN_VIEWER)).toMatchObject({
+      skippedBy: "tenant",
+      skippedByLabel: TENANT_OWN_LABEL,
+    });
+    expect(redactStepForTenant(skipped("system"), ADMIN_VIEWER).skippedByLabel).toBeNull();
+    expect(redactStepForTenant(step(null), ADMIN_VIEWER).skippedByLabel).toBeNull();
+  });
+
+  it("narrows tenantSkippable to a viewer who is an org_admin, and to nobody when the viewer holds no roles", () => {
+    const open = {
+      ...step(null),
+      status: "pending",
+      tenantSkippable: true,
+    } as WizardView["steps"][number];
+    expect(redactStepForTenant(open, ADMIN_VIEWER).tenantSkippable).toBe(true);
+    expect(redactStepForTenant(open, { roles: ["administrator"] }).tenantSkippable).toBe(false);
+    expect(redactStepForTenant(open, { roles: ["compliance_officer"] }).tenantSkippable).toBe(
+      false,
+    );
+    expect(redactStepForTenant(open, { roles: [] }).tenantSkippable).toBe(false);
+    // it only ever narrows: a step the server did not offer is never offered by the redaction
+    expect(redactStepForTenant(step(null), ADMIN_VIEWER).tenantSkippable).toBe(false);
   });
 });
 
@@ -74,6 +123,7 @@ describe("redactViewForTenant", () => {
   it("hides the approving operator, keeps the reason and the time, and says who approved", () => {
     const out = redactViewForTenant(wizardView([], attestation()), {
       revokedByTenantMember: false,
+      viewer: ADMIN_VIEWER,
     });
     expect(out.goLive.attestation).toMatchObject({
       approvedByMembershipId: null,
@@ -97,13 +147,17 @@ describe("redactViewForTenant", () => {
     });
     const byOperator = redactViewForTenant(wizardView([], revoked), {
       revokedByTenantMember: false,
+      viewer: ADMIN_VIEWER,
     });
     expect(byOperator.goLive.attestation).toMatchObject({
       revokedByMembershipId: null,
       revokedByLabel: PLATFORM_OPERATOR_LABEL,
       revokeReason: "BAA addendum is being renegotiated",
     });
-    const byAdmin = redactViewForTenant(wizardView([], revoked), { revokedByTenantMember: true });
+    const byAdmin = redactViewForTenant(wizardView([], revoked), {
+      revokedByTenantMember: true,
+      viewer: ADMIN_VIEWER,
+    });
     expect(byAdmin.goLive.attestation).toMatchObject({
       revokedByMembershipId: "m-revoker",
       revokedByLabel: null,
@@ -116,7 +170,7 @@ describe("redactViewForTenant", () => {
         [step({ membershipId: "m-ops", actorKind: "platform_ops", label: null, at: AT })],
         null,
       ),
-      { revokedByTenantMember: false },
+      { revokedByTenantMember: false, viewer: ADMIN_VIEWER },
     );
     expect(out.steps[0]?.attestedBy?.membershipId).toBeNull();
     expect(out.goLive.attestation).toBeNull();

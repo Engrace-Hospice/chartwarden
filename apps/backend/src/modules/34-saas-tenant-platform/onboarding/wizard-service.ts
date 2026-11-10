@@ -19,7 +19,6 @@
 // wizard-steps.ts, the officer and the go-live are wizard-go-live.ts, what they share is wizard-core.ts, the contract is
 // wizard-types.ts (re-exported here, so importers keep one entry point).
 import { ChartWardenError } from "@chartwarden/types";
-import { notBuilt } from "../not-built";
 import { normalizeReason } from "./evidence";
 import {
   ONBOARDING_STATUS,
@@ -48,6 +47,7 @@ import type {
   WizardViewWithProfile,
 } from "./wizard-types";
 import {
+  type TenantViewer,
   type WizardStepView,
   type WizardView,
   redactStepForTenant,
@@ -208,11 +208,15 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
    * The wizard as the tenant may see it. A revocation stays attributed when its revoker is a member of the tenant's own
    * organisation (an org_admin who voided it by reassigning the officer); a platform operator's never does.
    */
-  async function forTenant<V extends WizardView>(ctx: Loaded, wizardView: V): Promise<V> {
+  async function forTenant<V extends WizardView>(
+    ctx: Loaded,
+    wizardView: V,
+    viewer: TenantViewer,
+  ): Promise<V> {
     const revoker = wizardView.goLive.attestation?.revokedByMembershipId ?? null;
     const revokedByTenantMember =
       revoker !== null && (await ctx.store.loadMember(ctx.tenant.organizationId, revoker)) !== null;
-    return redactViewForTenant(wizardView, { revokedByTenantMember });
+    return redactViewForTenant(wizardView, { revokedByTenantMember, viewer });
   }
 
   /** A platform transaction on one tenant. `actor` is the operator it acts for (every write is attributed to them). */
@@ -250,10 +254,10 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     tenant: ctx.tenant,
     view: stepView({ ...ctx, tasks: ctx.tasks.map((t) => (t.id === task.id ? task : t)) }, task),
   });
-  /** The same, for a tenant caller: a platform operator's attestation shows as the organisation, not the member. */
-  const tenantStepResult = async (ctx: Loaded, task: StepTask) => {
+  /** The same, for a tenant caller: a platform operator's attestation or skip shows as the organisation, not the member. */
+  const tenantStepResult = async (ctx: Loaded, task: StepTask, viewer: TenantViewer) => {
     const result = await stepResult(ctx, task);
-    return { ...result, view: redactStepForTenant(result.view) };
+    return { ...result, view: redactStepForTenant(result.view, viewer) };
   };
   /**
    * The org-profile write, on the TENANT pool as the actor (an operator acts through the tenant's own RLS scope, as the
@@ -393,34 +397,34 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       ),
     syncClearinghouseSteps,
 
-    getTenant: (organizationId) =>
+    getTenant: (organizationId, viewer = { roles: [] }) =>
       deps.runner.inTenant(
         { kind: "tenant", membershipId: "", userId: "", roles: [] },
         organizationId,
         async (store) => {
           const ctx = await load(store, { organizationId });
-          return forTenant(ctx, await withProfile(ctx));
+          return forTenant(ctx, await withProfile(ctx), viewer);
         },
       ),
     startTask: async (actor, organizationId, taskId) =>
       (
         await changed(
           await tenantTx(actor, organizationId, async (ctx) =>
-            tenantStepResult(ctx, await start(ctx, actor, taskId)),
+            tenantStepResult(ctx, await start(ctx, actor, taskId), actor),
           ),
         )
       ).view,
     blockTask: async (actor, organizationId, taskId, reason) =>
       (
         await tenantTx(actor, organizationId, async (ctx) =>
-          tenantStepResult(ctx, await block(ctx, actor, taskId, reason)),
+          tenantStepResult(ctx, await block(ctx, actor, taskId, reason), actor),
         )
       ).view,
     attestTask: async (actor, organizationId, taskId, input) =>
       (
         await changed(
           await tenantTx(actor, organizationId, async (ctx) =>
-            tenantStepResult(ctx, await attest(ctx, actor, taskId, input)),
+            tenantStepResult(ctx, await attest(ctx, actor, taskId, input), actor),
           ),
         )
       ).view,
@@ -428,14 +432,18 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       (
         await changed(
           await tenantTx(actor, organizationId, async (ctx) =>
-            tenantStepResult(ctx, await reopen(ctx, actor, taskId, reason)),
+            tenantStepResult(ctx, await reopen(ctx, actor, taskId, reason), actor),
           ),
         )
       ).view,
-    // Slice 7: the wire contract is frozen, the rule is piece 7K's (it replaces this with the real skip).
-    tenantSkip: async () => {
-      throw notBuilt("the tenant's own onboarding skip");
-    },
+    tenantSkip: async (actor, organizationId, taskId, rationale) =>
+      (
+        await changed(
+          await tenantTx(actor, organizationId, async (ctx) =>
+            tenantStepResult(ctx, await skip(ctx, actor, taskId, rationale), actor),
+          ),
+        )
+      ).view,
     setOrgProfile: (actor, organizationId, patch) => profileResult(organizationId, patch, actor),
     setComplianceOfficer: async (actor, organizationId, membershipId) => {
       const done = await tenantTx(actor, organizationId, async (ctx) => ({
@@ -449,7 +457,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     },
     attestGoLive: (actor, organizationId, note) =>
       tenantTx(actor, organizationId, async (ctx) =>
-        forTenant(ctx, await goLiveAttest(ctx, actor, note)),
+        forTenant(ctx, await goLiveAttest(ctx, actor, note), actor),
       ),
   };
 }

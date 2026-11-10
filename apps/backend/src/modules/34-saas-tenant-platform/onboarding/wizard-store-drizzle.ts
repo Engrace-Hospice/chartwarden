@@ -23,7 +23,7 @@ import {
   lockTenantOnboardingShared,
 } from "../routes/platform/tenant-onboarding-lock";
 import { voidPendingGoLiveForDataChange as voidPendingGoLive } from "./go-live-void";
-import { SYSTEM_MEMBERSHIP_ID } from "./model";
+import { skipActorKindOf } from "./model";
 import type {
   CompletionMode,
   GoLiveAttestation,
@@ -69,31 +69,38 @@ export const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => 
   canonical: row.isCanonical,
 });
 
-export const toTask = (row: schema.OnboardingTask): StepTask => ({
-  id: row.id,
-  templateKey: row.templateKey,
-  status: row.status as TaskStatus,
-  assignedToMembershipId: row.assignedToMembershipId,
-  createdAt: row.createdAt,
-  dueAt: row.dueAt,
-  startedAt: row.startedAt,
-  completedAt: row.completedAt,
-  blockerReason: row.blockerReason,
-  evidenceNote: row.evidenceNote,
-  evidenceRef: row.evidenceRef,
-  attestedByMembershipId: row.attestedByMembershipId,
-  attestedByActorKind: row.attestedByActorKind as StepTask["attestedByActorKind"],
-  attestedAt: row.attestedAt,
-  skipRationale:
+export const toTask = (row: schema.OnboardingTask): StepTask => {
+  const skip =
     row.status === "skipped"
-      ? ((row.completionEvidence as { skip?: { rationale?: string } } | null)?.skip?.rationale ??
-        null)
-      : null,
-  skippedBySystem:
-    row.status === "skipped" &&
-    (row.completionEvidence as { skip?: { skippedByMembershipId?: string } } | null)?.skip
-      ?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID,
-});
+      ? (
+          row.completionEvidence as {
+            skip?: {
+              rationale?: string;
+              skippedByMembershipId?: string;
+              skippedByActorKind?: string;
+            };
+          } | null
+        )?.skip
+      : undefined;
+  return {
+    id: row.id,
+    templateKey: row.templateKey,
+    status: row.status as TaskStatus,
+    assignedToMembershipId: row.assignedToMembershipId,
+    createdAt: row.createdAt,
+    dueAt: row.dueAt,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    blockerReason: row.blockerReason,
+    evidenceNote: row.evidenceNote,
+    evidenceRef: row.evidenceRef,
+    attestedByMembershipId: row.attestedByMembershipId,
+    attestedByActorKind: row.attestedByActorKind as StepTask["attestedByActorKind"],
+    attestedAt: row.attestedAt,
+    skipRationale: row.status === "skipped" ? (skip?.rationale ?? null) : null,
+    skippedByActorKind: row.status === "skipped" ? skipActorKindOf(skip) : null,
+  };
+};
 
 export const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
   id: row.id,
