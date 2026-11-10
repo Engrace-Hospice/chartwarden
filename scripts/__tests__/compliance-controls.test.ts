@@ -667,9 +667,13 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
   const withSettings = (mutate: (s: any) => void) => run({ settings: edit(settings, mutate) });
 
   describe("(a) the Codex hook timeout must exceed the perl alarm", () => {
-    it("derives the alarm from the pinned command", () => {
+    it("pins the whole command, the 8 s alarm included, as a literal", () => {
+      // Written out, not built from CODEX_ALARM_SECONDS: a test that interpolates the constant it checks passes
+      // whatever the constant is, and the 9 s timeout floor below is derived from that same constant.
       expect(CODEX_ALARM_SECONDS).toBe(8);
-      expect(CODEX_GUARD_COMMAND).toContain(`alarm ${CODEX_ALARM_SECONDS};`);
+      expect(CODEX_GUARD_COMMAND).toBe(
+        `perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
+      );
     });
     it.each([1, 5, 8])(
       "fails a timeout of %s: Codex's own timeout would fire first and let the call run",
@@ -699,6 +703,28 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       expect(parsed.hooks.Stop[0].hooks[0].timeout).toBe(300);
       expect(run()).toEqual([]);
     });
+  });
+
+  // A 0, negative or fractional timeout kills the hook before it answers, and the Stop gate or ledger then never runs.
+  describe("(b2) the ledger's and the Stop gate's timeouts are sane integers", () => {
+    const withTimeout = (event: "PostToolUse" | "Stop", t: unknown) =>
+      withSettings((s) => {
+        s.hooks[event][0].hooks[0].timeout = t;
+      }).join("\n");
+
+    it.each(["PostToolUse", "Stop"] as const)("fails a %s timeout outside 5 to 600", (event) => {
+      for (const t of [0, 0.001, -1, 4, 601, 9.5, "10", null]) {
+        expect(withTimeout(event, t), `${event} ${JSON.stringify(t)}`).toMatch(
+          new RegExp(`${event} hook for scripts/harness/\\S+ needs an integer timeout of 5 to 600`),
+        );
+      }
+    });
+    it.each(["PostToolUse", "Stop"] as const)(
+      "accepts a %s timeout of 5, 10, 300 or 600",
+      (event) => {
+        for (const t of [5, 10, 300, 600]) expect(withTimeout(event, t), `${event} ${t}`).toBe("");
+      },
+    );
   });
 
   describe("(c) settings keys that switch the guard off", () => {
@@ -736,6 +762,13 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       ["CLAUDE_PROJECT_DIR", "/tmp/elsewhere"],
       ["CW_HARNESS_ROOT_FOR_TESTS", "/tmp/elsewhere"],
       ["BUN_OPTIONS", "--preload ./evil.ts"],
+      ["CODEX_HOME", "/tmp/codex-without-hooks"],
+      ["CLAUDE_CONFIG_DIR", "/tmp/claude-without-hooks"],
+      ["LD_PRELOAD", "/tmp/evil.so"],
+      ["DYLD_INSERT_LIBRARIES", "/tmp/evil.dylib"],
+      ["BASH_ENV", "/tmp/evil.sh"],
+      ["ENV", "/tmp/evil.sh"],
+      ["PATH", "/tmp/evil-bin:/usr/bin"],
     ])("fails an env entry setting %s", (key, value) => {
       const v = withSettings((s) => {
         s.env[key] = value;
@@ -867,6 +900,63 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       const inputs = readHarnessInputs(ROOT);
       expect(inputs.gitignoreProbe).toBeDefined();
       expect(checkHarness(inputs)).toEqual([]);
+    });
+  });
+
+  // The probe runs in pre-commit and CI: it must answer in bounded time and report, never throw or hang.
+  describe("(e) probeGitignore reports a git it cannot run, and gives up on one that hangs", () => {
+    const made: string[] = [];
+    const tmp = (): string => {
+      const dir = mkdtempSync(join(tmpdir(), "cw-probe-test-"));
+      made.push(dir);
+      return dir;
+    };
+    afterAll(() => {
+      for (const dir of made) rmSync(dir, { recursive: true, force: true });
+    });
+    /** The probe's temp directories come from `os.tmpdir()`, which reads TMPDIR on every call. */
+    const withTmpdir = <T>(dir: string, fn: () => T): T => {
+      const saved = process.env.TMPDIR;
+      process.env.TMPDIR = dir;
+      try {
+        return fn();
+      } finally {
+        if (saved === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
+        else process.env.TMPDIR = saved;
+      }
+    };
+
+    it("answers an error, not a pass, when git is not on PATH, and removes its temp directory", () => {
+      const noGit = tmp();
+      const scratch = tmp();
+      const probe = withTmpdir(scratch, () =>
+        probeGitignore(gitignore, undefined, { env: { ...process.env, PATH: noGit } }),
+      );
+      expect(probe).toHaveProperty("error");
+      expect(readdirSync(scratch)).toEqual([]);
+      expect(run({ gitignoreProbe: probe }).join("\n")).toMatch(/could not probe it with git/);
+    });
+    it("gives up on a git that hangs instead of waiting for it", () => {
+      const bin = tmp();
+      writeFileSync(join(bin, "git"), "#!/bin/sh\nexec sleep 30\n", { mode: 0o755 });
+      const scratch = tmp();
+      const started = Date.now();
+      const probe = withTmpdir(scratch, () =>
+        probeGitignore(gitignore, undefined, {
+          env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` },
+          timeoutMs: 300,
+        }),
+      );
+      expect(Date.now() - started).toBeLessThan(10_000);
+      expect(probe).toHaveProperty("error");
+      expect(readdirSync(scratch)).toEqual([]);
+    });
+    it("answers an error, not an exception, when its temp directory cannot be made", () => {
+      const probe = withTmpdir(join(tmp(), "does-not-exist"), () => probeGitignore(gitignore));
+      expect(probe).toHaveProperty("error");
+    });
+    it("still answers with the real git and the default bounds", () => {
+      expect(probeGitignore(gitignore)).toHaveProperty("paths");
     });
   });
 });

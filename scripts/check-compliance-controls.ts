@@ -240,15 +240,28 @@ export const FORBIDDEN_ENV = [
   "CW_HARNESS_ROOT_FOR_TESTS",
   // bun reads it for every run, and `--preload x.ts` in it runs x.ts before the hook script (verified).
   "BUN_OPTIONS",
+  // Re-point an agent at a configuration directory that has no hooks.
+  "CODEX_HOME",
+  "CLAUDE_CONFIG_DIR",
+  // Run code, or choose which `bun`, `perl` or `git` runs, before the hook script does.
+  "LD_PRELOAD",
+  "DYLD_INSERT_LIBRARIES",
+  "BASH_ENV",
+  "ENV",
+  "PATH",
 ] as const;
 
 /** The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. */
 const CLAUDE_GUARD_TIMEOUT_RANGE = [5, 30] as const;
+/** The ledger's and the Stop gate's `timeout` (seconds), when one is set: a sane integer. The pinned values are 10 and 300. */
+const CLAUDE_OTHER_HOOK_TIMEOUT_RANGE = [5, 600] as const;
 /** Upper bound for the Codex guard's `timeout` (seconds); the lower bound is the perl alarm plus one. */
 const CODEX_GUARD_TIMEOUT_MAX = 30;
 
+const hooksFor = (s: Settings, event: string): NonNullable<HookEntry["hooks"]> =>
+  (s.hooks?.[event] ?? []).flatMap((h) => h.hooks ?? []);
 const commandsFor = (s: Settings, event: string): string[] =>
-  (s.hooks?.[event] ?? []).flatMap((h) => (h.hooks ?? []).map((x) => x.command ?? ""));
+  hooksFor(s, event).map((x) => x.command ?? "");
 
 /**
  * The one matcher Codex's guard runs under: shell commands, file edits (which arrive as `apply_patch`) and MCP
@@ -411,11 +424,11 @@ export type IgnoreProbe =
   | { readonly error: string };
 
 /** The environment for a throwaway `git` that reads no user, system or inherited-repo configuration. */
-function isolatedGitEnv(home: string): NodeJS.ProcessEnv {
+function isolatedGitEnv(home: string, inherited: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   // A git hook (pre-commit runs this gate) exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE: inherited, they
   // would point the probe at the real repository.
-  for (const [k, val] of Object.entries(process.env)) if (!k.startsWith("GIT_")) env[k] = val;
+  for (const [k, val] of Object.entries(inherited)) if (!k.startsWith("GIT_")) env[k] = val;
   return {
     ...env,
     HOME: home,
@@ -426,26 +439,46 @@ function isolatedGitEnv(home: string): NodeJS.ProcessEnv {
   };
 }
 
+/** A git that takes longer than this is hung: the probe runs in pre-commit and CI, which must not wait for it. */
+const GIT_PROBE_TIMEOUT_MS = 10_000;
+
+/** What {@link probeGitignore} runs git with: the inherited environment (its PATH finds `git`) and a per-call timeout. */
+export interface ProbeOptions {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly timeoutMs?: number;
+}
+
 /**
  * Asks git itself which of `paths` the `.gitignore` text ignores: a throwaway repository, the text as its
  * `.gitignore`, one `git check-ignore --no-index -v -n -z --stdin`. A text match cannot see order or globs (a
  * later `!**\/.codex/config.toml`, `.agents/rules/*` or `.claude/*` changes what is committed; the text still
  * "contains" every line it used to). The last matching rule is the one reported; a `!` rule means re-included.
- * Failing to run git is an `error`, never an empty pass.
+ * Failing to run git, a git that does not answer within the timeout, and a temp directory that cannot be made are
+ * each an `error`, never an empty pass and never an exception.
  */
 export function probeGitignore(
   text: string,
   paths: readonly string[] = [...SHARED_PROBE_PATHS, ...LOCAL_PROBE_PATHS],
+  { env: inherited = process.env, timeoutMs = GIT_PROBE_TIMEOUT_MS }: ProbeOptions = {},
 ): IgnoreProbe {
-  const dir = mkdtempSync(join(tmpdir(), "cw-gitignore-"));
+  let dir: string | undefined;
   try {
-    const env = isolatedGitEnv(dir);
+    dir = mkdtempSync(join(tmpdir(), "cw-gitignore-"));
+    const cwd = dir;
+    const env = isolatedGitEnv(cwd, inherited);
     const git = (args: string[], input?: string) =>
-      spawnSync("git", args, { cwd: dir, env, input, encoding: "utf8" });
+      spawnSync("git", args, {
+        cwd,
+        env,
+        input,
+        encoding: "utf8",
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+      });
     const init = git(["init", "-q", "--template="]);
     if (init.error || init.status !== 0)
       return { error: `git init failed: ${init.error?.message ?? init.stderr.trim()}` };
-    writeFileSync(join(dir, ".gitignore"), text);
+    writeFileSync(join(cwd, ".gitignore"), text);
     const r = git(
       ["check-ignore", "--no-index", "-v", "-n", "-z", "--stdin"],
       `${paths.join("\0")}\0`,
@@ -476,7 +509,7 @@ export function probeGitignore(
   } catch (e) {
     return { error: String(e) };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -581,6 +614,17 @@ export function checkHarness(files: HarnessFiles): string[] {
       v.push(
         `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`${BUN_HARDENED}\`: a bunfig.toml preload or a tsconfig.json paths map would otherwise run or replace code before it)`,
       );
+    // The guard's own timeout is checked below; the ledger and the Stop gate may take longer, but a 0 or negative
+    // one kills them before they run.
+    if (p.event === "PreToolUse") continue;
+    const [min, max] = CLAUDE_OTHER_HOOK_TIMEOUT_RANGE;
+    for (const h of hooksFor(s, p.event).filter((x) => (x.command ?? "").includes(script))) {
+      if (h.timeout === undefined) continue;
+      if (!Number.isInteger(h.timeout) || h.timeout < min || h.timeout > max)
+        v.push(
+          `.claude/settings.json: the ${p.event} hook for ${script} needs an integer timeout of ${min} to ${max} seconds (a 0 or negative timeout kills it before it runs)`,
+        );
+    }
   }
   for (const d of REQUIRED_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
