@@ -54,13 +54,21 @@ describe("a duplicate while the first request is still running", () => {
     await app?.close();
   });
 
+  /** Resolves once the first request is inside its handler, i.e. it holds the claim. */
+  const firstHoldsClaim = async (): Promise<void> => {
+    const deadline = Date.now() + 2_000;
+    while (runs === 0 && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    expect(runs).toBe(1);
+  };
+
   const post = (url = "/write", key = "key-in-flight", payload: object = { a: 1 }) =>
     app.inject({ method: "POST", url, headers: { "idempotency-key": key }, payload });
 
   it("answers 409 IDEMPOTENCY_IN_FLIGHT in the standard envelope, and the handler runs once", async () => {
     await build();
     const first = post();
-    await new Promise((resolve) => setTimeout(resolve, 20)); // the first request holds the claim
+    await firstHoldsClaim();
     const duplicate = await post();
     expect(duplicate.statusCode).toBe(409);
     expect(duplicate.json()).toEqual({
@@ -79,7 +87,7 @@ describe("a duplicate while the first request is still running", () => {
   it("the key stays usable: once the first request completes, the same key replays its response", async () => {
     await build();
     const first = post();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await firstHoldsClaim();
     expect((await post()).json().error.code).toBe("IDEMPOTENCY_IN_FLIGHT");
     finishFirst();
     await first;
@@ -93,7 +101,7 @@ describe("a duplicate while the first request is still running", () => {
     await build();
     expect((await post("/conflict", "key-business")).json().error.code).toBe("CONFLICT");
     const first = post();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await firstHoldsClaim();
     const differentBody = await post("/write", "key-in-flight", { a: 2 });
     expect(differentBody.statusCode).toBe(409);
     expect(differentBody.json().error.code).toBe("IDEMPOTENCY_CONFLICT");

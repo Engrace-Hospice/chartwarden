@@ -6,6 +6,21 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — More operator free-text fields refuse a patient identifier (`422 EVIDENCE_LOOKS_LIKE_PHI`)
+
+**Why.** Text typed by an operator and stored on a row a tenant can read, or copied into the audit trail, is no place for a patient.
+Some fields were screened and some were not.
+
+- These fields are now refused with `422 EVIDENCE_LOOKS_LIKE_PHI` (the same code, status and envelope as the fields that were already
+  screened; the error names the field and never echoes the value) when they hold an SSN- or MBI-shaped value: the platform
+  DEK-rotation `reason`, the feature-flag `rationale`, the support-session close `note`, the signup-intent rejection
+  `rejectionReason`, the DSAR extension `reason` and denial `narrative`, the onboarding org-profile `displayName` (both surfaces), and
+  M35's refund `reasonDetail` and refund-denial `reason`.
+- The screen itself is stricter: a nine-digit value is no longer excused because a bare number sits near it ("SSN 900 123 456, 5 days"),
+  a long run of spaces between groups no longer hides it, and the refusal text now says to cite documents by title or ticket number and
+  that long ids and UUIDs can also trip the check. If a legitimate note is refused, cite the document by its title.
+- Not screened, on purpose: an unbroken run of ten to twelve digits (NPIs, phone numbers, ticket numbers).
+
 ## 2026-11-09 — New error code `IDEMPOTENCY_IN_FLIGHT`: your first request with this key is still running
 
 **Why.** A duplicate that arrived while the first request with the same `Idempotency-Key` was still running was answered as a
