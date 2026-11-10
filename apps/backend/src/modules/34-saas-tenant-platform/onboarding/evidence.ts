@@ -42,6 +42,10 @@ function cleanText(field: string, raw: string): string {
   if (raw.includes("\u0000")) {
     throw refuse("ONBOARDING_TEXT_INVALID", field, `${field} must not contain NUL characters`);
   }
+  // Screened as typed (a control character between digits is a separator to the screen: stripped first it would join them into an
+  // unbroken run, which the screen lets through on purpose) and again as stored (a run of control characters longer than the
+  // screen's separator window hides nothing once it is stripped).
+  assertNoPatientIdentifier(field, raw);
   const text = raw.replace(STRIPPED_CONTROL, "").trim();
   assertNoPatientIdentifier(field, text);
   return text;
