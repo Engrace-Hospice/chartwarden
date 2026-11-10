@@ -241,6 +241,10 @@ describe("a harness switch asks however it is spelled, where the original text r
     /\b(CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR)=/;
 
   const SPELLINGS = [
+    // the escaped-quote spellings the first splitter read as an open quote (code review M4)
+    "echo \\' ; CODEX_HOME=/tmp/x codex exec hi",
+    "echo it\\'s ; CLAUDE_CONFIG_DIR=/tmp/c claude -p hi",
+    "echo hi # '\nCODEX_HOME=/tmp/x codex exec hi",
     // direct
     "CW_STOP_GATE=off claude",
     "CODEX_HOME=/tmp/h codex exec hi",
@@ -283,8 +287,8 @@ describe("a harness switch asks however it is spelled, where the original text r
     "git config alias.x '!CODEX_HOME=/tmp/h codex'",
   ];
 
-  it("lists at least 25 spellings, each one the original text rule asked about", () => {
-    expect(SPELLINGS.length).toBeGreaterThanOrEqual(25);
+  it("lists at least 35 spellings, each one the original text rule asked about", () => {
+    expect(SPELLINGS.length).toBeGreaterThanOrEqual(35);
     for (const cmd of SPELLINGS) expect(MAIN_TEXT_RULE.test(cmd), cmd).toBe(true);
   });
 

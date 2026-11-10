@@ -20,7 +20,7 @@
  */
 import { userInfo } from "node:os";
 
-import { type SwitchHelpers, switchesHarness } from "./harness-switch";
+import { switchesHarness } from "./harness-switch";
 import {
   BARE,
   COMMENT,
@@ -1019,13 +1019,6 @@ const echo = (token: string): string => {
 const deny = (reason: string): BashVerdict => ({ decision: "deny", reason: scrub(reason) });
 const ask = (reason: string): BashVerdict => ({ decision: "ask", reason: scrub(reason) });
 
-/** What the harness-switch rule needs from this file: git's subcommand, and sed's flag clusters. */
-const SWITCH_HELPERS: SwitchHelpers = {
-  gitSubcommand: (args) => gitInvocation(args).sub,
-  clusterHas: (arg, letters) => clusterHas(arg, letters),
-  isInPlace: (arg) => isInPlace(arg),
-};
-
 const MAX_NESTING = 8;
 
 // Every `$( … )` is judged as a command line of its own, so a few thousand nested ones fan out without
@@ -1105,7 +1098,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   // --- Switching the harness itself off is the human's call, however it is spelled. `CODEX_HOME` and
   // `CLAUDE_CONFIG_DIR` re-point an agent at a config directory that has no hooks; `CLAUDE_PROJECT_DIR` and
   // `CW_HARNESS_ROOT_FOR_TESTS` re-point the guard at another tree, so protected-path matching runs there.
-  if (switchesHarness(parts, parsedParts, SWITCH_HELPERS)) {
+  if (switchesHarness(parts, parsedParts, gitInvocation)) {
     return ask(
       "That variable switches off or re-points part of the agent harness (Stop gate, ledger, guard fail-closed, its project root, an ECC hook, or the hook configuration an agent loads). A human decides.",
     );
