@@ -1131,7 +1131,18 @@ function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } 
       },
     }),
     // a write also voids a pending go-live attestation (`voidPendingGoLiveForDataChange`): the stub has none to revoke
-    update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
+    update: (table: unknown) => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => {
+            if (table === schema.tenantGoLiveAttestation) {
+              trace.push("update:tenant_go_live_attestation");
+            }
+            return [];
+          },
+        }),
+      }),
+    }),
     // `set_config('app.org_id' | 'app.user_id', …)` and the onboarding advisory lock
     execute: async (query: { queryChunks?: unknown[] }) => {
       trace.push(`exec:${JSON.stringify(query.queryChunks ?? query)}`);
@@ -1429,6 +1440,49 @@ describe("service: the clearinghouse choice", () => {
     });
     expect(JSON.stringify(inserts[0]?.values)).not.toContain(SECRET);
     expect(settled).toEqual([TARGET_ORG]);
+  });
+
+  it("does not void a pending go-live attestation for idempotent clearinghouse writes", async () => {
+    const putDb = stubDb("onboarding");
+    const noOpPut = fakePort({
+      put: async () => ({
+        resourceId: CONFIG_ID,
+        created: false,
+        view: { vendor: "claimmd", hasSecret: true },
+        changedFields: [],
+      }),
+    });
+    const putService = buildDrizzleOnboardingDataService({
+      db: putDb.db,
+      resolveTenant,
+      clearinghouse: noOpPut.port,
+    });
+    await putService.putClearinghouse(
+      OPERATOR,
+      "tenant-b",
+      { vendor: "claimmd", mode: "test" },
+      "ticket CHG-1",
+      4,
+    );
+    expect(putDb.trace).not.toContain("update:tenant_go_live_attestation");
+
+    const verifyDb = stubDb("active");
+    const noOpVerify = fakePort({
+      verifyBaa: async () => ({
+        resourceId: CONFIG_ID,
+        view: { status: "verified", baa: { verified: {} } },
+        dataChanged: false,
+      }),
+    });
+    const verifyService = buildDrizzleOnboardingDataService({
+      db: verifyDb.db,
+      resolveTenant,
+      clearinghouse: noOpVerify.port,
+    });
+    await verifyService.verifyClearinghouseBaa(OPERATOR, "tenant-b", "ticket CHG-7", {
+      recordedAt: BAA_PIN,
+    });
+    expect(verifyDb.trace).not.toContain("update:tenant_go_live_attestation");
   });
 
   it("verify audits how it was verified and the test outcome and settles the wizard step", async () => {

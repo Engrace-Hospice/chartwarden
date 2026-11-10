@@ -24,6 +24,8 @@ export interface OnboardingClearinghouseResult {
   readonly created?: boolean;
   /** `put`: the body fields the operator sent (names only). */
   readonly changedFields?: readonly string[];
+  /** False only when the operation was idempotent and changed no onboarding evidence. */
+  readonly dataChanged?: boolean;
   /** Non-sensitive facts for the audit row (`verify`: how it was verified and the test outcome). */
   readonly detail?: Readonly<Record<string, string | number | boolean>>;
   /** `verify`: the connection-test outcome when a test ran. */

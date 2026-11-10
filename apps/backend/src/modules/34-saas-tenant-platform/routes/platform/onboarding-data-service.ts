@@ -265,6 +265,8 @@ interface WriteResult<T> {
   readonly value: T;
   readonly resourceId: string;
   readonly changedFields?: readonly string[];
+  /** False for a successful idempotent retry that changed no onboarding evidence. */
+  readonly dataChanged?: boolean;
   /** Non-sensitive facts for the audit row (counts, codes, kinds). */
   readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }
@@ -384,11 +386,13 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           const done = await run(tx, target);
           // A pending go-live attestation said this data was ready: the write makes that stale, so it is voided in the same
           // transaction (the attestation and the write commit or roll back together).
-          await voidPendingGoLiveForDataChange(tx, {
-            organizationId: target.organizationId,
-            revokedByUserId: op.userId,
-            revokedByMembershipId: op.membershipId,
-          });
+          if (done.dataChanged !== false) {
+            await voidPendingGoLiveForDataChange(tx, {
+              organizationId: target.organizationId,
+              revokedByUserId: op.userId,
+              revokedByMembershipId: op.membershipId,
+            });
+          }
           await recordOnboardingAudit(tx, op, target, {
             eventType: spec.event,
             resourceKind: spec.resourceKind,
@@ -651,6 +655,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           return {
             value: { created: done.created === true, view: done.view },
             resourceId: done.resourceId,
+            dataChanged: done.changedFields?.length !== 0,
             ...(done.changedFields ? { changedFields: done.changedFields } : {}),
           };
         },
@@ -707,6 +712,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           return {
             value: done.view,
             resourceId: done.resourceId,
+            dataChanged: done.dataChanged,
             ...(done.detail ? { detail: done.detail } : {}),
           };
         },

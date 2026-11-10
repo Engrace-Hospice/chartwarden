@@ -404,6 +404,13 @@ export function createTenantClearinghouseService(
   deps: TenantClearinghouseServiceDeps,
 ): TenantClearinghouseService {
   const now = deps.now ?? (() => new Date());
+  /** `recordedAt` is the record's If-Match token, so a replacement must advance even when the clock has not. */
+  const nextBaaRecordedAt = (previous: Date | null): Date => {
+    const candidate = now();
+    return previous && candidate.getTime() <= previous.getTime()
+      ? new Date(previous.getTime() + 1)
+      : candidate;
+  };
 
   const verifiableBy = (vendor: string | null): ClearinghouseConfigView["verifiableBy"] => {
     if (vendor === null || !isTransmitting(vendor)) return null;
@@ -848,7 +855,7 @@ export function createTenantClearinghouseService(
         baaVendor: row.vendor,
         baaEffectiveDate: record.effectiveDate,
         baaDocumentRef: record.documentRef,
-        baaRecordedAt: now(),
+        baaRecordedAt: nextBaaRecordedAt(row.baaRecordedAt),
         baaRecordedByMembershipId: actor.membershipId,
         // a changed record has not been looked at: the operator verifies it again
         ...BAA_VERIFICATION_CLEARED,

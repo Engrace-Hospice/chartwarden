@@ -426,7 +426,7 @@ export function registerOnboardingDataRoutes(
   // read. NO FREE TEXT: the body is a closed `reasonCode` and a `ticketRef` (the tenant reads the audit trail, and a durable column
   // copies both), validated here against the closed set and the ticket pattern before anything is written or audited. 409
   // CLEARINGHOUSE_BAA_NOT_RECORDED / CLEARINGHOUSE_BAA_REVOKED for a record that is not there or is already revoked. Rate limited per
-  // operator and per target tenant (fail-open: see the dep's note).
+  // operator and across the platform (fail-open: see the dep's note).
   app.post(
     "/api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke",
     { preHandler: [...CLEARINGHOUSE_REVOKE] },

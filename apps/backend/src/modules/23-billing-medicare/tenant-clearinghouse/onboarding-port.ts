@@ -130,16 +130,15 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
 
     async verifyBaa(tx, scope, expected, options) {
       await assertTxScopedToOrg(tx, scope.organizationId);
-      const view = await service.verifyBaa(
-        createDrizzleConfigStore(tx),
-        actorFor(scope),
-        expected,
-        options,
-      );
+      const store = createDrizzleConfigStore(tx);
+      // Hold the same row lock the service will reuse so `dataChanged` describes this exact write, not a pre-read race.
+      const before = await store.findForUpdate(scope.organizationId);
+      const view = await service.verifyBaa(store, actorFor(scope), expected, options);
       // The audit row names the record that was verified (a screened document reference and a date: never patient data), and says
       // when the operator verified a document that was revoked before (the earlier revocation's time): a knowing supersession.
       const previous = view.baa?.previousRevocation;
       return withId(tx, scope, view, {
+        dataChanged: before?.baaVerifiedAt === null,
         detail: {
           baaVerified: view.baa?.verified !== null && view.baa?.verified !== undefined,
           ...(view.baa
