@@ -59,7 +59,9 @@ const SITES: readonly Site[] = [
     path: `${BASE}/ready`,
     okBody: { claimId: CLAIM_ID, state: "ready" },
     permissions: grants,
-    press: async () => fireEvent.click(await screen.findByRole("button", { name: "Mark ready" })),
+    press: async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Mark ready" }));
+    },
   },
   {
     name: "void",
@@ -114,8 +116,9 @@ const SITES: readonly Site[] = [
         rejectedCorrection: { eligible: true, reasonCode: "VERIFIED_CLEARINGHOUSE_REJECTION" },
       },
     },
-    press: async () =>
-      fireEvent.click(await screen.findByRole("button", { name: "Create corrected draft" })),
+    press: async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Create corrected draft" }));
+    },
   },
   {
     name: "validation override",

@@ -3,7 +3,10 @@
 // (packages/ui/src/core/ops-write/idempotency-key.ts). This pins the two together: if the server's in-flight error changes its message
 // or status, the UI would quietly start renewing the key on it, and a duplicate write would follow; this fails first.
 import { describe, expect, it } from "vitest";
-import { IdempotencyInFlightError } from "../../packages/shared/src/idempotency/idempotency";
+import {
+  IdempotencyInFlightError,
+  IdempotencyKeyStuckError,
+} from "../../packages/shared/src/idempotency/idempotency";
 import {
   IDEMPOTENCY_IN_FLIGHT_CODE,
   IDEMPOTENCY_KEY_STUCK_CODE,
@@ -21,9 +24,7 @@ describe("the server's in-flight Idempotency-Key error and the UI's reading of i
   it("is a 409 whose message is the one the UI's deploy-window stopgap matches", () => {
     expect(error.statusCode).toBe(409);
     expect(error.message).toBe(LEGACY_IN_FLIGHT_MESSAGE);
-    // When the server gives this error a code of its own (IDEMPOTENCY_IN_FLIGHT), add ONE assertion here:
-    //   expect(error.code).toBe(IDEMPOTENCY_IN_FLIGHT_CODE);
-    // and delete LEGACY_IN_FLIGHT_MESSAGE / isLegacyInFlight from the UI leaf.
+    expect(error.code).toBe(IDEMPOTENCY_IN_FLIGHT_CODE);
   });
 
   it("is recognised by the UI as an in-flight duplicate, so the key is kept", () => {
@@ -47,13 +48,13 @@ describe("the server's in-flight Idempotency-Key error and the UI's reading of i
     expect(keepsKey(409, code(IDEMPOTENCY_KEY_STUCK_CODE))).toBe(false);
   });
 
-  // TODO(slice A merged): the server's in-flight error gets its own code and a pending claim older than 15 minutes answers 409
-  // IDEMPOTENCY_KEY_STUCK ("The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this
-  // key: ..."). When that lands in this tree, replace this todo with the real assertions on the server's error classes:
-  //   expect(inFlight.code).toBe(IDEMPOTENCY_IN_FLIGHT_CODE);   expect(inFlight.statusCode).toBe(409);
-  //   expect(stuck.code).toBe(IDEMPOTENCY_KEY_STUCK_CODE);      expect(stuck.statusCode).toBe(409);
-  // then delete LEGACY_IN_FLIGHT_MESSAGE / isLegacyInFlight from the UI leaf (and the stopgap assertions above).
-  it.todo(
-    "(after slice A) the server's in-flight error carries IDEMPOTENCY_IN_FLIGHT and a stuck claim answers 409 IDEMPOTENCY_KEY_STUCK",
-  );
+  it("cross-checks both coded server errors against the UI variants", () => {
+    const inFlight = new IdempotencyInFlightError("in-flight-key");
+    const stuck = new IdempotencyKeyStuckError("stuck-key");
+
+    expect(inFlight.code).toBe(IDEMPOTENCY_IN_FLIGHT_CODE);
+    expect(inFlight.statusCode).toBe(409);
+    expect(stuck.code).toBe(IDEMPOTENCY_KEY_STUCK_CODE);
+    expect(stuck.statusCode).toBe(409);
+  });
 });
