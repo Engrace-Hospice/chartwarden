@@ -196,6 +196,56 @@ describe("describeOpsError", () => {
       "BAA_UPLOAD_TOO_LARGE",
     );
   });
+
+  describe("a 429", () => {
+    const headers = (retryAfter: string | null) => ({ get: () => retryAfter });
+
+    it("is a rate-limit kind with clear words, with the API's envelope and with nginx's bare page alike", () => {
+      const enveloped = describeOpsError(envelope("RATE_LIMITED", "rate limit exceeded"), {
+        status: 429,
+      });
+      const bare = describeOpsError("<html>429 Too Many Requests</html>", { status: 429 });
+      for (const failure of [enveloped, bare]) {
+        expect(failure.kind).toBe("rate-limited");
+        expect(failure.code).toBe("RATE_LIMITED");
+        expect(failure.message).toBe("Too many attempts. Wait a minute, then try again.");
+      }
+      // the API's own correlation id is still carried, so support can find the refusal
+      expect(enveloped.correlationId).toBe("corr-1");
+      expect(bare.correlationId).toBeNull();
+    });
+
+    it("a caller's copy for RATE_LIMITED replaces the kit's words", () => {
+      const copy = { RATE_LIMITED: "Slow down. Nothing was saved." };
+      expect(describeOpsError("<html></html>", { status: 429 }, copy).message).toBe(
+        copy.RATE_LIMITED,
+      );
+    });
+
+    it("honours Retry-After (seconds): the wait is named, and a longer one is said in minutes", () => {
+      const short = describeOpsError("", { status: 429, headers: headers("30") });
+      expect(short.retryAfterSeconds).toBe(30);
+      expect(short.message).toBe("Too many attempts. Wait 30 seconds, then try again.");
+      const long = describeOpsError(
+        envelope("RATE_LIMITED", "x"),
+        { status: 429, headers: headers("150") },
+        { RATE_LIMITED: "the copy loses to a named wait" },
+      );
+      expect(long.message).toBe("Too many attempts. Wait about 3 minutes, then try again.");
+    });
+
+    it("ignores a Retry-After it cannot use (a date, zero, nonsense, none)", () => {
+      for (const raw of ["Wed, 21 Oct 2026 07:28:00 GMT", "0", "-5", "soon", null]) {
+        const failure = describeOpsError("", { status: 429, headers: headers(raw) });
+        expect(failure.retryAfterSeconds, String(raw)).toBeNull();
+        expect(failure.message).toBe("Too many attempts. Wait a minute, then try again.");
+      }
+    });
+
+    it("is not an unknown refusal: no 'quote the reference' text", () => {
+      expect(describeOpsError("", { status: 429 }).message).not.toMatch(/reference/i);
+    });
+  });
 });
 
 describe("describeOpsError and the stuck-key 409", () => {

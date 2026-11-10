@@ -582,6 +582,35 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
+  // ── A platform operator revoked a tenant's vendor BAA (ADR-0053 amendment; owner decision "build it") ─────────────────────────
+  // Published by the revoke in the revoke's own transaction (the config rows' ids, the vendor, a closed reason code and COUNTS only:
+  // never the ticket reference, a document reference or any text). M23's own consumer turns it into the M36 alert to the tenant (rule
+  // `m23.tenant_clearinghouse.baa_revoked`: billing manager, compliance officer, org admin) and an org-less platform-ops notice, so
+  // the tenant is told by the system, not by a runbook step. The counts say what the revoke leaves held and what may still be owed.
+  {
+    eventName: "m23.tenant_clearinghouse.baa_revoked",
+    moduleOwner: "m23",
+    description:
+      "A platform operator revoked the vendor BAA a tenant recorded for its own Stedi or Claim.MD account: the verification is void, a live configuration left active (wasActive), and its claims, notices and response pulls are held. Counts: production attempts still in flight, attempts sent in the response window (acknowledgments or remittances may be owed), and claims / M41 submissions queued.",
+    payloadSchema: Type.Object({
+      clearinghouseConfigId: id,
+      vendor: Type.Union([Type.Literal("stedi"), Type.Literal("claimmd")]),
+      reasonCode: Type.Union([
+        Type.Literal("vendor_terminated"),
+        Type.Literal("account_closed"),
+        Type.Literal("baa_expired"),
+        Type.Literal("other"),
+      ]),
+      wasActive: Type.Boolean(),
+      attemptsInFlight: int,
+      attemptsSentInWindow: int,
+      queuedClaims: int,
+      queuedCommercialSubmissions: int,
+    }),
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
   // ── NOTR lifecycle (§4.10 "mirror of NOE", expanded to the 7 concrete events) ──────────────────────
   {
     eventName: "m23.notr.draft_created",

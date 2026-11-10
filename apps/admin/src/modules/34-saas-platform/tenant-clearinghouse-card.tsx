@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { NoticeFilingsDrawer } from "./notice-filings-drawer";
+import { RevokeBaa } from "./onboarding/clearinghouse-baa-revoke";
 import { VerifyBaa } from "./onboarding/clearinghouse-baa-verify";
 import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearinghouse-model";
 import type { ClearinghouseView } from "./onboarding/clearinghouse-model";
@@ -98,9 +99,20 @@ function Body({
               <dt>Vendor BAA</dt>
               <dd>
                 {view.baa
-                  ? `${view.baa.documentRef}${view.baa.verified ? "" : " (not verified yet)"}`
+                  ? `${view.baa.documentRef}${view.baa.revoked ? " (revoked)" : view.baa.verified ? "" : " (not verified yet)"}`
                   : "The tenant has not recorded one"}
               </dd>
+              {view.baa?.previousRevocation ? (
+                <>
+                  <dt>Previous revocation</dt>
+                  <dd>
+                    {new Date(view.baa.previousRevocation.at).toLocaleString()}
+                    {view.baa.previousRevocation.sameDocument
+                      ? " — same document as this record"
+                      : ""}
+                  </dd>
+                </>
+              ) : null}
             </>
           ) : null}
         </dl>
@@ -142,12 +154,15 @@ function Body({
           }}
         />
         {chosen ? (
-          <VerifyBaa
-            orgSlug={orgSlug}
-            view={view}
-            reload={() => load.reload(true)}
-            onVerified={() => load.reload(true)}
-          />
+          <>
+            <VerifyBaa
+              orgSlug={orgSlug}
+              view={view}
+              reload={() => load.reload(true)}
+              onVerified={() => load.reload(true)}
+            />
+            <RevokeBaa orgSlug={orgSlug} view={view} reload={() => load.reload(true)} />
+          </>
         ) : null}
         <ReleaseCredentials
           orgSlug={orgSlug}

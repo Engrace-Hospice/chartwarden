@@ -14,9 +14,9 @@ import {
   requireIdempotencyKey,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
-import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { splitReason } from "./onboarding-data-typebox";
+import { screenFreeText, screenNames } from "../free-text";
 import {
   OnboardingTemplateListQuerySchema,
   UpsertOnboardingTemplateRequest,
@@ -78,6 +78,8 @@ export function registerOnboardingTemplateRoutes(
     async (request, reply) => {
       const operator = writeActorOf(request);
       const { reason, fields } = splitReason(parse(UpsertOnboardingTemplateRequest, request.body));
+      screenFreeText({ description: fields.description });
+      screenNames({ title: fields.title });
       const res = await service.upsertOnboardingTemplate(operator.userId, {
         key: fields.key,
         title: fields.title,

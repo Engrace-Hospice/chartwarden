@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2021,
-    "coveredRoutes": 2021,
-    "directRoutesReferenced": 1837
+    "routes": 2022,
+    "coveredRoutes": 2022,
+    "directRoutesReferenced": 1839
   },
   "modules": [
     {
@@ -566,7 +566,7 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 90,
+      "routes": 91,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
@@ -577,10 +577,11 @@
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 89
+      "directRoutesReferenced": 91
     },
     {
       "module": "35-subscription",
@@ -591,6 +592,7 @@
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m35-pricing-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],

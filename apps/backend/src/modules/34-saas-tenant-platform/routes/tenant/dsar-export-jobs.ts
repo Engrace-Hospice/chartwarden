@@ -13,6 +13,7 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 import type { GuardRequest } from "@chartwarden/auth";
 import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
+import { screenFreeText } from "../free-text";
 import type { TenantRouteService } from "./service";
 import {
   DsarDenyRequest,
@@ -81,6 +82,10 @@ export function registerDsarExportRoutes(app: FastifyInstance, deps: DsarExportR
     async (request, reply) => {
       const { organizationId, membershipId } = writeActorOf(request);
       const body = parse(DsarExportRequest, request.body);
+      // How the requestor's identity was checked: typed by staff, stored on the (patient-scoped) job. No place for the patient's own number.
+      screenFreeText({
+        requestorIdentityVerificationEvidence: body.requestorIdentityVerificationEvidence,
+      });
       const res = await service.requestDsarExport(organizationId, membershipId, {
         patientId: body.patientId,
         requestSource: body.requestSource,
@@ -121,6 +126,7 @@ export function registerDsarExportRoutes(app: FastifyInstance, deps: DsarExportR
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(DsarJobParamsSchema, request.params);
+      // `reason` is accepted and DISCARDED: extendDsarExport takes none. A change that stores it must screen it (screenFreeText).
       parse(DsarExtendRequest, request.body);
       return service.extendDsarExport(organizationId, id);
     },
@@ -134,6 +140,7 @@ export function registerDsarExportRoutes(app: FastifyInstance, deps: DsarExportR
       const { organizationId } = actorOf(request);
       const { id } = parse(DsarJobParamsSchema, request.params);
       const body = parse(DsarDenyRequest, request.body);
+      screenFreeText({ narrative: body.narrative });
       return service.denyDsarExport(organizationId, id, {
         deniedReason: body.deniedReason,
         narrative: body.narrative,

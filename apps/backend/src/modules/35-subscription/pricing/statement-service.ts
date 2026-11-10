@@ -44,7 +44,7 @@ import {
   type MonthWork,
   buildStatementValues,
   figuresOf,
-  isSparseCensus,
+  isSparseCensusMonth,
   planMonths,
   priorPeriodLinesFor,
 } from "./statement-plan";
@@ -245,11 +245,7 @@ async function runMonth(
   const [row] = await upsertStatement(tx, values, at);
   if (!row) return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "final" } };
   // The month closes on this write and is frozen from here on: a census that covered too few of its days is the operator's to see now.
-  if (
-    row.status === "final" &&
-    !work.settlement &&
-    isSparseCensus(meters.daily.length, work.daysLive)
-  ) {
+  if (row.status === "final" && isSparseCensusMonth(contract, work, meters.daily.length)) {
     await flagForReview(tx, deps, contract, key, "sparse_census");
   }
   return {
