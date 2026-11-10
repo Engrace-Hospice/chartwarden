@@ -1,6 +1,7 @@
 // apps/admin/src/modules/36-messaging/settings — quiet-hours editor for the notification preferences screen:
 // time zone, the severity that breaks through quiet hours, and any number of weekly ranges.
 import { Button, SelectField, TextField } from "@chartwarden/ui";
+import { useEffect, useRef } from "react";
 import type { JSX } from "react";
 
 export interface QuietRange {
@@ -32,10 +33,24 @@ export function QuietHoursEditor({
   /** Receives a functional update so rapid edits compose instead of overwriting each other. */
   onChange: (update: (current: QuietHours) => QuietHours) => void;
 }): JSX.Element {
+  const rootRef = useRef<HTMLFieldSetElement>(null);
+  const removedAt = useRef<number | null>(null);
+  const rangeCount = value.ranges.length;
+  // Ranges are keyed by position, so removing one unmounts the LAST range's controls, and focus on them falls to the page. After a
+  // removal focus goes to the Remove button now at that position, else the one before it, else the Add button.
+  useEffect(() => {
+    const at = removedAt.current;
+    if (at === null) return;
+    removedAt.current = null;
+    const next = rootRef.current?.querySelector<HTMLElement>(
+      `[data-quiet-remove="${Math.min(at, rangeCount - 1)}"]`,
+    );
+    (next ?? rootRef.current?.querySelector<HTMLElement>("[data-quiet-add]"))?.focus();
+  }, [rangeCount]);
   const setRange = (index: number, patch: (range: QuietRange) => QuietRange): void =>
     onChange((v) => ({ ...v, ranges: v.ranges.map((r, i) => (i === index ? patch(r) : r)) }));
   return (
-    <fieldset className="wx-drawer-card" disabled={disabled}>
+    <fieldset ref={rootRef} className="wx-drawer-card" disabled={disabled}>
       <legend>Quiet hours</legend>
       <div className="wx-form-stack">
         <TextField
@@ -105,9 +120,11 @@ export function QuietHoursEditor({
               tone="tertiary"
               size="lg"
               aria-label={`Remove range ${index + 1}`}
-              onClick={() =>
-                onChange((v) => ({ ...v, ranges: v.ranges.filter((_, i) => i !== index) }))
-              }
+              data-quiet-remove={index}
+              onClick={() => {
+                removedAt.current = index;
+                onChange((v) => ({ ...v, ranges: v.ranges.filter((_, i) => i !== index) }));
+              }}
             >
               Remove
             </Button>
@@ -118,6 +135,7 @@ export function QuietHoursEditor({
         <Button
           tone="secondary"
           size="lg"
+          data-quiet-add
           onClick={() => onChange((v) => ({ ...v, ranges: [...v.ranges, NEW_RANGE] }))}
         >
           Add quiet range

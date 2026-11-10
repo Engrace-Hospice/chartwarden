@@ -3,13 +3,14 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // preferences save, and endpoint add/verify/remove — all against a recording fake fetch.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { JSX } from "react";
+import { type JSX, useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { AlertRules } from "../alert-rules";
 import { DeliveryEndpoints } from "../delivery-endpoints";
 import { settingsScreens } from "../index";
 import { NotificationPreferences, toggleChannel } from "../notification-preferences";
+import { type QuietHours, QuietHoursEditor } from "../quiet-hours";
 import { BannerView } from "../ui";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -229,6 +230,34 @@ describe("NotificationPreferences", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Save preferences" }));
     expect(await screen.findByText("unknown channel")).toBeTruthy();
+  });
+});
+
+describe("QuietHoursEditor range removal", () => {
+  const range = { daysOfWeek: [1, 2, 3, 4, 5], start: "22:00", end: "06:00" };
+  function Harness(): JSX.Element {
+    const [value, setValue] = useState<QuietHours>({
+      tz: "UTC",
+      severityOverride: "critical",
+      ranges: [range, range, range],
+    });
+    return <QuietHoursEditor value={value} disabled={false} onChange={setValue} />;
+  }
+  const remove = (n: number): void => {
+    const button = screen.getByRole("button", { name: `Remove range ${n}` });
+    button.focus();
+    fireEvent.click(button);
+  };
+
+  it("keeps focus inside the editor: the removed position, then the one before it, then Add", () => {
+    render(<Harness />);
+    // Removing the last range unmounts the focused button; focus must not fall to the page.
+    remove(3);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Remove range 2" }));
+    remove(1);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Remove range 1" }));
+    remove(1);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add quiet range" }));
   });
 });
 
