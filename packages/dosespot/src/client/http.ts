@@ -151,6 +151,8 @@ interface CachedToken {
 
 interface NewRxProgress {
   readonly prescriptionId: string;
+  /** The clinic (host and clinic id) the prescription was CREATED under: an id is only ever sent under that same clinic. */
+  readonly target: string;
 }
 
 const defaultFetch: DoseSpotFetch = (url, init) =>
@@ -598,9 +600,15 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         );
       }
       const progressKey = `${orgId}|${idempotencyKey}`;
+      // A created-but-unsent id is scoped to the clinic that created it (host and clinic id): sent under another, DoseSpot refuses it for good.
+      // This process's memory therefore serves it only while the tenant's registration still names that clinic; after a move the entry is
+      // dropped and the create runs again under the new one (ADR-0111 D6). The persisted id is the caller's to clear (the registration change does).
+      const target = `${cfg.baseUrl}|${cfg.clinicId}`;
+      const progress = newRxProgress.get(progressKey);
+      const remembered = progress?.target === target ? progress.prescriptionId : undefined;
+      if (progress !== undefined && remembered === undefined) newRxProgress.delete(progressKey);
       // a persisted id from an earlier attempt (any process) wins over this process's own memory
-      let prescriptionId =
-        resume?.createdPrescriptionId ?? newRxProgress.get(progressKey)?.prescriptionId;
+      let prescriptionId = resume?.createdPrescriptionId ?? remembered;
       if (prescriptionId === undefined) {
         const created = await call(
           "transmitNewRx",
@@ -625,7 +633,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
             correlationId,
           );
         }
-        newRxProgress.set(progressKey, { prescriptionId });
+        newRxProgress.set(progressKey, { prescriptionId, target });
         // remember it OUTSIDE this process before the send: a retry elsewhere then re-runs only the send
         await resume?.onCreated?.(prescriptionId);
       }

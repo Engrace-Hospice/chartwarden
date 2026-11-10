@@ -327,6 +327,76 @@ describe("a database-backed resolver (slice 4)", () => {
     body: { Items: [{ PrescriptionId: 77, Status: "eRxSent" }] },
   });
 
+  describe("a created-but-unsent prescription is only ever sent under the clinic that created it (ADR-0111 D6)", () => {
+    /** The create answers a new id each time; the send fails once (503: not taken, retryable) and then echoes the id it was asked to send. */
+    const routesFailingFirstSend = (): Record<string, Responder> => {
+      return {
+        "POST /connect/token": TOKEN_OK,
+        "POST /api/patients/501/prescriptions/coded": (_req, n) => ({
+          status: 200,
+          body: { Id: 9000 + n },
+        }),
+        "POST /api/patients/501/prescriptions/send": (req, n) =>
+          n === 1
+            ? { status: 503 }
+            : {
+                status: 200,
+                body: [
+                  {
+                    Id: (JSON.parse(req.body ?? "{}") as { prescriptionIds: number[] })
+                      .prescriptionIds[0],
+                  },
+                ],
+              },
+      };
+    };
+    const sends = (calls: { url: string; body?: string | undefined }[]) =>
+      calls
+        .filter((x) => x.url.endsWith("/prescriptions/send"))
+        .map(
+          (x) => (JSON.parse(x.body ?? "{}") as { prescriptionIds: number[] }).prescriptionIds[0],
+        );
+    const codedCount = (calls: { url: string }[]) =>
+      calls.filter((x) => x.url.endsWith("/prescriptions/coded")).length;
+
+    it("after the registration moves to another clinic, the retry CREATES a new prescription instead of sending the old clinic's id", async () => {
+      const w = swappable(cfg(1)); // clinic-1
+      const { c, calls } = clientOver(w.r, routesFailingFirstSend());
+      const first = await c.transmitNewRx(ORG, NEWRX, "idem-move").catch((e) => e);
+      expect(first).toBeInstanceOf(DegradedError); // the create succeeded (id 9001), the send was not taken
+      expect(codedCount(calls)).toBe(1);
+
+      w.set(cfg(2, { clinicId: "clinic-2" })); // the clinic is moved; the same long-lived client retries the same order
+      const out = await c.transmitNewRx(ORG, NEWRX, "idem-move");
+
+      expect(codedCount(calls)).toBe(2); // a second create, under the new clinic
+      expect(sends(calls)).toEqual([9001, 9002]); // never 9001 again
+      expect(out.dosespotPrescriptionId).toBe("9002");
+    });
+
+    it("moving to another environment (host) does the same", async () => {
+      const w = swappable(cfg(1));
+      const { c, calls } = clientOver(w.r, routesFailingFirstSend());
+      await c.transmitNewRx(ORG, NEWRX, "idem-env").catch(() => undefined);
+      w.set(cfg(2, { baseUrl: "https://my.dosespot.com/webapi/v2" }));
+      // the fake transport answers by path, whatever the host
+      const out = await c.transmitNewRx(ORG, NEWRX, "idem-env");
+      expect(codedCount(calls)).toBe(2);
+      expect(out.dosespotPrescriptionId).toBe("9002");
+    });
+
+    it("a key rotation that keeps the clinic still resumes with the created id: only the send is re-run", async () => {
+      const w = swappable(cfg(1));
+      const { c, calls } = clientOver(w.r, routesFailingFirstSend());
+      await c.transmitNewRx(ORG, NEWRX, "idem-rotate").catch(() => undefined);
+      w.set(cfg(2)); // same clinic, a new key generation
+      const out = await c.transmitNewRx(ORG, NEWRX, "idem-rotate");
+      expect(codedCount(calls)).toBe(1); // not created twice
+      expect(sends(calls)).toEqual([9001, 9001]);
+      expect(out.dosespotPrescriptionId).toBe("9001");
+    });
+  });
+
   it("awaits the resolver on every call, so a deactivation takes effect on the very next call", async () => {
     const s = swappable(cfg(1));
     const { c, calls } = clientOver(s.r, {
