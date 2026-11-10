@@ -47,12 +47,12 @@ async function liveTenant(over: { waitingClaims?: number } = {}) {
   const store = createInMemoryConfigStore(() => NOW);
   const waitingClaims = { calls: 0 };
   /** The service's clock: a test moves it to tell two records, or a departure and its traffic, apart. */
-  const clock = { at: NOW };
+  const clock = { at: NOW, sequence: [] as Date[] };
   const cipher = buildClearinghouseSecretCipher(randomBytes(32));
   const service = createTenantClearinghouseService({
     cipher,
     probes: { claimmd: async () => "ok" },
-    now: () => clock.at,
+    now: () => clock.sequence.shift() ?? clock.at,
     waitingWork: async () => {
       waitingClaims.calls += 1;
       return {
@@ -141,6 +141,22 @@ describe("the operator revokes a tenant's vendor BAA", () => {
     await expect(service.verifyBaa(store, OPERATOR, currentPin)).resolves.toMatchObject({
       baa: { verified: { at: expect.any(String) } },
     });
+  });
+
+  it("keeps updatedAt after a business timestamp when the clock moves backward during the save", async () => {
+    const { store, service, clock } = await liveTenant();
+    const businessTime = new Date(NOW.getTime() + HOUR_MS);
+    // The record path reads the clock for effective-date validation, then the business timestamp, then the save timestamp.
+    clock.sequence.push(businessTime, businessTime, new Date(NOW.getTime() - HOUR_MS));
+
+    await service.recordBaa(store, TENANT, {
+      ...BAA,
+      documentRef: "Claim.MD BAA chronology replacement, contract folder 10",
+    });
+
+    const row = store.rows()[0];
+    expect(row?.baaRecordedAt).toEqual(businessTime);
+    expect(row?.updatedAt.getTime()).toBeGreaterThan(businessTime.getTime());
   });
 
   it("voids the verification, takes a live config out of service and records who, the closed reason and the ticket", async () => {

@@ -405,9 +405,16 @@ export function createTenantClearinghouseService(
 ): TenantClearinghouseService {
   const now = deps.now ?? (() => new Date());
   /** Row and BAA timestamps must advance even when the clock stalls or moves backward; `recordedAt` is an If-Match token. */
-  const nextRowTimestamp = (row: Pick<ConfigRow, "baaRecordedAt" | "updatedAt">): Date => {
+  const nextRowTimestamp = (
+    row: Pick<ConfigRow, "baaRecordedAt" | "updatedAt">,
+    patch: ConfigPatch = {},
+  ): Date => {
     const candidate = now();
-    const floor = Math.max(row.baaRecordedAt?.getTime() ?? 0, row.updatedAt.getTime());
+    const patchFloor = Object.values(patch).reduce(
+      (latest, value) => (value instanceof Date ? Math.max(latest, value.getTime()) : latest),
+      0,
+    );
+    const floor = Math.max(row.baaRecordedAt?.getTime() ?? 0, row.updatedAt.getTime(), patchFloor);
     return candidate.getTime() <= floor ? new Date(floor + 1) : candidate;
   };
 
@@ -600,7 +607,7 @@ export function createTenantClearinghouseService(
     try {
       updated = await store.update(row.organizationId, row.version, {
         ...full,
-        updatedAt: nextRowTimestamp(row),
+        updatedAt: nextRowTimestamp(row, full),
       });
     } catch (err) {
       if (isFingerprintViolation(err)) throw accountInUse();
@@ -622,7 +629,7 @@ export function createTenantClearinghouseService(
   ): Promise<ConfigRow> {
     const updated = await store.update(row.organizationId, row.version, {
       ...patch,
-      updatedAt: nextRowTimestamp(row),
+      updatedAt: nextRowTimestamp(row, patch),
     });
     if (!updated)
       throw versionConflict("the clearinghouse config changed while it was being updated");
