@@ -10,6 +10,7 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
+import { screenFreeText, screenNames } from "../free-text";
 import {
   OnboardingTemplateListQuerySchema,
   UpsertOnboardingTemplateRequest,
@@ -59,6 +60,8 @@ export function registerOnboardingTemplateRoutes(
     async (request, reply) => {
       const { userId } = actorOf(request);
       const body = parse(UpsertOnboardingTemplateRequest, request.body);
+      screenFreeText({ description: body.description });
+      screenNames({ title: body.title });
       const res = await service.upsertOnboardingTemplate(userId, {
         key: body.key,
         title: body.title,

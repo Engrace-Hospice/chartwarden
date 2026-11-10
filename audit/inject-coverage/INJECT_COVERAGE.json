@@ -4,7 +4,7 @@
     "covered": 40,
     "routes": 2004,
     "coveredRoutes": 2004,
-    "directRoutesReferenced": 1823
+    "directRoutesReferenced": 1824
   },
   "modules": [
     {
@@ -568,10 +568,11 @@
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 79
+      "directRoutesReferenced": 80
     },
     {
       "module": "35-subscription",
@@ -581,7 +582,7 @@
         "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m35-pricing-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
-        "apps/backend/__tests__/redact-database-error.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
       "directRoutesReferenced": 72

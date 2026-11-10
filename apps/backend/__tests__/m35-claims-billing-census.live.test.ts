@@ -23,6 +23,7 @@ import {
   createDrizzlePatientCounterProvider,
   runPatientCensusForOrg,
 } from "../src/modules/35-subscription/billing-runtime/census";
+import { runM35Fanout } from "../src/modules/35-subscription/billing-runtime/jobs";
 import { buildM35PatientActivePeriodConsumer } from "../src/modules/35-subscription/outbox-consumers/m5-patient-active-period";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
@@ -195,7 +196,7 @@ describe.skipIf(!DB_URL)("ADR-0110 claims-billing census — LIVE Postgres", () 
     expect(await censusAudit(ORG_B)).toHaveLength(0);
   });
 
-  it("a pass that fails after the read began records a failure event and still throws the original error", async () => {
+  it("a pass that fails records a failure event (a pass was attempted) and still throws the original error", async () => {
     const failing = {
       ...deps(),
       census: {
@@ -209,6 +210,108 @@ describe.skipIf(!DB_URL)("ADR-0110 claims-billing census — LIVE Postgres", () 
     const events = await censusAudit(ORG_A);
     expect(events.at(-1)).toMatchObject({ outcome: "failure", actor_kind: "system" });
     expect(events.at(-1)?.context.seen).toBeUndefined();
+  });
+
+  it("a failure BEFORE any id is read (a missing pseudonym key) also records that a pass was attempted", async () => {
+    const before = (await censusAudit(ORG_A)).length;
+    const noKey = {
+      ...deps(),
+      keyProvider: {
+        activeKey: async () => {
+          throw new Error("the pseudonym KEK is not configured");
+        },
+      },
+    };
+    await expect(runPatientCensusForOrg(noKey, ORG_A)).rejects.toThrow("pseudonym KEK");
+    const events = await censusAudit(ORG_A);
+    expect(events).toHaveLength(before + 1);
+    expect(events.at(-1)).toMatchObject({ outcome: "failure", actor_kind: "system" });
+  });
+
+  // A trigger that refuses ONE org's census audit insert, so the audit write fails while the census itself works.
+  const blockCensusAudit = async (org: string) => {
+    await admin.query(
+      `CREATE OR REPLACE FUNCTION test_block_census_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN RAISE EXCEPTION 'census audit blocked for the test'; END $$`,
+    );
+    await admin.query(
+      `CREATE TRIGGER test_block_census_audit BEFORE INSERT ON audit_event FOR EACH ROW
+         WHEN (NEW.event_type = '${CENSUS_AUDIT_EVENT}' AND NEW.organization_id = '${org}')
+         EXECUTE FUNCTION test_block_census_audit()`,
+    );
+    return async () => {
+      await admin.query("DROP TRIGGER test_block_census_audit ON audit_event");
+      await admin.query("DROP FUNCTION test_block_census_audit()");
+    };
+  };
+
+  it("a failed audit write on the success path surfaces as a failure, after the drift check, and never touches another org", async () => {
+    const unblock = await blockCensusAudit(ORG_A);
+    try {
+      const logs: Array<{ message: string; detail: Record<string, unknown> }> = [];
+      const log = (message: string, detail: Record<string, unknown>) =>
+        logs.push({ message, detail });
+      // M5's own count disagrees with the 3 ids seen: the drift check has something to report even though the audit fails.
+      const drifting = {
+        ...deps(),
+        log,
+        census: { ...buildPatientCensusReader(app.db), activePatientCount: async () => 99 },
+      };
+      const auditedBefore = (await censusAudit(ORG_B)).length;
+      let fanoutError: unknown;
+      try {
+        await runM35Fanout(
+          { listOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }], log },
+          (org) =>
+            runPatientCensusForOrg(org === ORG_A ? drifting : { ...deps(), log }, org).then(
+              () => undefined,
+            ),
+          "patient_census",
+        );
+      } catch (err) {
+        fanoutError = err;
+      }
+      // Exactly one org failed (A, the unaudited one); the fan-out still finished B.
+      expect(fanoutError).toBeInstanceOf(AggregateError);
+      expect((fanoutError as AggregateError).errors).toHaveLength(1);
+      // Drizzle wraps the database error: the block's message is its cause.
+      const thrown = (fanoutError as AggregateError).errors[0] as { cause?: { message?: string } };
+      expect(thrown.cause?.message).toMatch(/census audit blocked/);
+      expect((await censusAudit(ORG_B)).length).toBe(auditedBefore + 1);
+      // The audit failure was logged under `err` (redacted by the logger), and the drift check still ran.
+      expect(
+        logs.find((l) => l.message === "m35.patient-census audit failed")?.detail,
+      ).toMatchObject({
+        organizationId: ORG_A,
+      });
+      expect(
+        logs.find((l) => l.message === "m35.patient-census audit failed")?.detail.err,
+      ).toBeInstanceOf(Error);
+      expect(logs.some((l) => l.message === "m35.patient-census reconcile drift")).toBe(true);
+    } finally {
+      await unblock();
+    }
+  });
+
+  it("a failed audit write on the FAILURE path never hides the original error", async () => {
+    const unblock = await blockCensusAudit(ORG_A);
+    try {
+      const logs: Array<{ message: string; detail: Record<string, unknown> }> = [];
+      const failing = {
+        ...deps(),
+        log: (message: string, detail: Record<string, unknown>) => logs.push({ message, detail }),
+        census: {
+          activePatientIdsPage: async () => {
+            throw new Error("census read failed");
+          },
+          activePatientCount: async () => 0,
+        },
+      };
+      await expect(runPatientCensusForOrg(failing, ORG_A)).rejects.toThrow("census read failed");
+      expect(logs.map((l) => l.message)).toEqual(["m35.patient-census audit failed"]);
+    } finally {
+      await unblock();
+    }
   });
 
   it("skips an org that never held the add-on", async () => {

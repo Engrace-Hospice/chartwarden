@@ -15,7 +15,9 @@
 //
 // AUDIT. The pull is a bulk read of every active patient id of the org, by a job rather than a request, so it would leave
 // no read trail. Each pass therefore writes ONE `m35.patient_census.run` audit event per org (system actor): the org
-// (the event's own column), the period key and the counts, never an id or a pseudonym (CW-AC-35).
+// (the event's own column), the period key and the counts, never an id or a pseudonym (CW-AC-35). A pass that fails writes a
+// `failure` event instead (it records that a pass was ATTEMPTED, including a failure before any id was read, such as a missing
+// pseudonym key) and still throws its original error; a pass whose audit write fails throws that failure, after the drift check.
 import { randomUUID } from "node:crypto";
 import { type AuditExecutor, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
@@ -216,26 +218,49 @@ export async function runPatientCensusForOrg(
     throw err;
   }
   const { seen, inserted } = counts;
-  await recordCensusRun(deps, organizationId, {
+  // The pages are already committed and the insert is idempotent, so a rerun is harmless, but an UNAUDITED read of every active
+  // patient id is a failure ops must see: it is thrown, after the drift check, which never depends on the audit write.
+  const auditError = await recordCensusRun(deps, organizationId, {
     runId,
     outcome: "success",
     periodYearMonth: scope.periodYearMonth,
     seen,
     inserted,
-  });
+  }).then(
+    () => undefined,
+    (err: unknown) => {
+      deps.log?.("m35.patient-census audit failed", { organizationId, err });
+      return err;
+    },
+  );
+  try {
+    await checkCensusDrift(deps, organizationId, scope.periodYearMonth, seen);
+  } catch (err) {
+    if (auditError === undefined) throw err;
+    deps.log?.("m35.patient-census drift check failed", { organizationId, err }); // the audit failure is the error thrown
+  }
+  if (auditError !== undefined) throw auditError;
+  return { counted: true, periodYearMonth: scope.periodYearMonth, seen, inserted };
+}
 
+/** Logs a reconcile metric when this pass's count and M5's own count differ by more than CENSUS_RECONCILE_TOLERANCE. */
+async function checkCensusDrift(
+  deps: CensusDeps,
+  organizationId: string,
+  periodYearMonth: string,
+  seen: number,
+): Promise<void> {
   const m5Count = await deps.census.activePatientCount(organizationId);
   const drift = m5Count === 0 ? seen : Math.abs(m5Count - seen) / m5Count;
   if (drift > CENSUS_RECONCILE_TOLERANCE) {
     deps.log?.("m35.patient-census reconcile drift", {
       metric: "m35_patient_census_reconcile_drift",
       organizationId,
-      periodYearMonth: scope.periodYearMonth,
+      periodYearMonth,
       m35Seen: seen,
       m5Count,
     });
   }
-  return { counted: true, periodYearMonth: scope.periodYearMonth, seen, inserted };
 }
 
 /** Distinct pseudonyms for one org and period key under the newest key epoch recorded for that period. */

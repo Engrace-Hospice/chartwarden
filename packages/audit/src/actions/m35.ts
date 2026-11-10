@@ -14,7 +14,7 @@ export const M35_ACTION_CATALOG: ModuleActionCatalog = [
     moduleOwner: "m35",
     defaultRetentionClass: "compliance",
     description:
-      "One claims-billing census pass read an organization's active patient ids from M5 and wrote their pseudonyms (periodYearMonth, seen, inserted; outcome success or failure). Counts only: no patient id, no pseudonym.",
+      "One claims-billing census pass ran for an organization: it read the active patient ids from M5 and wrote their pseudonyms (periodYearMonth, seen, inserted; outcome success). outcome failure records that a pass was ATTEMPTED and failed, possibly before any id was read (a missing pseudonym key, a read error). Counts only: no patient id, no pseudonym.",
     denylistCategories: [],
     isPartTwoEligible: false,
   },
