@@ -145,9 +145,7 @@ describe("a tenant's resume refuses what has nothing to resume, and writes and a
 
     const failure = (await failureOf(w.service.resumeSubscription(actor))) as ChartWardenError;
 
-    expect(failure.message).toBe(
-      "this subscription cannot be resumed right now; contact support",
-    );
+    expect(failure.message).toBe("this subscription cannot be resumed right now; contact support");
     expect(failure.message).not.toMatch(/cancel|pause/i);
   });
 

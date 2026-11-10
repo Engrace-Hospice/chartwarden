@@ -56,9 +56,17 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
+import {
+  type PauseBlockedSinks,
+  forgetBlocked,
+  reportBlockedPause,
+} from "../billing-runtime/pause-blocked-report";
 import { isPauseLapsed } from "../pricing/contract-select";
 import { ORG_SUSPENDED_REASON_CODE, PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
-import { lockNewestSubscription } from "../routes/current-subscription";
+import {
+  findOtherLiveSubscriptionId,
+  lockNewestSubscription,
+} from "../routes/current-subscription";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 
 const S = schema.subscriptionRow;
@@ -73,7 +81,7 @@ export const M35_ORG_LIFECYCLE_CONSUMER = {
   consumerName: "m35.m2-organization-lifecycle",
 } as const;
 
-export interface OrgLifecycleConsumerDeps {
+export interface OrgLifecycleConsumerDeps extends PauseBlockedSinks {
   readonly db: DbClient;
   readonly outbox: WriteOutboxPort;
   readonly now?: () => Date;
@@ -227,6 +235,21 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
 
         if (event.eventType === "m2.organization.activated") {
           if (sub.status !== "paused") return; // nothing to resume — see the file header's CREATE note.
+          const otherLiveSubscriptionId = await findOtherLiveSubscriptionId(tx, sub);
+          if (otherLiveSubscriptionId !== null) {
+            reportBlockedPause(
+              deps,
+              {
+                organizationId,
+                subscriptionId: sub.id,
+                olderLiveSubscriptionId: otherLiveSubscriptionId,
+                trigger: "organization_activated",
+              },
+              at,
+            );
+            return;
+          }
+          forgetBlocked(organizationId);
           const updated = await tx
             .update(S)
             .set({ status: "active", pausedAt: null, pausedUntil: null, updatedAt: at })

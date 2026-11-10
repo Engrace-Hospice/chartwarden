@@ -1298,15 +1298,20 @@ describe.skipIf(!DB_URL)(
           const subId = await seedOperatorPause(org);
           const holder = new Client({ connectionString: DB_URL });
           await holder.connect();
+          let first: Promise<unknown> | undefined;
+          let second: Promise<unknown> | undefined;
+          let released = false;
           try {
             await holder.query("BEGIN");
             await holder.query("SELECT id FROM subscription WHERE id=$1 FOR UPDATE", [subId]);
-            const sweep = () => runPauseResumeForOrg(jobs(only(org)), org);
-            const first = order === "sweep first" ? sweep() : tenantResume(org);
+            const sweep = () =>
+              runPauseResumeForOrg({ ...jobs(only(org)), lockTimeoutMs: 30_000 }, org);
+            first = order === "sweep first" ? sweep() : tenantResume(org);
             await waitForLockWaiters(1); // the first is queued behind the holder's lock ...
-            const second = order === "sweep first" ? tenantResume(org) : sweep();
+            second = order === "sweep first" ? tenantResume(org) : sweep();
             await waitForLockWaiters(2); // ... then the second behind it
             await holder.query("COMMIT");
+            released = true;
             const [a, b] = await Promise.allSettled([first, second]);
             return {
               org,
@@ -1315,6 +1320,8 @@ describe.skipIf(!DB_URL)(
               tenant: order === "sweep first" ? b : a,
             };
           } finally {
+            if (!released) await holder.query("ROLLBACK").catch(() => undefined);
+            await Promise.allSettled([first, second].filter((work) => work !== undefined));
             await holder.end();
           }
         }

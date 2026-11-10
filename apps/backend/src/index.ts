@@ -9400,6 +9400,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       });
       const m35Log = (message: string, detail: Record<string, unknown>) =>
         app.log.warn(detail, message);
+      const m35PauseBlockedNotice = buildPlatformOpsNoticeSink({
+        webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+        log: (message) => app.log.error(message),
+      });
       const m35Workers = registerM35Workers({
         connection: queueConnection,
         jobs: {
@@ -9408,16 +9412,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           outbox: m35OutboxPublisher,
           listOrgs: () => m35Orgs.listActiveOrgs(),
           log: m35Log,
-          // A lapsed pause that cannot resume because an OLDER subscription of the org is live stays `paused` until an operator cancels or
-          // pauses the older one: raised through the same ops alert sink as a worker's dead letters (log at error level, plus the webhook
-          // when OPS_ALERT_WEBHOOK_URL is set), at most once a day per subscription. Ids only.
+          // A paused subscription blocked by another live one stays paused until an operator acts. This is an ops notice, not a dead-letter
+          // promotion: it gets its own kind, summary and correlation id. The shared sink logs it and optionally posts the webhook. Ids only.
           onPauseBlocked: (blocked) =>
-            dlqPromotionSink({
-              source: "m35:pause-resume-blocked",
-              organizationId: blocked.organizationId,
-              jobId: blocked.subscriptionId,
-              error: `the lapsed pause cannot be resumed while the older subscription ${blocked.olderLiveSubscriptionId} is live: cancel or pause that one, then the next hourly sweep resumes it`,
-              occurredAt: new Date().toISOString(),
+            m35PauseBlockedNotice({
+              kind: "m35.pause-resume-blocked",
+              summary: "a paused subscription cannot resume while another subscription is live",
+              details: {
+                organizationId: blocked.organizationId,
+                subscriptionId: blocked.subscriptionId,
+                otherLiveSubscriptionId: blocked.olderLiveSubscriptionId,
+                trigger: blocked.trigger,
+              },
+              correlationId: `m35-pause-blocked-${blocked.subscriptionId}`,
             }),
         },
         ...(m35Stripe.cipher ? { cipher: m35Stripe.cipher } : {}),

@@ -48,7 +48,9 @@ import {
   refuseAdminTransition,
   refuseCanceledIsFinal,
   refuseUnlessFuture,
+  refuseUnlessNewestSubscription,
   refuseWhenOtherLive,
+  rethrowOtherLiveRace,
 } from "./admin-transition";
 import { currentSubscriptionOrder, lockNewestSubscription } from "./current-subscription";
 import { redeemPromoInTx } from "./promo-redemption";
@@ -1034,19 +1036,23 @@ export function buildDrizzleM35RouteService(
         // refuses the same way). A subscription scheduled to cancel at period end is "resumed" by clearing the schedule.
         if (sub.status !== "paused" && !sub.cancelAtPeriodEnd) refuseAdminTransition(sub, "resume");
         // one live subscription per organization: a typed 409 here, not the unique index's raw failure
-        if (sub.status === "paused") await refuseWhenOtherLive(tx, sub);
+        if (sub.status === "paused") await refuseWhenOtherLive(tx, sub, "tenant");
         const at = now();
         const toStatus = sub.status === "paused" ? "active" : sub.status;
-        await tx
-          .update(S)
-          .set({
-            status: toStatus,
-            cancelAtPeriodEnd: false,
-            pausedAt: null,
-            pausedUntil: null,
-            updatedAt: at,
-          })
-          .where(eq(S.id, sub.id));
+        try {
+          await tx
+            .update(S)
+            .set({
+              status: toStatus,
+              cancelAtPeriodEnd: false,
+              pausedAt: null,
+              pausedUntil: null,
+              updatedAt: at,
+            })
+            .where(eq(S.id, sub.id));
+        } catch (err) {
+          rethrowOtherLiveRace(err, "tenant");
+        }
         // `resumed` is "a subscription resumed from paused": clearing a cancel schedule on an active subscription announces nothing
         if (sub.status === "paused") {
           const resumed = resumedEventIntent(sub, at);
@@ -1564,10 +1570,15 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const sub = await lockSubscription(tx, subscriptionId);
         refuseAdminTransition(sub, "resume");
+        await refuseUnlessNewestSubscription(tx, sub);
         // one live subscription per organization: a typed 409 here, not the unique index's raw failure (nothing is written or audited)
         await refuseWhenOtherLive(tx, sub);
         const at = now();
-        await tx.update(S).set(resumedColumns(at)).where(eq(S.id, sub.id));
+        try {
+          await tx.update(S).set(resumedColumns(at)).where(eq(S.id, sub.id));
+        } catch (err) {
+          rethrowOtherLiveRace(err, "operator");
+        }
         // The ledger row and the event are the ones the hourly pause-resume sweep writes too (resume-transition.ts). The ledger row's
         // actor is NULL: it is tenant-readable (and audit-copied into the tenant's trail); the operator is in the platform audit row below.
         await tx

@@ -10,6 +10,7 @@
 // writes land on the row the guard names (the guards themselves are rendered and asserted). The live suites (m35-org-lifecycle-consumer,
 // m35-tenant-pricing) prove the same, and the real races, on the real NOBYPASSRLS application role.
 import type { DbClient } from "@chartwarden/db";
+import { ChartWardenError } from "@chartwarden/types";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
@@ -21,7 +22,6 @@ import {
   runPauseResumeSweep,
 } from "../billing-runtime/pause-resume";
 import { buildM35OrgLifecycleConsumer } from "../outbox-consumers/m2-organization-lifecycle";
-import { ChartWardenError } from "@chartwarden/types";
 import { ORG_SUSPENDED_REASON_CODE, PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
 
 const ORG = "a1000000-0000-4000-8000-0000000000a1";
@@ -802,7 +802,11 @@ describe("the `.activated` consumer asks first: it never resumes a paused subscr
   const activate = (
     db: DbClient,
     outbox: ReturnType<typeof deps>["outbox"],
-    extra: { log?: PauseResumeDeps["log"]; onPauseBlocked?: PauseResumeDeps["onPauseBlocked"]; now?: () => Date } = {},
+    extra: {
+      log?: PauseResumeDeps["log"];
+      onPauseBlocked?: PauseResumeDeps["onPauseBlocked"];
+      now?: () => Date;
+    } = {},
   ) =>
     buildM35OrgLifecycleConsumer({ db, outbox, now: extra.now ?? (() => NOW), ...extra }).handle({
       eventType: "m2.organization.activated",
@@ -882,7 +886,10 @@ describe("the `.activated` consumer asks first: it never resumes a paused subscr
   });
 
   it("a failing alert sink does not fail the delivery (the event would otherwise retry to a dead letter)", async () => {
-    const w = blocked("5b000000-0000-4000-8000-0000000000f1", "5b000000-0000-4000-8000-0000000000f0");
+    const w = blocked(
+      "5b000000-0000-4000-8000-0000000000f1",
+      "5b000000-0000-4000-8000-0000000000f0",
+    );
     const { outbox } = deps(w.db);
 
     await expect(
@@ -907,7 +914,10 @@ describe("the `.activated` consumer asks first: it never resumes a paused subscr
   });
 
   it("asks AFTER it holds the row lock (the answer it acts on is the one the lock protects)", async () => {
-    const w = blocked("5b000000-0000-4000-8000-000000000101", "5b000000-0000-4000-8000-000000000100");
+    const w = blocked(
+      "5b000000-0000-4000-8000-000000000101",
+      "5b000000-0000-4000-8000-000000000100",
+    );
     await activate(w.db, deps(w.db).outbox);
     expect(w.log.locks).toEqual(["update"]);
     expect(w.log.sequence.indexOf("lock")).toBeGreaterThanOrEqual(0);

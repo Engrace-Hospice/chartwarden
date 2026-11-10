@@ -34,12 +34,15 @@ claims-billing entitlement) until an operator remembered to resume it.
   carries a cancel-at-period-end schedule: it used to answer `200`, flip the schedule and clear the pause columns of a canceled row.
 - `POST /api/admin/subscriptions/{id}/resume` and `POST /api/v1/subscription/resume` answer `409 SUBSCRIPTION_OTHER_LIVE_EXISTS` when the
   organization already has another live subscription (an organization can hold one live subscription; a paused one does not count). They used
-  to fail with a raw `500` from the database's unique index. Cancel or pause the other subscription by id; the hourly sweep then resumes this
-  one on its next tick (or resume it again by hand). The sweep itself leaves such a pause alone and raises an operator alert (the ops alert
-  sink, ids only) at most once a day per subscription until it is unblocked.
-- An organization's current subscription is the one with the newest `startedAt`; two subscriptions that start at the same instant (one
-  transaction inserted both) are now ordered by the higher `id` on every read and write path, so the tenant's view, the resume routes, the
-  suspension consumer and the sweep always agree on which one it is.
+  to fail with a raw `500` from the database's unique index. The tenant response says to contact support; the operator response says to cancel
+  or pause the other subscription by id. The hourly sweep then resumes this one on its next tick (or an operator can resume it again by hand).
+  The sweep and organization-activation consumer both leave such a pause alone and raise the same dedicated operator notice (ids only) at most
+  once a day per subscription until it is unblocked.
+- `POST /api/admin/subscriptions/{id}/resume` answers `409 SUBSCRIPTION_SUPERSEDED` when the requested paused row is older than the
+  organization's current subscription. It no longer resurrects an older row behind a newer paused subscription.
+- An organization's current subscription is the subscription with the newest `startedAt`; rows that share that instant are ordered by the
+  higher `id`. Subscription readers and writers use that ordering, so the tenant's view, the resume routes, the lifecycle consumer and the
+  sweep agree on which subscription is current. Contract selection retains its separate `createdAt`, `id` ordering.
 - No request or response shape changes.
 
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
