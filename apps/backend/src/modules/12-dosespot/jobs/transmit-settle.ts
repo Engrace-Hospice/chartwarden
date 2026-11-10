@@ -115,7 +115,12 @@ async function settleOutage(x: SettleCtx, movedClinic = false): Promise<SettleRe
  */
 const settleMoved = (x: SettleCtx): Promise<SettleResult> => settleOutage(x, true);
 
-/** Did the registration move to another clinic since this call began? Only an outage or a failure of a call that began is asked (see the header). */
+/**
+ * Did the registration move to another clinic since this call began? Only an outage or a failure of a call that began is asked (see the header). A
+ * SUCCESS is deliberately not asked, and neither is an unconfirmed outcome: a send that answered success under the old clinic really went out, so the
+ * order is recorded sent with the id DoseSpot returned (requeueing it would send the prescription twice), and an unconfirmed one is held for a person
+ * with its id, which is what they look for at the old clinic. Do not make this symmetric.
+ */
 async function registrationMovedSince(
   tx: DbClient,
   organizationId: string,

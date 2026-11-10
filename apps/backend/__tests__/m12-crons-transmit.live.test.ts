@@ -980,7 +980,9 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       );
     });
 
-    it("an order the claim now skips (its prescriber waits for re-enrolment) still raises the queued-order age alert: the alert reads the transmission's own age, not the claim", async () => {
+    // A characterization test: the alert's query never looked at the claim, so this passes on the code before the claim learned to skip waiting orders too.
+    // It pins that the two stay independent (a change that made the alert read the claim's filter would silence it for exactly the orders that wait).
+    it("characterization: an order the claim skips (its prescriber waits for re-enrolment) still raises the queued-order age alert, which reads the transmission's own age", async () => {
       const { orderId } = await queued();
       await h.admin.query(
         "UPDATE medication_order_transmission SET queued_at = now() - interval '2 hours' WHERE medication_order_id=$1",
@@ -1218,6 +1220,98 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
             expect(seen).toEqual([{ key: t.idempotency_key, resumed: undefined }]);
           },
         );
+
+        // What makes the check and the requeue ONE decision: the settle holds the shared registration lock until it COMMITS. A move that starts while the
+        // settle's transaction is open must therefore wait for it (a check in an earlier, already-committed transaction would not hold it), and the
+        // settle, which read the old clinic, requeues normally; the move then commits and its reset drops the id and key from the unstamped row.
+        it("a move that starts while the settle's transaction is open waits for its commit; the id and key are dropped by the reset afterwards", async () => {
+          const { orderId, transmissionId, idempotencyKey } = await persisted();
+          let callEnded = false;
+          let hooked = false;
+          let postCallTransactions = 0;
+          let blockedWhileOpen = false;
+          let moving: Promise<unknown> = Promise.resolve();
+          const settleHoldingOpen = async () => {
+            moving = moveToProduction(); // the PUT starts while the settle's statements are done and its transaction is still open
+            blockedWhileOpen =
+              (await Promise.race([
+                moving.then(() => "moved"),
+                sleep(500).then(() => "blocked"),
+              ])) === "blocked";
+          };
+          const db = new Proxy(h.handle.db, {
+            get(target, prop, receiver) {
+              const value = Reflect.get(target, prop, receiver);
+              if (prop !== "transaction") return value;
+              return (fn: (tx: unknown) => Promise<unknown>, ...rest: unknown[]) =>
+                (value as (...a: unknown[]) => unknown).call(
+                  target,
+                  async (tx: unknown) => {
+                    const result = await fn(tx);
+                    if (callEnded) postCallTransactions += 1;
+                    if (callEnded && !hooked) {
+                      hooked = true; // the first transaction after the call ended is the settle
+                      await settleHoldingOpen();
+                    }
+                    return result;
+                  },
+                  ...rest,
+                );
+            },
+          });
+          const vendor = new FakeDoseSpotVendor({
+            transmit: async () => {
+              callEnded = true;
+              throw retryable();
+            },
+          });
+          const r = await runTransmitNewRxForOrg({ ...depsWithWarn(vendor), db }, ORG_A);
+          await moving;
+          expect(hooked).toBe(true);
+          expect(postCallTransactions).toBe(1); // the check and the write are ONE transaction, not a check committed first
+          expect(blockedWhileOpen).toBe(true); // the move waited for the settle's commit
+          expect(r).toMatchObject({ claimed: 1, requeued: 1, deferredByOutage: 0 }); // the settle read the old clinic: an ordinary requeue
+          const t = await txRow(transmissionId as string);
+          expect(t.dosespot_prescription_id).toBeNull(); // and the reset, which ran after it, dropped the old clinic's id...
+          expect(t.idempotency_key).not.toBe(idempotencyKey); // ...and key from the now unstamped row
+          expect(t.retry_count).toBe(1);
+          expect((await orderRow(orderId)).s).toBe("queued");
+        });
+
+        // The exception that is NOT symmetric with the failures above: a send that answered success really went out (under the old clinic's credentials, as it
+        // was issued), so the order is recorded sent with the id DoseSpot returned. Requeueing it would send the prescription a second time.
+        it("a send that SUCCEEDED after the move is recorded as sent with the id it returned: not requeued, nothing dropped, no second send", async () => {
+          const { orderId, transmissionId, idempotencyKey } = await persisted();
+          const vendor = new FakeDoseSpotVendor({
+            transmit: async () => {
+              await moveToProduction(); // the move lands while the send is in flight; the send still answers success
+              return {
+                dosespotPrescriptionId: "rx-sent-under-old-clinic",
+                transmittedAt: T0.toISOString(),
+              };
+            },
+          });
+          const r = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+          expect(r).toMatchObject({
+            claimed: 1,
+            transmitted: 1,
+            deferredByOutage: 0,
+            requeued: 0,
+            failed: 0,
+          });
+          expect(await orderRow(orderId)).toMatchObject({
+            status: "transmitted",
+            rx: "rx-sent-under-old-clinic",
+          });
+          const t = await txRow(transmissionId as string);
+          expect(t.dosespot_prescription_id).toBe("rx-sent-under-old-clinic"); // the id that was SENT, not dropped
+          expect(t.idempotency_key).toBe(idempotencyKey);
+          expect(t.transmission_succeeded_at).not.toBeNull();
+          expect(warned).toEqual([]); // no "registration moved" for a send that went out
+          const again = await runTransmitNewRxForOrg(depsWithWarn(vendor), ORG_A);
+          expect(again.claimed).toBe(0); // nothing is claimed again
+          expect(vendor.calls).toHaveLength(1); // and nothing was sent a second time
+        });
 
         it("control: with no move, a retryable failure keeps the persisted id and the key (the retry only re-runs the send) and spends a retry", async () => {
           const { orderId, transmissionId, idempotencyKey } = await persisted();
@@ -1474,14 +1568,19 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         const { orderId, transmissionId } = await queued();
         let transactions = 0;
         let raced = false;
-        // the order's own transactions run in a fixed order: 1 = the claim, 2 = the payload's vendor ids, 3 = the stamp. The move commits just before the 3rd.
+        // A lone order's transactions run in a fixed order. The move must commit just before the stamp's: if that order ever changes, `raced` stays false
+        // and the test fails instead of passing without having raced anything.
+        const CLAIM_TX = 1;
+        const PAYLOAD_TX = 2;
+        const STAMP_TX = PAYLOAD_TX + 1;
+        expect(CLAIM_TX).toBeLessThan(PAYLOAD_TX);
         const racingDb = new Proxy(h.handle.db, {
           get(target, prop, receiver) {
             const value = Reflect.get(target, prop, receiver);
             if (prop !== "transaction") return value;
             return async (...args: unknown[]) => {
               transactions += 1;
-              if (transactions === 3 && !raced) {
+              if (transactions === STAMP_TX && !raced) {
                 raced = true;
                 await moveToProduction();
                 await reEnrolAtNewClinic();
