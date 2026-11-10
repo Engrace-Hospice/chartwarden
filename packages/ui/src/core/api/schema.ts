@@ -102288,6 +102288,7 @@ export interface operations {
                         eraId: string;
                         fileIndex: number;
                         transactionSetControlNumber: string;
+                        sourceDigest: string;
                         state: string;
                         holdReason: string | null;
                         possibleDuplicate: boolean;
@@ -102353,6 +102354,17 @@ export interface operations {
                             reason: string | null;
                             reference: string | null;
                             amount: number | null;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            /** @constant */
+                            policyStatus: "not_configured";
+                            /** @constant */
+                            postingEligible: false;
                         }[];
                         claimOutcomes: {
                             claimId: string | null;
@@ -102620,8 +102632,7 @@ export interface operations {
                             submittedAt: string;
                             supportingEvidence: string[];
                             selectable: boolean;
-                            /** @constant */
-                            submittedLines: "unavailable";
+                            submittedLines: "available" | "unavailable";
                         }[];
                         /** @constant */
                         postingAuthorized: false;
@@ -102701,6 +102712,7 @@ export interface operations {
                         reason: string;
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                     }[];
                 };
             };
@@ -102735,6 +102747,60 @@ export interface operations {
                         providerEntityId: string;
                         payer: string | null;
                         paymentCents: number | null;
+                        billedCents: number | null;
+                        unresolvedCents: number | null;
+                        providerAdjustments: {
+                            sourceDigest: string;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            reason: string | null;
+                            reference: string | null;
+                            amountCents: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            policy: {
+                                /** @constant */
+                                status: "not_configured";
+                                version: null;
+                            };
+                            /** @constant */
+                            action: "none";
+                        }[];
+                        claims: {
+                            claimIndex: number;
+                            billingModule: "M23" | "M41" | null;
+                            patientControlNumber: string | null;
+                            payerIcn: string | null;
+                            claimId: string | null;
+                            payerId: string | null;
+                            submissionId: string | null;
+                            evidenceId: string | null;
+                            evidenceVersion: number;
+                            matching: "verified" | "human_confirmed_candidate" | "blocked";
+                            billedCents: number | null;
+                            paidCents: number | null;
+                            patientResponsibilityCents: number | null;
+                            adjustments: {
+                                /** @constant */
+                                scope: "claim";
+                                groupCode: "CO" | "PR" | "OA" | "PI" | "CR" | "unknown";
+                                reasonCode: string | null;
+                                amountCents: number | null;
+                                responsibility: "provider_reported" | "patient_reported" | "other_unallocated" | "payer_initiated_reported" | "correction_or_reversal_reported" | "unsupported";
+                                classification: "contractual_obligation_reported" | "patient_responsibility_reported" | "other_adjustment_unresolved" | "payer_initiated_reduction_reported" | "correction_or_reversal_reported" | "unsupported";
+                                accountingDisposition: "unresolved_review" | "policy_required";
+                                policyVersion: null;
+                                m25Action: "flagged_review" | "not_authorized";
+                            }[];
+                            unresolvedCents: number | null;
+                            financialStatus: "fully_paid" | "partial_paid" | "unsupported";
+                            duplicate: "none" | "potential";
+                            eligible: boolean;
+                            blockers: string[];
+                        }[];
                         claimId: string | null;
                         eligible: boolean;
                         status: "eligible" | "blocked" | "already_posted";
@@ -102817,6 +102883,7 @@ export interface operations {
                         outcome: "approved" | "already_approved" | "posted" | "already_posted";
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                         paymentCents: number;
                     };
                 };

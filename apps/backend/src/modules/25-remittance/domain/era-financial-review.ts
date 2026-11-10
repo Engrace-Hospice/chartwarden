@@ -224,6 +224,13 @@ export function projectEraFinancialReview(
       blocksReviewCompletion: false,
       blocksFuturePosting: true,
     });
+  if (input.providerAdjustments.length > 0)
+    exceptions.push({
+      code: "PROVIDER_ADJUSTMENT_REQUIRES_POLICY_REVIEW",
+      severity: "follow_up",
+      blocksReviewCompletion: false,
+      blocksFuturePosting: true,
+    });
   if (input.claims.some((claim) => claim.serviceLines.some((line) => !line.payerLineReference)))
     exceptions.push({
       code: "SERVICE_LINE_REFERENCE_MISSING",

@@ -218,10 +218,9 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
         "attempted tenant-creation bypass",
       ),
     ).rejects.toThrow(/cannot be skipped/);
-    const protectedStatus = await admin.query(
-      "SELECT status FROM onboarding_task WHERE id = $1",
-      [protectedTask?.id],
-    );
+    const protectedStatus = await admin.query("SELECT status FROM onboarding_task WHERE id = $1", [
+      protectedTask?.id,
+    ]);
     expect(protectedStatus.rows[0].status).toBe("pending");
 
     // Settled: refused (409), never rewritten.
