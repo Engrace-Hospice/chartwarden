@@ -6,6 +6,7 @@
 import { schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { asc, eq, inArray } from "drizzle-orm";
+import { PAUSED_UNTIL_PREFIX } from "../routes/admin-transition";
 import type { WriteTx } from "../routes/service-drizzle";
 import { loadModeHistory, selectContracts } from "./contract-select";
 import { loadBands } from "./plan-service";
@@ -22,11 +23,19 @@ export interface Transition {
   readonly from: Sub["status"] | null;
   readonly to: Sub["status"];
   readonly at: Date;
+  /** The ledger row's `reason_detail`: an admin pause with an end date records it as `paused_until=<ISO instant>` (PAUSED_UNTIL_PREFIX). */
+  readonly detail?: string | null;
 }
 
 export interface Lifetime {
   readonly endedAt: Date | null;
   readonly pauses: { readonly from: Date; readonly to: Date | null }[];
+}
+
+function pausedUntilOf(t: Transition): Date | null {
+  if (!t.detail?.startsWith(PAUSED_UNTIL_PREFIX)) return null;
+  const until = new Date(t.detail.slice(PAUSED_UNTIL_PREFIX.length));
+  return Number.isNaN(until.getTime()) ? null : until;
 }
 
 /**
@@ -38,33 +47,50 @@ export interface Lifetime {
  * the subscription is NOT paused any more it falls back to the row's `updated_at`, the instant of the last write, rather than staying
  * open forever (an open pause bills nothing, so a stale one would stop the bill for good). `updated_at` drifts on unrelated writes, which
  * is why it is only the fallback.
+ *
+ * A pause with an END DATE (`paused_until`) is over at that date whether or not anyone resumed it: nothing resumes a subscription when its
+ * date arrives, so without this a pause "until the 15th" would bill nothing after the 15th until an operator remembered. The date is read
+ * from the row for the pause still in force and from the ledger row's `reason_detail` for one already closed (a resume clears the row's
+ * date). The pause ends at the EARLIER of its date and the transition that closed it; a date still in the future at `at` changes nothing.
  */
 export function lifetimeFromTransitions(
   transitions: readonly Transition[],
-  sub: Pick<Sub, "status" | "canceledAt" | "updatedAt">,
+  sub: Pick<Sub, "status" | "canceledAt" | "updatedAt" | "pausedUntil">,
+  at: Date,
 ): Lifetime {
-  const pauses: { from: Date; to: Date | null }[] = [];
+  const pauses: { from: Date; to: Date | null; until: Date | null }[] = [];
   for (const t of transitions) {
     const open = pauses[pauses.length - 1];
     const keepsPaused = t.from === "paused" && t.to === "paused";
     if (open && open.to === null && !keepsPaused) open.to = t.at;
-    if (t.to === "paused" && t.from !== "paused") pauses.push({ from: t.at, to: null });
+    if (t.to === "paused" && t.from !== "paused")
+      pauses.push({ from: t.at, to: null, until: pausedUntilOf(t) });
   }
   const last = pauses[pauses.length - 1];
   if (last && last.to === null && sub.status !== "paused") last.to = sub.updatedAt;
+  if (last && last.to === null && sub.pausedUntil) last.until = sub.pausedUntil;
+  const closed = pauses.map(({ from, to, until }) => {
+    const lapsed = until !== null && until > from && (to === null ? until <= at : until < to);
+    return { from, to: lapsed ? until : to };
+  });
   const canceledTransition = transitions.filter((t) => t.to === "canceled").pop();
   const endedAt =
     sub.status === "canceled" ? (sub.canceledAt ?? canceledTransition?.at ?? sub.updatedAt) : null;
-  return { endedAt, pauses };
+  return { endedAt, pauses: closed };
 }
 
-async function lifetimeOf(tx: WriteTx, sub: Sub): Promise<Lifetime> {
+async function lifetimeOf(tx: WriteTx, sub: Sub, at: Date): Promise<Lifetime> {
   const transitions = await tx
-    .select({ from: SH.fromStatus, to: SH.toStatus, at: SH.transitionedAt })
+    .select({
+      from: SH.fromStatus,
+      to: SH.toStatus,
+      at: SH.transitionedAt,
+      detail: SH.reasonDetail,
+    })
     .from(SH)
     .where(eq(SH.subscriptionId, sub.id))
     .orderBy(asc(SH.transitionedAt), asc(SH.id));
-  return lifetimeFromTransitions(transitions, sub);
+  return lifetimeFromTransitions(transitions, sub, at);
 }
 
 function requirePricing(plan: typeof schema.plan.$inferSelect) {
@@ -128,7 +154,7 @@ export async function loadContractFacts(
   const facts: ContractFacts[] = [];
   for (const { contract, sub, plan } of records) {
     const pricing = requirePricing(plan);
-    const lifetime = await lifetimeOf(tx, sub);
+    const lifetime = await lifetimeOf(tx, sub, at);
     const liveFrom = sub.startedAt > goLiveAt ? sub.startedAt : goLiveAt;
     facts.push({
       organizationId,
