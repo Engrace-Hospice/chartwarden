@@ -294,11 +294,16 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
           const gate = new Promise<void>((resolve) => {
             commitOpenTransaction = resolve;
           });
+          let written: () => void = () => undefined;
+          const insertIssued = new Promise<void>((resolve) => {
+            written = resolve;
+          });
           openTransaction = withOrgContext(handle.db, scope, async (tx) => {
             await insertProbe(tx, runs); // written, held open
+            written();
             await gate;
           });
-          await new Promise((resolve) => setTimeout(resolve, 100)); // the INSERT has reached the server
+          await insertIssued; // the INSERT has reached the server; the sibling still holds its transaction open
           throw new Error("a sibling step failed");
         }
         if (mode === "refused-commit") {

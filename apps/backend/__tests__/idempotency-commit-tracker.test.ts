@@ -345,7 +345,7 @@ describe("idempotency release needs proof that nothing committed", () => {
         await gate;
         await client.query("commit");
       })();
-      await new Promise((resolve) => setTimeout(resolve, 5)); // the first transaction has issued its INSERT
+      while (pool.inserts() === 0) await new Promise((resolve) => setTimeout(resolve, 1)); // its INSERT has been issued
       throw deadlock(); // the other half of the Promise.all loses
     });
     const first = await post();
