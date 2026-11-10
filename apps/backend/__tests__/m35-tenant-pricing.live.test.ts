@@ -1903,6 +1903,20 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ).rejects.toThrow(/final statement cannot change/);
     });
 
+    it("migration 1466: the platform carrier cannot restamp a statement across the subscription's organization/plan ownership boundary", async () => {
+      await asCarrier(async (carrier) => {
+        await expect(
+          carrier.query(
+            "UPDATE subscription_statement SET organization_id=$1 WHERE organization_id=$2 AND status='draft'",
+            [ORG_B, ORG_A],
+          ),
+        ).rejects.toMatchObject({
+          code: "23514",
+          constraint: "subscription_statement_ownership_guard",
+        });
+      });
+    });
+
     it("F-6 (migration 1464): a final statement's Stripe push record is written ONCE: from NULL it may be set, but never cleared or rewritten, so a posted statement cannot go back into the unposted set", async () => {
       // fixture: one final statement put back to "never pushed" the only way that can be done, by a superuser that skips triggers
       const [target] = await q<{ id: string }>(

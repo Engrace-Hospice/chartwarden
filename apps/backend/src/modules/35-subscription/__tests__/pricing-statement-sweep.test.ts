@@ -55,6 +55,7 @@ const canceledAndSettled = (organizationId: string): ContractFacts => ({
   },
   modeHistory: [
     {
+      id: "mode-initial",
       billingServiceMode: "billing_software",
       effectiveFrom: "2026-01-01",
       createdAt: d("2026-01-01T00:00:00Z"),

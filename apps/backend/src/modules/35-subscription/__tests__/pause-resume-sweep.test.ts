@@ -64,6 +64,8 @@ function world(
     now?: Date;
     /** Runs when a `FOR UPDATE` read is issued, before it answers: what another writer commits while this one waits for the lock. */
     onLock?: (rows: SubState[]) => SubState[];
+    /** Commits another writer just before this transaction's guarded UPDATE, then makes that UPDATE fail. */
+    updateRace?: { readonly rows: (rows: SubState[]) => SubState[]; readonly error: Error };
   } = {},
 ) {
   let rows = Array.isArray(initial) ? [...initial] : [initial];
@@ -159,6 +161,10 @@ function world(
             return {
               returning: async () => {
                 if (opts.loseRace) return [];
+                if (opts.updateRace) {
+                  rows = opts.updateRace.rows(rows);
+                  throw opts.updateRace.error;
+                }
                 log.updatedIds.push(String(id));
                 rows = rows.map((r) => (r.id === id ? { ...r, ...(v as Partial<SubState>) } : r));
                 return [{ id }];
@@ -853,6 +859,47 @@ describe("the `.activated` consumer asks first: it never resumes a paused subscr
         "m35 organization reactivated but its paused subscription was not resumed: an older subscription of the organization is live",
         { organizationId: ORG, subscriptionId: newestId },
       ],
+    ]);
+  });
+
+  it("consumes the unique-index race after rollback, re-reads the competing live row, and reports the blocked resume", async () => {
+    const race = Object.assign(new Error("one live subscription"), {
+      code: "23505",
+      constraint: "subscription_org_active_uq",
+    });
+    const w = world(lapsedPause({ id: NEWEST_PAUSED, pausedUntil: null }), {
+      updateRace: {
+        rows: (rows) => [
+          lapsedPause({
+            id: OLDER_LIVE,
+            status: "active",
+            pausedAt: null,
+            pausedUntil: null,
+            startedAt: new Date("2026-09-01T00:00:00Z"),
+          }),
+          ...rows,
+        ],
+        error: Object.assign(new Error("wrapped"), { cause: race }),
+      },
+    });
+    const alerts: PauseBlockedEvent[] = [];
+    const { outbox, published } = deps(w.db);
+
+    await expect(
+      activate(w.db, outbox, { onPauseBlocked: (event) => void alerts.push(event) }),
+    ).resolves.toBeUndefined();
+
+    expect(w.state(NEWEST_PAUSED).status).toBe("paused");
+    expect(w.log.transactions).toHaveLength(2);
+    expect(w.log.ledger).toEqual([]);
+    expect(published).toEqual([]);
+    expect(alerts).toEqual([
+      {
+        organizationId: ORG,
+        subscriptionId: NEWEST_PAUSED,
+        olderLiveSubscriptionId: OLDER_LIVE,
+        trigger: "organization_activated",
+      },
     ]);
   });
 

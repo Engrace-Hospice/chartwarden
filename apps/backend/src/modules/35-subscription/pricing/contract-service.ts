@@ -444,6 +444,7 @@ async function signContract(tx: WriteTx, ctx: SignContext): Promise<SignedContra
   await recordSigning(tx, ctx, sub.id);
   const history: ModeHistoryRow[] = [
     {
+      id: first.id,
       billingServiceMode: first.billingServiceMode,
       effectiveFrom: first.effectiveFrom,
       createdAt: first.createdAt,
@@ -605,6 +606,14 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (!tenant) throw new NotFoundError("tenant");
         const at = now();
         const today = utcDateOf(at);
+        // Serialize mode changes for this tenant before reading its history. Without this lock, two
+        // operators can both judge the same history and append competing rows for one effective date.
+        await tx
+          .select({ id: SC.id })
+          .from(SC)
+          .where(eq(SC.organizationId, tenant.organizationId))
+          .orderBy(desc(SC.createdAt), desc(SC.id))
+          .for("update");
         const found = await loadContract(tx, "live", at, tenant.organizationId);
         if (!found) throw new NotFoundError("this organization has no contracted subscription");
         const { record } = found;
@@ -628,6 +637,7 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         const history: ModeHistoryRow[] = [
           ...found.history,
           {
+            id: row.id,
             billingServiceMode: row.billingServiceMode,
             effectiveFrom: row.effectiveFrom,
             createdAt: row.createdAt,

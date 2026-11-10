@@ -136,13 +136,15 @@ export async function loadModeHistory(
   if (contractIds.length === 0) return byContract;
   const rows = await tx
     .select({
+      id: SCM.id,
       contractId: SCM.contractId,
       billingServiceMode: SCM.billingServiceMode,
       effectiveFrom: SCM.effectiveFrom,
       createdAt: SCM.createdAt,
     })
     .from(SCM)
-    .where(inArray(SCM.contractId, [...contractIds]));
+    .where(inArray(SCM.contractId, [...contractIds]))
+    .orderBy(SCM.effectiveFrom, SCM.createdAt, SCM.id);
   for (const { contractId, ...row } of rows) {
     byContract.set(contractId, [...(byContract.get(contractId) ?? []), row]);
   }

@@ -9,6 +9,8 @@
 import type { BillingServiceMode } from "@chartwarden/types";
 
 export interface ModeHistoryRow {
+  /** Stable final tie-breaker when two changes share a database timestamp. */
+  readonly id: string;
   readonly billingServiceMode: BillingServiceMode;
   /** `YYYY-MM-DD` (UTC). */
   readonly effectiveFrom: string;
@@ -17,7 +19,9 @@ export interface ModeHistoryRow {
 
 const byEffectiveThenCreated = (a: ModeHistoryRow, b: ModeHistoryRow): number =>
   a.effectiveFrom === b.effectiveFrom
-    ? a.createdAt.getTime() - b.createdAt.getTime()
+    ? a.createdAt.getTime() === b.createdAt.getTime()
+      ? a.id.localeCompare(b.id)
+      : a.createdAt.getTime() - b.createdAt.getTime()
     : a.effectiveFrom < b.effectiveFrom
       ? -1
       : 1;

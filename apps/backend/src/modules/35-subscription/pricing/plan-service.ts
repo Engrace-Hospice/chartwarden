@@ -89,6 +89,8 @@ export interface CreatePricingPlanInput extends PlanPricingInput {
 export interface PricingPlanService {
   list(): Promise<PricingPlanView[]>;
   get(planId: string): Promise<PricingPlanView>;
+  /** One published, active plan, or the same 404 used for an unknown id. */
+  getOffered(planId: string): Promise<PricingPlanView>;
   /** Published and still offered: what onboarding may sign. */
   listOffered(): Promise<PricingPlanView[]>;
   create(
@@ -299,6 +301,25 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
 
     async get(planId) {
       return platformRunner((tx) => loadView(tx, planId));
+    },
+
+    async getOffered(planId) {
+      return platformRunner(async (tx) => {
+        const [plan] = await tx
+          .select()
+          .from(PL)
+          .where(
+            and(
+              eq(PL.id, planId),
+              eq(PL.tier, "census_banded"),
+              isNotNull(PL.publishedAt),
+              eq(PL.isActive, true),
+            ),
+          )
+          .limit(1);
+        if (!plan) throw new NotFoundError("plan not found");
+        return toPricingPlanView(plan, await loadBands(tx, plan.id));
+      });
     },
 
     async listOffered() {

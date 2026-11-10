@@ -95,6 +95,7 @@ describe("the billing service mode history (D6): a change takes effect from the 
     effectiveFrom: string,
     createdAt = "2026-10-20T00:00:00Z",
   ): ModeHistoryRow => ({
+    id: `${effectiveFrom}:${createdAt}:${billingServiceMode}`,
     billingServiceMode,
     effectiveFrom,
     createdAt: d(createdAt),
@@ -108,6 +109,15 @@ describe("the billing service mode history (D6): a change takes effect from the 
     ];
     expect(modeInForceOn(history, "2026-10-19")).toBeNull();
     expect(modeInForceOn(history, "2026-11-30")).toBe("billing_software");
+    expect(modeInForceOn(history, "2026-12-01")).toBe("none");
+  });
+
+  it("uses the immutable row id as the final order when database timestamps tie", () => {
+    const at = "2026-11-28T10:00:00Z";
+    const history = [
+      { ...row("managed_billing", "2026-12-01", at), id: "00000000-0000-4000-8000-000000000001" },
+      { ...row("none", "2026-12-01", at), id: "00000000-0000-4000-8000-000000000002" },
+    ];
     expect(modeInForceOn(history, "2026-12-01")).toBe("none");
   });
 
@@ -176,6 +186,7 @@ const facts = (over: Partial<ContractFacts> & { liveFrom: Date }): ContractFacts
   pricing: PRICING,
   modeHistory: [
     {
+      id: "mode-initial",
       billingServiceMode: "billing_software",
       effectiveFrom: "2026-10-20",
       createdAt: d("2026-10-20T00:00:00Z"),
@@ -270,11 +281,13 @@ describe("planMonths: which months still need a statement", () => {
       liveFrom: d("2026-11-01T00:00:00Z"),
       modeHistory: [
         {
+          id: "mode-initial",
           billingServiceMode: "billing_software",
           effectiveFrom: "2026-10-20",
           createdAt: d("2026-10-20T00:00:00Z"),
         },
         {
+          id: "mode-next",
           billingServiceMode: "managed_billing",
           effectiveFrom: "2026-12-01",
           createdAt: d("2026-11-28T10:00:00Z"),

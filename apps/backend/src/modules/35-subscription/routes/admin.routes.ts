@@ -1,4 +1,4 @@
-import { writeActorOf } from "@chartwarden/shared/route-kit";
+import { rejectAiActor, writeActorOf } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/35-subscription/routes/admin.routes.ts — M35 (§4.2 platform-ops surface,
 // `/api/admin`). The platform-billing plan / subscription / dunning / refund / promo / revenue / usage /
 // stripe routes. Reads gate on the §4.7 `*.admin.read` / `*.read` keys + `platform_billing_scope` (§4.8);
@@ -43,6 +43,9 @@ export interface AdminRouteDeps {
 /** Register the §4.2 platform-ops subscription-billing routes. */
 export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps): void {
   const { service } = deps;
+  const noAiSubscriptionTransition = rejectAiActor(
+    "AI principals cannot pause, resume or cancel subscriptions",
+  );
 
   // ── plans ──
   app.get(
@@ -190,6 +193,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
         P("subscription.admin.write"),
         PLATFORM_SCOPE("subscription.admin.write"),
         STEP_UP("subscription.admin.write"),
+        noAiSubscriptionTransition,
         IDEMPOTENT,
       ],
     },
@@ -207,6 +211,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
         P("subscription.admin.write"),
         PLATFORM_SCOPE("subscription.admin.write"),
         STEP_UP("subscription.admin.write"),
+        noAiSubscriptionTransition,
         IDEMPOTENT,
       ],
     },
@@ -223,6 +228,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
         P("subscription.admin.write"),
         PLATFORM_SCOPE("subscription.admin.write"),
         STEP_UP("subscription.admin.write"),
+        noAiSubscriptionTransition,
         IDEMPOTENT,
       ],
     },
