@@ -36,6 +36,7 @@ describe("inline code that deletes, writes or runs something on a protected path
     `osascript -e 'do shell script "rm ${HARNESS}"'`,
     "python3 -c \"import shutil; shutil.rmtree('.claude/rules')\"",
     "node -e \"require('fs').writeFileSync('compliance/controls.yaml', '')\"",
+    "gawk -i inplace '{print}' compliance/controls.yaml",
   ])("asks before %s", (cmd) => {
     expect(["ask", "deny"], cmd).toContain(d(cmd));
   });
@@ -49,6 +50,12 @@ describe("inline code that deletes, writes or runs something on a protected path
     "perl -ne 'print if /TODO/' src/a.ts",
     "awk '{print $1}' notes.txt",
     "awk -F: '{print $2}' /etc/hosts",
+    // awk reads the files after its program: a workflow named there is not code that touches it
+    "awk 'NR>=760 && NR<=800' .github/workflows/ci.yml | head",
+    "awk -v n=3 -F, '{print $n}' compliance/controls.csv",
+    // a script on stdin is judged on its own text, not on a later command that names a protected path
+    "python3 - <<'EOF'\nprint(1)\nEOF\ngrep -n CW-CM compliance/controls.yaml",
+    "cat notes.txt | python3 -c 'import sys; print(len(sys.stdin.read()))'; grep x compliance/controls.yaml",
     "php -r 'echo 1;'",
     'deno eval "console.log(1)"',
     "ruby -e 'puts 1'",

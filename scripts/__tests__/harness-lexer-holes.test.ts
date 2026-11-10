@@ -44,6 +44,7 @@ describe("a command word built around a substitution is an unknown program", () 
     'eval "$(ssh-agent -s)"',
     'eval "$(direnv export bash)"',
     "$($(echo hi))",
+    '"${DC[@]}" build api',
     "echo $(git rev-parse HEAD)",
     "git log $(git rev-parse HEAD~3)..HEAD",
   ])(

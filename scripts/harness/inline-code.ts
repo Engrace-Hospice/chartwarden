@@ -31,6 +31,28 @@ export function runsInlineCode(prog: string, args: readonly string[]): boolean {
   return INLINE_FLAG.some(([name, flag]) => name.test(prog) && args.some((a) => flag.test(a)));
 }
 
+/** awk options that take the next word as their value. */
+const AWK_VALUE_FLAG = /^-[Fvf]$|^--(?:field-separator|assign|file)$/;
+
+/**
+ * The text of the code an inline interpreter runs. awk's operands after its program are files it READS, so a
+ * workflow file named there is not code that touches it; any other interpreter's arguments are all code or its
+ * own operands, and are judged whole.
+ */
+export function inlineScriptText(prog: string, args: readonly string[]): string {
+  if (!AWK.test(prog)) return args.join(" ");
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k] ?? "";
+    if (AWK_VALUE_FLAG.test(a)) k++;
+    else if (!a.startsWith("-")) return a;
+  }
+  return "";
+}
+
+/** Can the file operands of this inline interpreter be written by it? awk only reads them, unless gawk's `-i inplace`. */
+export const mayWriteFileOperands = (prog: string, args: readonly string[]): boolean =>
+  !AWK.test(prog) || args.some((a) => a === "inplace" || a === "-iinplace");
+
 /** The parts of a parsed command this reads. */
 export interface ScriptCommand {
   readonly prog: string;

@@ -24,6 +24,8 @@ import { switchesHarness } from "./harness-switch";
 import {
   SHELL_PROGRAM,
   type ScriptStage,
+  inlineScriptText,
+  mayWriteFileOperands,
   printedText,
   readsScriptFromStdin,
   runsInlineCode,
@@ -1091,6 +1093,13 @@ function findExecCommands(args: readonly string[]): Array<{ command: string; inF
   return runs;
 }
 
+/** The text of the command at `index` and of every stage before it in its pipeline: what it may be handed. */
+function pipelineTexts(parts: readonly Segment[], index: number): string[] {
+  const texts = [parts[index]?.text ?? ""];
+  for (let j = index; parts[j]?.joiner === "|"; j--) texts.push(parts[j - 1]?.text ?? "");
+  return texts;
+}
+
 const UNREADABLE_SCRIPT_REASON =
   "A shell is handed a script that the guard cannot read (`curl … | sh`, `cat f | bash`). Read the script first, then run it as a file or as `bash -c '…'`. A human decides.";
 
@@ -1167,7 +1176,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   }
   let after = start; // where the next command runs when the one before it succeeded
   let anywhere = start; // everywhere any later command could run
-  let scriptOnStdin = false;
+  const scriptTexts: string[] = []; // what an interpreter or a shell is handed on stdin
   // `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named.
   const cdpath = /\bCDPATH\b/.test(c);
   parts.forEach((part, index) => {
@@ -1181,9 +1190,13 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     if (v) verdicts.push(v);
     // `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot
     // name. The literal rest of the word is judged as the program it would be (a deny stands), and a human decides.
-    // A word that is one substitution and nothing else, with no arguments, is the `eval "$(ssh-agent -s)"` idiom.
+    // A word that is one substitution and nothing else is the `eval "$(ssh-agent -s)"` idiom (no arguments) or an
+    // array run as a command (`"${DC[@]}" build`); only a lone `$( )` or backtick with arguments is a command.
     const guess = dynamicName(parsed.prog) ? withoutExpansions(parsed.prog) : null;
-    if (guess !== null && (guess !== "" || parsed.args.length > 0)) {
+    if (
+      guess !== null &&
+      (guess !== "" || (parsed.args.length > 0 && /^[$`][(`]|^`/.test(parsed.prog)))
+    ) {
       const named =
         guess === "" ? null : classifySegment(part.text, { ...parsed, prog: guess }, ctx, here);
       verdicts.push(named ?? ask(DYNAMIC_PROGRAM_REASON));
@@ -1198,7 +1211,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
       for (const run of findExecCommands(parsed.args))
         verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
     }
-    scriptOnStdin ||= readsScriptFromStdin(parsed, index);
+    if (readsScriptFromStdin(parsed, index)) scriptTexts.push(...pipelineTexts(parts, index));
     // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a
     // command line; a script piped in from anything else cannot be read.
     verdicts.push(...handedScriptVerdicts(parts, parsedParts, index, ctx, depth, here));
@@ -1214,8 +1227,9 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     verdicts.push(ask("Too many command substitutions to check; a human decides."));
   } else for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, anywhere));
   // A script fed to an interpreter on stdin is only text to us: judge all of it (heredoc body included).
-  if (scriptOnStdin) {
-    const v = scriptTextVerdict(c);
+  if (scriptTexts.length > 0) {
+    const bodies = scanShell(c).docs.map((doc) => doc.body);
+    const v = scriptTextVerdict([...scriptTexts, ...bodies].join("\n"));
     if (v) verdicts.push(v);
   }
   return (
@@ -1900,7 +1914,9 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
   const targets: WriteTarget[] = [
     ...p.outs.flatMap(expandBraces).map((raw) => wt(raw)),
     ...commandWrites(p.prog, p.args),
-    ...(inline ? fileArgs(p.args).map((raw) => wt(raw)) : []),
+    ...(inline && mayWriteFileOperands(p.prog, p.args)
+      ? fileArgs(p.args).map((raw) => wt(raw))
+      : []),
   ];
   let unknownDir = false;
   for (const t of targets) {
@@ -2470,7 +2486,7 @@ function classifySegment(
 
   // --- Inline interpreter code that names a secret file: `python -c "open('.env').read()"`.
   if (runsInlineCode(prog, args)) {
-    const code = scriptTextVerdict(argline);
+    const code = scriptTextVerdict(inlineScriptText(prog, args));
     if (code?.decision === "deny") return code;
   }
 
@@ -2491,7 +2507,7 @@ function classifySegment(
     );
   }
   if (runsInlineCode(prog, args)) {
-    const code = scriptTextVerdict(argline);
+    const code = scriptTextVerdict(inlineScriptText(prog, args));
     if (code) return code;
   }
 
