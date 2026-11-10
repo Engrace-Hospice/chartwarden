@@ -12,6 +12,7 @@ import { requireAbac, requirePermission } from "@chartwarden/auth";
 // ABAC. List is fully live (repo → withPlatformContext → typed page). Qualify ENQUEUES the §4.3
 // `tenant.provision` job through the service's injected enqueue port; the live BullMQ worker construction
 // is Phase 2D (see platform/service.ts TODO). Mirrors the sibling tenants.ts plugin shape.
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -79,6 +80,7 @@ export function registerSignupIntentRoutes(
       // moment that plumbing is wired up it must receive a membership id, not the raw user id.
       const { membershipId } = writeActorOf(request);
       const body = parse(RejectIntentRequest, request.body);
+      assertNoPatientIdentifier("rejectionReason", body.rejectionReason);
       return service.rejectIntent(intentIdOf(request), membershipId, {
         rejectionReason: body.rejectionReason,
       });

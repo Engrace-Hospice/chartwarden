@@ -291,6 +291,36 @@ describe("platform onboarding routes", () => {
     await app.close();
   });
 
+  it("an org display name that holds a patient identifier is a 422 on both surfaces, and is not stored", async () => {
+    const { app } = makeServer();
+    const ssn = "900-12-3456"; // area 9xx is never issued
+    const platform = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/platform/tenants/acme/org-profile",
+      headers: { ...OPS, ...FRESH },
+      payload: { displayName: `Acme Hospice ${ssn}` },
+    });
+    expect(platform.statusCode).toBe(422);
+    expect(platform.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(platform.body).not.toContain(ssn);
+    const tenant = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/tenant/org-profile",
+      headers: ADMIN,
+      payload: { displayName: `Acme Hospice ${ssn}` },
+    });
+    expect(tenant.statusCode).toBe(422);
+    expect(tenant.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    const after = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/tenant/org-profile",
+      headers: ADMIN,
+      payload: { orgTimezone: "America/Denver" },
+    });
+    expect(after.json().displayName).toBe("Acme");
+    await app.close();
+  });
+
   it("skip, re-open, org profile and compliance officer each need step-up and are denied to a tenant admin", async () => {
     const { app, id } = makeServer();
     const stepped = { ...OPS, ...FRESH };

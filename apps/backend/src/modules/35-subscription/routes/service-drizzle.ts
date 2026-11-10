@@ -14,6 +14,7 @@
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@chartwarden/db";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import {
   PaymentMethodRejectedError,
@@ -1599,6 +1600,8 @@ export function buildDrizzleM35RouteService(
 
     // ── platform-ops: refunds ──────────────────────────────────────────────────────────────────────
     async requestRefund(actor, args: RequestRefundArgs): Promise<RefundView> {
+      // Typed by an operator and stored on the refund row: the shared identifier screen (422, no transaction opened).
+      assertNoPatientIdentifier("reasonDetail", args.reasonDetail);
       return platform(async (tx) => {
         // GAP-061 — lock the invoice row so two concurrent requests serialize on the cumulative cap.
         const [inv] = await tx
@@ -1690,6 +1693,7 @@ export function buildDrizzleM35RouteService(
     },
 
     async denyRefund(actor, refundId, reason): Promise<RefundView> {
+      assertNoPatientIdentifier("reason", reason); // stored as `denied_reason`
       return platform(async (tx) => {
         const [ref] = await tx.select().from(REF).where(eq(REF.id, refundId)).limit(1);
         if (!ref) throw new NotFoundError("refund not found");

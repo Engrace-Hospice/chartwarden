@@ -15,6 +15,7 @@
 // §4.3 worker job through the service's injected enqueue port + emit the outbox descriptor; the live
 // BullMQ worker construction is Phase 2D (see service.ts TODO).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
@@ -251,6 +252,7 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(DekRotateRequest, request.body);
+      assertNoPatientIdentifier("reason", body.reason); // operator text, copied into the job and the audit trail
       const res = await service.requestDekRotate(orgSlugOf(request), membershipId, {
         reason: body.reason,
       });
