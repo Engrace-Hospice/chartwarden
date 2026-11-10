@@ -860,7 +860,7 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
     expect(lifetimeAt([], sub("active", "2026-11-25T00:00:00Z")).endedAt).toBeNull();
   });
 
-  describe("a pause with an end date is over at that date; nothing resumes it", () => {
+  describe("a pause with an end date is over at that date, whether or not the hourly sweep has resumed the row yet", () => {
     const UNTIL = "2026-12-15T00:00:00.000Z";
     const PAUSED_AT = "2026-11-10T09:00:00Z";
     const pauseRow = (iso: string, until: string | null = UNTIL): Transition => ({
@@ -912,6 +912,27 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
       expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at(UNTIL) }]);
     });
 
+    it("the pause-resume sweep does not move the lifetime: the row resumed at its date (the ledger dated at the date) reads exactly as the row still paused", () => {
+      const sweptAt = "2026-12-20T03:05:00Z"; // the sweep's instant: an hour-scale distance from the date, and NOT what decides
+      const beforeSweep = lifetimeAt(
+        [pauseRow(PAUSED_AT)],
+        sub("paused", PAUSED_AT, null, UNTIL),
+        at(sweptAt),
+      );
+      for (const readAt of [sweptAt, "2026-12-21T00:00:00Z", "2027-02-01T00:00:00Z"]) {
+        const afterSweep = lifetimeAt(
+          [
+            pauseRow(PAUSED_AT),
+            { ...t("paused", "active", UNTIL), reasonCode: "platform_ops_pause_lapsed" },
+          ],
+          sub("active", sweptAt), // the row's updated_at is the sweep's instant
+          at(readAt),
+        );
+        expect(afterSweep).toEqual(beforeSweep);
+      }
+      expect(beforeSweep.pauses).toEqual([{ from: at(PAUSED_AT), to: at(UNTIL) }]);
+    });
+
     it("a resume BEFORE the date ends the pause at the resume", () => {
       const life = lifetimeAt(
         [pauseRow(PAUSED_AT), t("paused", "active", "2026-11-20T09:00:00Z")],
@@ -939,6 +960,70 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
         { from: at(PAUSED_AT), to: at(UNTIL) },
         { from: at("2026-12-20T00:00:00Z"), to: null },
       ]);
+    });
+
+    describe("an organization suspension that arrives while a dated pause is still running makes the pause open-ended", () => {
+      const SUSPENDED_AT = "2026-12-05T00:00:00Z";
+      /** The ledger the consumer writes: the pause, then a paused -> paused row for the suspension (the row's own date is cleared with it). */
+      const suspensionRow: Transition = {
+        ...t("paused", "paused", SUSPENDED_AT),
+        reasonCode: "org_suspended_by_platform_admin",
+        detail: "compliance_hold",
+      };
+
+      it("the date no longer ends the pause: it stays open past the date", () => {
+        const life = lifetimeAt(
+          [pauseRow(PAUSED_AT), suspensionRow],
+          sub("paused", SUSPENDED_AT), // paused_until was cleared with the conversion
+          at("2026-12-20T00:00:00Z"),
+        );
+        expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: null }]);
+      });
+
+      it("the statement does not move at the conversion: read between the suspension and the old date, the lifetime is the same with or without the row", () => {
+        for (const readAt of [
+          "2026-12-05T00:00:01Z",
+          "2026-12-10T12:00:00Z",
+          "2026-12-14T23:59:59Z",
+        ]) {
+          const before = lifetimeAt(
+            [pauseRow(PAUSED_AT)],
+            sub("paused", PAUSED_AT, null, UNTIL),
+            at(readAt),
+          );
+          const after = lifetimeAt(
+            [pauseRow(PAUSED_AT), suspensionRow],
+            sub("paused", SUSPENDED_AT),
+            at(readAt),
+          );
+          expect(after).toEqual(before);
+        }
+      });
+
+      it("only a SUSPENSION voids the date: a paused -> paused row of another reason (a plan change) leaves it in force", () => {
+        const life = lifetimeAt(
+          [
+            pauseRow(PAUSED_AT),
+            { ...t("paused", "paused", SUSPENDED_AT), reasonCode: "plan_changed" },
+          ],
+          sub("paused", SUSPENDED_AT, null, UNTIL),
+          at("2026-12-20T00:00:00Z"),
+        );
+        expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at(UNTIL) }]);
+      });
+
+      it("a pause that ended before the suspension is not reopened by it", () => {
+        const life = lifetimeAt(
+          [
+            pauseRow(PAUSED_AT),
+            t("paused", "active", "2026-11-20T09:00:00Z"),
+            suspensionRow, // (a stray row: the subscription was active, the consumer would not write this)
+          ],
+          sub("active", SUSPENDED_AT),
+          at("2026-12-20T00:00:00Z"),
+        );
+        expect(life.pauses).toEqual([{ from: at(PAUSED_AT), to: at("2026-11-20T09:00:00Z") }]);
+      });
     });
 
     it("a date that is exactly `at` has passed: the pause is over at the date (the boundary is inclusive)", () => {

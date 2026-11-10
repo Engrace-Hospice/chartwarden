@@ -7,8 +7,10 @@
 // the billing-service-mode seam, the platform and tenant views and the onboarding resume all call it.
 //
 //   scope "live"        a contract whose subscription is billable NOW: not canceled, and not paused unless the pause has lapsed (an admin
-//                       pause with an end date whose date has passed: nothing resumes it, so billing treats it as over at that date, the
-//                       same as the statement's pause windows do). The census records for these, and the mode seam answers for these.
+//                       pause with an end date whose date has passed). The hourly pause-resume sweep (billing-runtime/pause-resume.ts)
+//                       resumes the stored status of a lapsed pause; this covers the hours between the date and the next sweep (and a
+//                       sweep that is late), treating the pause as over at its date, the same as the statement's pause windows do.
+//                       The census records for these, and the mode seam answers for these.
 //   scope "statements"  a contract that can still need a statement: every subscription not canceled (a paused one still owes the months
 //                       before its pause), and a canceled one for POST_END_SETTLEMENT_MONTHS after it ended, so late-posting money is
 //                       still billed on a settlement statement in the month it posts
@@ -57,10 +59,17 @@ export interface ContractRecord {
   readonly plan: typeof PL.$inferSelect;
 }
 
+/**
+ * An operator's pause with an end date whose date has passed at `at` (a `paused` row's own columns: an open-ended pause, and an org
+ * suspension, carry no date and never match). The ONE definition of "lapsed" in SQL: the live scope below and the pause-resume sweep
+ * both use it, so what billing treats as over and what the sweep resumes cannot differ.
+ */
+export const pauseLapsed = (at: Date): SQL | undefined =>
+  and(isNotNull(SUB.pausedUntil), lte(SUB.pausedUntil, at));
+
 function scopeFilter(scope: ContractScope, at: Date): SQL | undefined {
   if (scope === "live") {
-    const pauseLapsed = and(isNotNull(SUB.pausedUntil), lte(SUB.pausedUntil, at));
-    return and(ne(SUB.status, "canceled"), or(ne(SUB.status, "paused"), pauseLapsed));
+    return and(ne(SUB.status, "canceled"), or(ne(SUB.status, "paused"), pauseLapsed(at)));
   }
   if (scope === "statements") {
     const cutoff = new Date(

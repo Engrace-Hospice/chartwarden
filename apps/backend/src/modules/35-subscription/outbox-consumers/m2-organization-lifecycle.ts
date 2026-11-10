@@ -33,6 +33,15 @@
 // route call, already moved the row) is a silent no-op: the correct outcome is to leave the row exactly
 // where the other writer left it, never to clobber it back. A genuine redelivery of the SAME event after
 // the first delivery committed finds nothing left to act on either, since the WHERE no longer matches.
+// The SELECT also takes the row `FOR UPDATE`, so the writers that must COMPOSE with this consumer (the
+// hourly pause-resume sweep) serialize with it instead of racing it: see the read below.
+//
+// `.suspended` AND AN OPERATOR'S DATED PAUSE (a suspended organization is billing-exempt until it is reactivated). Three states:
+//   - an open-ended pause (no date) already covers the suspension: idempotent no-op;
+//   - a dated pause whose date has PASSED is over for billing (the hourly sweep resumes the stored status, but this event can arrive first):
+//     the lapse is written at the old date, then the suspension starts a new open-ended pause;
+//   - a dated pause still RUNNING (date ahead) is made open-ended (`makeRunningPauseOpenEnded`): otherwise its date would arrive, billing
+//     would count the pause as over, and the suspended organization would bill again.
 //
 // `subscription_state_history.actor_membership_id` is NULL "for system transitions" (its own schema
 // comment) — the F-102 `CONSUMER_USER_ID` convention applied to a nullable FK column rather than a
@@ -47,13 +56,11 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq } from "drizzle-orm";
+import { ORG_SUSPENDED_REASON_CODE, PAUSE_LAPSED_REASON_CODE } from "../routes/admin-transition";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 
 const S = schema.subscriptionRow;
 const SH = schema.subscriptionStateHistory;
-
-/** The ledger row that records an operator's pause ending at its own end date because a suspension arrived after that date. */
-const PAUSE_LAPSED_REASON_CODE = "platform_ops_pause_lapsed";
 
 export const M35_ORG_LIFECYCLE_CONSUMER = {
   eventNames: [
@@ -78,6 +85,51 @@ function reasonOf(payload: unknown): string {
 const isoReq = (d: Date): string => d.toISOString();
 
 /**
+ * A platform suspension arrived while an operator's DATED pause is still running (its date ahead). The pause already covers the suspension
+ * until its date; after it billing would count the pause as over, and a suspended organization is billing-exempt until it is reactivated. So
+ * the pause becomes open-ended: the row's date is cleared (the pause keeps its own start: it is one continuous pause) and a `paused -> paused`
+ * ledger row at the suspension instant says so, which is how the statement learns the date no longer ends the pause
+ * (pricing/statement-inputs.ts). Nothing changes for any instant before the old date, so no statement computed up to it moves.
+ * A lost race (the zero-row guarded update) writes nothing; the caller holds the row lock, so it is only a defence.
+ */
+async function makeRunningPauseOpenEnded(
+  deps: OrgLifecycleConsumerDeps,
+  tx: DbClient,
+  sub: typeof S.$inferSelect,
+  at: Date,
+  reason: string,
+): Promise<void> {
+  const updated = await tx
+    .update(S)
+    .set({ pausedUntil: null, updatedAt: at })
+    .where(and(eq(S.id, sub.id), eq(S.status, "paused")))
+    .returning({ id: S.id });
+  if (updated.length === 0) return;
+  await tx.insert(SH).values({
+    subscriptionId: sub.id,
+    organizationId: sub.organizationId,
+    fromStatus: "paused",
+    toStatus: "paused",
+    transitionedAt: at,
+    actorMembershipId: null,
+    reasonCode: ORG_SUSPENDED_REASON_CODE,
+    reasonDetail: reason.length > 0 ? reason : null,
+  });
+  await deps.outbox.publish(tx, {
+    eventName: "m35.subscription.paused",
+    payload: {
+      subscriptionId: sub.id,
+      organizationId: sub.organizationId,
+      pausedAt: isoReq(sub.pausedAt ?? at),
+      pausedUntil: null,
+    },
+    organizationId: sub.organizationId,
+    aggregateKind: "subscription",
+    aggregateId: sub.id,
+  });
+}
+
+/**
  * M35's live `m2.organization.{activated,suspended,closed}` binding (§4.12 `org-lifecycle-handler`).
  * See the file header for exactly which sub-case of `.activated` is built and which is a documented gap.
  */
@@ -99,23 +151,35 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
       await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
         const tx = scoped as unknown as DbClient;
 
+        // Read under a row lock: the hourly pause-resume sweep (billing-runtime/pause-resume.ts) resumes a lapsed pause under the same lock,
+        // so whichever of the two takes the row first finishes before the other judges it. Without the lock, a sweep that committed between
+        // this read and the guarded write below would make that write (still keyed on the `paused` it read) update nothing, and the
+        // suspension would be dropped as a "lost race" while the subscription is active.
         const [sub] = await tx
           .select()
           .from(S)
           .where(eq(S.organizationId, organizationId))
           .orderBy(desc(S.startedAt))
-          .limit(1);
+          .limit(1)
+          .for("update");
         if (!sub) return; // no subscription for this org yet — see the `.activated` "CREATE" note above.
 
         const at = now();
 
         if (event.eventType === "m2.organization.suspended") {
           if (sub.status === "canceled") return; // idempotent no-op
-          // An operator's pause with an end date whose date has passed is over for billing (nothing resumes it: the row stays `paused`),
-          // so the organization is billing again and THIS suspension is a new pause, not a no-op on the old one. A pause that is still
-          // running (open-ended, or its date ahead) already covers the suspension: idempotent.
+          // An operator's pause with an end date whose date has passed is over for billing, whether or not the hourly pause-resume sweep
+          // has stored that yet (it resumes the row, but this event can arrive in the hours before its next tick): the organization is
+          // billing again and THIS suspension is a new pause, not a no-op on the old one. If the sweep already resumed it, the row is
+          // `active` here and this is the plain path below (no lapse row of ours: the sweep wrote it, dated at the same end date). A pause
+          // that is open-ended already covers the suspension: idempotent. A DATED pause that is still running (its date ahead) covers it
+          // only until that date, after which billing would count the pause as over for a suspended organization: it is made open-ended.
           const lapsed =
             sub.status === "paused" && sub.pausedUntil !== null && sub.pausedUntil <= at;
+          if (sub.status === "paused" && sub.pausedUntil !== null && !lapsed) {
+            await makeRunningPauseOpenEnded(deps, tx, sub, at, reason);
+            return;
+          }
           if (sub.status === "paused" && !lapsed) return; // idempotent no-op
           const updated = await tx
             .update(S)
@@ -148,7 +212,7 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
             toStatus: "paused",
             transitionedAt: suspendedAt,
             actorMembershipId: null,
-            reasonCode: "org_suspended_by_platform_admin",
+            reasonCode: ORG_SUSPENDED_REASON_CODE,
             reasonDetail: reason.length > 0 ? reason : null,
           });
           await deps.outbox.publish(tx, {

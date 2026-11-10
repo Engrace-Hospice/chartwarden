@@ -26,6 +26,7 @@ import {
   runRevenueSnapshot,
   runUsageAggregationForOrg,
 } from "./jobs";
+import { runPauseResumeSweep } from "./pause-resume";
 import { type RefundExecutorDeps, runRefundExecutionSweep } from "./refund-executor";
 import { runWebhookHandlerSweep } from "./webhook-handler";
 import type { WebhookPayloadCipher } from "./webhook-payload-crypto";
@@ -47,6 +48,8 @@ const M35_QUEUES = {
   patientCensus: "m35.patient-census",
   // Slice 2 — the monthly statement of every org on a census_banded contract (draft while the month is open, final after).
   pricingStatement: "m35.pricing-statement",
+  // An operator's pause whose end date has passed is resumed (the stored status follows the date; billing already counts it as over).
+  pauseResume: "m35.subscription-pause-resume",
 } as const;
 
 /** Cron patterns (UTC). Sweeps that wait on Stripe-driven state run often; calendar jobs run once. */
@@ -61,6 +64,8 @@ const M35_SCHEDULES = {
   // the daily census sweep: the statement's expectation of how many days a month's census holds is derived from this interval
   patientCensus: `0 */${CENSUS_SWEEP_INTERVAL_HOURS} * * *`,
   pricingStatement: "30 * * * *",
+  // hourly, between the dunning tick (:00) and the usage aggregator (:15), so a lapsed pause is back to `active` at most an hour late
+  pauseResume: "5 * * * *",
 } as const;
 
 export interface M35WorkerDeps {
@@ -123,6 +128,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
       ),
     ),
     worker(M35_QUEUES.revenueSnapshot, () => runRevenueSnapshot(jobs)),
+    worker(M35_QUEUES.pauseResume, () => runPauseResumeSweep(jobs)),
   ];
   if (deps.cipher) {
     const cipher = deps.cipher;
@@ -216,6 +222,7 @@ export async function scheduleM35Jobs(
     { name: M35_QUEUES.usageAggregator, pattern: M35_SCHEDULES.usageAggregator },
     { name: M35_QUEUES.invoiceReconciler, pattern: M35_SCHEDULES.invoiceReconciler },
     { name: M35_QUEUES.revenueSnapshot, pattern: M35_SCHEDULES.revenueSnapshot },
+    { name: M35_QUEUES.pauseResume, pattern: M35_SCHEDULES.pauseResume },
     ...(opts.webhookHandler
       ? [{ name: M35_QUEUES.webhookHandler, pattern: M35_SCHEDULES.webhookHandler }]
       : []),

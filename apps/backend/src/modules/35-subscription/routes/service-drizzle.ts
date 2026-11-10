@@ -49,6 +49,7 @@ import {
   refuseUnlessFuture,
 } from "./admin-transition";
 import { redeemPromoInTx } from "./promo-redemption";
+import { resumedColumns, resumedEventIntent, resumedLedgerRow } from "./resume-transition";
 import type {
   AckView,
   AddMeterArgs,
@@ -1552,20 +1553,12 @@ export function buildDrizzleM35RouteService(
         const sub = await lockSubscription(tx, subscriptionId);
         refuseAdminTransition(sub, "resume");
         const at = now();
+        await tx.update(S).set(resumedColumns(at)).where(eq(S.id, sub.id));
+        // The ledger row and the event are the ones the hourly pause-resume sweep writes too (resume-transition.ts). The ledger row's
+        // actor is NULL: it is tenant-readable (and audit-copied into the tenant's trail); the operator is in the platform audit row below.
         await tx
-          .update(S)
-          .set({ status: "active", pausedAt: null, pausedUntil: null, updatedAt: at })
-          .where(eq(S.id, sub.id));
-        await tx.insert(SH).values({
-          subscriptionId: sub.id,
-          organizationId: sub.organizationId,
-          fromStatus: sub.status,
-          toStatus: "active",
-          transitionedAt: at,
-          // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
-          actorMembershipId: null,
-          reasonCode: "platform_ops_resume",
-        });
+          .insert(SH)
+          .values(resumedLedgerRow(sub, { transitionedAt: at, reasonCode: "platform_ops_resume" }));
         await auditOperatorAction(
           audit,
           tx,
@@ -1574,13 +1567,14 @@ export function buildDrizzleM35RouteService(
           "m35.subscription.platform_resumed",
           "platform_ops_resume",
         );
+        const resumed = resumedEventIntent(sub, at);
         await emit(
           tx,
-          "m35.subscription.resumed",
-          { subscriptionId: sub.id, organizationId: sub.organizationId, resumedAt: isoReq(at) },
-          sub.organizationId,
-          "subscription",
-          sub.id,
+          resumed.eventName,
+          resumed.payload,
+          resumed.organizationId,
+          resumed.aggregateKind,
+          resumed.aggregateId,
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
