@@ -44,9 +44,19 @@ describe("historical ERA claim candidates", () => {
   });
 
   it("does not turn a reused PCN or weak amount/date similarity into an eligible candidate", () => {
-    expect(assessHistoricalMatchCandidate({ candidate, ...context, payerId: "other-payer" }).selectable).toBe(false);
-    expect(assessHistoricalMatchCandidate({ candidate, ...context, organizationId: "10000000-0000-4000-8000-000000000002" }).selectable).toBe(false);
-    expect(assessHistoricalMatchCandidate({ candidate, ...context, serviceFrom: null }).selectable).toBe(false);
+    expect(
+      assessHistoricalMatchCandidate({ candidate, ...context, payerId: "other-payer" }).selectable,
+    ).toBe(false);
+    expect(
+      assessHistoricalMatchCandidate({
+        candidate,
+        ...context,
+        organizationId: "10000000-0000-4000-8000-000000000002",
+      }).selectable,
+    ).toBe(false);
+    expect(
+      assessHistoricalMatchCandidate({ candidate, ...context, serviceFrom: null }).selectable,
+    ).toBe(false);
   });
 
   it("compares immutable X12 compact dates with normalized ERA service dates", () => {

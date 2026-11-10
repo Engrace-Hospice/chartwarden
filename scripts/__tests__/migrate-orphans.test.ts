@@ -66,14 +66,19 @@ describe("applyMigrations orphan detection (GAP-189)", () => {
     expect(result.ran).toEqual([]);
     expect(result.orphaned).toEqual([]);
     expect(result.pending).toEqual([]);
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("UPDATE _chartwarden_migration"), [filename, sha(body), legacy]);
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE _chartwarden_migration"),
+      [filename, sha(body), legacy],
+    );
   });
 
   it("does not adopt the BIL-2 migration alias when the applied checksum differs", async () => {
     const filename = "1382_fk_supporting_indexes_code_status_emergency_recipient.sql";
     const legacy = "1378_fk_supporting_indexes_code_status_emergency_recipient.sql";
     const dir = dirWith({ [filename]: body });
-    const result = await applyMigrations(fakeDb({ [legacy]: "different-checksum" }), { migrationsDir: dir });
+    const result = await applyMigrations(fakeDb({ [legacy]: "different-checksum" }), {
+      migrationsDir: dir,
+    });
     expect(result.pending).toEqual([filename]);
     expect(result.orphaned).toEqual([legacy]);
   });

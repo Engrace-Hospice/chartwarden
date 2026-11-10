@@ -715,7 +715,7 @@ function ReviewDetail({
     <div style={detailContentStyle}>
       <header style={detailHeaderStyle}>
         <div>
-          <div style={eyebrowStyle}>STAGED REMITTANCE</div>
+          <div style={eyebrowStyle}>Staged remittance</div>
           <h2 ref={headingRef} tabIndex={-1} style={titleStyle}>
             {item.payer.name ?? "Unknown payer"}
           </h2>
@@ -1862,7 +1862,6 @@ const thStyle = {
   borderBottom: "1px solid var(--color-outline-variant)",
   color: "var(--color-on-surface-variant)",
   fontSize: ".7rem",
-  textTransform: "uppercase" as const,
   letterSpacing: ".04em",
 };
 const tdStyle = {
@@ -1891,7 +1890,6 @@ const detailHeaderStyle = {
 const eyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: ".65rem",
-  textTransform: "uppercase" as const,
   letterSpacing: ".06em",
   fontWeight: 700,
 };

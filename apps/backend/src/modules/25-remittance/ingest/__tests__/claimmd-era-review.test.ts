@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createClaimMdProtectedPayloadCipher } from "../../../../bootstrap/claimmd-payload-cipher";
-import { projectTenantStageHistory } from "../claimmd-era-store";
 import { projectClaimMdEraReviewItem, projectClaimMdEraReviewSummary } from "../claimmd-era-review";
+import { projectTenantStageHistory } from "../claimmd-era-store";
 
 const key = Buffer.alloc(32, 7);
 const cipher = createClaimMdProtectedPayloadCipher(
@@ -46,7 +46,10 @@ function stage(state = "staged", reasonCode: string | null = null) {
                   procedureCode: "SYNTH-HCPCS",
                   chargeAmount: 500,
                   paidAmount: 130,
-                  references: [{ qualifier: "6R", value: "SYNTH-LINE-1" }, { qualifier: "ZZ", value: "discard-this" }],
+                  references: [
+                    { qualifier: "6R", value: "SYNTH-LINE-1" },
+                    { qualifier: "ZZ", value: "discard-this" },
+                  ],
                   adjustments: [{ groupCode: "CO", reasonCode: "45", amount: 5 }],
                   remarks: [{ kind: "service", code: "N123", text: "must-not-leak" }],
                 },

@@ -1,5 +1,10 @@
 /** Safe, nonposting interpretation of upstream Claim.MD ownership correlation. */
-export type EraIdentityOutcome = "verified" | "ambiguous" | "conflict" | "unmatched" | "unsupported";
+export type EraIdentityOutcome =
+  | "verified"
+  | "ambiguous"
+  | "conflict"
+  | "unmatched"
+  | "unsupported";
 
 export function isIdempotentMatchDecisionRetry(input: {
   readonly currentVersion: number | null;
@@ -13,11 +18,13 @@ export function isIdempotentMatchDecisionRetry(input: {
   readonly currentSourceDigest: string | null;
   readonly sourceDigest: string;
 }): boolean {
-  return input.currentVersion === input.expectedVersion + 1 &&
+  return (
+    input.currentVersion === input.expectedVersion + 1 &&
     input.currentOutcome === input.requestedOutcome &&
     input.currentReason === input.requestedReason &&
     input.currentActorMembershipId === input.actorMembershipId &&
-    input.currentSourceDigest === input.sourceDigest;
+    input.currentSourceDigest === input.sourceDigest
+  );
 }
 
 export function classifyEraClaimIdentity(input: {
@@ -70,10 +77,18 @@ export function checkEraPaymentBalance(input: {
   readonly providerAdjustments: readonly (number | null)[];
   readonly reportedPayment: number;
 }): EraBalanceResult {
-  const payments = input.claimPayments.map((value) => value === null ? null : decimalDollarsToCents(value));
-  const adjustments = input.providerAdjustments.map((value) => value === null ? null : decimalDollarsToCents(value));
+  const payments = input.claimPayments.map((value) =>
+    value === null ? null : decimalDollarsToCents(value),
+  );
+  const adjustments = input.providerAdjustments.map((value) =>
+    value === null ? null : decimalDollarsToCents(value),
+  );
   const reported = decimalDollarsToCents(input.reportedPayment);
-  if (payments.some((value) => value === null) || adjustments.some((value) => value === null) || reported === null)
+  if (
+    payments.some((value) => value === null) ||
+    adjustments.some((value) => value === null) ||
+    reported === null
+  )
     return { status: "unavailable", reason: "invalid_money_value" };
   const claimPaymentsCents = (payments as number[]).reduce((sum, value) => sum + value, 0);
   const providerAdjustmentsCents = (adjustments as number[]).reduce((sum, value) => sum + value, 0);
