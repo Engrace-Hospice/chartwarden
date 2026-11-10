@@ -2,7 +2,6 @@
 // Step 14, Go-live: two people. The tenant's compliance officer attests readiness in the tenant app; a different platform operator
 // approves here (fresh step-up, a reason), and only then does the tenant go active. The panel shows where it stands and offers
 // exactly what this operator can do in that state.
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { type JSX, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";

@@ -14,7 +14,6 @@ import {
   requireIdempotencyKey,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
-import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { splitReason } from "./onboarding-data-typebox";
 import {
