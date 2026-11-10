@@ -576,7 +576,7 @@ describe("the system's own skip keeps its kind", () => {
     ).toMatchObject({ skippedBy: "tenant", systemSkipped: false });
   });
 
-  it("a tenant reopening after choosing a vendor again leaves its own skip alone", async () => {
+  it("choosing a vendor again leaves the tenant's own skip alone, even one that uses the system's words", async () => {
     await skip(ADMIN, "mac_configured", "bills outside ChartWarden");
     const vendor = createOnboardingWizard({
       runner: createMemoryWizardRunner(state),

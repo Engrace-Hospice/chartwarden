@@ -3,7 +3,8 @@
 // The TENANT-scoped onboarding routes (the tenant's own org, via the wizard service's `withOrgContext`). The wizard is
 // data-driven off the platform-shared `onboarding_task_template` catalog; this surface lets the tenant read its ordered
 // wizard and act on the steps IT owns: start, block, attest (a human marks a step done with required evidence), re-open,
-// and - for the org_admin - set the org profile and assign the compliance officer, who attests go-live readiness (the
+// and - for the org_admin - skip MAC credentials, payer enrollment or DoseSpot kickoff when they do not apply (step-up), set
+// the org profile and assign the compliance officer, who attests go-live readiness (the
 // first party of the two-party go-live). The strict sequence, owner-role, evidence and go-live rules live in the service
 // (onboarding/wizard-service.ts), not here; these routes compose the §4.5 keys, the §4.6 ABAC predicates, step-up where a
 // decision is security-relevant, and the human-actor (no AI) block.
