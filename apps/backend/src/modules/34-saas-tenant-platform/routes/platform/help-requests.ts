@@ -4,7 +4,7 @@
 // support route: `support_session.list_platform` and `tenant_lifecycle_platform_ops` for the inbox (a declared, audited cross-tenant
 // read), `support_session.close` and the same ABAC for Resolve (no step-up, an AI principal refused, an Idempotency-Key required).
 // Resolve is NOT a gate on the platform lane: it ends the consent and the session, not ChartWarden's contractual onboarding access
-// (CW-AC-12). The service behind them is piece 7B's; until it lands the injected stand-in answers 501 NOT_IMPLEMENTED.
+// (CW-AC-12). The service behind them is `help/help-request-service.ts`.
 import { requireAbac, requirePermission } from "@chartwarden/auth";
 import {
   type PreHandler,

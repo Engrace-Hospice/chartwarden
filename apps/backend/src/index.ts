@@ -1680,6 +1680,7 @@ import {
   type SignupIntentRouteService,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
+  buildDrizzleHelpRequestService,
   buildDrizzleOnboardingDataService,
   buildDrizzlePlatformService,
   buildDrizzleTenantPlatformAbacResolver,
@@ -1691,6 +1692,7 @@ import {
   buildPlatformEnqueue,
   buildPlatformTenantResolver,
   buildTenantEnqueue,
+  createDrizzleHelpRequestRunner,
   createDrizzleM34AlertResolverPorts,
   createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
@@ -1700,6 +1702,7 @@ import {
   createOnboardingAdvancer,
   createOnboardingTenantReader,
   createOnboardingWizard,
+  createUnboundSupportGrantOperations,
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
@@ -1711,6 +1714,7 @@ import {
   registerM34BundleExpiryWorker,
   registerM34DekRotateWorker,
   registerM34DsarExportWorker,
+  registerM34HelpRequestSweepWorker,
   registerM34OnboardingAdvanceWorker,
   registerM34ProvisionWorker,
   registerM34ShredWorker,
@@ -1719,6 +1723,7 @@ import {
   registerSaasTenantPlatformErasers,
   registerTenantPlatformAbacPredicates,
   scheduleM34BundleExpiryJob,
+  scheduleM34HelpRequestSweepJob,
   scheduleM34PlatformSweepJobs,
   targetTenantScopeOf,
   validateModule34Seams,
@@ -7104,9 +7109,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 flags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
               }),
             },
-            // Slice 7: help requests. The route cap is wired here; the real service is piece 7B's (until it binds one, the routes
-            // answer 501 NOT_IMPLEMENTED). Per member and per organization, fail-closed.
+            // Slice 7: help requests. The real service over the tenant pool (a member's own RLS) and the audited platform credential
+            // (the operators' inbox and Resolve); the consent grant operations are piece 7S's bundle, and until the integration binds
+            // them here approving and ending consent answer 501 NOT_IMPLEMENTED (nothing is ever granted). The filing cap is per member and
+            // per organization, fail-closed.
             help: {
+              service: buildDrizzleHelpRequestService({
+                db: dbHandle.db,
+                platformDb: platformDbHandle?.db ?? dbHandle.db,
+                auditBypass: m34PlatformBypassAuditor,
+                platformJobId: M34_PLATFORM_JOB_ID,
+                outbox: m34OutboxPublisher,
+                grants: createUnboundSupportGrantOperations(),
+              }),
               fileRateLimit: createRouteRateLimit({
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
                 limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
@@ -9922,6 +9937,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         registerM34OnboardingAdvanceWorker(m34SweepDeps),
       ];
       m34Workers.push(...m34SweepWorkers);
+      // Slice 7: the help-request sweep (cancels a request nobody answered in 14 days, resolves one whose grant has ended). Its own
+      // queue and job, registered here beside the sweeps; it ends REQUESTS and leaves the support sessions to the close sweep.
+      const m34HelpRequestSweep = registerM34HelpRequestSweepWorker({
+        connection: queueConnection,
+        runner: createDrizzleHelpRequestRunner({
+          db: dbHandle.db,
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          platformJobId: M34_PLATFORM_JOB_ID,
+        }),
+      });
+      m34Workers.push(m34HelpRequestSweep);
+      const m34HelpRequestSweepSchedule = await scheduleM34HelpRequestSweepJob(queueConnection);
+      app.addHook("onClose", () =>
+        Promise.all([m34HelpRequestSweep.close(), m34HelpRequestSweepSchedule.close()]),
+      );
       const m34SweepSchedules = await scheduleM34PlatformSweepJobs(queueConnection);
       const m34SweepSchedulesInfo = describeM34SweepSchedules();
       app.log.info(

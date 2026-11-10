@@ -1073,6 +1073,11 @@ jobs:
           # Slice 5 (admin console): the tenant list's onboarding progress (gating steps only, one batch, on the platform
           # credential) and the compliance-officer picker's members read (active staff, roles held now, the tenant's own RLS).
           - { name: "M34 tenant hub reads", scripts: "test:m34:tenant-hub-reads:live" }
+          # Slice 7 (piece 7B): onboarding help requests as the real chartwarden_app and platform carrier roles. Isolation, the forged
+          # organization and the pinned INSERT, the column-limited UPDATE and the guard trigger, the state CHECKs, one live request
+          # per tenant account (and the race), approve -> End help and the operator's Resolve through the service, ChartWarden staff
+          # refused, the real publisher's requested event, audit rows without the message or the note, the sweep, and the eraser.
+          - { name: "M34 help requests", scripts: "test:m34:help-request:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.

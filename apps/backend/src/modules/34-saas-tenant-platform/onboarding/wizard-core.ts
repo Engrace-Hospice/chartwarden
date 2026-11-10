@@ -110,7 +110,7 @@ export async function view(ctx: Loaded, now: () => Date): Promise<WizardView> {
  * officer's attestation and the platform approval are the two parties, and one operator could otherwise be both hats.
  */
 export async function isPlatformStaffMember(
-  store: WizardStore,
+  store: Pick<WizardStore, "isPlatformStaff">,
   member: { readonly userId: string; readonly roleKeys: readonly string[] },
 ): Promise<boolean> {
   return (

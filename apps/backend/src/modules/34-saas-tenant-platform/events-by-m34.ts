@@ -391,4 +391,22 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
+  // ── help requests (slice 7, piece 7B) ──────────────────────────────────────────────────────────────
+  {
+    eventName: "m34.help_request.requested",
+    moduleOwner: "m34",
+    description:
+      "A member of a tenant filed a help request (`POST /tenant/help-requests`); M36 raises the `tenant.help_requested` alert to the platform operators. Ids and the step key only: the member's message never leaves the `tenant_help_request` row.",
+    payloadSchema: Type.Object({
+      helpRequestId: id,
+      tenantAccountId: id,
+      orgId: id,
+      // The onboarding step the question is about (an `onboarding_task_template` key), or null for a general one.
+      stepKey: nullableId,
+      requestedAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
 ];

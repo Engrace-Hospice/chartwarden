@@ -7,7 +7,7 @@ import type {
 //
 // Frozen by the slice 7 wave-0 contract builder. The routes (`routes/tenant/help-requests.ts`, `routes/platform/help-requests.ts`)
 // call this interface and nothing else; piece 7B implements it in this directory (`help/`) over the `tenant_help_request` table and
-// binds it in `mountTenantPlatformRoutes(..., { help: { service } })`. Until then `help-request-unbuilt.ts` answers 501.
+// binds it in `mountTenantPlatformRoutes(..., { help: { service } })` (`help-request-service.ts`; wired in the composition root).
 //
 // The response views are what the generated client types (`routes/help-request-typebox.ts` pins its schemas to them). Rules every
 // implementation owes, because the routes cannot judge them (RLS cannot tell an operator from a member):

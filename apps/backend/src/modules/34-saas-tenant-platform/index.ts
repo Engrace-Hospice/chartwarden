@@ -289,7 +289,7 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * `registerTenantPlatformAbacPredicates`.
  */
 import type { HelpRequestService } from "./help/help-request-contract";
-import { createUnbuiltHelpRequestService } from "./help/help-request-unbuilt";
+import { createInMemoryHelpRequestService } from "./help/help-request-factory";
 import { type OnboardingWizard, createOnboardingWizard } from "./onboarding/wizard-service";
 import {
   createMemoryOrgProfile,
@@ -329,8 +329,8 @@ export function mountTenantPlatformRoutes(
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     /**
-     * Slice 7 - help requests, both surfaces. `service` absent => the stand-in that answers 501 NOT_IMPLEMENTED until piece 7B binds
-     * the real one; `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped: tests, no-db boot).
+     * Slice 7 - help requests, both surfaces. `service` absent => the in-memory slice (route tests, no-db boot); the composition root
+     * binds `buildDrizzleHelpRequestService`. `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped).
      */
     help?: { service?: HelpRequestService; fileRateLimit?: HelpRequestRateLimit };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
@@ -367,7 +367,7 @@ export function mountTenantPlatformRoutes(
   _registerTenantKeyRingRoutes(app, { service: platformService });
   _registerOnboardingTemplateRoutes(app, { service: platformService });
   _registerSupportSessionRoutes(app, { service: platformService });
-  const helpService = services?.help?.service ?? createUnbuiltHelpRequestService();
+  const helpService = services?.help?.service ?? createInMemoryHelpRequestService().service;
   registerPlatformHelpRequestRoutes(app, { service: helpService });
   _registerSignupIntentRoutes(app, { service: platformService });
   _registerBaaRegisterRoutes(app, { service: platformService });
@@ -482,6 +482,26 @@ export type {
   PlatformHelpRequestView,
   TenantHelpRequestListView,
 } from "./help/help-request-contract";
+export {
+  type DrizzleHelpRequestServiceDeps,
+  buildDrizzleHelpRequestService,
+  createInMemoryHelpRequestService,
+} from "./help/help-request-factory";
+export {
+  createDrizzleHelpRequestRunner,
+  createLinkedHelpRequestPort,
+} from "./help/help-request-store-drizzle";
+export {
+  HELP_REQUEST_REQUESTED_EVENT,
+  type HelpOutboxPort,
+} from "./help/help-request-service";
+export {
+  HELP_REQUEST_SWEEP_QUEUE,
+  registerM34HelpRequestSweepWorker,
+  runHelpRequestSweep,
+  scheduleM34HelpRequestSweepJob,
+} from "./help/help-request-sweep";
+export { createUnboundSupportGrantOperations } from "./help/support-grant-operations-unbound";
 export {
   HELP_REQUEST_ID_DETAIL_FIELD,
   HelpRequestError,

@@ -507,6 +507,23 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // Slice 7 (piece 7B): tenant.help_requested - m34.help_request.requested -> platform-ops (warn). A tenant member asked ChartWarden for
+  // help (onboarding or after go-live); the payload carries ids and the step key only, never the message. Routed at the built-in
+  // `role_set` over `platform_alert_audience` for the same reason as `tenant.onboarding_activation_stuck`, and LOCKED for the same
+  // one: it is emitted under the tenant's own org, so without the lock a tenant admin could clone it with another resolver and
+  // redirect it away from the operators, or switch it off.
+  {
+    ruleKey: "tenant.help_requested",
+    eventType: "m34.help_request.requested",
+    category: "administrative",
+    severityFloor: floorOf("warn"),
+    specSeverity: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] },
+    channelsOverride: null,
+    systemLocked: true,
+    enabled: true,
+  },
 ];
 
 /** M36's built-in recipient resolvers (the registry's seven names). */
@@ -546,6 +563,7 @@ export const M34_ALERT_RULE_KEYS = [
   "tenant_export.oversized_hold",
   "tenant.onboarding_activation_stuck",
   "feature_flag.platform_emergency_changed",
+  "tenant.help_requested",
 ] as const;
 
 // BOOT WIRING (GAP-057, done): `apps/backend/src/index.ts` registers `registerM34AlertResolvers` onto the
