@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 216,
+  "totalStaticWebScreens": 217,
   "e2eReachedCount": 26,
-  "axeReachedCount": 204,
+  "axeReachedCount": 205,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -1097,6 +1097,14 @@
       "module": "25-remittance",
       "path": "/remittance/audits",
       "permission": "audit_request.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.claimmd-era-review",
+      "module": "25-remittance",
+      "path": "/remittance/claimmd-era-review",
+      "permission": "remittance.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -3347,6 +3355,14 @@
       "module": "25-remittance",
       "path": "/remittance/audits",
       "permission": "audit_request.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.claimmd-era-review",
+      "module": "25-remittance",
+      "path": "/remittance/claimmd-era-review",
+      "permission": "remittance.read",
       "e2eReached": false,
       "axeReached": true
     },
