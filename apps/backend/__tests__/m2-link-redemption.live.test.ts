@@ -49,6 +49,7 @@ import { createDbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { executedBaaGate } from "../src/bootstrap/death-notification-baa-gate";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -74,7 +75,6 @@ import {
 import { funeralCaseForOrg } from "../src/modules/05-patient/seams/funeral-case-for-org";
 import { patientIsDeceasedForOrg } from "../src/modules/05-patient/seams/patient-deceased-for-org";
 import { patientSiteForOrg } from "../src/modules/06-admission/seams/patient-site-for-org";
-import { executedBaaGate } from "../src/bootstrap/death-notification-baa-gate";
 import { createDbBaaStore } from "../src/modules/40-mdm/mdm-store-db";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
@@ -383,7 +383,12 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
             patientIsDeceasedForOrg(handle.db, org, patient),
         },
         funeralHomeBaaActive: (org: string, funeralHomeId: string, asOf: Date) =>
-          executedBaaGate(() => createDbBaaStore(handle.db))(org, "funeral_home", funeralHomeId, asOf),
+          executedBaaGate(() => createDbBaaStore(handle.db))(
+            org,
+            "funeral_home",
+            funeralHomeId,
+            asOf,
+          ),
         audit: createOrgScopedAuditExecutor(handle.db),
         outbox,
         linkRecipientRequired: true,

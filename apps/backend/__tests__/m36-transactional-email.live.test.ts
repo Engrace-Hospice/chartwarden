@@ -179,7 +179,11 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
       method: "POST",
       url: "/api/v1/funeral/invite",
       headers: { "x-test-user": "rn_1" },
-      payload: { patientId: DECEASED, funeralHomeId: "5f5f5f5f-5f5f-45f5-85f5-5f5f5f5f5f01", recipientEmail },
+      payload: {
+        patientId: DECEASED,
+        funeralHomeId: "5f5f5f5f-5f5f-45f5-85f5-5f5f5f5f5f01",
+        recipientEmail,
+      },
     });
 
   beforeAll(async () => {
