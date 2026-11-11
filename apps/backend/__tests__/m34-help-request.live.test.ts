@@ -1077,9 +1077,9 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
           `INSERT INTO tenant_help_request
             (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id,
              requested_at, status, closed_by_actor_kind, closed_by_user_id, closed_at, close_note)
-           VALUES ($1,$2,$3,$4,$5,now() - interval '100 days','cancelled','tenant',$5,
+           VALUES ($1,$2,$3,$4,$5,now() - interval '100 days','cancelled','platform_ops',$7,
                    now() - interval '91 days',$6) RETURNING id`,
-          [ORG_A, T_A, MESSAGE, M_NURSE, U_NURSE, NOTE],
+          [ORG_A, T_A, MESSAGE, M_NURSE, U_NURSE, NOTE, U_OPS],
         )
       )[0]?.id as string;
       const fresh = (
@@ -1087,9 +1087,9 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
           `INSERT INTO tenant_help_request
             (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id,
              requested_at, status, closed_by_actor_kind, closed_by_user_id, closed_at, close_note)
-           VALUES ($1,$2,$3,$4,$5,now() - interval '2 days','cancelled','tenant',$5,
+           VALUES ($1,$2,$3,$4,$5,now() - interval '2 days','cancelled','platform_ops',$7,
                    now() - interval '1 day',$6) RETURNING id`,
-          [ORG_B, T_B, "Help with our provider entity please", M_B, U_B, NOTE],
+          [ORG_B, T_B, "Help with our provider entity please", M_B, U_B, NOTE, U_OPS],
         )
       )[0]?.id as string;
 
