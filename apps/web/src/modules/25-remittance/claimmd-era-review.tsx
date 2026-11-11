@@ -709,7 +709,6 @@ function ReviewDetail({
   const matchedOutcomes = item.claimOutcomes.filter(
     (outcome) => outcome.outcome === "verified",
   ).length;
-  const postingClaimHref = postingPlan?.claimId ? claimHref("M41", postingPlan.claimId) : null;
   const unmatchedOutcomes = item.claimOutcomes.filter((outcome) => outcome.outcome !== "verified");
   return (
     <div style={detailContentStyle}>
@@ -1086,24 +1085,129 @@ function ReviewDetail({
           <>
             <dl style={summaryGridStyle}>
               <Summary label="Plan status" value={humanize(postingPlan.status)} />
+              <Summary label="Proposed ERA payment" value={centsMoney(postingPlan.paymentCents)} />
               <Summary
-                label="Proposed claim payment"
-                value={centsMoney(postingPlan.paymentCents)}
+                label="Total submitted charges"
+                value={centsMoney(postingPlan.billedCents)}
               />
+              <Summary
+                label="Unresolved adjustment amount"
+                value={centsMoney(postingPlan.unresolvedCents)}
+              />
+              <Summary label="Claims in batch" value={String(postingPlan.claims.length)} />
               <Summary label="Approval" value={humanize(postingPlan.approval)} />
               <Summary
                 label="Execution capability"
                 value={postingPlan.featureEnabled ? "Enabled for this environment" : "Disabled"}
               />
             </dl>
-            <p style={mutedStyle}>
-              Payer: {postingPlan.payer ?? "Unverified"} · Claim:{" "}
-              {postingClaimHref ? (
-                <Link to={postingClaimHref}>Open verified claim</Link>
-              ) : (
-                "No eligible claim association"
-              )}
-            </p>
+            <p style={mutedStyle}>Payer: {postingPlan.payer ?? "Unverified"}</p>
+            <div style={{ overflowX: "auto", marginBlock: "0.75rem" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                <caption style={mutedStyle}>
+                  Every claim below is bound to this approval. One blocker prevents the entire ERA
+                  posting. Unresolved amounts are preserved for review and are not treated as a
+                  patient bill or automatic write-off.
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Claim</th>
+                    <th scope="col">Billed</th>
+                    <th scope="col">Payer paid</th>
+                    <th scope="col">Patient responsibility reported</th>
+                    <th scope="col">Adjustment / unresolved</th>
+                    <th scope="col">Identity</th>
+                    <th scope="col">Financial state</th>
+                    <th scope="col">Eligibility</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {postingPlan.claims.map((claim) => {
+                    const href =
+                      claim.claimId && claim.billingModule
+                        ? claimHref(claim.billingModule, claim.claimId)
+                        : null;
+                    return (
+                      <tr key={`${claim.claimIndex}-${claim.claimId ?? "unmatched"}`}>
+                        <th scope="row">
+                          {href ? (
+                            <Link to={href}>{claim.patientControlNumber ?? "Open claim"}</Link>
+                          ) : (
+                            (claim.patientControlNumber ?? "Unmatched claim")
+                          )}
+                          {claim.payerIcn ? (
+                            <small style={{ display: "block", color: "#667085" }}>
+                              Payer ref: {claim.payerIcn}
+                            </small>
+                          ) : null}
+                        </th>
+                        <td>{centsMoney(claim.billedCents)}</td>
+                        <td>{centsMoney(claim.paidCents)}</td>
+                        <td>{centsMoney(claim.patientResponsibilityCents)}</td>
+                        <td>
+                          {claim.adjustments.some((adjustment) => adjustment.groupCode === "PR") ? (
+                            <small style={{ display: "block", color: "#667085" }}>
+                              CLP05 is the reported total; PR CAS entries explain that amount and
+                              are not added a second time.
+                            </small>
+                          ) : null}
+                          {claim.adjustments.length ? (
+                            <ul style={outcomeListStyle}>
+                              {claim.adjustments.map((adjustment, index) => (
+                                <li
+                                  key={`${adjustment.groupCode}-${adjustment.reasonCode}-${index}`}
+                                >
+                                  {adjustment.groupCode} / CARC {adjustment.reasonCode}:{" "}
+                                  {centsMoney(adjustment.amountCents)}
+                                  {adjustment.classification === "other_adjustment_unresolved"
+                                    ? " · unresolved, flagged for review"
+                                    : ""}
+                                  {adjustment.groupCode === "CO"
+                                    ? " · payer-reported provider responsibility; policy required; no write-off is authorized"
+                                    : ""}
+                                  {adjustment.groupCode === "PR"
+                                    ? " · payer-reported patient responsibility; no patient invoice or receivable is authorized"
+                                    : ""}
+                                  {adjustment.groupCode === "PI"
+                                    ? " · payer-initiated reduction; accounting treatment is not authorized"
+                                    : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            "No reported CAS adjustment"
+                          )}
+                          {claim.unresolvedCents ? (
+                            <small style={{ display: "block", color: "#667085" }}>
+                              Unresolved amount: {centsMoney(claim.unresolvedCents)}
+                            </small>
+                          ) : null}
+                        </td>
+                        <td>{humanize(claim.matching)}</td>
+                        <td>{humanize(claim.financialStatus)}</td>
+                        <td>
+                          {claim.eligible ? (
+                            <StatusPill label="Eligible" tone="success" />
+                          ) : (
+                            <StatusPill label="Blocked" tone="error" />
+                          )}
+                          {claim.blockers.length ? (
+                            <ul
+                              aria-label={`Claim ${claim.claimIndex + 1} blockers`}
+                              style={outcomeListStyle}
+                            >
+                              {claim.blockers.map((blocker) => (
+                                <li key={blocker}>{postingBlocker(blocker)}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             {postingPlan.blockers.length ? (
               <ul aria-label="Posting blockers" style={outcomeListStyle}>
                 {postingPlan.blockers.map((blocker) => (
@@ -1114,7 +1218,8 @@ function ReviewDetail({
               </ul>
             ) : (
               <output style={mutedStyle}>
-                The plan passes the narrow single-claim, fully paid, no-adjustment rules.
+                Every claim passes the fully paid, no-adjustment rules. The entire batch executes
+                atomically.
               </output>
             )}
             <label style={labelStyle}>
@@ -1209,7 +1314,9 @@ function ReviewDetail({
                 {humanize(event.eventType)} ·{" "}
                 {new Date(event.occurredAt).toLocaleString("en-US", { timeZone: "UTC" })} UTC ·{" "}
                 {event.reason}
-                {event.remittanceLineId ? " · M25 remittance record created" : ""}
+                {event.eventType === "posted"
+                  ? ` · M25 committed ${event.remittanceLineIds.length} claim record${event.remittanceLineIds.length === 1 ? "" : "s"}; downstream processing may still be pending`
+                  : ""}
               </li>
             ))}
           </ol>
@@ -1621,18 +1728,96 @@ function ReviewDetail({
         ) : null}
       </section>
       {item.providerAdjustments.length ? (
-        <>
-          <h3 style={sectionTitleStyle}>Provider-level adjustments</h3>
-          <ul>
-            {item.providerAdjustments.map((adjustment) => (
-              <li
-                key={`${adjustment.reason ?? ""}-${adjustment.reference ?? ""}-${adjustment.amount}`}
-              >
-                {adjustment.reason ?? "Adjustment"}: {money(adjustment.amount)}
-              </li>
-            ))}
-          </ul>
-        </>
+        <section aria-labelledby="provider-adjustments-heading" style={matchPanelStyle}>
+          <h3 id="provider-adjustments-heading" style={sectionTitleStyle}>
+            Provider-level adjustment review
+          </h3>
+          <p style={warningStyle}>
+            PLB amounts adjust the ERA payment at provider level. They are not claim payments. A
+            balanced ERA does not authorize a write-off, recovery, refund, or reversal. No effective
+            financial adjustment policy is configured, so these items remain nonposting.
+          </p>
+          <div style={scrollStyle}>
+            <table style={lineTableStyle} aria-label="Provider-level adjustment evidence">
+              <thead>
+                <tr>
+                  <th style={thStyle}>Source occurrence</th>
+                  <th style={thStyle}>Reason / reference</th>
+                  <th style={thStyle}>Signed amount</th>
+                  <th style={thStyle}>Evidence and disposition</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.providerAdjustments.map((adjustment) => (
+                  <tr
+                    key={`${adjustment.segmentPosition ?? "legacy"}-${adjustment.occurrence ?? "legacy"}-${adjustment.reason ?? ""}`}
+                  >
+                    <td style={tdStyle}>
+                      {adjustment.segmentPosition === null || adjustment.occurrence === null
+                        ? "Position unavailable (legacy source)"
+                        : `Segment ${adjustment.segmentPosition}, pair ${adjustment.occurrence}`}
+                      <br />
+                      Fiscal period: {adjustment.fiscalPeriod ?? "Unavailable"}
+                      <br />
+                      Provider identifier: {adjustment.providerIdentifierMasked ?? "Unavailable"}
+                    </td>
+                    <td style={tdStyle}>
+                      {adjustment.reason ?? "Code unavailable"} ·{" "}
+                      {humanize(adjustment.classification)}
+                      <br />
+                      Reference: {adjustment.reference ?? "None reported"}
+                    </td>
+                    <td style={tdStyle}>{money(adjustment.amount)}</td>
+                    <td style={tdStyle}>
+                      Historical link: not verified
+                      <br />
+                      Policy: not configured · no financial action
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {matching ? (
+            <p style={mutedStyle}>
+              ERA balance:{" "}
+              {matching.financialReview.balance.status === "balanced"
+                ? "the reported claim payments, signed provider adjustments, and BPR total balance"
+                : matching.financialReview.balance.status === "discrepancy"
+                  ? `difference ${centsMoney(matching.financialReview.balance.differenceCents)}`
+                  : "unavailable from the source facts"}
+              . This is source arithmetic only; it does not confirm bank settlement or financial
+              authorization.
+            </p>
+          ) : null}
+          {canFinancialReview ? (
+            <Button
+              size="sm"
+              tone="secondary"
+              disabled={financialReviewBusy || financialReason.trim().length < 3 || !matching}
+              onClick={() => {
+                const latest = matching?.financialReviewHistory.find(
+                  (entry) =>
+                    entry.itemType === "era" && entry.itemIndex === -1 && entry.currentSource,
+                );
+                void onFinancialDecision(
+                  item.id,
+                  "era",
+                  -1,
+                  "follow_up",
+                  latest?.decisionVersion ?? 0,
+                  financialReason,
+                );
+              }}
+            >
+              Record provider-adjustment investigation
+            </Button>
+          ) : (
+            <p style={mutedStyle}>
+              A separate financial-review permission is required to record an investigation note.
+            </p>
+          )}
+        </section>
       ) : null}
       <h3 style={sectionTitleStyle}>Processing history</h3>
       {item.history.availability === "unavailable" ? (
@@ -1726,6 +1911,8 @@ function postingBlocker(code: string): string {
     MATCH_NOT_VERIFIED:
       "A current source-verified or owner-revalidated claim association is required.",
     MATCH_REFERENCES_INCOMPLETE: "The claim's control number or service dates are missing.",
+    MEDICARE_POSTING_NOT_CERTIFIED:
+      "The historical M23 hospice claim is matched for review, but Medicare Claim.MD financial posting is not certified. This ERA cannot be posted through this workflow.",
     PAYER_ROUTE_UNVERIFIED:
       "No supported internal payer route matches the historical claim evidence.",
     FINANCIAL_REVIEW_INCOMPLETE_OR_STALE:
@@ -1734,7 +1921,15 @@ function postingBlocker(code: string): string {
     UNSUPPORTED_OR_INCOMPLETE_835:
       "The 835 contains unsupported or incomplete payment identity facts.",
     UNSUPPORTED_FINANCIAL_FACTS:
-      "This route supports only a fully paid claim without service lines, adjustments, remarks, or PLB.",
+      "The source facts do not fit a currently supported, fully balanced Claim.MD accounting scenario.",
+    PROVIDER_ADJUSTMENT_POLICY_UNAVAILABLE:
+      "The ERA contains a provider-level adjustment without an effective authorized policy. The whole posting plan is blocked; investigate the source without assigning the amount to a claim.",
+    CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE:
+      "The ERA reports provider responsibility (CO), but no effective payer and organization policy authorizes a contractual write-off. No balance is written off.",
+    PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE:
+      "The ERA reports patient responsibility (PR), but no authorized patient billing policy is bound to this plan. No patient invoice or receivable is created.",
+    PAYER_REDUCTION_POLICY_UNAVAILABLE:
+      "The ERA reports a payer-initiated reduction (PI), but no accounting rule authorizes settling that amount.",
     PARSED_CLAIM_PROJECTION_MISMATCH: "The protected source and staged claim summary disagree.",
     PAYMENT_BALANCE_UNSUPPORTED: "The reported payment does not balance under the supported rules.",
     POTENTIAL_CROSS_SOURCE_DUPLICATE:
@@ -1759,6 +1954,8 @@ function financialExceptionGuidance(code: string): string {
       return "Compare the reported ERA total, claim payments and provider-level adjustments. Do not force a balancing adjustment.";
     case "ERA_PAYMENT_BALANCE_UNVERIFIED":
       return "Required source amounts are unavailable, so the balance cannot be confirmed.";
+    case "PROVIDER_ADJUSTMENT_REQUIRES_POLICY_REVIEW":
+      return "The provider-level amount is included in the ERA balance, but no exact-scope financial policy authorizes a posting action. Record an investigation note; do not assign it to a claim.";
     case "SERVICE_LINE_REFERENCE_MISSING":
       return "Original submitted-line evidence is unavailable; no internal line allocation can be verified.";
     case "REVERSAL_REQUIRES_INVESTIGATION":

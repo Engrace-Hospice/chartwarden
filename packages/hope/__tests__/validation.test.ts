@@ -1,6 +1,10 @@
 // @chartwarden/hope — CMS HOPE pre-submission validation engine (§2.3, §3, §86) — M10-T04.
 import { describe, expect, it } from "vitest";
-import { REQUIRED_SECTIONS_BY_RFA, missingRequiredSections } from "../src/sections/required-items";
+import {
+  REQUIRED_SECTIONS_BY_RFA,
+  isRequiredHopeSection,
+  missingRequiredSections,
+} from "../src/sections/required-items";
 import { HOPE_VALIDATION_RULES, hasBlockingError } from "../src/validation/findings";
 import {
   type HopeAssessmentValidationInput,
@@ -52,6 +56,13 @@ describe("required-items matrix", () => {
   it("reports missing required sections in matrix order", () => {
     expect(missingRequiredSections("04_sfv", ["A", "Z"])).toEqual(["J"]);
     expect(missingRequiredSections("04_sfv", ["A", "J", "Z"])).toEqual([]);
+  });
+
+  it("is the shared authority for whether a section is required by an RFA", () => {
+    expect(isRequiredHopeSection("04_sfv", "J")).toBe(true);
+    expect(isRequiredHopeSection("04_sfv", "F")).toBe(false);
+    expect(isRequiredHopeSection("05_discharge", "I")).toBe(true);
+    expect(isRequiredHopeSection("05_discharge", "Q")).toBe(false);
   });
 });
 

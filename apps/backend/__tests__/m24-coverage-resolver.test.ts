@@ -44,6 +44,7 @@ describe("M24 transaction-bound coverage resolver (#877)", () => {
       id: "patient-payer-1",
       payerId: "payer-1",
       subscriberId: "synthetic-member-0001",
+      rank: 1,
     });
     expect(coverageSnapshotForRangeInTransaction).toHaveBeenCalledWith(transaction, {
       organizationId: "org-1",

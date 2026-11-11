@@ -39,13 +39,31 @@
  *         Bash, apply_patch and MCP tools, synchronous, with a timeout) and `.gitignore` allow-lists
  *         `.codex/` (and `.agents/`) at every depth, each re-include AFTER the ignore line;
  *     18. the three Claude hook commands (guard, ledger, Stop gate) are pinned byte for byte, each run with
- *         `--config=/dev/null --no-env-file` so a `bunfig.toml` preload cannot run first.
+ *         `--config=/dev/null --no-env-file --tsconfig-override=/dev/null` so neither a `bunfig.toml` preload
+ *         nor a `tsconfig.json` `paths` map can run or replace code before the hook script;
+ *     19. the hook timeouts leave the guard time to answer and Codex's time to be the larger: the Codex
+ *         `timeout` is an integer above the perl alarm it is pinned with (else Codex's own timeout fires first
+ *         and the call runs), the Claude guard's is an integer of 5 to 30 s;
+ *     20. `.claude/settings.json` sets no `disableAllHooks`, no `bypassPermissions` default mode and none of
+ *         the `env` switches in {@link FORBIDDEN_ENV} (fail-open, ledger off, Stop gate off, a moved root);
+ *     21. `.gitignore` is judged by git itself (`git check-ignore --no-index -v` over {@link SHARED_PROBE_PATHS}
+ *         and {@link LOCAL_PROBE_PATHS}), not only by its text, and has no CRLF line endings.
  *
  * Run:   bun run scripts/check-compliance-controls.ts
  * CI:    exits 1 on any violation (arch:fitness stage).
  */
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const MAX_REVIEW_DAYS = 180;
@@ -203,13 +221,47 @@ interface HookEntry {
   hooks?: Array<{ type?: string; command?: string; async?: boolean; timeout?: number }>;
 }
 interface Settings {
-  permissions?: { deny?: string[]; ask?: string[]; allow?: string[] };
+  permissions?: { deny?: string[]; ask?: string[]; allow?: string[]; defaultMode?: string };
   hooks?: Record<string, HookEntry[]>;
   env?: Record<string, string>;
+  disableAllHooks?: boolean;
 }
 
+/**
+ * Environment variables the shared settings must never set: each one is a human's per-session switch, the test
+ * seam that moves the guard's root, or a way to run code before the hook script, and a committed `env` entry
+ * would apply it to every developer.
+ */
+export const FORBIDDEN_ENV = [
+  "CW_HARNESS_FAIL_OPEN",
+  "CW_AGENT_LEDGER",
+  "CW_STOP_GATE",
+  "CLAUDE_PROJECT_DIR",
+  "CW_HARNESS_ROOT_FOR_TESTS",
+  // bun reads it for every run, and `--preload x.ts` in it runs x.ts before the hook script (verified).
+  "BUN_OPTIONS",
+  // Re-point an agent at a configuration directory that has no hooks.
+  "CODEX_HOME",
+  "CLAUDE_CONFIG_DIR",
+  // Run code, or choose which `bun`, `perl` or `git` runs, before the hook script does.
+  "LD_PRELOAD",
+  "DYLD_INSERT_LIBRARIES",
+  "BASH_ENV",
+  "ENV",
+  "PATH",
+] as const;
+
+/** The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. */
+const CLAUDE_GUARD_TIMEOUT_RANGE = [5, 30] as const;
+/** The ledger's and the Stop gate's `timeout` (seconds), when one is set: a sane integer. The pinned values are 10 and 300. */
+const CLAUDE_OTHER_HOOK_TIMEOUT_RANGE = [5, 600] as const;
+/** Upper bound for the Codex guard's `timeout` (seconds); the lower bound is the perl alarm plus one. */
+const CODEX_GUARD_TIMEOUT_MAX = 30;
+
+const hooksFor = (s: Settings, event: string): NonNullable<HookEntry["hooks"]> =>
+  (s.hooks?.[event] ?? []).flatMap((h) => h.hooks ?? []);
 const commandsFor = (s: Settings, event: string): string[] =>
-  (s.hooks?.[event] ?? []).flatMap((h) => (h.hooks ?? []).map((x) => x.command ?? ""));
+  hooksFor(s, event).map((x) => x.command ?? "");
 
 /**
  * The one matcher Codex's guard runs under: shell commands, file edits (which arrive as `apply_patch`) and MCP
@@ -220,10 +272,14 @@ export const CODEX_GUARD_MATCHER = "Bash|write_stdin|apply_patch|mcp__.*";
 /**
  * Claude's three hook commands, pinned byte for byte like {@link CODEX_GUARD_COMMAND}. `--config=/dev/null
  * --no-env-file`: a `preload` in a `bunfig.toml` in the session directory would otherwise run BEFORE the hook
- * script and could silence it. Deliberately no perl alarm and no `|| exit 2` wrapper (Codex needs them, Claude
- * does not): a missing `perl` would lock out every Claude tool call, and Claude Code has its own timeout.
+ * script and could silence it. `--tsconfig-override=/dev/null`: bun applies `compilerOptions.paths` from the
+ * `tsconfig.json` (or `jsconfig.json`) in the session directory, and the one it extends, to the script's OWN
+ * imports, so `"paths": {"*": ["./evil.ts"]}` made the guard exit 0 without reading its input; an empty
+ * override leaves no `paths` to apply. Deliberately no perl alarm and no `|| exit 2` wrapper (Codex needs
+ * them, Claude does not): a missing `perl` would lock out every Claude tool call, and Claude Code has its own
+ * timeout.
  */
-const BUN_HARDENED = "bun --config=/dev/null --no-env-file";
+const BUN_HARDENED = "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null";
 export const CLAUDE_GUARD_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts`;
 export const CLAUDE_LEDGER_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/post-tool-ledger.ts`;
 export const CLAUDE_STOP_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/stop-gate.ts`;
@@ -247,15 +303,18 @@ const PINNED_CLAUDE_HOOKS = [
 /**
  * The one hook command that keeps Codex behind the guard, pinned byte for byte (a loose "contains the script
  * name" check passes `exit 0; bun ...guard`, a no-op `echo`, or `... || true`). Each part is load-bearing:
- * - `--config=/dev/null --no-env-file`: a `bunfig.toml` `preload` in the session directory would otherwise
- *   run before the guard and could silence it (one patch adds both, and neither file is guarded by a hook);
+ * - `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session
+ *   directory would otherwise run before the guard and could silence it, and a `tsconfig.json` `paths` map
+ *   would replace the guard's own imports (see {@link BUN_HARDENED});
  * - `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs the call when a hook times out (its limit here
- *   is 10 s), so the guard is killed first; and a failed `exec` (no `bun` on the hook's PATH) would
- *   otherwise fall off the end of the script and exit 0, which is an ALLOW;
+ *   is 10 s, which {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a
+ *   failed `exec` (no `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0,
+ *   which is an ALLOW;
  * - `|| { ...; exit 2; }`: exit 2 with a message BLOCKS in Codex; any other failure (bun not on the hook's
  *   PATH, a crash, the alarm) is "failed, and the call proceeds".
  */
-export const CODEX_GUARD_COMMAND = `perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
+export const CODEX_ALARM_SECONDS = 8;
+export const CODEX_GUARD_COMMAND = `perl -e 'alarm ${CODEX_ALARM_SECONDS}; exec @ARGV or exit 127' ${BUN_HARDENED} "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
 
 /** PURE — `.codex/hooks.json` must hold exactly the one guard hook, and nothing that could shadow it. */
 export function checkCodexHooks(text: string | undefined): string[] {
@@ -278,10 +337,21 @@ export function checkCodexHooks(text: string | undefined): string[] {
     v.push('.codex/hooks.json: the guard hook must have type "command"');
   if (hook?.command !== CODEX_GUARD_COMMAND)
     v.push(
-      ".codex/hooks.json: the guard command must be exactly CODEX_GUARD_COMMAND from scripts/check-compliance-controls.ts (pinned bun config, 8 s alarm, exit 2 on failure)",
+      ".codex/hooks.json: the guard command must be exactly CODEX_GUARD_COMMAND from scripts/check-compliance-controls.ts (pinned bun config and tsconfig override, 8 s alarm, exit 2 on failure)",
     );
-  if (typeof hook?.timeout !== "number" || hook.timeout < 1 || hook.timeout > 30)
-    v.push(".codex/hooks.json: the guard needs a timeout of 1 to 30 seconds");
+  // Strictly above the perl alarm: a timeout at or under it fires inside Codex first, and Codex then runs the
+  // call (the alarm and the `|| exit 2` wrapper never get to refuse it).
+  const timeout = hook?.timeout;
+  const minTimeout = CODEX_ALARM_SECONDS + 1;
+  if (
+    typeof timeout !== "number" ||
+    !Number.isInteger(timeout) ||
+    timeout < minTimeout ||
+    timeout > CODEX_GUARD_TIMEOUT_MAX
+  )
+    v.push(
+      `.codex/hooks.json: the guard needs an integer timeout of ${minTimeout} to ${CODEX_GUARD_TIMEOUT_MAX} seconds, above its ${CODEX_ALARM_SECONDS} s perl alarm (Codex runs the call when its own timeout fires first)`,
+    );
   if (hook?.async === true) v.push(".codex/hooks.json: the guard must not be async");
   return v;
 }
@@ -315,6 +385,153 @@ function allowListViolations(
     else if (ignoreAt >= 0 && at < ignoreAt)
       v.push(
         `.gitignore re-includes \`${line}\` BEFORE \`${ignore}\`, so the ignore wins and the shared file is never committed — put the re-include after it`,
+      );
+  }
+  return v;
+}
+
+// ------------------------------------------------------------------------ .gitignore, as git reads it
+
+/** Shared harness files git must NOT ignore: an ignored one is never committed, so a clone has no guard. */
+export const SHARED_PROBE_PATHS: readonly string[] = [
+  ".agents/rules/phi-and-secrets.md",
+  ".agents/agents/x.md",
+  ".agents/skills/x/SKILL.md",
+  ".codex/hooks.json",
+  ".claude/settings.json",
+  ".claude/rules/x.md",
+  ".claude/agents/x.md",
+  ".claude/skills/x/SKILL.md",
+  ".env.example",
+];
+/** Local state git MUST ignore: a path that is not ignored can be committed by `git add -A`. */
+export const LOCAL_PROBE_PATHS: readonly string[] = [
+  ".agents/plans/x.md",
+  ".agents/prds/x.md",
+  "apps/x/.agents/rules/x.md",
+  ".codex/config.toml",
+  "apps/x/.codex/config.toml",
+  ".claude/audit/x",
+  ".claude/.cache/x",
+  ".claude/plans/x.md",
+  ".claude/settings.local.json",
+  ".env",
+  "apps/backend/.env.production",
+];
+
+export type IgnoreProbe =
+  | { readonly paths: Readonly<Record<string, { ignored: boolean; rule: string }>> }
+  | { readonly error: string };
+
+/** The environment for a throwaway `git` that reads no user, system or inherited-repo configuration. */
+function isolatedGitEnv(home: string, inherited: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  // A git hook (pre-commit runs this gate) exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE: inherited, they
+  // would point the probe at the real repository.
+  for (const [k, val] of Object.entries(inherited)) if (!k.startsWith("GIT_")) env[k] = val;
+  return {
+    ...env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, "xdg"),
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_SYSTEM: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+  };
+}
+
+/** A git that takes longer than this is hung: the probe runs in pre-commit and CI, which must not wait for it. */
+const GIT_PROBE_TIMEOUT_MS = 10_000;
+
+/** What {@link probeGitignore} runs git with: the inherited environment (its PATH finds `git`) and a per-call timeout. */
+export interface ProbeOptions {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Asks git itself which of `paths` the `.gitignore` text ignores: a throwaway repository, the text as its
+ * `.gitignore`, one `git check-ignore --no-index -v -n -z --stdin`. A text match cannot see order or globs (a
+ * later `!**\/.codex/config.toml`, `.agents/rules/*` or `.claude/*` changes what is committed; the text still
+ * "contains" every line it used to). The last matching rule is the one reported; a `!` rule means re-included.
+ * Failing to run git, a git that does not answer within the timeout, and a temp directory that cannot be made are
+ * each an `error`, never an empty pass and never an exception.
+ */
+export function probeGitignore(
+  text: string,
+  paths: readonly string[] = [...SHARED_PROBE_PATHS, ...LOCAL_PROBE_PATHS],
+  { env: inherited = process.env, timeoutMs = GIT_PROBE_TIMEOUT_MS }: ProbeOptions = {},
+): IgnoreProbe {
+  let dir: string | undefined;
+  try {
+    dir = mkdtempSync(join(tmpdir(), "cw-gitignore-"));
+    const cwd = dir;
+    const env = isolatedGitEnv(cwd, inherited);
+    const git = (args: string[], input?: string) =>
+      spawnSync("git", args, {
+        cwd,
+        env,
+        input,
+        encoding: "utf8",
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+      });
+    const init = git(["init", "-q", "--template="]);
+    if (init.error || init.status !== 0)
+      return { error: `git init failed: ${init.error?.message ?? init.stderr.trim()}` };
+    writeFileSync(join(cwd, ".gitignore"), text);
+    const r = git(
+      ["check-ignore", "--no-index", "-v", "-n", "-z", "--stdin"],
+      `${paths.join("\0")}\0`,
+    );
+    // check-ignore exits 0 when some path is ignored and 1 when none is; anything else is a failure.
+    if (r.error || (r.status !== 0 && r.status !== 1))
+      return { error: `git check-ignore failed: ${r.error?.message ?? r.stderr.trim()}` };
+    const fields = r.stdout.split("\0");
+    const out: Record<string, { ignored: boolean; rule: string }> = {};
+    for (let i = 0; i + 3 < fields.length; i += 4) {
+      const [source, line, pattern, path] = [
+        fields[i],
+        fields[i + 1],
+        fields[i + 2],
+        fields[i + 3],
+      ];
+      if (source === undefined || line === undefined || pattern === undefined || path === undefined)
+        continue;
+      out[path] = {
+        ignored: source !== "" && !pattern.startsWith("!"),
+        rule: source === "" ? "no rule matches" : `${source}:${line}: ${pattern}`,
+      };
+    }
+    const missing = paths.filter((p) => out[p] === undefined);
+    if (missing.length > 0)
+      return { error: `git check-ignore did not report ${missing.join(", ")}` };
+    return { paths: out };
+  } catch (e) {
+    return { error: String(e) };
+  } finally {
+    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** PURE — judges a {@link probeGitignore} result: shared files re-included, local state ignored. */
+export function checkIgnoreProbe(probe: IgnoreProbe): string[] {
+  if ("error" in probe)
+    return [`.gitignore: could not probe it with git check-ignore: ${probe.error}`];
+  const v: string[] = [];
+  for (const p of SHARED_PROBE_PATHS) {
+    const got = probe.paths[p];
+    if (got === undefined) v.push(`.gitignore probe has no answer for \`${p}\``);
+    else if (got.ignored)
+      v.push(
+        `.gitignore ignores \`${p}\` (${got.rule}), so git would never commit this shared file — the last matching rule wins, so a later ignore line undoes a re-include`,
+      );
+  }
+  for (const p of LOCAL_PROBE_PATHS) {
+    const got = probe.paths[p];
+    if (got === undefined) v.push(`.gitignore probe has no answer for \`${p}\``);
+    else if (!got.ignored)
+      v.push(
+        `.gitignore does not ignore \`${p}\` (${got.rule}), so this local state could be committed`,
       );
   }
   return v;
@@ -370,6 +587,8 @@ export interface HarnessFiles {
   mirror?: { claude: Readonly<Record<string, string>>; agents: Readonly<Record<string, string>> };
   /** `.codex/hooks.json` text, `undefined` when the file is missing. Checked only when the key is present. */
   codexHooks?: string | undefined;
+  /** What `git check-ignore` says about the `.gitignore` text ({@link probeGitignore}). Judged when present. */
+  gitignoreProbe?: IgnoreProbe | undefined;
 }
 
 /** PURE over file contents. */
@@ -393,8 +612,19 @@ export function checkHarness(files: HarnessFiles): string[] {
     if (commands.length === 0) v.push(`.claude/settings.json: ${p.event} does not run ${script}`);
     else if (commands.some((c) => c !== p.command))
       v.push(
-        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`bun --config=/dev/null --no-env-file\`: a bunfig.toml preload would otherwise run before it)`,
+        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`${BUN_HARDENED}\`: a bunfig.toml preload or a tsconfig.json paths map would otherwise run or replace code before it)`,
       );
+    // The guard's own timeout is checked below; the ledger and the Stop gate may take longer, but a 0 or negative
+    // one kills them before they run.
+    if (p.event === "PreToolUse") continue;
+    const [min, max] = CLAUDE_OTHER_HOOK_TIMEOUT_RANGE;
+    for (const h of hooksFor(s, p.event).filter((x) => (x.command ?? "").includes(script))) {
+      if (h.timeout === undefined) continue;
+      if (!Number.isInteger(h.timeout) || h.timeout < min || h.timeout > max)
+        v.push(
+          `.claude/settings.json: the ${p.event} hook for ${script} needs an integer timeout of ${min} to ${max} seconds (a 0 or negative timeout kills it before it runs)`,
+        );
+    }
   }
   for (const d of REQUIRED_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
@@ -417,9 +647,27 @@ export function checkHarness(files: HarnessFiles): string[] {
         if (!tools.has(t))
           v.push(`.claude/settings.json: the PreToolUse guard matcher does not cover \`${t}\``);
     if (g.async === true) v.push(".claude/settings.json: the PreToolUse guard must not be async");
+    const [minTimeout, maxTimeout] = CLAUDE_GUARD_TIMEOUT_RANGE;
     if (typeof g.timeout !== "number")
       v.push(".claude/settings.json: the PreToolUse guard needs an explicit timeout");
+    else if (!Number.isInteger(g.timeout) || g.timeout < minTimeout || g.timeout > maxTimeout)
+      v.push(
+        `.claude/settings.json: the PreToolUse guard needs an integer timeout of ${minTimeout} to ${maxTimeout} seconds (a 0 or 0.001 timeout kills it before it answers)`,
+      );
   }
+  if (s.disableAllHooks !== undefined && s.disableAllHooks !== false)
+    v.push(
+      ".claude/settings.json: disableAllHooks must not be set: it switches every hook, the guard included, off",
+    );
+  if (s.permissions?.defaultMode === "bypassPermissions")
+    v.push(
+      '.claude/settings.json: permissions.defaultMode must not be "bypassPermissions": it skips every permission rule (the deny and ask lists)',
+    );
+  for (const key of FORBIDDEN_ENV)
+    if (Object.hasOwn(s.env ?? {}, key))
+      v.push(
+        `.claude/settings.json: env.${key} must not be set in the shared settings (a human's per-session switch, or the guard's test seam: it would apply to every developer)`,
+      );
   const disabled = new Set((s.env?.ECC_DISABLED_HOOKS ?? "").split(",").map((x) => x.trim()));
   for (const h of REQUIRED_DISABLED_ECC_HOOKS)
     if (!disabled.has(h))
@@ -429,6 +677,11 @@ export function checkHarness(files: HarnessFiles): string[] {
   if (s.env?.ECC_SKIP_OBSERVE !== "1")
     v.push('.claude/settings.json: env.ECC_SKIP_OBSERVE must be "1"');
 
+  if ((files.gitignore ?? "").includes("\r"))
+    v.push(
+      ".gitignore contains a carriage return (CRLF line endings): the text checks here and a git that keeps a trailing \\r in a pattern would read different rules",
+    );
+  if (files.gitignoreProbe !== undefined) v.push(...checkIgnoreProbe(files.gitignoreProbe));
   const gi = (files.gitignore ?? "").split("\n").map((l) => l.trim());
   if (gi.includes(".claude/") || gi.includes(".claude") || gi.includes("/.claude/"))
     v.push(
@@ -519,9 +772,12 @@ export function readMirrorTree(root: string, base: string): Record<string, strin
 export function readHarnessInputs(root: string): HarnessFiles {
   const read = (p: string): string | undefined =>
     existsSync(join(root, p)) ? readFileSync(join(root, p), "utf8") : undefined;
+  const gitignore = read(".gitignore");
   return {
     settings: read(".claude/settings.json"),
-    gitignore: read(".gitignore"),
+    gitignore,
+    // Missing `.gitignore` is already a violation of the text checks; there is nothing to probe.
+    gitignoreProbe: gitignore === undefined ? undefined : probeGitignore(gitignore),
     claudeMd: read("CLAUDE.md"),
     agentsMd: read("AGENTS.md"),
     codeowners: read(".github/CODEOWNERS"),

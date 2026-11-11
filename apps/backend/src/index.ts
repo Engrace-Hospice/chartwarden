@@ -7485,6 +7485,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               m24ResidenceReader,
               m24FacilityNameResolver,
               (state) => state !== "OR" || m24OregonGateway !== null,
+              m24LocPeriodReader,
+              m24AdapterRegistry,
             ),
           });
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE

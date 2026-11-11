@@ -46,6 +46,14 @@ interface Draft {
 const oddPath = (p: string): boolean =>
   p === "" || /[\p{Cc}\p{Cf}\p{Z}]/u.test(p.replaceAll(" ", ""));
 
+/**
+ * `s` with every character {@link oddPath} refuses taken out (an ordinary space stays: a path may hold one).
+ * What a tool that trims, normalises or strips such characters would read: Rust's `trim` drops U+0085, which
+ * JS's keeps. The MCP check judges this form too, since an MCP tool's input is not parsed to a path first.
+ */
+export const withoutOddChars = (s: string): string =>
+  s.replace(/[\p{Cc}\p{Cf}\p{Z}]/gu, (c) => (c === " " ? c : ""));
+
 const finish = (d: Draft): PatchFile => ({
   path: d.path,
   op: d.op,
