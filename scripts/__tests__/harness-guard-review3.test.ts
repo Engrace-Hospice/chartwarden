@@ -34,9 +34,18 @@ afterAll(() => {
   for (const d of made) rmSync(d, { recursive: true, force: true });
 });
 
-type Out = { status: number | null; out: Record<string, any> | null };
+type Out = { status: number | null; out: Record<string, any> | null; stderr: string };
 const decision = (r: Out): string | undefined => r.out?.hookSpecificOutput?.permissionDecision;
 const reason = (r: Out): string => r.out?.hookSpecificOutput?.permissionDecisionReason ?? "";
+/**
+ * "Allowed" means the guard ran and had no opinion: exit 0, nothing on stdout, nothing on stderr. A bare
+ * `decision === undefined` also passes when the hook crashed and printed nothing.
+ */
+const expectAllowed = (r: Out, label?: string): void => {
+  expect(r.status, `${label ?? ""} stderr: ${r.stderr}`).toBe(0);
+  expect(r.out, label).toBeNull();
+  expect(r.stderr, label).toBe("");
+};
 
 /** The environment a hook runs in, minus the two switches that would turn the ledger off or the guard open. */
 const baseEnv = (): Record<string, string> =>
@@ -53,7 +62,7 @@ function run(args: string[], payload: Record<string, unknown>, env: Record<strin
     encoding: "utf8",
     env,
   });
-  return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
+  return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, stderr: r.stderr };
 }
 
 /** Codex: the repo root is pinned to `root` through the test-only seam. */
@@ -134,7 +143,7 @@ describe("finding 3: Codex `workdir` is where a shell command runs, so its relat
       ["ls", undefined],
       ["cat package.json", "apps/../apps/backend"],
     ] as const) {
-      expect(decision(bash(command, workdir)), `${command} @ ${workdir}`).toBeUndefined();
+      expectAllowed(bash(command, workdir), `${command} @ ${workdir}`);
     }
   });
 
@@ -142,7 +151,7 @@ describe("finding 3: Codex `workdir` is where a shell command runs, so its relat
     // Same file names, but in a directory that is not the repo's protected tree.
     const elsewhere = scratch("cw-review3-else-");
     put(elsewhere, "scripts/harness/x.ts");
-    expect(decision(bash("echo x > x.ts", join(elsewhere, "scripts/harness")))).toBeUndefined();
+    expectAllowed(bash("echo x > x.ts", join(elsewhere, "scripts/harness")));
   });
 
   // The directory a command runs in is a real one: a workdir that is a symlink into a protected tree writes there.
@@ -153,8 +162,8 @@ describe("finding 3: Codex `workdir` is where a shell command runs, so its relat
       expect(decision(bash(command, "apps/link")), `${command} @ apps/link`).toBe("deny");
       expect(decision(bash(command, join(root, "apps/link")))).toBe("deny");
     }
-    expect(decision(bash("echo x > notes.txt", "apps/alias"))).toBeUndefined();
-    expect(decision(bash("cat package.json", "apps/alias"))).toBeUndefined();
+    expectAllowed(bash("echo x > notes.txt", "apps/alias"));
+    expectAllowed(bash("cat package.json", "apps/alias"));
   });
 });
 
@@ -194,15 +203,15 @@ describe("finding 9: cwd and repo root are compared as real paths, not as text",
       tool_name: "Read",
       tool_input: { file_path: `${alias}/apps/backend/package.json` },
     });
-    expect(decision(fine)).toBeUndefined();
+    expectAllowed(fine);
   });
   it("keeps everyday calls from a symlinked cwd allowed", () => {
     for (const command of ["git status", "echo x > notes.txt", "ls apps"]) {
       const r = claude(root, { tool_name: "Bash", tool_input: { command }, cwd: alias });
-      expect(decision(r), command).toBeUndefined();
+      expectAllowed(r, command);
     }
     const r = codex(root, { tool_name: "Bash", tool_input: { command: "ls apps" }, cwd: alias });
-    expect(decision(r)).toBeUndefined();
+    expectAllowed(r);
   });
 });
 
@@ -246,8 +255,8 @@ describe("a key file is refused in the directory a cd leads to, from both agents
     "cd deploy/production/tls && ls",
   ])("allows the everyday `%s`", (command) => {
     const r = bash(command);
-    expect(decision(r.claude), command).toBeUndefined();
-    expect(decision(r.codex), command).toBeUndefined();
+    expectAllowed(r.claude, command);
+    expectAllowed(r.codex, command);
   });
 });
 
@@ -279,9 +288,11 @@ describe("finding 10: MCP strings are judged exactly as an apply_patch path is",
       { text: "line one\u2028line two" },
       { path: "apps/backend/src/index.ts\u0085" },
       { path: "docs/na\u00efve plan.md" },
-      { note: "see the .env discussion in the doc" },
+      // A prose MENTION of a secret file name is refused since 2026-11-10 (every word is judged as a path), so this
+      // ordinary-text sample does not name one.
+      { note: "see the environment-file discussion in the doc" },
     ]) {
-      expect(decision(mcp(input)), JSON.stringify(input)).toBeUndefined();
+      expectAllowed(mcp(input), JSON.stringify(input));
     }
   });
 });
@@ -406,7 +417,7 @@ describe("a command built to make the classifier slow is answered quickly even w
   it("keeps a modest brace command from a symlinked root allowed", () => {
     const command = "cd /tmp/a; cd /tmp/b; rm -f dist/x{1,2,3}.js dist/y{,.orig}";
     const r = claude(alias, { tool_name: "Bash", tool_input: { command }, cwd: alias });
-    expect(decision(r)).toBeUndefined();
+    expectAllowed(r);
   });
 
   // The hook's timeout is 10 s and a call whose hook is killed RUNS, so the payload a secret read follows must not

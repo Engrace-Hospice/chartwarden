@@ -37,6 +37,7 @@ import {
 } from "./codex-patch";
 import type { GuardAnswer } from "./hard-deadline";
 import { type HookInput, appendLedger, loadRegistry, projectDir, relPath, sha256 } from "./io";
+import { LINE_BREAKS, mcpPathCandidates } from "./mcp-tokens";
 import {
   type BashVerdict,
   type Decision,
@@ -236,40 +237,55 @@ function checkMcp(raw: unknown, root: string, base: string, log: Log): void {
   if (!got.ok) refuse(log, `The MCP tool input could not be judged: ${got.reason}.`);
   const rel = pathResolver(root, base);
   const registry = loadRegistry(root);
-  let lines = 0;
+  let resolved = 0;
+  /** One more path resolved on disk; past the cap the call is refused (the work must fit the hook's timeout). */
+  const countResolution = (): void => {
+    if (++resolved > MAX_MCP_PATH_LINES) {
+      refuse(
+        log,
+        `The MCP tool input has more than ${MAX_MCP_PATH_LINES} lines or path-like words to resolve, past what the guard can resolve inside Codex's hook timeout. Split it.`,
+      );
+    }
+  };
   for (const value of got.strings) {
-    for (const line of value.split(/[\r\n\0]/)) {
+    for (const line of value.split(LINE_BREAKS)) {
       const written = line.trim();
       if (!written) continue;
-      if (++lines > MAX_MCP_PATH_LINES) {
-        refuse(
-          log,
-          `The MCP tool input has more than ${MAX_MCP_PATH_LINES} lines of text, past what the guard can resolve inside Codex's hook timeout. Split it.`,
-        );
+      countResolution();
+      for (const target of written.length > MAX_PATH_CHARS ? [written] : [written, rel(written)]) {
+        refuseIfSensitive(target, log);
       }
-      const candidates = written.length > MAX_PATH_CHARS ? [written] : [written, rel(written)];
-      for (const target of candidates) {
-        const named = nameOf(target) ? `\`${target}\`` : "A value in the tool input";
-        const why = secretPathReason(target);
-        if (why) {
-          refuse(
-            log,
-            `${named} is ${why}. Agents never read or write it; use the committed .example template for its shape.`,
-            nameOf(target),
-          );
-        }
-        if (isProtectedPath(target)) {
-          refuse(
-            log,
-            `${named} is part of the agent harness or the compliance record. Codex cannot ask a human, so a human edits it (or Claude Code, with approval).`,
-            nameOf(target),
-          );
-        }
+      // Words inside the line: `a.txt, scripts/harness/x`, `file://...`, a percent-encoded or quoted path.
+      for (const token of mcpPathCandidates(written)) {
+        refuseIfSensitive(token, log);
+        if (!token.includes("/")) continue;
+        countResolution();
+        refuseIfSensitive(rel(token), log);
       }
       refuseHiddenPath(line, written, rel, log);
     }
     const findings = scanContent(value, registry, "");
     if (findings.length > 0) refuse(log, describeFindings("(an MCP tool argument)", findings));
+  }
+}
+
+/** Refuse a value in an MCP input that is a secret path or a protected one. */
+function refuseIfSensitive(target: string, log: Log): void {
+  const named = nameOf(target) ? `\`${target}\`` : "A value in the tool input";
+  const why = secretPathReason(target);
+  if (why) {
+    refuse(
+      log,
+      `${named} is ${why}. Agents never read or write it; use the committed .example template for its shape.`,
+      nameOf(target),
+    );
+  }
+  if (isProtectedPath(target)) {
+    refuse(
+      log,
+      `${named} is part of the agent harness or the compliance record. Codex cannot ask a human, so a human edits it (or Claude Code, with approval).`,
+      nameOf(target),
+    );
   }
 }
 
@@ -413,6 +429,15 @@ function judge(hook: HookInput): void {
     // `String(command)` of an array or object is not what the shell would run: refuse it before judging it.
     if (CODEX && typeof command !== "string") refuse(log, `The command ${NOT_TEXT}.`);
     const cmd = String(command ?? "");
+    // An argv string cannot carry a NUL, so a shell would cut the command there: what runs is not what was read.
+    if (cmd.includes("\0")) {
+      refuse(
+        log,
+        "A command with a NUL byte in it is refused: the shell would cut it at the NUL, so what runs is not what the guard read.",
+        undefined,
+        cmd,
+      );
+    }
     if (CODEX && (input.tty === true || input.pty === true || input.use_pty === true)) {
       refuse(
         log,
