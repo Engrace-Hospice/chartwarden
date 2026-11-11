@@ -20,15 +20,19 @@ import {
   CLAUDE_GUARD_COMMAND,
   CLAUDE_LEDGER_COMMAND,
   CLAUDE_STOP_COMMAND,
+  CODEX_ALARM_SECONDS,
   CODEX_GUARD_COMMAND,
   CODEX_GUARD_MATCHER,
   type HarnessFiles,
+  LOCAL_PROBE_PATHS,
   type Register,
   type RepoView,
+  SHARED_PROBE_PATHS,
   checkCodexHooks,
   checkHarness,
   checkMirror,
   checkRegister,
+  probeGitignore,
   readHarnessInputs,
   readMirrorTree,
   registryFingerprint,
@@ -282,6 +286,12 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
   it("accepts the committed .codex/hooks.json", () => {
     expect(checkCodexHooks(codexHooks)).toEqual([]);
   });
+  it("runs the Codex guard through `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null`", () => {
+    const command = JSON.parse(codexHooks).hooks.PreToolUse[0].hooks[0].command;
+    expect(command).toContain(
+      ' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse',
+    );
+  });
   it("fails when .codex/hooks.json is missing or unparsable", () => {
     expect(run({ codexHooks: undefined }).join()).toMatch(/hooks\.json is missing/);
     expect(run({ codexHooks: "{" }).join()).toMatch(/does not parse/);
@@ -297,6 +307,11 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
       `${CODEX_GUARD_COMMAND} || true`,
       "bun scripts/harness/pre-tool-guard.ts",
       CODEX_GUARD_COMMAND.replace("--config=/dev/null ", ""),
+      CODEX_GUARD_COMMAND.replace(" --tsconfig-override=/dev/null", ""),
+      CODEX_GUARD_COMMAND.replace(
+        "--tsconfig-override=/dev/null",
+        "--tsconfig-override=./tsconfig.json",
+      ),
       CODEX_GUARD_COMMAND.replace("alarm 8; ", ""),
       CODEX_GUARD_COMMAND.replace(" or exit 127", ""),
       CODEX_GUARD_COMMAND.replace("exit 2", "exit 0"),
@@ -340,7 +355,7 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
     for (const t of [undefined, 0, 99, "10"]) {
       fails((h) => {
         h.hooks.PreToolUse[0].hooks[0].timeout = t;
-      }, /timeout of 1 to 30 seconds/);
+      }, /integer timeout of 9 to 30 seconds/);
     }
   });
   it("fails when CODEOWNERS leaves bunfig.toml unowned (a preload runs before the guard)", () => {
@@ -420,11 +435,14 @@ describe("the Claude hooks are pinned like the Codex one (a bunfig.toml preload 
     return JSON.stringify(parsed);
   };
 
-  it("runs each hook through `bun --config=/dev/null --no-env-file` in the committed settings", () => {
+  it("runs each hook through `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null` in the committed settings", () => {
     const parsed = JSON.parse(settings);
     for (const h of hooks) {
       expect(parsed.hooks[h.event][0].hooks[0].command).toBe(h.command);
-      expect(h.command).toMatch(/^bun --config=\/dev\/null --no-env-file "\$CLAUDE_PROJECT_DIR"\//);
+      // Spelled out, not built from the gate's own constant: weakening the constant must fail here too.
+      expect(h.command).toMatch(
+        /^bun --config=\/dev\/null --no-env-file --tsconfig-override=\/dev\/null "\$CLAUDE_PROJECT_DIR"\//,
+      );
       expect(h.command).toContain(`scripts/harness/${h.script}.ts`);
     }
     expect(run(settings)).toEqual([]);
@@ -447,6 +465,8 @@ describe("the Claude hooks are pinned like the Codex one (a bunfig.toml preload 
         `${h.command} #`,
         h.command.replace(" --config=/dev/null", ""),
         h.command.replace(" --no-env-file", ""),
+        h.command.replace(" --tsconfig-override=/dev/null", ""),
+        h.command.replace("--tsconfig-override=/dev/null", "--tsconfig-override=./tsconfig.json"),
         h.command.replace("--config=/dev/null", "--config=./bunfig.toml"),
         h.command.replace(/^bun/, "echo"),
         `bun "$CLAUDE_PROJECT_DIR"/scripts/harness/${h.script}.ts`, // the form before the pin
@@ -617,5 +637,326 @@ describe("main() supplies every harness input (removing the mirror or codexHooks
     const noAgents = cli(fixture({ agents: false, codex: true }));
     expect(noAgents.status).toBe(1);
     expect(noAgents.stderr).toMatch(/\.agents\/.* is missing/);
+  });
+});
+
+describe("the gate's blind spots (third review round): timeouts, session-wide switches, .gitignore semantics", () => {
+  const settings = readFileSync(join(ROOT, ".claude/settings.json"), "utf8");
+  const gitignore = readFileSync(join(ROOT, ".gitignore"), "utf8");
+  const codeowners = readFileSync(join(ROOT, ".github/CODEOWNERS"), "utf8");
+  const codexHooks = readFileSync(join(ROOT, ".codex/hooks.json"), "utf8");
+  const run = (over: Partial<HarnessFiles> = {}) =>
+    checkHarness({ settings, gitignore, codeowners, codexHooks, ...over });
+  const edit = (text: string, mutate: (parsed: any) => void): string => {
+    const parsed = JSON.parse(text);
+    mutate(parsed);
+    return JSON.stringify(parsed);
+  };
+  const withCodexTimeout = (t: unknown) =>
+    run({
+      codexHooks: edit(codexHooks, (h) => {
+        h.hooks.PreToolUse[0].hooks[0].timeout = t;
+      }),
+    }).join("\n");
+  const withGuardTimeout = (t: unknown) =>
+    run({
+      settings: edit(settings, (s) => {
+        s.hooks.PreToolUse[0].hooks[0].timeout = t;
+      }),
+    }).join("\n");
+  const withSettings = (mutate: (s: any) => void) => run({ settings: edit(settings, mutate) });
+
+  describe("(a) the Codex hook timeout must exceed the perl alarm", () => {
+    it("pins the whole command, the 8 s alarm included, as a literal", () => {
+      // Written out, not built from CODEX_ALARM_SECONDS: a test that interpolates the constant it checks passes
+      // whatever the constant is, and the 9 s timeout floor below is derived from that same constant.
+      expect(CODEX_ALARM_SECONDS).toBe(8);
+      expect(CODEX_GUARD_COMMAND).toBe(
+        `perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
+      );
+    });
+    it.each([1, 5, 8])(
+      "fails a timeout of %s: Codex's own timeout would fire first and let the call run",
+      (t) => {
+        expect(withCodexTimeout(t)).toMatch(/integer timeout of 9 to 30 seconds/);
+      },
+    );
+    it.each([0, 31, 9.5, "10", null, undefined])("fails a timeout of %j", (t) => {
+      expect(withCodexTimeout(t)).toMatch(/integer timeout of 9 to 30 seconds/);
+    });
+    it.each([9, 10, 30])("accepts a timeout of %s", (t) => {
+      expect(withCodexTimeout(t)).toBe("");
+    });
+  });
+
+  describe("(b) the Claude guard timeout is a sane integer", () => {
+    it.each([0, 0.001, -1, 4, 31, 300, 9.5, "10", null])("fails a timeout of %j", (t) => {
+      expect(withGuardTimeout(t)).toMatch(
+        /PreToolUse guard needs (an integer timeout|an explicit timeout)/,
+      );
+    });
+    it.each([5, 10, 30])("accepts a timeout of %s", (t) => {
+      expect(withGuardTimeout(t)).toBe("");
+    });
+    it("leaves the Stop gate's 300 and the async ledger's 10 alone", () => {
+      const parsed = JSON.parse(settings);
+      expect(parsed.hooks.Stop[0].hooks[0].timeout).toBe(300);
+      expect(run()).toEqual([]);
+    });
+  });
+
+  // A 0, negative or fractional timeout kills the hook before it answers, and the Stop gate or ledger then never runs.
+  describe("(b2) the ledger's and the Stop gate's timeouts are sane integers", () => {
+    const withTimeout = (event: "PostToolUse" | "Stop", t: unknown) =>
+      withSettings((s) => {
+        s.hooks[event][0].hooks[0].timeout = t;
+      }).join("\n");
+
+    it.each(["PostToolUse", "Stop"] as const)("fails a %s timeout outside 5 to 600", (event) => {
+      for (const t of [0, 0.001, -1, 4, 601, 9.5, "10", null]) {
+        expect(withTimeout(event, t), `${event} ${JSON.stringify(t)}`).toMatch(
+          new RegExp(`${event} hook for scripts/harness/\\S+ needs an integer timeout of 5 to 600`),
+        );
+      }
+    });
+    it.each(["PostToolUse", "Stop"] as const)(
+      "accepts a %s timeout of 5, 10, 300 or 600",
+      (event) => {
+        for (const t of [5, 10, 300, 600]) expect(withTimeout(event, t), `${event} ${t}`).toBe("");
+      },
+    );
+  });
+
+  describe("(c) settings keys that switch the guard off", () => {
+    it("fails disableAllHooks: true, and accepts false or absent", () => {
+      expect(
+        withSettings((s) => {
+          s.disableAllHooks = true;
+        }).join("\n"),
+      ).toMatch(/disableAllHooks/);
+      expect(
+        withSettings((s) => {
+          s.disableAllHooks = false;
+        }),
+      ).toEqual([]);
+    });
+    it("fails permissions.defaultMode bypassPermissions, and accepts the other modes", () => {
+      expect(
+        withSettings((s) => {
+          s.permissions.defaultMode = "bypassPermissions";
+        }).join("\n"),
+      ).toMatch(/defaultMode.*bypassPermissions/);
+      for (const mode of ["default", "acceptEdits", "plan"]) {
+        expect(
+          withSettings((s) => {
+            s.permissions.defaultMode = mode;
+          }),
+          mode,
+        ).toEqual([]);
+      }
+    });
+    it.each([
+      ["CW_HARNESS_FAIL_OPEN", "1"],
+      ["CW_AGENT_LEDGER", "off"],
+      ["CW_STOP_GATE", "off"],
+      ["CLAUDE_PROJECT_DIR", "/tmp/elsewhere"],
+      ["CW_HARNESS_ROOT_FOR_TESTS", "/tmp/elsewhere"],
+      ["BUN_OPTIONS", "--preload ./evil.ts"],
+      ["CODEX_HOME", "/tmp/codex-without-hooks"],
+      ["CLAUDE_CONFIG_DIR", "/tmp/claude-without-hooks"],
+      ["LD_PRELOAD", "/tmp/evil.so"],
+      ["DYLD_INSERT_LIBRARIES", "/tmp/evil.dylib"],
+      ["BASH_ENV", "/tmp/evil.sh"],
+      ["ENV", "/tmp/evil.sh"],
+      ["PATH", "/tmp/evil-bin:/usr/bin"],
+    ])("fails an env entry setting %s", (key, value) => {
+      const v = withSettings((s) => {
+        s.env[key] = value;
+      }).join("\n");
+      expect(v).toMatch(new RegExp(`env\\.${key} must not be set`));
+    });
+    it("accepts an unrelated env entry", () => {
+      expect(
+        withSettings((s) => {
+          s.env.CHARTWARDEN_DEMO = "1";
+        }),
+      ).toEqual([]);
+    });
+  });
+
+  describe("(d) .gitignore is judged by git, not by text", () => {
+    const withLines = (...extra: string[]) =>
+      `${gitignore.replace(/\n*$/, "\n")}${extra.join("\n")}\n`;
+    const verdict = (text: string): string =>
+      run({ gitignore: text, gitignoreProbe: probeGitignore(text) }).join("\n");
+
+    it("accepts the committed .gitignore with a real probe", () => {
+      const probe = probeGitignore(gitignore);
+      expect("error" in probe).toBe(false);
+      expect(run({ gitignoreProbe: probe })).toEqual([]);
+    });
+    it("probes every shared and local path it names, and both lists are non-empty", () => {
+      const probe = probeGitignore(gitignore);
+      if ("error" in probe) throw new Error(probe.error);
+      for (const p of [...SHARED_PROBE_PATHS, ...LOCAL_PROBE_PATHS])
+        expect(probe.paths[p], p).toBeDefined();
+      expect(SHARED_PROBE_PATHS).toEqual(
+        expect.arrayContaining([
+          ".agents/rules/phi-and-secrets.md",
+          ".agents/agents/x.md",
+          ".agents/skills/x/SKILL.md",
+          ".codex/hooks.json",
+          ".claude/settings.json",
+          ".claude/rules/x.md",
+        ]),
+      );
+      expect(LOCAL_PROBE_PATHS).toEqual(
+        expect.arrayContaining([
+          ".agents/plans/x.md",
+          ".agents/prds/x.md",
+          ".codex/config.toml",
+          "apps/x/.codex/config.toml",
+          ".claude/audit/x",
+          ".claude/settings.local.json",
+        ]),
+      );
+    });
+    it("reports exactly which pattern ignored a shared file", () => {
+      const probe = probeGitignore(withLines(".agents/rules/*"));
+      if ("error" in probe) throw new Error(probe.error);
+      expect(probe.paths[".agents/rules/phi-and-secrets.md"]).toMatchObject({ ignored: true });
+      expect(probe.paths[".agents/rules/phi-and-secrets.md"]?.rule).toMatch(/\.agents\/rules\/\*/);
+    });
+    it.each([
+      [
+        "`!**/.codex/config.toml` makes the local Codex config committable",
+        ["!**/.codex/config.toml"],
+        /does not ignore `\.codex\/config\.toml`/,
+      ],
+      [
+        "`.agents/rules/*` after the keeps hides the shared rules",
+        [".agents/rules/*"],
+        /ignores `\.agents\/rules\/phi-and-secrets\.md`/,
+      ],
+      [
+        "`!.agents/plans/` makes plans committable",
+        ["!.agents/plans/"],
+        /does not ignore `\.agents\/plans\/x\.md`/,
+      ],
+      [
+        "`.claude/*` after the keeps hides the settings",
+        [".claude/*"],
+        /ignores `\.claude\/settings\.json`/,
+      ],
+      [
+        "`**/.claude/*` after the keeps hides the rules",
+        ["**/.claude/*"],
+        /ignores `\.claude\/rules\/x\.md`/,
+      ],
+      [
+        "`.codex/hooks.json` ignored again",
+        [".codex/hooks.json"],
+        /ignores `\.codex\/hooks\.json`/,
+      ],
+    ])("fails when %s", (_name, extra, re) => {
+      expect(verdict(withLines(...extra))).toMatch(re);
+    });
+    it("fails when the file is saved with CRLF line endings", () => {
+      expect(run({ gitignore: gitignore.replace(/\n/g, "\r\n") }).join("\n")).toMatch(
+        /CRLF|carriage return/,
+      );
+    });
+    it("ignores the GIT_* variables a git hook exports: they would aim the probe at the real repository", () => {
+      const saved = process.env.GIT_DIR;
+      process.env.GIT_DIR = join(tmpdir(), "cw-no-such-git-dir");
+      try {
+        const probe = probeGitignore(gitignore);
+        expect("error" in probe).toBe(false);
+        expect(run({ gitignoreProbe: probe })).toEqual([]);
+      } finally {
+        if (saved === undefined) Reflect.deleteProperty(process.env, "GIT_DIR");
+        else process.env.GIT_DIR = saved;
+      }
+    });
+    it("fails closed when the probe could not run", () => {
+      expect(run({ gitignoreProbe: { error: "git is not installed" } }).join("\n")).toMatch(
+        /could not probe .*git is not installed/,
+      );
+    });
+    it("checks a hand-made probe without running git (the pure path)", () => {
+      const paths = Object.fromEntries(
+        [...SHARED_PROBE_PATHS, ...LOCAL_PROBE_PATHS].map((p) => [
+          p,
+          { ignored: LOCAL_PROBE_PATHS.includes(p), rule: "x" },
+        ]),
+      );
+      expect(run({ gitignoreProbe: { paths } })).toEqual([]);
+      const flipped = { ...paths, ".codex/hooks.json": { ignored: true, rule: ".gitignore:9: x" } };
+      expect(run({ gitignoreProbe: { paths: flipped } }).join("\n")).toMatch(
+        /ignores `\.codex\/hooks\.json`.*\.gitignore:9: x/,
+      );
+    });
+    it("readHarnessInputs supplies the probe, so the CLI path judges real git semantics", () => {
+      const inputs = readHarnessInputs(ROOT);
+      expect(inputs.gitignoreProbe).toBeDefined();
+      expect(checkHarness(inputs)).toEqual([]);
+    });
+  });
+
+  // The probe runs in pre-commit and CI: it must answer in bounded time and report, never throw or hang.
+  describe("(e) probeGitignore reports a git it cannot run, and gives up on one that hangs", () => {
+    const made: string[] = [];
+    const tmp = (): string => {
+      const dir = mkdtempSync(join(tmpdir(), "cw-probe-test-"));
+      made.push(dir);
+      return dir;
+    };
+    afterAll(() => {
+      for (const dir of made) rmSync(dir, { recursive: true, force: true });
+    });
+    /** The probe's temp directories come from `os.tmpdir()`, which reads TMPDIR on every call. */
+    const withTmpdir = <T>(dir: string, fn: () => T): T => {
+      const saved = process.env.TMPDIR;
+      process.env.TMPDIR = dir;
+      try {
+        return fn();
+      } finally {
+        if (saved === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
+        else process.env.TMPDIR = saved;
+      }
+    };
+
+    it("answers an error, not a pass, when git is not on PATH, and removes its temp directory", () => {
+      const noGit = tmp();
+      const scratch = tmp();
+      const probe = withTmpdir(scratch, () =>
+        probeGitignore(gitignore, undefined, { env: { ...process.env, PATH: noGit } }),
+      );
+      expect(probe).toHaveProperty("error");
+      expect(readdirSync(scratch)).toEqual([]);
+      expect(run({ gitignoreProbe: probe }).join("\n")).toMatch(/could not probe it with git/);
+    });
+    it("gives up on a git that hangs instead of waiting for it", () => {
+      const bin = tmp();
+      writeFileSync(join(bin, "git"), "#!/bin/sh\nexec sleep 30\n", { mode: 0o755 });
+      const scratch = tmp();
+      const started = Date.now();
+      const probe = withTmpdir(scratch, () =>
+        probeGitignore(gitignore, undefined, {
+          env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` },
+          timeoutMs: 300,
+        }),
+      );
+      expect(Date.now() - started).toBeLessThan(10_000);
+      expect(probe).toHaveProperty("error");
+      expect(readdirSync(scratch)).toEqual([]);
+    });
+    it("answers an error, not an exception, when its temp directory cannot be made", () => {
+      const probe = withTmpdir(join(tmp(), "does-not-exist"), () => probeGitignore(gitignore));
+      expect(probe).toHaveProperty("error");
+    });
+    it("still answers with the real git and the default bounds", () => {
+      expect(probeGitignore(gitignore)).toHaveProperty("paths");
+    });
   });
 });
