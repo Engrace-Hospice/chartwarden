@@ -25,7 +25,7 @@ import type {
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
 // §3 vocab mirrors (string-literal unions; the canonical pgEnum types live in @chartwarden/db).
-// `assist` is the non-PHI scope a help request's approval creates (slice 7); the DB enum gains it in migration 1481 (piece 7S).
+// `assist` is the non-PHI scope a help request's approval creates (slice 7); the DB enum gains it in migration 1485 (piece 7S).
 const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped", "assist"] as const;
 const SUPPORT_SESSION_STATE = ["open", "expired", "closed"] as const;
 const SUPPORT_SESSION_CLOSE_REASON = [

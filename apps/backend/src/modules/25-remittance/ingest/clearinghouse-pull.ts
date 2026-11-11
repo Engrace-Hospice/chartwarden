@@ -76,6 +76,8 @@ export interface RemittancePullBinding {
   readonly vendor: string | null;
   /** `tenant` on the org's OWN account: its cursor is kept apart from the platform account's. */
   readonly account?: "tenant";
+  /** Set on an unbound binding (`vendor` null): why. `baa_revoked` makes the pull report that responses may still be owed. */
+  readonly unboundReason?: string;
 }
 
 /**
@@ -87,6 +89,13 @@ export type RemittancePullDeps = {
   readonly payers: MedicarePayerPort;
   readonly cursors: RemittanceCursorStore;
   readonly ingest: Pick<M25IngestService, "receiveAdvice">;
+  /**
+   * An organization whose vendor BAA a platform operator revoked is skipped by this pull (it has no live clearinghouse), so a
+   * remittance the vendor still holds for claims it already sent would sit unseen. This is called, at most once per organization per
+   * tick, for such an organization; the composition root raises the "responses may still be owed" alert when any are. Must not throw
+   * into the pull: a failure is swallowed here (the pull carries on with the next organization).
+   */
+  readonly onRevokedSkipped?: (organizationId: string) => Promise<void>;
 } & (
   | {
       readonly transport: ClearinghouseTransport;
@@ -107,18 +116,26 @@ type PullBinding = {
   readonly account?: "tenant";
 };
 
+/** The org's binding, or `null` plus why it has none (`unboundReason`: an unbound binding says so, e.g. `baa_revoked`). */
 async function bindingOf(
   deps: RemittancePullDeps,
   organizationId: string,
-): Promise<PullBinding | null> {
+): Promise<{ readonly binding: PullBinding | null; readonly unboundReason?: string }> {
   const bound: RemittancePullBinding = deps.forOrg
     ? await deps.forOrg(organizationId)
     : { transport: deps.transport, vendor: deps.vendor };
-  if (bound.vendor === null) return null;
+  if (bound.vendor === null) {
+    return {
+      binding: null,
+      ...(bound.unboundReason ? { unboundReason: bound.unboundReason } : {}),
+    };
+  }
   return {
-    transport: bound.transport,
-    vendor: bound.vendor,
-    ...(bound.account ? { account: bound.account } : {}),
+    binding: {
+      transport: bound.transport,
+      vendor: bound.vendor,
+      ...(bound.account ? { account: bound.account } : {}),
+    },
   };
 }
 
@@ -149,9 +166,18 @@ export async function pullRemittances(
   let unsupported = 0;
   const failures: string[] = [];
   const quarantined: string[] = [];
-  let binding: Awaited<ReturnType<typeof bindingOf>>;
+  let binding: PullBinding | null;
   try {
-    binding = await bindingOf(deps, organizationId);
+    const resolved = await bindingOf(deps, organizationId);
+    binding = resolved.binding;
+    // A revoked BAA is not a silent skip: the vendor may still hold responses for claims already sent, so say so (best effort).
+    if (binding === null && resolved.unboundReason === "baa_revoked") {
+      try {
+        await deps.onRevokedSkipped?.(organizationId);
+      } catch {
+        // best effort: the report must never stop the pull (or turn a skip into a failure)
+      }
+    }
   } catch (err) {
     // The error CLASS only (a typed refusal's code, else the class name): the cause text could carry anything, and this string
     // reaches job data and logs. Without it a tenant whose credential is unreadable and one whose config read failed look alike.

@@ -47,7 +47,8 @@
 //     (#172). Nothing here asserts it, and the refusal says what to do.
 //   • Step-up (§D14) on restraint apply, GIP attest and the IRC cap override is resolved from the M2
 //     session. Nothing here asserts it; a 403 is the answer and it says what to do about it.
-import type { ApiClient, operations } from "@chartwarden/ui";
+import { sendWrite } from "@chartwarden/ui";
+import type { ApiClient, IdempotencyKeeper, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -386,17 +387,37 @@ export async function applyRestraint(
   return ok(data);
 }
 
+/**
+ * A reassessment is a clinical record whose `nextDueAt` is "one interval from now": a click-time clock value. So the body is built from
+ * the intent's FIRST-attempt time (`stampedAt`) and the fingerprint leaves the clock out: a retry after a lost reply then repeats the
+ * same bytes under the same key, and the server replays instead of recording a second reassessment.
+ */
 export async function reassessRestraint(
   client: ApiClient,
   restraintId: string,
-  body: ReassessRestraintBody,
+  keeper: IdempotencyKeeper,
+  fingerprint: string,
+  bodyAt: (stampedAt: string) => ReassessRestraintBody,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/ipu-restraint/{id}/reassess", {
-    params: { path: { id: restraintId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
-  return ok(data);
+  const sent = await sendWrite(keeper, fingerprint, (key, stampedAt) =>
+    client.POST("/api/v1/ipu-restraint/{id}/reassess", {
+      params: { path: { id: restraintId } },
+      body: bodyAt(stampedAt),
+      headers: { "Idempotency-Key": key },
+    }),
+  );
+  if (sent.status === "unreachable") {
+    return {
+      ok: false,
+      status: null,
+      code: null,
+      message: "Could not reach the server. Check the connection and try again.",
+    };
+  }
+  if (sent.status === "refused" || !sent.res.data) {
+    return failure(sent.res.response.status, sent.res.error);
+  }
+  return ok(sent.res.data);
 }
 
 export async function releaseRestraint(

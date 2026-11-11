@@ -5,6 +5,7 @@ import {
   KpiCard,
   LoadingSpinner,
   StatusPill,
+  freshIdempotencyKeyHeaders,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -284,7 +285,10 @@ export function ReportingCatalog(): JSX.Element {
     setBusy(key);
     setNotice(null);
     const r = await client
-      .POST("/api/v1/reporting/admin/mvs/{mvKey}/refresh", { params: { path: { mvKey: key } } })
+      .POST("/api/v1/reporting/admin/mvs/{mvKey}/refresh", {
+        params: { path: { mvKey: key } },
+        headers: freshIdempotencyKeyHeaders(), // a refresh reads the data as it is now: never replay an earlier one
+      })
       .catch(() => ({ error: true }));
     setBusy(null);
     setNotice(

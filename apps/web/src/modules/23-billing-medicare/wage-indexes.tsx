@@ -12,6 +12,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
+  useAttemptKey,
   useDrawerA11y,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — HOSPICE WAGE INDEX (M23 F-211; GAP-125). The tenant-entered CMS hospice
@@ -35,7 +36,6 @@ import type { JSX } from "react";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { fiscalYearLabel, fiscalYearStartingOf } from "./rate-reference";
-import { useAttemptKey } from "./use-attempt-key";
 import {
   type DraftErrors,
   EMPTY_DRAFT,

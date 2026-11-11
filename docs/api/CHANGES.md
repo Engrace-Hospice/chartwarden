@@ -6,70 +6,84 @@ its full description there. Newest first.
 
 ---
 
-## 2026-11-09 — Slice 7 (7S): the support session works end to end (support-session reads, the `assist` scope, revoke and close are real)
+## 2026-11-11 — Slice 7 support sessions work end to end
 
-No path or schema changes; these routes now do what the contract above said. Behaviour an integrator can see:
+No path or schema changes; the support-session routes now implement the previously published contract.
 
-**Reads.** `GET /api/v1/tenant/support-sessions` and `.../{id}/events` answer for real (RLS-scoped to the organization; a session of
-another organization is `404`). `GET /api/v1/platform/support-consent-grants` answers for real: the window, scope and state of a
-tenant's grants, never the grantor or the patients in scope.
+**Reads.** `GET /api/v1/tenant/support-sessions` and `.../{id}/events` are RLS-scoped to the organization; another
+organization's session is `404`. `GET /api/v1/platform/support-consent-grants` returns grant window, scope and state,
+never the grantor or patients in scope.
 
-**Who may issue which scope.** `POST /api/v1/tenant/support-consent-grants` with `scope: "assist"` (non-PHI; 1-24 whole hours) is
-issued only by an actor holding the `org_admin` or `compliance_officer` role (`403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED` otherwise). The
-existing scopes keep their rule, with one new refusal: an organization that is not active (confined to onboarding) may issue only
-`assist` (`403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED`). `patient_scoped` without patient ids, and ids on any other scope, are now `422`
-rather than a database error. The `compliance_officer` role now holds the three `support_consent_grant` keys.
+**Consent.** `scope: "assist"` is non-PHI, lasts 1–24 whole hours, and may be issued only by an `org_admin` or
+`compliance_officer`; other scopes keep their permission-and-step-up rule. A non-active organization may issue only
+`assist`. Revoking a grant ends every open session on it, records the close, and makes a later start return
+`409 SUPPORT_GRANT_INACTIVE`.
 
-**Revoke cascades.** `POST /api/v1/tenant/support-consent-grants/{id}/revoke` ends every support session open on the grant
-(`closeReason: "grant_revoked"`, a `session.close` ledger row, a critical audit, an outbox event), resolves a linked help request,
-and makes a later start `409 SUPPORT_GRANT_INACTIVE`. Repeating it answers the same grant. A grant's `active` is now unrevoked
-**and** unexpired.
-
-**Operator start, elevate, close.** A session is recorded in the organization of its consent grant (the tenant's), no longer the
-operator's own; the person-level distinct-actor rule (`403 SUPPORT_SESSION_ACTOR_NOT_DISTINCT`) also refuses the same person
-holding two seats. `POST .../{id}/elevate` on an `assist` grant is `403 SUPPORT_SESSION_NON_PHI`. `POST .../{id}/close` writes the
-ledger row, audit, outbox event (`closeReason` `manual_close`) and grantor alert it never wrote, and is repeatable. While an
-operator holds an open session on a tenant, each of their successful non-GET requests under `/api/v1/platform/tenants/{orgSlug}/`
-appends one `ops.write` ledger row (route template, method, status) the tenant can read.
-
-**Events.** New: `m34.support_consent_grant.issued` and `.revoked`; `m34.support_session.expired` gains `closeReason`
-`forced_terminated`.
+**Sessions.** A session is recorded in the consent grant's organization. The operator must be distinct from the grantor
+by membership and person. An `assist` session cannot be elevated (`403 SUPPORT_SESSION_NON_PHI`). Manual close is
+idempotent and records its ledger, audit, outbox event and grantor alert. Successful non-GET requests under
+`/api/v1/platform/tenants/{orgSlug}/` append an `ops.write` ledger row containing only route template, method and status.
 
 ---
 
-## 2026-11-09 — Slice 7 contract: help requests, support-session reads, the tenant's own skip (routes registered, services still being built)
+## 2026-11-09 — Slice 7 contract: help requests, support-session reads and tenant skip
 
-The wire contract of the tenant onboarding slice is frozen so clients can be built against real types. **Every route below
-answers `501 NOT_IMPLEMENTED` in the standard envelope until its service lands**; guards, schemas and the generated client are final.
-
-**Help during onboarding (tenant).** `GET /api/v1/tenant/help-requests` (any active member; `current` is the one live request,
-`items` the ended ones; nothing audited, poll every 60 s), `POST /api/v1/tenant/help-requests` (any active member; `stepKey`
-optional, `message` 8-1000 characters screened for patient identifiers; `Idempotency-Key`; no AI actor; 3 an hour per member and
-10 per organization, 429; `409 HELP_REQUEST_ALREADY_OPEN` carries the live request's id in `details`), `POST .../{id}/approve`
-(org_admin or compliance officer under a fresh step-up; `hours` 1-24, 8 by default; creates the non-PHI `assist` consent grant)
-and `POST .../{id}/close` (no step-up; the requester, an org_admin or the compliance officer). A view never names an operator:
-`closedBy` is `you`, `your organization`, `ChartWarden operations` or `system`.
-
-**Help inbox (platform ops).** `GET /api/v1/platform/help-requests?status=open,approved` (a row's `phase` is
-`waiting_for_consent`, `ready_to_start`, `in_session` or `ended`; it carries the `supportConsentGrantId` to start a session
-against) and `POST /api/v1/platform/help-requests/{id}/resolve` (`note` 8-500 characters; `Idempotency-Key`; no AI actor). Also
-`GET /api/v1/platform/support-consent-grants?tenantAccountId=&active=` so Start can pick a grant.
-
-**Support sessions on the tenant.** `GET /api/v1/tenant/support-sessions` and `.../{id}/events` (key
-`support_consent_grant.list_own`): when each session ran and what it did (route template, method and status, never a body),
-never an operator's id or address.
-
-**Consent scope.** `POST /api/v1/tenant/support-consent-grants` accepts `scope: "assist"` (non-PHI). New refusals:
-`403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED` (the grantor may not issue the scope), `403 SUPPORT_SESSION_NON_PHI` (elevating a session
-on an `assist` grant), and `409 SUPPORT_GRANT_INACTIVE` on a start against a revoked or expired grant.
-
-**Tenant skip.** `POST /api/v1/tenant/onboarding/{taskId}/skip` (body `{ skipRationale }` as the operator's skip; org_admin, fresh
-step-up, `Idempotency-Key`, no AI actor) for MAC credentials, payer enrollment and DoseSpot kickoff; any other step is
-`409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE`. The wizard step view gains `skippedBy` (`system`, `tenant`, `platform_ops` or null;
-`systemSkipped` stays) and `tenantSkippable`.
+The tenant onboarding wire contract adds tenant help requests and approval, the platform help inbox, tenant-visible
+support-session summaries and ledgers, the non-PHI `assist` consent scope, and tenant skip for the three eligible
+onboarding steps. Mutating routes require their declared permission, step-up and `Idempotency-Key`; free text is screened
+for patient identifiers. Support views never identify the operator.
 
 ---
 
+## 2026-11-10 — Operators can revoke a tenant clearinghouse BAA from the onboarding console
+
+The admin onboarding clearinghouse card now exposes the BAA-revocation contract added on 2026-11-09. An authorized operator chooses one
+of the closed reason codes and supplies an operator ticket; the console sends no free-text reason and pins the request to the BAA's
+`recordedAt`. The card shows current and previous revocation facts. When a tenant re-records the same document that was revoked, verification
+requires the operator to review that history and send `acknowledgePreviousRevocation: true` explicitly. Revocation rate limits answer 429;
+stale records and the BAA-specific conflict codes are shown as actionable failures and the current record is reloaded.
+
+The hourly M35 repair for “outside means billing mode none” now enumerates every current, not-canceled contract before statement generation.
+That includes onboarding and paused tenants, which may not have a statement run and therefore could previously miss the repair.
+
+## 2026-11-09 — A paused subscription whose end date has passed is resumed automatically
+
+**Why.** `POST /api/admin/subscriptions/{id}/pause` takes an optional `pausedUntil`. Billing already treated such a pause as over at that
+date, but nothing changed the stored status, so the subscription read `paused` (in the admin list, the tenant's own view and the
+claims-billing entitlement) until an operator remembered to resume it.
+
+- An hourly sweep (`m35.subscription-pause-resume`) now resumes a subscription that is `paused` with a `pausedUntil` that has passed: `status`
+  becomes `active` and `pausedAt` and `pausedUntil` become `null`. Until the sweep runs (normally within the hour; longer if the worker is late
+  or skips the row) the stored status still reads `paused`, and billing still counts the pause as over at its date.
+- The resume is announced with the same `m35.subscription.resumed` event an operator's resume publishes; `resumedAt` is the pause's end
+  date, not the instant the sweep ran. The subscription's status history (`reasonCode` `platform_ops_pause_lapsed`, no actor) is dated at
+  that end date too, so a statement for the month the pause ended in does not change when the sweep runs.
+- The sweep visits active organizations only, and acts on the organization's newest subscription only. A pause with no end date, a pause
+  whose date is ahead, an organization suspension (which pauses with no end date) and an older, superseded subscription are never resumed by
+  it. The newest subscription's pause is also left alone when an older subscription of the organization is live.
+- When the platform suspends an organization (`m2.organization.suspended`) while an operator's dated pause is still running, the pause
+  becomes open-ended: `pausedUntil` is cleared, the subscription's status history gains a `paused` to `paused` row (`reasonCode`
+  `org_suspended_by_platform_admin`) dated at the suspension, and `m35.subscription.paused` is published again with `pausedUntil: null`.
+  The suspended organization stays unbilled past the old date until it is reactivated.
+- `POST /api/v1/subscription/resume` (the tenant's own resume of a non-contracted subscription) now reads the subscription under the same row
+  lock, so it cannot announce a resume the sweep has just made, and it answers `409 SUBSCRIPTION_NOT_PAUSED` for a subscription that is
+  neither paused nor scheduled to cancel (it used to answer `200`, touch `updatedAt` and publish `m35.subscription.resumed` again).
+  Resuming a subscription scheduled to cancel at period end still clears the schedule; it no longer publishes `m35.subscription.resumed`,
+  which means "resumed from paused".
+- `POST /api/v1/subscription/resume` also answers `409 SUBSCRIPTION_CANCELED` for a canceled subscription (it is final), even when it still
+  carries a cancel-at-period-end schedule: it used to answer `200`, flip the schedule and clear the pause columns of a canceled row.
+- `POST /api/admin/subscriptions/{id}/resume` and `POST /api/v1/subscription/resume` answer `409 SUBSCRIPTION_OTHER_LIVE_EXISTS` when the
+  organization already has another live subscription (an organization can hold one live subscription; a paused one does not count). They used
+  to fail with a raw `500` from the database's unique index. The tenant response says to contact support; the operator response says to cancel
+  or pause the other subscription by id. The hourly sweep then resumes this one on its next tick (or an operator can resume it again by hand).
+  The sweep and organization-activation consumer both leave such a pause alone and raise the same dedicated operator notice (ids only) at most
+  once a day per subscription until it is unblocked.
+- `POST /api/admin/subscriptions/{id}/resume` answers `409 SUBSCRIPTION_SUPERSEDED` when the requested paused row is older than the
+  organization's current subscription. It no longer resurrects an older row behind a newer paused subscription.
+- An organization's current subscription is the subscription with the newest `startedAt`; rows that share that instant are ordered by the
+  higher `id`. Subscription readers and writers use that ordering, so the tenant's view, the resume routes, the lifecycle consumer and the
+  sweep agree on which subscription is current. Contract selection retains its separate `createdAt`, `id` ordering.
+- No request or response shape changes.
 ## 2026-11-09 — Onboarding-step catalog writes name their operator; the notice list moves behind the notice key
 
 - `POST /api/v1/platform/onboarding-templates` now requires an `Idempotency-Key` header and a `reason` (8-500 characters after
@@ -84,11 +98,58 @@ step-up, `Idempotency-Key`, no AI actor) for MAC credentials, payer enrollment a
 
 ---
 
-## 2026-11-09 — The clearinghouse vendor lock ends; the platform PUT is rate limited
+## 2026-11-09 — A platform operator can revoke a tenant's vendor BAA; the tenant can then leave the vendor
+
+**New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke` revokes the vendor BAA a tenant recorded for its
+own Stedi or Claim.MD account (the vendor ended the agreement). Platform ops only
+(`tenant_clearinghouse.revoke_baa_platform`, a fresh step-up, an `Idempotency-Key`; an AI actor is refused). `If-Match` is required
+and is the `baa.recordedAt` of the record the operator read (428 without it, 422 if malformed, 409 `CLEARINGHOUSE_BAA_CHANGED` if the
+tenant has recorded another since). Not limited to a tenant that is still onboarding. At most 10 revokes per operator (across every
+tenant) and 20 in all per ten minutes, then 429.
+
+**No free text.** The body is `{"reasonCode": "vendor_terminated" | "account_closed" | "baa_expired" | "other", "ticketRef":
+"SEC-42"}`; the ticket must match `^[A-Z][A-Z0-9]{1,9}-\d{1,8}$`. There is no `reason` field and an unknown field is a 422. Both
+values are recorded as given on the tenant's own audit trail, which the tenant can read: the ticket is a reference, never a name.
+
+**What it does.** In one transaction it records who and why, voids the BAA's verification, takes a live config out of `active` (to
+`verified`, as re-recording a changed BAA does), writes the audit row and tells the tenant (an alert to its billing, compliance and
+org administrators with counts of attempts still in flight, attempts sent in the response window and queued work; and a platform-ops
+notice). If the audit row or the announcement cannot be written, nothing is revoked. It never touches the credential. The tenant's
+claims, NOE, NOTR and transfer notices are then held, and new claims and eligibility work is refused with 402
+`clearinghouse_baa_revoked` (a new reason beside `clearinghouse_not_active`); its acknowledgment and 835 pulls skip, with a once-a-day alert while responses may still be
+owed. No new job or tick starts after the commit; a job already past its pre-flight finishes. It is not an expiry: a BAA still never
+ends by itself, and no vendor signal reaches ChartWarden.
+
+**New errors, all 409.** `CLEARINGHOUSE_BAA_REVOKED` — on the revoke of a BAA that is already revoked, on `baa/verify`, and on
+`POST /api/v1/tenant/clearinghouse/activate` while the revocation stands; `CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED` — on `baa/verify`
+of a record whose document is the one that was revoked before, unless the request carries `acknowledgePreviousRevocation: true`;
+`CLEARINGHOUSE_BAA_NOT_RECORDED` (existing) when there is no BAA to revoke. 503 `CLEARINGHOUSE_OUTBOX_UNBOUND` if the outbox is not
+bound.
+
+**Clearing it.** The tenant clears a revocation by recording a new BAA (`POST /api/v1/tenant/clearinghouse/baa`, which now also
+accepts re-recording the identical document; it starts again at unverified) or by leaving the vendor (a vendor change, or
+`outside`). A same-vendor mode change keeps it.
+
+**The vendor lock has one exception.** While the BAA is revoked, `PUT /api/v1/tenant/clearinghouse` no longer answers
+`CLEARINGHOUSE_VENDOR_LOCKED`: the tenant may change vendor or mode, or switch to `outside`, although production traffic is recent.
+Once it has left the revoked vendor, that vendor's attempts no longer lock the next config either (a tenant that picked the wrong next
+vendor can move on); the new config's own traffic locks as ever. The operator's PUT gets no such exception (and stays
+onboarding-only). Switching away means the old vendor's late acknowledgments and remittances are no longer pulled for the tenant (they
+stay with the vendor).
+
+**View.** The clearinghouse view's `baa` object gains `revoked` (boolean), `revokedAt` (timestamp or null) and `revokedReasonCode` (the
+closed code or null) on both the tenant and the platform routes; `revokedTicketRef` and `previousRevocation` (`at`, `sameDocument`)
+appear on the platform routes only.
+
+---
+
+## 2026-11-09 — The clearinghouse vendor lock has a 90-day window; the platform PUT is rate limited
 
 **Vendor and mode lock.** `PUT /api/v1/tenant/clearinghouse` (and the operator's onboarding PUT) answer 409
-`CLEARINGHOUSE_VENDOR_LOCKED` only while the organization has a production submission in flight or sent one in the last
-90 days (the same window as the credential release). Before, one production claim locked vendor and mode for good.
+`CLEARINGHOUSE_VENDOR_LOCKED` while the organization has any production attempt in flight (reserved) or sent in the last 90 days
+(the same window as the credential release). Before, one production claim locked vendor and mode for good; now they can be changed
+again only after 90 days with no production attempt. An organization that sends continuously stays locked for as long as it does,
+and there is no operator override. Test-mode, released and voided attempts do not lock.
 
 **Rate limit.** `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` now allows 10 saves a minute per operator and 30 per
 tenant, counted per target tenant, and answers 429 beyond that (503 when the limiter's store is unavailable), as the tenant's own
@@ -266,7 +327,73 @@ means choosing the billing mode the vendor billing calls for, which only an oper
   onboarding step 2, so an omitted label is stored as `"unassigned"`. A label that is sent must still be `starter`, `standard` or `enterprise`.
 
 ---
+## 2026-11-09 — More operator free-text fields refuse a patient identifier (`422 EVIDENCE_LOOKS_LIKE_PHI`)
 
+**Why.** Text typed by an operator and stored on a row a tenant can read, or copied into the audit trail, is no place for a patient.
+Some fields were screened and some were not.
+
+- These fields are now refused with `422 EVIDENCE_LOOKS_LIKE_PHI` (the same code, status and envelope as the fields that were already
+  screened; the error names the field and never echoes the value) when they hold an SSN- or MBI-shaped value:
+  - platform: the tenant status-transition, offboard and shred `transitionReason`; the feature-flag `rationale` and every string
+    (and object key) inside the flag `value`; the signup-intent rejection `rejectionReason`; the oversized-export `approvalReason`;
+    the onboarding-template `title` and `description`; the provision `legalBusinessName` and `firstAdminFullName` and the qualify
+    `firstAdminFullName`; the onboarding-data `reason` (it is now screened as typed, before control characters are stripped);
+  - tenant: the support-consent grant `grantReason` and `revocationReason`, the tenant-export `justification`, the DSAR request
+    `requestorIdentityVerificationEvidence` and the DSAR denial `narrative`, the onboarding org-profile `displayName` (both surfaces);
+  - public: the self-serve signup `legalBusinessName`;
+  - M35: the refund `reasonDetail`, the refund-denial `reason`, and the plan `name` and `description` (create and update).
+  A flag `value` nested deeper than 8 levels, with more than 500 strings or more than 20,000 characters is refused with `422
+  VALIDATION_FAILED` rather than left partly unscreened.
+- Accepted and NOT stored, so not screened: the DEK-rotation `reason`, the support-session close `note` and the DSAR extension
+  `reason`. Closing a session is always permitted and is never refused for its note.
+- Wizard and onboarding text that is stored now has zero-width and bidi format characters removed (U+200B, U+200E/F, U+202A-E,
+  U+2060-4, U+2066-9, U+FEFF), as it already had control characters; U+200C and U+200D are kept.
+- The screen itself is stricter: a nine-digit value is no longer excused because a bare number sits near it ("SSN 900 123 456, 5 days"),
+  a long run of spaces between groups no longer hides it, and the refusal text now says to cite documents by title or ticket number and
+  that long ids and UUIDs can also trip the check. If a legitimate note is refused, cite the document by its title.
+- Not screened, on purpose: an unbroken run of ten to twelve digits (NPIs, phone numbers, ticket numbers).
+
+## 2026-11-09 — New error codes `IDEMPOTENCY_IN_FLIGHT` and `IDEMPOTENCY_KEY_STUCK`
+
+**Why.** A duplicate that arrived while the first request with the same `Idempotency-Key` was still running was answered as a
+plain `409` with code `CONFLICT`, the same code a business-rule refusal carries. A client that reads any 409 as "this key is
+spent, mint a new one" would then start a second write while the first was still in progress. And if the first request never
+finished (its process died after claiming the key), the same answer repeated for 24 hours.
+
+- `IDEMPOTENCY_IN_FLIGHT` replaces `CONFLICT` for that answer. The status is still `409`, the body is the standard error envelope
+  (`{ "error": { "code", "message", "correlationId", "documentationUrl" } }`) and the message is unchanged ("Idempotency-Key
+  request is still being processed"). Only the `code` value changed, from `CONFLICT`.
+- **How to handle it.** Treat it as "your first request is still running": keep the SAME `Idempotency-Key`, wait, and retry with
+  the same key and body. Do not mint a new key. Once the first request finishes the retry replays its stored response (or, if
+  that request failed before committing anything, runs again). Do this for at most 15 minutes.
+- `IDEMPOTENCY_KEY_STUCK` (new, `409`, same envelope) is what a duplicate gets once the first request has been pending for more
+  than 15 minutes. Its outcome is UNKNOWN: it may have been applied. **Do not retry with this key, and do not assume it failed.**
+  Read the resource to see whether the change is there; use a new key only if it is not. The server never reclaims or re-runs
+  the stuck row.
+- The other idempotency 409 is unchanged: `IDEMPOTENCY_CONFLICT` is the same key sent with a different body (a client bug; do
+  not retry). A business-rule `409 CONFLICT` still means the request itself was refused.
+- Clients that matched on `409` + `CONFLICT` for the in-flight situation must match `IDEMPOTENCY_IN_FLIGHT` instead.
+
+## 2026-11-09 — `Idempotency-Key`: a failed request frees its key only when it committed nothing
+
+**Why.** A `5xx`, or the retryable `409 CONCURRENT_UPDATE`, used to be stored as the key's response and replayed for 24 hours,
+so a same-key retry never ran the write.
+
+- A `5xx` or `409 CONCURRENT_UPDATE` that provably committed nothing (the request failed before anything became durable) no
+  longer consumes the key: retrying with the SAME `Idempotency-Key` runs the request again.
+- If any write of the request had already committed, or may have, or was still in progress when the response was built (a
+  post-commit step threw, a response failed to serialize, a second transaction deadlocked after the first committed, a
+  transaction was still running when a sibling failed), the response is stored and replayed exactly as before: the retry
+  answers the same failure and does not write twice. Read the failure, check the resource, and use a new key for a new attempt.
+- The `409 CONCURRENT_UPDATE` text no longer says "nothing was saved". It now reads "This step conflicted with another change in
+  progress and was not applied. An earlier step of the same request may have been applied: check the current state before
+  retrying." The code and the status are unchanged. A request can run several transactions; only the one the database aborted is
+  known not to have applied, so check the resource before you retry.
+- While the idempotency store is unreachable (the usual companion of a database outage) the key cannot be freed; it stays
+  `pending`: a retry answers `409 IDEMPOTENCY_IN_FLIGHT` for up to 15 minutes and `409 IDEMPOTENCY_KEY_STUCK` after that (read the
+  resource; do not retry with the key), until the key's 24-hour record expires.
+- Not tracked: an effect outside Postgres made directly in a route (an outbound call, a queue or object-store write). Those
+  belong behind the outbox (after the commit) by the platform's convention; a route that makes one directly is not covered.
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
 
 **Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong
@@ -394,7 +521,8 @@ change what the existing routes refuse.
   and `/revoke` (the `ccn_registered` step's data) also revoke a pending go-live attestation in the same transaction, like every
   other write to the onboarding data. An operator's void records their user (a membership is recorded only when it is the
   user's own active membership of that organization).
-- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE` ("retry it"; nothing was saved), not a 500.
+- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE`, not a 500. (Its text was reworded on
+  2026-11-09: see the `Idempotency-Key` note above.)
 - Go-live approval takes the exclusive onboarding lock before it reads anything and judges the attestation as it is under that
   lock; activation re-checks that the attester is still the assigned officer (`409 GO_LIVE_ATTESTATION_STALE`).
 - A session on an organization that is not `active` (created, suspended, closed or unknown) is confined to an exact list of

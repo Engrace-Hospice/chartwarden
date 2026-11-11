@@ -2,6 +2,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { hopeAnswerMapByCode } from "./hope-answer-map";
 import { deriveHopeWorkflowControlAnswers } from "./hope-record-initializer";
 import {
   HOPE_J2051_ITEM_CODES,
@@ -360,22 +361,6 @@ function stateOf(
     applicability: applicability.applicability,
     skipReason: applicability.reason ?? null,
   };
-}
-
-function answerMapByCode(input: {
-  readonly itemsById: ReadonlyMap<string, SpecItemRow>;
-  readonly answersByItem: ReadonlyMap<string, AnswerRow>;
-}): Map<string, { state: "answered" | "skipped"; value: unknown | null }> {
-  const out = new Map<string, { state: "answered" | "skipped"; value: unknown | null }>();
-  for (const [itemId, answer] of input.answersByItem) {
-    const item = input.itemsById.get(itemId);
-    if (item)
-      out.set(item.itemCode, {
-        state: answer.state,
-        value: answer.value as unknown | null,
-      });
-  }
-  return out;
 }
 
 function j2051Projection(answers: HopeAnswerMap): {
@@ -758,7 +743,7 @@ export function createHopeAssessmentAnswerService(
         const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
           isc: loaded.isc,
           activeItemCodes: items.map((item) => item.itemCode),
-          answers: answerMapByCode({ itemsById, answersByItem: canonicalAnswersByItem }),
+          answers: hopeAnswerMapByCode({ itemsById, answersByItem: canonicalAnswersByItem }),
         });
         const sections = new Map<string, { label: string; items: HopeWorkspaceItem[] }>();
         const progress = {
@@ -855,7 +840,7 @@ export function createHopeAssessmentAnswerService(
         const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
         const itemsById = new Map(items.map((item) => [item.id, item]));
         const currentAnswersByItem = await answersForAssessment(t, assessmentId);
-        const proposedAnswers = answerMapByCode({
+        const proposedAnswers = hopeAnswerMapByCode({
           itemsById,
           answersByItem: currentAnswersByItem,
         });

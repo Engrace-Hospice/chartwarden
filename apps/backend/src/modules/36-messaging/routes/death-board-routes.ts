@@ -45,7 +45,7 @@ const READ = requirePermission("messaging.read") as PreHandler;
 const PATIENT_READ = requirePermission("patient.read") as PreHandler;
 const SUPERVISOR = requirePermission("messaging.review") as PreHandler;
 
-async function deathBoardActorOf(
+export async function deathBoardActorOf(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<DeathBoardActor> {

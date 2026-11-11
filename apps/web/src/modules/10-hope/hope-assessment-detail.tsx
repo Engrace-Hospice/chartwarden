@@ -12,6 +12,7 @@ import {
   PatientWorkspaceLayout,
   StatusPill,
   ageYears,
+  freshIdempotencyKeyHeaders,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -977,6 +978,7 @@ export function HopeAssessmentDetail(): JSX.Element {
     setSummaryState("requesting");
     const res = await api.POST("/api/v1/hope/assessments/{id}/summary-pdf", {
       params: { path: { id } },
+      headers: freshIdempotencyKeyHeaders(), // a summary is built from the assessment as it is now: never replay an earlier answer
     });
     setSummaryState(res.error ? "failed" : "requested");
   }, [api, id]);

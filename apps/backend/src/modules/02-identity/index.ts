@@ -45,6 +45,7 @@ export {
   registerAuditorRedeemRoutes,
 } from "./routes/auditor-redeem";
 export { M2_OUTBOX_EVENTS } from "./events-by-m2";
+export { createFuneralDisclosureRecorder } from "./audit/funeral-disclosure";
 export { type UnlockGuard, createUnlockGuard } from "./unlock-guard";
 // F-142 (#248) — M2's first outbox consumer: the §2.6/D7 M39 `m39.consent.revoked` → portal-session
 // termination cascade (`portal_access` only; see the file's own header for why `family_caregiver_access`
@@ -478,6 +479,8 @@ export function mountIdentityRoutes(
      * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE`.
      */
     deceasedPatients?: IdentityRouteDeps["deceasedPatients"];
+    /** The executed-BAA rule for a funeral home (see IdentityRouteDeps). Omitted -> `POST /funeral/invite` refuses 503. */
+    funeralHomeBaaActive?: IdentityRouteDeps["funeralHomeBaaActive"];
     /**
      * GAP-115 follow-up - M6's patient siting, injected as a port. PRESENT => the DURABLE `collaborator_link` store
      * backs the collaborator / funeral links (and the invite routes then require `recipientEmail`); ABSENT => the
@@ -535,6 +538,7 @@ export function mountIdentityRoutes(
     userIdentity: _dbUserIdentity(db),
     ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),
     ...(invite?.deceasedPatients ? { deceasedPatients: invite.deceasedPatients } : {}),
+    ...(invite?.funeralHomeBaaActive ? { funeralHomeBaaActive: invite.funeralHomeBaaActive } : {}),
     ...(invite?.linkPatientSite ? { linkRecipientRequired: true } : {}),
     ...(invite?.linkSessions ? { linkSessions: invite.linkSessions } : {}),
     ...(invite?.linkDelivery ? { linkDelivery: invite.linkDelivery } : {}),

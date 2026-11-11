@@ -3,6 +3,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 import {
   type ClearinghouseBinding,
+  UNBOUND_BAA_REVOKED,
   UNBOUND_NOT_ACTIVE,
   UNBOUND_NOT_CHOSEN,
   UNBOUND_OUTSIDE,
@@ -61,6 +62,36 @@ describe("holdBeforeRun", () => {
       expect(alerts.length).toBeLessThanOrEqual(M23_CLAIM_TRANSPORT_QUEUES.size);
     }
   });
+
+  // ADR-0053 amendment ("build it"): a platform operator revoked the tenant's vendor BAA, so the resolver binds nothing and every job
+  // that would send through the vendor is HELD (no attempt spent, no DLQ), a NOE / NOTR / transfer notice with a CRITICAL alert that
+  // says why. Nothing is sent, and nothing is failed.
+  it.each([
+    ["claim", M23_QUEUES.claimSubmit, "warn"],
+    ["claim retry", M23_QUEUES.claimSubmitRetry, "warn"],
+    ["NOE", M23_QUEUES.noeSubmit, "critical"],
+    ["NOTR", M23_QUEUES.notrSubmit, "critical"],
+    ["transfer notice", M23_QUEUES.transferNoticeSubmit, "critical"],
+  ])(
+    "holds a %s job of an org whose BAA was revoked, and says why (%s alert)",
+    async (_l, queue, severity) => {
+      __resetClearinghouseAlertMemoryForTest();
+      const { deps, alerts } = depsFor(UNBOUND_BAA_REVOKED);
+      const { job, moved } = jobOf();
+
+      await expect(run(deps, job, queue)).rejects.toBeInstanceOf(DelayedError);
+
+      expect(moved).toHaveLength(1);
+      expect(alerts).toEqual([
+        expect.objectContaining({
+          alertCode: CLEARINGHOUSE_UNBOUND_ALERT,
+          severity,
+          organizationId: ORG,
+          payload: { queue, reason: "baa_revoked" },
+        }),
+      ]);
+    },
+  );
 
   it("lets the job run when the org's vendor is live", async () => {
     const { deps } = depsFor({ vendor: "stedi", transport: new InMemoryClearinghouse() });

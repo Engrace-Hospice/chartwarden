@@ -5,6 +5,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  freshIdempotencyKeyHeaders,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics, the platform/compliance ADMIN CONSOLE (R2).
@@ -89,6 +90,7 @@ export function ReportingAdmin(): JSX.Element {
       setBusyKey(mvKey);
       await client.POST("/api/v1/reporting/admin/mvs/{mvKey}/refresh", {
         params: { path: { mvKey } },
+        headers: freshIdempotencyKeyHeaders(), // a refresh reads the data as it is now: never replay an earlier one
       });
       setBusyKey(null);
       void load();

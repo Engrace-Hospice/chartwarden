@@ -81,6 +81,30 @@ describe("preflight.sh across the infra-rename windows", () => {
     expect(r.out).toContain("preflight ok");
   });
 
+  it("requires a repository-owned digest pin when the backup overlay is enabled", () => {
+    const digest = `sha256:${"a".repeat(64)}`;
+    const good = run({
+      env: [
+        "BACKUP_SOURCE_MINIO_ACCESS_KEY=reader",
+        `CHARTWARDEN_BACKUP_IMAGE=ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@${digest}`,
+      ],
+    });
+    expect(good.code, good.out).toBe(0);
+
+    for (const image of [
+      "chartwarden-backup:local",
+      "ghcr.io/engrace-hospice/chartwarden-backup:latest",
+      `ghcr.io/other/chartwarden-backup:18-tools-sha-abc@${digest}`,
+      "ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@sha256:abc",
+    ]) {
+      const bad = run({
+        env: ["BACKUP_SOURCE_MINIO_ACCESS_KEY=reader", `CHARTWARDEN_BACKUP_IMAGE=${image}`],
+      });
+      expect(bad.code, `${image}\n${bad.out}`).toBe(67);
+      expect(bad.out).toContain("CHARTWARDEN_BACKUP_IMAGE");
+    }
+  });
+
   it("accepts the live state today: wardenx_* volumes, prefix + db pinned to wardenx", () => {
     const r = run({
       env: ["CHARTWARDEN_VOLUME_PREFIX=wardenx", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE],

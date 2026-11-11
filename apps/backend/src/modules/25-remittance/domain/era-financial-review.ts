@@ -245,6 +245,13 @@ export function projectEraFinancialReview(
       blocksReviewCompletion: false,
       blocksFuturePosting: true,
     });
+  if (providerAdjustments.length > 0)
+    exceptions.push({
+      code: "PROVIDER_ADJUSTMENT_REQUIRES_POLICY_REVIEW",
+      severity: "follow_up",
+      blocksReviewCompletion: false,
+      blocksFuturePosting: true,
+    });
 
   return {
     reportedPaymentCents,

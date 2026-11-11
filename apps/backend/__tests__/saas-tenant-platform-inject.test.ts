@@ -691,6 +691,169 @@ describe("M34-saas-tenant-platform-inject — tenant slug availability", () => {
   });
 });
 
+// ── slug availability (GET /api/v1/platform/tenant-slugs/:slug/availability) ─────────────────────────
+describe("M34-saas-tenant-platform-inject — tenant slug availability", () => {
+  const check = async (
+    slug: string,
+    opts: { headers?: Record<string, string>; tenantBaseDomain?: string | null } = {},
+  ) => {
+    const { app } = makeServer(
+      opts.tenantBaseDomain === undefined ? {} : { tenantBaseDomain: opts.tenantBaseDomain },
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+      headers: opts.headers ?? PLATFORM_OPS,
+    });
+    await app.close();
+    return res;
+  };
+
+  it("401 without a session and 403 without tenant.read_platform", async () => {
+    expect((await check("sunrise", { headers: {} })).statusCode).toBe(401);
+    expect((await check("sunrise", { headers: NOPERM })).statusCode).toBe(403);
+  });
+
+  it("403 when the permission is held but the tenant_lifecycle_platform_ops ABAC predicate denies (no platform_ops role)", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+      headers: READER_WITHOUT_ROLE,
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(403);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("a free, valid slug is available and carries its address when a base domain is set", async () => {
+    const res = await check("sunrise", { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      slug: "sunrise",
+      valid: true,
+      available: true,
+      url: "https://sunrise.chartwarden.cloud",
+    });
+  });
+
+  it("answers without a url in single-host mode (no base domain)", async () => {
+    const res = await check("sunrise");
+
+    expect(res.json()).toEqual({ slug: "sunrise", valid: true, available: true });
+  });
+
+  it("a slug an organization already holds is valid but not available", async () => {
+    const res = await check("acme");
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      slug: "acme",
+      valid: true,
+      available: false,
+      reason: "taken",
+    });
+  });
+
+  it.each([
+    ["admin", "reserved"],
+    ["app", "reserved"],
+    ["ab", "format"],
+    ["Sunrise", "format"],
+    ["sun_rise", "format"],
+    ["xn--sunrise", "punycode"],
+    ["x".repeat(64), "format"],
+  ])("refuses %s as invalid (%s) without consulting the data", async (slug, reason) => {
+    const res = await check(slug, { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ slug, valid: false, available: false, reason });
+  });
+
+  it("never calls the taken-lookup for a reserved, malformed or punycode slug, but does for a valid one", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+    const probe = (slug: string) =>
+      app.inject({
+        method: "GET",
+        url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+        headers: PLATFORM_OPS,
+      });
+
+    for (const refused of ["admin", "wardenx", "ab", "Sunrise", "sun_rise", "xn--sunrise"]) {
+      expect((await probe(refused)).json().valid).toBe(false);
+    }
+    expect(lookup).not.toHaveBeenCalled();
+
+    expect((await probe("sunrise")).json().valid).toBe(true);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith("sunrise");
+    await app.close();
+  });
+
+  describe("per-route rate limit (a probe is an audited platform read)", () => {
+    const TWO_PER_MINUTE: RouteRateLimit = {
+      perUser: 2,
+      perOrg: 100,
+      windowMs: 60_000,
+      failMode: "open",
+    };
+    const probe = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) =>
+      app.inject({
+        method: "GET",
+        url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+        headers,
+      });
+
+    it("answers 429 RATE_LIMITED with Retry-After once a user is over the cap", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      const first = await probe(app, PLATFORM_OPS);
+      const second = await probe(app, PLATFORM_OPS);
+      const third = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
+      expect(third.statusCode).toBe(429);
+      expect(third.json().error.code).toBe("RATE_LIMITED");
+      expect(third.headers["retry-after"]).toBe("60");
+    });
+
+    it("is not spent by callers the permission or ABAC gate refuses", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      for (let i = 0; i < 5; i++) {
+        expect((await probe(app, READER_WITHOUT_ROLE)).statusCode).toBe(403);
+        expect((await probe(app, NOPERM)).statusCode).toBe(403);
+      }
+      const allowed = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect(allowed.statusCode).toBe(200);
+    });
+
+    it("the composition root builds the limiter from the shipped budget and mounts it on the platform routes", () => {
+      const root = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+
+      expect(root).toMatch(
+        /slugAvailabilityRateLimit: createRouteRateLimit\(\{[^}]*limit: TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT/s,
+      );
+    });
+
+    it("the shipped budget is 30 per minute per user and fails open (an availability control, not a probing oracle)", () => {
+      expect(TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT).toMatchObject({
+        perUser: 30,
+        windowMs: 60_000,
+        failMode: "open",
+      });
+    });
+  });
+});
+
 // ── platform-ops: tenants.ts (7 routes) ──────────────────────────────────────────────────────────────
 describe("M34-saas-tenant-platform-inject — platform-ops tenant lifecycle (tenants.ts)", () => {
   it("list, provision, read overview, transition status, offboard, shred, dek-rotate", async () => {
@@ -1053,6 +1216,60 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     expect((list.json().items as { key: string }[]).some((t) => t.key === "custom_step")).toBe(
       false,
     );
+    await app.close();
+  });
+
+  // The title and description go to EVERY tenant's wizard: they pass the same identifier screen as the reason, before any write.
+  it.each([
+    ["title", { title: "Training for SSN 000-12-3456" }, "title"],
+    [
+      "description",
+      { title: "Staff training", description: "Customer MBI 1EG4TE5MK73" },
+      "description",
+    ],
+  ])(
+    "refuses a %s that holds a patient identifier (422 EVIDENCE_LOOKS_LIKE_PHI) and writes nothing",
+    async (_field, text, field) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/platform/onboarding-templates",
+        headers: TEMPLATE_WRITE_HEADERS(),
+        payload: { key: "screened_step", canonicalOrder: 5, reason: TEMPLATE_REASON, ...text },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.json().error.details).toEqual([expect.objectContaining({ field })]);
+      // the value is never echoed back
+      expect(res.body).not.toContain("000-12-3456");
+      expect(res.body).not.toContain("1EG4TE5MK73");
+      const list = await app.inject({
+        method: "GET",
+        url: "/api/v1/platform/onboarding-templates",
+        headers: PLATFORM_OPS,
+      });
+      expect((list.json().items as { key: string }[]).some((t) => t.key === "screened_step")).toBe(
+        false,
+      );
+      await app.close();
+    },
+  );
+
+  it("lets a title and a description with no identifier through", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "screened_ok",
+        title: "Staff training (ticket CHG-6001)",
+        description: "Walk the first admin through the staff roster import.",
+        canonicalOrder: 6,
+        reason: TEMPLATE_REASON,
+      },
+    });
+    expect(res.statusCode).toBe(201);
     await app.close();
   });
 

@@ -1,3 +1,10 @@
+import {
+  HOPE_VALIDATION_RULES,
+  REQUIRED_SECTIONS_BY_RFA,
+  projectHopeSections,
+  validateHopeAssessment,
+  valueSetOracle,
+} from "@chartwarden/hope";
 import { describe, expect, it } from "vitest";
 import { createHopeApplicabilityEngine } from "../src/modules/10-hope/spec/applicability-registry";
 import type { HopeValidationContext } from "../src/modules/10-hope/spec/validation";
@@ -96,6 +103,7 @@ function ctx(
       isc: "HA",
       correctsAssessmentId: null,
     },
+    presentSections: REQUIRED_SECTIONS_BY_RFA["01_admission"],
     activeItems: active.map((itemCode) => ({
       itemCode,
       sectionLabel: itemCode.slice(0, 1),
@@ -140,6 +148,105 @@ function huvContext(values: Record<string, string>): HopeValidationContext {
 }
 
 describe("HOPE v1.00.1 validation engine", () => {
+  it.each([
+    ["01_admission", "HA"],
+    ["02_huv1", "HUV"],
+    ["03_huv2", "HUV"],
+    ["05_discharge", "HD"],
+  ] as const)(
+    "derives %s missing-section findings from the authoritative RFA matrix",
+    (rfaKind, isc) => {
+      const requiredSections = REQUIRED_SECTIONS_BY_RFA[rfaKind];
+      const omittedSection = requiredSections.at(-1)!;
+      const payload = Object.fromEntries(
+        requiredSections
+          .filter((section) => section !== omittedSection)
+          .map((section) => [section, { completed: true }]),
+      );
+      const projection = projectHopeSections(payload);
+      const activeItems = requiredSections.map((section) => ({
+        itemCode: `${section}0001`,
+        sectionLabel: section,
+        kind: "assessment",
+        cmsItemTypeCode: "Code",
+      }));
+      const answers = answerMap(
+        Object.fromEntries(activeItems.map((item) => [item.itemCode, "1"])),
+      );
+      const base = ctx({}, "final");
+      const context: HopeValidationContext = {
+        ...base,
+        assessment: { ...base.assessment, rfaKind, isc },
+        presentSections: projection.presentSections,
+        activeItems,
+        answers,
+        applicability: applicabilityEngine.evaluate({
+          isc,
+          activeItemCodes: activeItems.map((item) => item.itemCode),
+          answers,
+        }),
+      };
+
+      const missingSections = validationEngine
+        .evaluate(context)
+        .filter((finding) => finding.ruleId === HOPE_VALIDATION_RULES.REQUIRED_SECTION_MISSING);
+      const submissionMissingSections = validateHopeAssessment(
+        {
+          rfaKind,
+          dischargeReason: null,
+          presentSections: projection.presentSections,
+          sectionI: projection.sectionI,
+          sectionJ: projection.sectionJ,
+          sectionN: projection.sectionN,
+          envelope: null,
+        },
+        valueSetOracle({ hospiceTerminalDiagnoses: [], hopeJCodes: [] }),
+      ).filter((finding) => finding.ruleId === HOPE_VALIDATION_RULES.REQUIRED_SECTION_MISSING);
+
+      expect(missingSections.map((finding) => finding.section)).toEqual(
+        submissionMissingSections.map((finding) => finding.section),
+      );
+      expect(missingSections).toEqual([
+        expect.objectContaining({
+          section: omittedSection,
+          severity: "error",
+          findingKind: "missing_required",
+          message: `Required Section ${omittedSection} is missing for RFA ${rfaKind}.`,
+        }),
+      ]);
+      expect(missingSections[0]?.itemCode).toBeUndefined();
+    },
+  );
+
+  it("keeps generic item requiredness scoped by the authoritative matrix", () => {
+    const answers = answerMap({});
+    const activeItems = ["F2000A", "J2050A"].map((itemCode) => ({
+      itemCode,
+      sectionLabel: itemCode.slice(0, 1),
+      kind: "assessment",
+      cmsItemTypeCode: "Code",
+    }));
+    const base = ctx({}, "final");
+    const context: HopeValidationContext = {
+      ...base,
+      assessment: { ...base.assessment, rfaKind: "05_discharge", isc: "HD" },
+      presentSections: REQUIRED_SECTIONS_BY_RFA["05_discharge"],
+      activeItems,
+      answers,
+      applicability: applicabilityEngine.evaluate({
+        isc: "HD",
+        activeItemCodes: activeItems.map((item) => item.itemCode),
+        answers,
+      }),
+    };
+
+    const requiredItems = validationEngine
+      .evaluate(context)
+      .filter((finding) => finding.ruleId === "CMS-HOPE-REQUIRED");
+
+    expect(requiredItems.map((finding) => finding.itemCode)).toEqual(["J2050A"]);
+  });
+
   it("uses stable fingerprints for repeat evaluations", () => {
     const first = validationEngine.evaluate(ctx({ J0910C1: "1", J0910C9: "1" }));
     const second = validationEngine.evaluate(ctx({ J0910C1: "1", J0910C9: "1" }));

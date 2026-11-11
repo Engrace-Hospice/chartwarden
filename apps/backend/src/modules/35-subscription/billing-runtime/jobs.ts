@@ -48,6 +48,23 @@ export interface M35JobDeps {
   readonly listOrgs: () => Promise<readonly { readonly organizationId: string }[]>;
   readonly now?: () => Date;
   readonly log?: (message: string, detail: Record<string, unknown>) => void;
+  /**
+   * A paused subscription could not be resumed because ANOTHER subscription of its organization is live (it stays paused until an operator
+   * acts): raised by the pause-resume sweep (its lapsed pause) and by the org-lifecycle consumer (an organization reactivation). The
+   * composition root binds the ops alert sink here. Ids only, at most once per day per subscription.
+   */
+  readonly onPauseBlocked?: (event: PauseBlockedEvent) => void;
+}
+
+/** What made a resume attempt: the sweep (a pause whose end date passed) or an organization reactivation. */
+export type PauseBlockedTrigger = "lapsed_pause" | "organization_activated";
+
+/** What an operator needs to unblock a paused subscription: the one that cannot resume, and the live one in its way. */
+export interface PauseBlockedEvent {
+  readonly organizationId: string;
+  readonly subscriptionId: string;
+  readonly olderLiveSubscriptionId: string;
+  readonly trigger: PauseBlockedTrigger;
 }
 
 const nowOf = (deps: M35JobDeps): Date => (deps.now ?? (() => new Date()))();
@@ -198,7 +215,7 @@ export async function runDunningForOrg(deps: M35JobDeps, organizationId: string)
 // ── payment-method expiry watch ─────────────────────────────────────────────────────────────────────────
 
 /** The §2.4 warning windows (days before expiry) - one `expiring_soon` per window crossing. */
-const PAYMENT_METHOD_EXPIRY_WINDOWS_DAYS: readonly number[] = [30, 14, 7, 1];
+export const PAYMENT_METHOD_EXPIRY_WINDOWS_DAYS: readonly number[] = [30, 14, 7, 1];
 
 /** Days until `expiresAt`, rounded UP so "expires later today" is 1 and the window match is stable. */
 export function daysUntil(expiresAt: Date, now: Date): number {

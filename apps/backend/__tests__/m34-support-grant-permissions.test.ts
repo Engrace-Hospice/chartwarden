@@ -1,9 +1,9 @@
 /**
  * Slice 7 (7S) - the support-session and consent-grant permissions, and the migrations and provisioning that carry them:
- *   * a freshly materialized tenant gives the compliance_officer the three support_consent_grant keys (migration 1480 covers existing roles);
+ *   * a freshly materialized tenant gives the compliance_officer the three support_consent_grant keys (migration 1484 covers existing roles);
  *   * the platform_ops role holds the three support_session keys, the elevate key nowhere;
- *   * migration 1480 is `contract` (it drops policies and revokes), grants exactly those keys, pins the tenant role and the carrier, and
- *     adds the ledger's default partition; migration 1481 is the enum value ALONE; the provisioning script mirrors the carrier's grants.
+ *   * migration 1484 is `contract` (it drops policies and revokes), grants exactly those keys, pins the tenant role and the carrier, and
+ *     adds the ledger's default partition; migration 1485 is the enum value ALONE; the provisioning script mirrors the carrier's grants.
  * The live suite (m34-support-session.live.test.ts) proves the same against a real catalog, roles and RLS.
  */
 import { readFileSync } from "node:fs";
@@ -61,8 +61,8 @@ describe("support-session keys on the platform roles", () => {
   });
 });
 
-describe("migration 1480 (the repair at the database)", () => {
-  const sql = migration("1480_m34_support_session_grants.sql");
+describe("migration 1484 (the repair at the database)", () => {
+  const sql = migration("1484_m34_support_session_grants.sql");
 
   it("declares itself contract: it drops the permissive policies and revokes", () => {
     expect(sql).toMatch(/^-- compat: contract/);
@@ -117,8 +117,8 @@ describe("migration 1480 (the repair at the database)", () => {
   });
 });
 
-describe("migration 1481 (the assist scope)", () => {
-  const sql = migration("1481_m34_support_consent_scope_assist.sql");
+describe("migration 1485 (the assist scope)", () => {
+  const sql = migration("1485_m34_support_consent_scope_assist.sql");
 
   it("is expand and the enum value ALONE: nothing else shares the file that adds it", () => {
     expect(sql).toMatch(/^-- compat: expand/);

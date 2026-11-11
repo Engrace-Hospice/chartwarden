@@ -22,6 +22,7 @@
 //  6. A 403 renders nothing; any other failure is announced and never unmounts what is on screen. The generating poll is chained (no
 //     overlapping reads), pauses while the tab is hidden and stops on a terminal status or a 404.
 import {
+  type AttemptKey,
   Button,
   EmptyState,
   LoadingSpinner,
@@ -31,6 +32,7 @@ import {
   safeMintedUrl,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -66,7 +68,6 @@ import {
   pageTitleStyle,
   primaryButtonStyle,
   useActionStatus,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
 import { MailingRunItems } from "./mailing-run-items";
@@ -144,9 +145,9 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
     };
   }, []);
   const { announce, region } = useActionStatus();
-  const generateKey = useIdempotencyKey();
-  const confirmKey = useIdempotencyKey();
-  const cancelKey = useIdempotencyKey();
+  const generateKey = useAttemptKey();
+  const confirmKey = useAttemptKey();
+  const cancelKey = useAttemptKey();
   const reasonId = useId();
   const cancelDescId = useId();
   const regenerateDescId = useId();
@@ -255,7 +256,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
   /** Run one write: one attempt at a time, the run version this page read, one idempotency key per attempt. */
   const write = async (
     name: ActionName,
-    keys: ReturnType<typeof useIdempotencyKey>,
+    keys: AttemptKey,
     call: (key: string) => Promise<WriteResult>,
     fallback: string,
   ): Promise<MailingRun | null> => {
@@ -264,7 +265,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
     setBusy(name);
     setActionError(null);
     const { run: next, error, status: http } = await call(keys.keyFor(`${name}:${run.version}`));
-    keys.settle(http);
+    keys.settle(http, error);
     inFlight.current = false;
     setBusy(null);
     if (error || !next) {

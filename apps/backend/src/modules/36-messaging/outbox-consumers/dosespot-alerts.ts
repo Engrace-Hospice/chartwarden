@@ -1,0 +1,156 @@
+// apps/backend/src/modules/36-messaging/outbox-consumers/dosespot-alerts.ts - M36's consumer of M12's adapter-health events (review of
+// slice 4, M3). M12 publishes these in the transaction of the cron tick (or breaker edge) that sees the fault; they had no consumer, so
+// no tenant administrator was ever told that signed prescriptions were not reaching DoseSpot. This turns them into the M36 alerts:
+//
+//   m12.dosespot_degraded   -> m12.dosespot_degraded   critical  (seeded tenant_admins rule)
+//   m12.dosespot_recovered  -> m12.dosespot_recovered  info      (seeded tenant_admins rule)
+//   m12.medication_order.transmission_unconfirmed -> the same name  critical  (seeded tenant_admins rule): DoseSpot did not confirm what became
+//                           of a NewRx call (an unreadable 2xx, a lost send answer, a send 5xx but 503), so the order is HELD (never retried) until a person checks the prescriber's DoseSpot account
+//   m12.medication_order.transmission_failed -> the same name  critical  (seeded tenant_admins rule): the retry budget was used up (or an
+//                           administrator resolved a held order as never sent): the prescription has NOT reached the pharmacy. One class is
+//                           different: `no_pharmacy_ack_24h` (the status sweep) is an order that WAS sent with no word from the pharmacy
+//                           in 24 hours, so it may still reach the pharmacy and is told apart
+//
+// `m12.dosespot_config.deactivated` is NOT consumed here: the clinic service raises that alert directly after its commit, so a second
+// path would page twice (its seeded rule is in the same file as these two).
+//
+// ONE PAGE PER EVENT. The correlation id is `outbox:<alertType>:<event id>`, so a redelivered event is absorbed by the alert's
+// `(organization_id, correlation_id)` dedupe and a later episode (a new event) pages again. `alert` has no open/resolved state to
+// auto-resolve (only an `outcome`), so the honest equivalent of "recovered" is this paired notice to the same audience.
+// TENANT from the envelope `event.organizationId`, never the payload copy. The alert carries ids, an error class, instants and a fixed
+// sentence chosen here: nothing free-text from the payload, no name, no key. A malformed event THROWS (relay retry, then DLQ), never a
+// silently dropped page.
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
+
+import type {
+  DispatchableOutboxEvent,
+  OutboxConsumerBinding,
+} from "../../../bootstrap/outbox-dispatcher";
+
+export const M36_DOSESPOT_ALERT_CONSUMER = "m36.dosespot-alerts" as const;
+
+export const M36_DOSESPOT_ALERT_EVENT_TYPES = [
+  "m12.dosespot_degraded",
+  "m12.dosespot_recovered",
+  "m12.medication_order.transmission_unconfirmed",
+  "m12.medication_order.transmission_failed",
+] as const;
+
+export interface DosespotAlertPlan {
+  readonly alertType: (typeof M36_DOSESPOT_ALERT_EVENT_TYPES)[number];
+  readonly severity: AlertSeverity;
+  readonly correlationId: string;
+  readonly payload: Record<string, unknown>;
+}
+
+/** What the administrator is told, by the fault M12 named in `lastErrorClass`; anything else is the circuit breaker opening. */
+const DEGRADED_DETAIL: Readonly<Record<string, string>> = {
+  config_unavailable:
+    "ChartWarden could not read or open this organization's DoseSpot configuration, so signed prescriptions are not being sent and stay queued. A platform operator needs to check the configuration and its keys.",
+  held_orders_aged:
+    "A prescription held because DoseSpot's answer was not confirmed has waited over 24 hours for an administrator to resolve it. Check the prescriber's DoseSpot account, then open the order and resolve it: mark it sent with its DoseSpot prescription id, or not sent so the prescriber can retransmit it.",
+  queued_orders_stale:
+    "Signed prescriptions have been waiting to be sent to DoseSpot for over an hour. They stay queued and are sent once the cause is fixed; if an order cannot wait, follow your downtime prescribing procedure.",
+};
+const BREAKER_DETAIL =
+  "E-prescribing through DoseSpot is temporarily unavailable. New prescriptions wait in the queue and are sent automatically when the service recovers.";
+const RECOVERED_DETAIL =
+  "The earlier DoseSpot e-prescribing problem has cleared. Queued prescriptions are being sent.";
+const FAILED_DETAIL =
+  "A signed prescription could not be sent to DoseSpot (every attempt failed, or the order cannot be sent as written). It has NOT reached the pharmacy. The prescriber must retransmit it from the order page.";
+const RESOLVED_NOT_SENT_DETAIL =
+  "An administrator confirmed that this prescription never reached DoseSpot. It has NOT been sent. The prescriber must retransmit it from the order page.";
+const NO_PHARMACY_ACK_DETAIL =
+  "A signed prescription was sent to DoseSpot, but the pharmacy has not confirmed receiving it within 24 hours. It may still reach the pharmacy. Check the prescriber's DoseSpot account for its status before retransmitting it, so it is not sent twice.";
+/** `transmission_failed` sentences by the class M12 named; any other class is an order that never left. */
+const FAILED_DETAIL_BY_CLASS: Readonly<Record<string, string>> = {
+  resolved_not_sent: RESOLVED_NOT_SENT_DETAIL,
+  no_pharmacy_ack_24h: NO_PHARMACY_ACK_DETAIL,
+};
+const UNCONFIRMED_DETAIL =
+  "DoseSpot did not confirm what became of this prescription request, so it may already exist there, or be on its way to the pharmacy. ChartWarden is holding the order and will not send it again. Check the prescriber's DoseSpot account, then open the order and resolve it: if the prescription is there, mark it sent and enter its DoseSpot prescription id; if it is not, mark it not sent and the prescriber can retransmit it.";
+function requireString(p: Record<string, unknown>, key: string, eventName: string): string {
+  const v = p[key];
+  if (typeof v !== "string" || v.length === 0) {
+    throw new Error(`${M36_DOSESPOT_ALERT_CONSUMER}: ${eventName} payload has no ${key}`);
+  }
+  return v;
+}
+
+/** The alert one adapter-health event raises. Throws on a malformed payload or an event this consumer does not own. */
+export function planDosespotAlert(event: DispatchableOutboxEvent): DosespotAlertPlan {
+  const p = (event.payload ?? {}) as Record<string, unknown>;
+  const name = event.eventType;
+  if (name === "m12.dosespot_degraded") {
+    const breakerName = requireString(p, "breakerName", name);
+    const openedAt = requireString(p, "openedAt", name);
+    const lastErrorClass = requireString(p, "lastErrorClass", name);
+    return {
+      alertType: name,
+      severity: "critical",
+      correlationId: `outbox:${name}:${event.id}`,
+      payload: {
+        eventType: name,
+        breakerName,
+        openedAt,
+        lastErrorClass,
+        detail: DEGRADED_DETAIL[lastErrorClass] ?? BREAKER_DETAIL,
+      },
+    };
+  }
+  if (name === "m12.dosespot_recovered") {
+    const breakerName = requireString(p, "breakerName", name);
+    const closedAt = requireString(p, "closedAt", name);
+    return {
+      alertType: name,
+      severity: "info",
+      correlationId: `outbox:${name}:${event.id}`,
+      payload: { eventType: name, breakerName, closedAt, detail: RECOVERED_DETAIL },
+    };
+  }
+  if (name === "m12.medication_order.transmission_unconfirmed") {
+    const orderId = requireString(p, "orderId", name);
+    const lastErrorClass = requireString(p, "lastErrorClass", name);
+    return {
+      alertType: name,
+      severity: "critical",
+      correlationId: `outbox:${name}:${event.id}`,
+      payload: { eventType: name, orderId, lastErrorClass, detail: UNCONFIRMED_DETAIL },
+    };
+  }
+  if (name === "m12.medication_order.transmission_failed") {
+    const orderId = requireString(p, "orderId", name);
+    const lastErrorClass = requireString(p, "lastErrorClass", name);
+    const retryCount = typeof p.retryCount === "number" ? p.retryCount : 0;
+    return {
+      alertType: name,
+      severity: "critical",
+      correlationId: `outbox:${name}:${event.id}`,
+      payload: {
+        eventType: name,
+        orderId,
+        lastErrorClass,
+        retryCount,
+        detail: FAILED_DETAIL_BY_CLASS[lastErrorClass] ?? FAILED_DETAIL,
+      },
+    };
+  }
+  throw new Error(`${M36_DOSESPOT_ALERT_CONSUMER}: unexpected event ${name}`);
+}
+
+export function buildM36DosespotAlertConsumer(alerts: AlertEmitter): OutboxConsumerBinding {
+  return {
+    consumerName: M36_DOSESPOT_ALERT_CONSUMER,
+    consumerModule: "m36",
+    eventTypes: M36_DOSESPOT_ALERT_EVENT_TYPES,
+    async handle(event) {
+      const plan = planDosespotAlert(event);
+      await alerts.emit(event.organizationId, {
+        eventType: plan.alertType,
+        severity: plan.severity,
+        correlationId: plan.correlationId,
+        payload: plan.payload,
+      });
+    },
+  };
+}

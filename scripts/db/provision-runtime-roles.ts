@@ -227,9 +227,9 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   // is evidence and is never updated or deleted by the platform role).
   "fhir_capability_snapshot",
   // GAP-163: the support-session close sweep appends the `session.close` ledger row; slice 7 (7S): the operator's writes while a
-  // session is open append `ops.write` rows, and the carrier is the only role that may (migration 1480 pins the tenant role).
+  // session is open append `ops.write` rows, and the carrier is the only role that may (migration 1484 pins the tenant role).
   "support_session_event",
-  // Slice 7 (7S, migration 1480): the platform route that starts a session inserts it (in the TENANT's organization). The carrier had
+  // Slice 7 (7S, migration 1484): the platform route that starts a session inserts it (in the TENANT's organization). The carrier had
   // SELECT and UPDATE here but no INSERT, so an HTTP start answered 42501 even with the ports bound.
   "support_session",
   // GAP-164: `FeatureFlagAdmin.upsert` runs on the platform pool (a NULL-org global flag is unwritable from a tenant
@@ -470,7 +470,7 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
         await run(`GRANT UPDATE ON "${t}" TO chartwarden_platform;`);
       }
-      // Slice 7 (7S, migration 1480): the support tables are written by COLUMN. A session is closed (the sweep, a manual close, an
+      // Slice 7 (7S, migration 1484): the support tables are written by COLUMN. A session is closed (the sweep, a manual close, an
       // operator's Resolve) by two columns, a grant is revoked (Resolve) by three; nothing else on either row is ever rewritten from
       // the platform side, so a carrier that could (expires_at, actor_membership_id, scope) would hold unused authority over what a
       // tenant consented to. REVOKE first so a re-provision takes back an older table-wide grant.

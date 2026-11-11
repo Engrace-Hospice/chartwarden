@@ -388,6 +388,16 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // Owner decision "build it" (2026-11-09, migration 1468): revoking the vendor BAA a tenant recorded (the vendor ended it) is its own
+  // permission key, held by platform_ops like the verification's. The revoke voids the verification and takes a live config out of
+  // service; the route also needs a fresh step-up, a human actor, a recorded reason and the BAA record's recordedAt as If-Match. Not
+  // limited to an onboarding tenant: a live tenant is the point.
+  "tenant_clearinghouse.revoke_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "revoke_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
   // Owner decision 2026-11-08 (migration 1435): a credential a tenant sealed stays reserved to it, through a switch to `outside` and a
   // rotation, until a platform operator releases it (an account moved to another organization). Its own key, bound to platform_ops;
   // the route also needs a fresh step-up, a human actor and a recorded reason. Not limited to an onboarding tenant.
@@ -420,9 +430,24 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- the tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0111): environment, clinic, sealed key ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding (a deactivation is
+  // the one write a live tenant also needs, so it is not status-gated).
+  "tenant_dosespot.read_platform": {
+    resource: "tenant_dosespot",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_dosespot.write_platform": {
+    resource: "tenant_dosespot",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M34 contributed permission keys (forty-eight). */
+/** Union of the M34 contributed permission keys. */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /**

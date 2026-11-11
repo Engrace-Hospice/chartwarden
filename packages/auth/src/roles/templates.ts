@@ -164,7 +164,7 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
 ] as const;
 
 /**
- * Slice 7 (7S, migration 1480): the support-session keys the platform console's routes gate on. `support_session.list_platform` and
+ * Slice 7 (7S, migration 1484): the support-session keys the platform console's routes gate on. `support_session.list_platform` and
  * `.close` gate on `tenant_lifecycle_platform_ops` (the exact `platform_ops` role) and `.start` on the distinct-actor predicate, but no
  * template or migration granted them, so a template operator was refused every one (as 1438 found for the onboarding pair). Only
  * `platform_ops` carries them: the console that starts, lists and ends sessions is that role's. `support_session.elevate_phi_read` is NOT
@@ -177,9 +177,9 @@ export const M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS = [
 ] as const;
 
 /**
- * Slice 7 (7S, migration 1480): the compliance officer's consent-grant keys. Until now only org_admin and administrator held them (through
+ * Slice 7 (7S, migration 1484): the compliance officer's consent-grant keys. Until now only org_admin and administrator held them (through
  * the full non-platform catalog), so the officer, who is the grantor the spec names, could not issue, list or revoke a grant. The
- * template gives NEW tenants the same; migration 1480 covers existing roles. Who may issue WHICH scope is the service's rule, not this list's.
+ * template gives NEW tenants the same; migration 1484 covers existing roles. Who may issue WHICH scope is the service's rule, not this list's.
  */
 export const M34_COMPLIANCE_OFFICER_SUPPORT_GRANT_KEYS = [
   "support_consent_grant.list_own",
@@ -203,6 +203,8 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_clearinghouse.read_platform",
   "tenant_clearinghouse.write_platform",
   "tenant_clearinghouse.verify_baa_platform",
+  // Owner decision "build it" (2026-11-09): revoking a tenant's vendor BAA is its own platform duty (migration 1468).
+  "tenant_clearinghouse.revoke_baa_platform",
   // Owner decision 2026-11-08: releasing a tenant's earlier clearinghouse credentials is its own platform duty (migration 1435).
   "tenant_clearinghouse.release_credential_platform",
   // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1422).
@@ -210,6 +212,10 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1424). Scoped to the one document kind
   // `tenant_baa` and the tenant in the path; it is not `documents.upload` and reads no document.
   "tenant_baa_document.upload_platform",
+  // Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration is onboarding data entered on its behalf,
+  // with the same predicate, step-up and reason (migration 1429).
+  "tenant_dosespot.read_platform",
+  "tenant_dosespot.write_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 
@@ -421,7 +427,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       // and attests go-live readiness.
       "onboarding.read_own",
       "go_live.attest",
-      // Slice 7 (7S, migration 1480 covers existing roles): the officer lists, issues and revokes support consent grants.
+      // Slice 7 (7S, migration 1484 covers existing roles): the officer lists, issues and revokes support consent grants.
       ...M34_COMPLIANCE_OFFICER_SUPPORT_GRANT_KEYS,
       // WP 5.6 (ADR-0086): migration 1138 grants this to EXISTING compliance_officer roles; this entry gives NEW tenants the same
       // (administrator / org_admin get it through the non-platform catalog, the mirror in permissions/contributed.ts).

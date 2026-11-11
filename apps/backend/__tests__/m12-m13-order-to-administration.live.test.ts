@@ -43,6 +43,8 @@ import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG = "11111111-1111-1111-1111-111111111111";
+/** The roster administrator recorded as each link's maker (never the linked member, so the member may confirm it). */
+const ROSTER_ADMIN = "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
@@ -289,7 +291,7 @@ describe.skipIf(!DB_URL)("S07 order lifecycle -> administration — LIVE Postgre
 
   it("a verbal order is administrable while verbal_pending, and after the named prescriber signs", async () => {
     const id = await draftActive();
-    await orders.enrollPrescriber(ORG, membershipId, [], PHYSICIAN_MDM);
+    await orders.enrollPrescriber(ORG, membershipId, [], PHYSICIAN_MDM, ROSTER_ADMIN);
     await inCtx(() =>
       orders.recordVerbal(ORG, membershipId, id, {
         recorderDiscipline: "rn_case_manager",

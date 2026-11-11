@@ -176,6 +176,19 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m10.hope.inactivation_created",
+    moduleOwner: "m10",
+    description:
+      "An XX inactivation draft was created for a signed HOPE assessment; the audit stream records the append-only regulatory operation.",
+    payloadSchema: Type.Object({
+      inactivationAssessmentId: Type.String({ minLength: 1 }),
+      targetAssessmentId: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    seamConsumers: [],
+    isOutboxOnly: true,
+  },
   // ── iQIES submission lifecycle (§2.4 / §4.10) ───────────────────────────────────────────────────────
   {
     eventName: "m10.hope.submission_queued",

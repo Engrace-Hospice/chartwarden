@@ -18,6 +18,11 @@ import {
   ReadyResponseSchema as M1ReadyResponseSchema,
   VersionResponseSchema as M1VersionResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/health";
+import { ClaimMdOperationalObservabilityResponseSchema as OpsClaimMdObservabilityResponseSchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-observability";
+import {
+  ClaimMdRecoveryReadinessQuerySchema as OpsClaimMdRecoveryReadinessQuerySchema,
+  ClaimMdRecoveryReadinessResponseSchema as OpsClaimMdRecoveryReadinessResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/ops-claimmd-recovery-readiness";
 import {
   FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
@@ -499,6 +504,8 @@ import {
   CreateRuleConfigBodySchema,
   HospicePeriodsQuerySchema as M23HospicePeriodsQuerySchema,
   HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
+  InDoubtSubmissionListQuerySchema as M23InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M23InDoubtSubmissionListResponseSchema,
   RhcCarryOverSchema as M23RhcCarryOverSchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
@@ -687,6 +694,19 @@ import {
   BeneficiaryAppealViewSchema as M25BeneficiaryAppealViewSchema,
   ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
+import {
+  BillingOperationsInvestigationAssignmentSchema as M25BillingOperationsInvestigationAssignmentSchema,
+  BillingOperationsInvestigationDetailSchema as M25BillingOperationsInvestigationDetailSchema,
+  BillingOperationsInvestigationListQuerySchema as M25BillingOperationsInvestigationListQuerySchema,
+  BillingOperationsInvestigationListSchema as M25BillingOperationsInvestigationListSchema,
+  BillingOperationsInvestigationNoteResultSchema as M25BillingOperationsInvestigationNoteResultSchema,
+  BillingOperationsInvestigationNoteSchema as M25BillingOperationsInvestigationNoteSchema,
+  BillingOperationsInvestigationSchema as M25BillingOperationsInvestigationSchema,
+  BillingOperationsInvestigationSourceSchema as M25BillingOperationsInvestigationSourceSchema,
+  BillingOperationsInvestigationTransitionSchema as M25BillingOperationsInvestigationTransitionSchema,
+  BillingOperationsInvestigatorQuerySchema as M25BillingOperationsInvestigatorQuerySchema,
+  BillingOperationsInvestigatorsSchema as M25BillingOperationsInvestigatorsSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/billing-operations-investigations";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import { DenialCaseViewSchema as M25DenialCaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
@@ -705,6 +725,10 @@ import {
   ClaimMdEraReviewPageSchema as M25ClaimMdEraReviewPageSchema,
   ClaimMdEraReviewQuerySchema as M25ClaimMdEraReviewQuerySchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/claimmd-era-review.schemas";
+import {
+  ClaimMdTenantOperationalHealthQuerySchema as M25ClaimMdOperationalHealthQuerySchema,
+  ClaimMdTenantOperationalHealthResponseSchema as M25ClaimMdOperationalHealthResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/claimmd-operational-health.schemas";
 import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
@@ -784,6 +808,10 @@ import {
   RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
   RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
+import {
+  RevenueCycleSummaryQuerySchema as M25RevenueCycleSummaryQuerySchema,
+  RevenueCycleSummaryResponseSchema as M25RevenueCycleSummaryResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/revenue-cycle-reporting.schemas";
 import {
   SubmissionCancelRequestSchema as M25SubmissionCancelRequestSchema,
   SubmissionReceiptRequestSchema as M25SubmissionReceiptRequestSchema,
@@ -971,6 +999,12 @@ import {
   ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
 } from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import {
+  DeathNotificationListResponseSchema as M36DeathNotificationListResponseSchema,
+  DeathNotificationResponseSchema as M36DeathNotificationResponseSchema,
+  FuneralHomeSendResponseSchema as M36FuneralHomeSendResponseSchema,
+  SendFuneralHomeBodySchema as M36SendFuneralHomeBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-notification-typebox";
+import {
   PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
   PresenceResponseSchema as M36PresenceResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/presence-typebox";
@@ -1003,9 +1037,12 @@ import {
   ClaimListQuerySchema as M41ClaimListQuerySchema,
   ClaimListResponseSchema as M41ClaimListResponseSchema,
   CommercialClaimViewSchema as M41ClaimViewSchema,
+  InDoubtSubmissionListQuerySchema as M41InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M41InDoubtSubmissionListResponseSchema,
   OverrideBodySchema as M41OverrideBodySchema,
   OverrideResponseSchema as M41OverrideResponseSchema,
   PayerPlanListResponseSchema as M41PayerPlanListResponseSchema,
+  CommercialPaymentReconciliationResponseSchema as M41PaymentReconciliationResponseSchema,
   PlanListQuerySchema as M41PlanListQuerySchema,
   ReadyResponseSchema as M41ReadyResponseSchema,
   ReconcileBodySchema as M41ReconcileBodySchema,
@@ -1135,6 +1172,8 @@ import {
   PatientPayersResponseSchema as M5EPatientPayersResponseSchema,
   PatientPrivacyFlagsResponseSchema as M5EPatientPrivacyFlagsResponseSchema,
   PatientSummarySchema as M5EPatientSummarySchema,
+  VoidPatientPayerBodySchema as M5EVoidPatientPayerBodySchema,
+  VoidPatientPayerResponseSchema as M5EVoidPatientPayerResponseSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import {
   PatientPrivacyViewSchema as M5EPatientPrivacyViewSchema,
@@ -3164,7 +3203,7 @@ const IDEMPOTENCY_KEY_HEADER: RouteEnrichment["headers"] = {
   "Idempotency-Key": {
     required: true,
     description:
-      "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+      "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
   },
 };
 const IF_MATCH_HEADER: RouteEnrichment["headers"] = {
@@ -6158,12 +6197,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12NamedPrescriberListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
-    summary: "Enroll a prescriber into DoseSpot; Idempotency-Key required",
+    summary:
+      "Put a member on the prescriber roster and link them to a physician record (externalPhysicianMdmId). The acting administrator is recorded as the link's asserter: the linked member cannot confirm a link they made themself (409 DOSESPOT_LINK_SELF_CONFIRM on the confirmation); re-saving a link that has no recorded maker records the acting administrator as its maker. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12EnrollPrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/revoke": {
-    summary: "Revoke a prescriber; Idempotency-Key required",
+    summary:
+      "Revoke a prescriber from the roster (their link confirmation goes with it). prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12RevokePrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
     summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
@@ -7871,6 +7914,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M5EAddPatientPayerBodySchema,
     response: M5EAddPatientPayerResponseSchema,
     status: 201,
+  },
+  "POST /api/v1/patients/:id/payers/:payerRowId/void": {
+    summary: "Void an unclaimed mistaken payer row as an audited empty window (step-up required)",
+    body: M5EVoidPatientPayerBodySchema,
+    response: M5EVoidPatientPayerResponseSchema,
   },
   "POST /api/v1/patients/:id/merge": {
     summary:
@@ -16026,6 +16074,8 @@ import {
 import {
   OnboardingBaaDocumentUploadRequest as M34OnboardingBaaDocumentUploadRequest,
   OnboardingBaaDocumentViewSchema as M34OnboardingBaaDocumentViewSchema,
+  OnboardingBaaRevokeRequest as M34OnboardingBaaRevokeRequest,
+  OnboardingBaaVerifyRequest as M34OnboardingBaaVerifyRequest,
   OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
   OnboardingClearinghouseReadSchema as M34OnboardingClearinghouseReadSchema,
   OnboardingClearinghouseReleaseResponseSchema as M34OnboardingClearinghouseReleaseResponseSchema,
@@ -16055,6 +16105,8 @@ const M34_CLEARINGHOUSE_PUT_NOTE = M34_CLEARINGHOUSE_WRITE_NOTE.replace(
 );
 const M34_CLEARINGHOUSE_BAA_NOTE =
   "tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused";
+const M34_CLEARINGHOUSE_REVOKE_NOTE =
+  "tenant_clearinghouse.revoke_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key, If-Match and a closed `reasonCode` plus a `ticketRef` (no free text exists on this route) are required. NOT limited to an onboarding tenant (a live tenant is the point); an AI actor is refused; 10 revokes per operator (across every tenant) and 20 in all per ten minutes, answering 429 beyond that (the limiter fails open)";
 const M34_CLEARINGHOUSE_RELEASE_NOTE =
   "tenant_clearinghouse.release_credential_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and how many were released) are required. NOT limited to an onboarding tenant; an AI actor is refused";
 const M34_NOTICE_WITHDRAW_NOTE =
@@ -16075,7 +16127,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23ClearinghouseConfigViewSchema,
   },
   "PUT /api/v1/tenant/clearinghouse": {
-    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, except while a platform operator has revoked the vendor BAA (then the tenant may change vendor or mode or switch to outside, and the vendor it left no longer locks the next one), and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
     body: M23PutClearinghouseBodySchema,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,
@@ -16083,7 +16135,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/clearinghouse/baa": {
     summary:
-      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M23RecordBaaBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M23ClearinghouseConfigViewSchema,
@@ -16097,7 +16149,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/clearinghouse/activate": {
     summary:
-      "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+      "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA, 409 CLEARINGHOUSE_BAA_REVOKED while an operator's revocation of it stands; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M23ClearinghouseConfigViewSchema,
   },
@@ -16120,8 +16172,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseVerifyResponseSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify": {
-    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. ${M34_CLEARINGHOUSE_BAA_NOTE}`,
-    body: M34OnboardingReasonSchema,
+    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). A record whose document is the one a platform operator revoked before (the platform view's baa.previousRevocation.sameDocument) is refused with 409 CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED unless the request carries acknowledgePreviousRevocation: true; the audit row then records the supersession and the earlier revocation's time; a BAA that is currently revoked is refused with 409 CLEARINGHOUSE_BAA_REVOKED. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. ${M34_CLEARINGHOUSE_BAA_NOTE}`,
+    body: M34OnboardingBaaVerifyRequest,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: true,
+        description:
+          "The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED.",
+      },
+    },
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke": {
+    summary: `Revoke the vendor BAA the tenant recorded for its own clearinghouse account (the vendor ended it). In ONE transaction under the tenant's own scope the verification is voided, a live config leaves active (it becomes verified, as when a changed BAA is re-recorded), the audit row is written and the tenant is told (the outbox event m23.tenant_clearinghouse.baa_revoked becomes an alert to its billing, compliance and org administrators and a platform-ops notice, carrying ids, the closed code and counts of attempts still in flight or sent in the response window and of queued claims). Its claims, NOE, NOTR and transfer notices are then held and its acknowledgment (999/277CA) and 835 pulls skip, with a once-a-day alert while responses may still be owed, until the tenant records a new BAA, an operator verifies it and the tenant activates the config again; no new job or tick starts after the commit, and a job already past its pre-flight finishes (an M41 drain stops at the next row). While revoked, baa/verify and activate are refused with 409 CLEARINGHOUSE_BAA_REVOKED, the claims gate answers 402 clearinghouse_baa_revoked, and the tenant (never the operator) may change vendor or mode or switch to outside although production traffic is recent (it is not locked by 409 CLEARINGHOUSE_VENDOR_LOCKED); once it has left the revoked vendor, that vendor's attempts no longer lock the next one. The tenant clears the revocation by recording a new BAA or by leaving the vendor. NO free text: the body is a closed reasonCode (vendor_terminated, account_closed, baa_expired, other) and a ticketRef such as SEC-42; the audit row and the BAA record carry only those, and the tenant's own view shows the code and the time but never the ticket. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; 409 CLEARINGHOUSE_BAA_NOT_RECORDED when none was recorded, 409 CLEARINGHOUSE_BAA_REVOKED when it is already revoked, 422 CLEARINGHOUSE_BAA_NOT_APPLICABLE for outside, 503 CLEARINGHOUSE_OUTBOX_UNBOUND when the outbox is not bound. The write touches only the BAA and status columns, so it works whatever the state of the credential or the encryption key (a row sealed before migration 1434 loses its credential with the BAA). A revoke is not an expiry: nothing ends a BAA by itself and no vendor signal reaches ChartWarden. ${M34_CLEARINGHOUSE_REVOKE_NOTE}`,
+    body: M34OnboardingBaaRevokeRequest,
     headers: {
       ...IDEMPOTENCY_KEY_HEADER,
       "If-Match": {
@@ -16175,92 +16240,220 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
-// ── Slice 7: the tenant's own onboarding (help requests, support-session reads, tenant skip) ────────────────────────
+// ── tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration (M12 tenant routes + the M34 platform copy) ──
 import {
-  ApproveHelpRequestRequest as M34ApproveHelpRequestRequest,
-  FileHelpRequestRequest as M34FileHelpRequestRequest,
-  HelpRequestViewSchema as M34HelpRequestViewSchema,
-  PlatformHelpRequestListQuerySchema as M34PlatformHelpRequestListQuerySchema,
-  PlatformHelpRequestListResponseSchema as M34PlatformHelpRequestListResponseSchema,
-  PlatformHelpRequestViewSchema as M34PlatformHelpRequestViewSchema,
-  ResolveHelpRequestRequest as M34ResolveHelpRequestRequest,
-  TenantHelpRequestListQuerySchema as M34TenantHelpRequestListQuerySchema,
-  TenantHelpRequestListResponseSchema as M34TenantHelpRequestListResponseSchema,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/help-request-typebox";
+  ClinicConfigViewSchema as M12ClinicConfigViewSchema,
+  ConfirmPractitionerLinkBodySchema as M12ConfirmPractitionerLinkBodySchema,
+  EnrollPrescriberVendorBodySchema as M12EnrollPrescriberVendorBodySchema,
+  PractitionerLinkViewSchema as M12PractitionerLinkViewSchema,
+  PrescriberVendorEnrollmentViewSchema as M12PrescriberVendorEnrollmentViewSchema,
+  PutClinicBodySchema as M12PutClinicBodySchema,
+  ResolveHeldTransmissionBodySchema as M12ResolveHeldTransmissionBodySchema,
+  ResolveHeldTransmissionResponseSchema as M12ResolveHeldTransmissionResponseSchema,
+  VerifyClinicResponseSchema as M12VerifyClinicResponseSchema,
+} from "../../apps/backend/src/modules/12-dosespot/tenant-config/typebox";
 import {
-  PlatformSupportConsentGrantListQuerySchema as M34PlatformSupportConsentGrantListQuerySchema,
-  PlatformSupportConsentGrantListResponseSchema as M34PlatformSupportConsentGrantListResponseSchema,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
-import {
-  TenantSupportSessionEventListResponseSchema as M34TenantSupportSessionEventListResponseSchema,
-  TenantSupportSessionListQuerySchema as M34TenantSupportSessionListQuerySchema,
-  TenantSupportSessionListResponseSchema as M34TenantSupportSessionListResponseSchema,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+  OnboardingDoseSpotEnrollRequest as M34OnboardingDoseSpotEnrollRequest,
+  OnboardingDoseSpotEnrollViewSchema as M34OnboardingDoseSpotEnrollViewSchema,
+  OnboardingDoseSpotPrescriberListSchema as M34OnboardingDoseSpotPrescriberListSchema,
+  OnboardingDoseSpotPutRequest as M34OnboardingDoseSpotPutRequest,
+  OnboardingDoseSpotVerifyResponseSchema as M34OnboardingDoseSpotVerifyResponseSchema,
+  OnboardingDoseSpotViewSchema as M34OnboardingDoseSpotViewSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-dosespot-typebox";
 
-Object.assign(ROUTE_ENRICHMENTS, {
-  "GET /api/v1/tenant/help-requests": {
-    summary:
-      "The organization's help requests during onboarding: `current` is the one live request (open or approved) with its phase, the consent window and a summary of the ChartWarden support session (when it ran and what it did, never an operator's name; `closedBy` is a label such as ChartWarden operations), and `items` pages the ended ones. Any active member of the organization on a staff session; not audited, and meant to be polled every 60 seconds and on focus",
-    query: M34TenantHelpRequestListQuerySchema,
-    response: M34TenantHelpRequestListResponseSchema,
+const DOSESPOT_IF_MATCH_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The registration's current integer version; required to change an existing registration, absent on a first save.",
   },
-  "POST /api/v1/tenant/help-requests": {
+};
+const DOSESPOT_FLOW_NOTE =
+  "draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned";
+const M34_DOSESPOT_WRITE_NOTE =
+  "tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/dosespot": {
+    summary: `The organization's DoseSpot registration, masked (hasSecret; no credential is ever returned; prescribersEnrolled and queuedTransmissions are shown, neither gates anything) — ${DOSESPOT_FLOW_NOTE}. prescribing.clinic.read (org-level)`,
+    response: M12ClinicConfigViewSchema,
+  },
+  "PUT /api/v1/tenant/dosespot": {
+    summary: `Save the DoseSpot registration: create (201) or version-checked change (200, If-Match). Complete input is \`registered\`, incomplete stays \`draft\` (save and resume); ANY change to the environment, clinic, clinician or a key sends the row back and clears the test and activation (a change of environment or clinic also drops the stored key). The environment is a name, never a URL. A tenant administrator cannot introduce a Subscription-Key (422 DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY) but may rotate one platform support set — ${DOSESPOT_FLOW_NOTE}. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    body: M12PutClinicBodySchema,
+    headers: DOSESPOT_IF_MATCH_HEADERS,
+    status: 201,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/tenant/dosespot/verify": {
     summary:
-      "Ask ChartWarden for help during onboarding (any active member on a staff session; an AI actor, ChartWarden staff, an auditor and a family session are refused). The message is judged after trimming and screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). One live request per organization: 409 HELP_REQUEST_ALREADY_OPEN, whose details carry the live request's id as {field: \"helpRequestId\", message: <id>}. 3 requests an hour per member and 10 per organization (429; 503 when the limiter's store is unavailable). The request is a signal and authorizes nothing",
-    body: M34FileHelpRequestRequest,
+      "Test the DoseSpot connection: one service-clinician token mint with the stored credential, no patient data. The probe runs with no transaction open (409 DOSESPOT_CHANGED_DURING_VERIFY if the registration moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome (credential_rejected or unreachable) and leaves the status where it was; production is refused (409 DOSESPOT_PRODUCTION_NOT_ENABLED) until the platform enables it. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12VerifyClinicResponseSchema,
+  },
+  "POST /api/v1/tenant/dosespot/activate": {
+    summary:
+      "Activate a verified registration: e-prescribing then transmits for the organization (409 DOSESPOT_NOT_VERIFIED before a passed test; production only when the platform enabled it; idempotent once active). prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/tenant/dosespot/deactivate": {
+    summary:
+      "Take an active registration out of service (back to verified; the credential is unchanged, so no new test is owed). Newly signed orders then activate locally and queued ones wait. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/admin/dosespot-prescribers/:membershipId/dosespot-enrollment": {
+    summary:
+      "Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the prescriber must first have confirmed the linked record themself (409 DOSESPOT_PRACTITIONER_UNCONFIRMED); a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a registration move to another clinic while the vendor call ran is 409 DOSESPOT_REGISTRATION_MOVED (nothing is linked: enrol again under the new registration); a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12EnrollPrescriberVendorBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12PrescriberVendorEnrollmentViewSchema,
+  },
+  "GET /api/v1/me/dosespot-prescriber-link": {
+    summary:
+      "The signed-in prescriber's OWN link: the physician record the prescriber roster linked them to, shown with its name and NPI (public provider data), and whether they have confirmed it. prescribing.sign; the session's membership selects the roster row",
+    response: M12PractitionerLinkViewSchema,
+  },
+  "POST /api/v1/me/dosespot-prescriber-link/confirm": {
+    summary:
+      "The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); a link the member made themself cannot be confirmed by them (409 DOSESPOT_LINK_SELF_CONFIRM: another roster administrator must link them), nor can a link whose maker was never recorded (409 DOSESPOT_LINK_MAKER_UNKNOWN: a roster administrator must link them again), and the enrolment refuses a link whose linker is its confirmer; 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12ConfirmPractitionerLinkBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12PractitionerLinkViewSchema,
+  },
+  "POST /api/v1/medication-orders/:id/resolve-held-transmission": {
+    summary:
+      "An organization administrator resolves a medication order HELD because DoseSpot may have acted on its NewRx call but did not confirm the outcome (an unreadable or id-less 2xx, a lost send answer, or a send answered with a 5xx other than 503; the order is in flight and its transmission is marked unconfirmed_outcome; while it is held no worker fails, retries or re-sends it, though the slow original call's own late answer can still end the hold). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED, `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED, and an id another order of the organization already carries is 409 DOSESPOT_PRESCRIPTION_ID_IN_USE (webhooks bind by it); a reason that is under 10 characters once trimmed (it passed the request schema's length only because it was padded with whitespace) is 422 DOSESPOT_REASON_REQUIRED, while one under 10 characters as sent, or nothing but whitespace, is already a 400 from the request schema; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12ResolveHeldTransmissionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ResolveHeldTransmissionResponseSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/dosespot": {
+    summary:
+      "A tenant's DoseSpot registration, masked (hasSecret; no credential is ever returned) — platform ops; read is audited",
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/dosespot": {
+    summary: `Register a tenant's DoseSpot clinic on its behalf: create (201) or version-checked change (200, If-Match). Platform support may set the clinic's own Subscription-Key; ${DOSESPOT_FLOW_NOTE}. ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingDoseSpotPutRequest,
+    headers: DOSESPOT_IF_MATCH_HEADERS,
+    status: 201,
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/verify": {
+    summary: `Test a tenant's DoseSpot connection (a no-PHI token mint; a failed test is a 200 with the outcome); 6 requests/min per target tenant. ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotVerifyResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/deactivate": {
+    summary: `Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a \`reason\` are required; an AI actor is refused`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/dosespot/prescribers": {
+    summary:
+      "A tenant's prescriber roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA number, no vendor id) — platform ops; read is audited",
+    response: M34OnboardingDoseSpotPrescriberListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/prescribers/:membershipId/enroll": {
+    summary: `Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; the NPI and legal name are derived from the physician record the roster links the member to and cross-checked against NPPES, never typed, so the body is the reason alone, and the prescriber must have confirmed that link themself (the roster list shows linkConfirmed; the operator cannot confirm for them): see the tenant route for the 409/422 codes; idempotent for a linked prescriber; never starts EPCS). ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingDoseSpotEnrollRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotEnrollViewSchema,
+  },
+  "GET /api/v1/billing/claims/in-doubt-submissions": {
+    summary: "List Medicare submissions whose transport outcome requires investigation",
+    query: M23InDoubtSubmissionListQuerySchema,
+    response: M23InDoubtSubmissionListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/submissions/in-doubt": {
+    summary: "List commercial submissions whose transport outcome requires investigation",
+    query: M41InDoubtSubmissionListQuerySchema,
+    response: M41InDoubtSubmissionListResponseSchema,
+  },
+  "GET /api/v1/billing/operations/investigations": {
+    summary:
+      "List billing operations investigations within the caller's authorized provider-entity scope",
+    query: M25BillingOperationsInvestigationListQuerySchema,
+    response: M25BillingOperationsInvestigationListSchema,
+  },
+  "GET /api/v1/billing/operations/investigations/investigators": {
+    summary: "List eligible investigators for a billing submission",
+    query: M25BillingOperationsInvestigatorQuerySchema,
+    response: M25BillingOperationsInvestigatorsSchema,
+  },
+  "POST /api/v1/billing/operations/investigations": {
+    summary: "Open a billing operations investigation for a durable submission attempt",
+    body: M25BillingOperationsInvestigationSourceSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
-    response: M34HelpRequestViewSchema,
+    response: M25BillingOperationsInvestigationSchema,
   },
-  "POST /api/v1/tenant/help-requests/:id/approve": {
-    summary:
-      "Consent to the help: the org_admin or the compliance officer, under a fresh step-up (the grant-issue operation), creates the non-PHI `assist` consent grant for 1 to 24 hours (8 when omitted) so a ChartWarden operator may open a support session; open -> approved. 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED for any other role; refused (409) for a request that is not open. An AI actor is refused",
-    body: M34ApproveHelpRequestRequest,
+  "GET /api/v1/billing/operations/investigations/:id": {
+    summary: "Read a billing operations investigation and its source evidence",
+    response: M25BillingOperationsInvestigationDetailSchema,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/assignment": {
+    summary: "Assign or unassign a billing operations investigation",
+    body: M25BillingOperationsInvestigationAssignmentSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
-    response: M34HelpRequestViewSchema,
+    response: M25BillingOperationsInvestigationSchema,
   },
-  "POST /api/v1/tenant/help-requests/:id/close": {
-    summary:
-      "End help from the organization's side (no step-up, so ending is frictionless): the member who filed the request, an org_admin or the compliance officer. An open request is cancelled; an approved one is resolved, its consent grant revoked and every open support session on it closed (close reason grant_revoked). An AI actor is refused",
+  "POST /api/v1/billing/operations/investigations/:id/notes": {
+    summary: "Add an operator note to a billing operations investigation",
+    body: M25BillingOperationsInvestigationNoteSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
-    response: M34HelpRequestViewSchema,
+    response: M25BillingOperationsInvestigationNoteResultSchema,
   },
-  "GET /api/v1/tenant/support-sessions": {
-    summary:
-      "ChartWarden support sessions on the organization, newest first: when each started, when it expires or ended and why, and how many actions it took (never an operator's id, name or address). Requires the support-consent-grant list key; a list read, audited",
-    query: M34TenantSupportSessionListQuerySchema,
-    response: M34TenantSupportSessionListResponseSchema,
-  },
-  "GET /api/v1/tenant/support-sessions/:id/events": {
-    summary:
-      "A support session's ledger on the organization, newest first: its start, close and every write the operator made under it, as the route template, method and status (never a body, an id from it, or the operator's address). Requires the support-consent-grant list key; a list read, audited",
-    query: M34TenantSupportSessionListQuerySchema,
-    response: M34TenantSupportSessionEventListResponseSchema,
-  },
-  "POST /api/v1/tenant/onboarding/:taskId/skip": {
-    summary:
-      "The organization's own \"this does not apply to us\" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Reversible by re-opening; the step's `skippedBy` says tenant",
-    body: M34SkipOnboardingTaskRequest,
+  "POST /api/v1/billing/operations/investigations/:id/transitions": {
+    summary: "Transition a billing operations investigation",
+    body: M25BillingOperationsInvestigationTransitionSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
-    response: M34WizardStepViewSchema,
+    response: M25BillingOperationsInvestigationSchema,
   },
-  "GET /api/v1/platform/help-requests": {
+  "GET /api/v1/billing/commercial/claims/:id/payment-reconciliation": {
     summary:
-      "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list (the nav badge asks open,approved with limit 1)",
-    query: M34PlatformHelpRequestListQuerySchema,
-    response: M34PlatformHelpRequestListResponseSchema,
+      "Read the commercial claim's remittance reconciliation within the caller's claim caseload",
+    response: M41PaymentReconciliationResponseSchema,
   },
-  "POST /api/v1/platform/help-requests/:id/resolve": {
-    summary:
-      "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): closes the request's open support sessions (reason manual), revokes its consent grant and resolves the request. It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
-    body: M34ResolveHelpRequestRequest,
-    headers: IDEMPOTENCY_KEY_HEADER,
-    response: M34PlatformHelpRequestViewSchema,
+  "GET /api/v1/messaging/death-boards/:boardId/notifications": {
+    summary: "List the death notifications for a visible coordination board",
+    response: M36DeathNotificationListResponseSchema,
   },
-  "GET /api/v1/platform/support-consent-grants": {
-    summary:
-      "The tenants' support consent grants (platform ops; audited list read): scope, window and state, filterable by tenant account and by `active` (unrevoked and unexpired), so an operator can pick the grant to start a session against. Never the grantor or the patients in scope",
-    query: M34PlatformSupportConsentGrantListQuerySchema,
-    response: M34PlatformSupportConsentGrantListResponseSchema,
+  "POST /api/v1/messaging/death-notifications/:notificationId/ack": {
+    summary: "Explicitly acknowledge receipt of a death notification",
+    response: M36DeathNotificationResponseSchema,
+  },
+  "POST /api/v1/messaging/death-boards/:boardId/funeral-home": {
+    summary: "Send the selected funeral home a BAA-gated death notification",
+    body: M36SendFuneralHomeBodySchema,
+    response: M36FuneralHomeSendResponseSchema,
+  },
+  "GET /api/v1/ops/claimmd/eras/:inboxId/recovery-preflight": {
+    summary: "Assess whether one Claim.MD ERA is eligible for a recovery simulation",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
+  "POST /api/v1/ops/claimmd/eras/:inboxId/recovery-dry-run": {
+    summary: "Simulate Claim.MD ERA recovery readiness without mutating source state",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
+  "GET /api/v1/ops/claimmd/observability": {
+    summary: "Read bounded central Claim.MD account operational evidence",
+    response: OpsClaimMdObservabilityResponseSchema,
+  },
+  "GET /api/v1/remittance/claimmd-operational-health": {
+    summary: "Read tenant-safe Claim.MD remittance staging health",
+    query: M25ClaimMdOperationalHealthQuerySchema,
+    response: M25ClaimMdOperationalHealthResponseSchema,
+  },
+  "GET /api/v1/remittance/revenue-cycle-summary": {
+    summary: "Read the M25 source-backed revenue-cycle summary",
+    query: M25RevenueCycleSummaryQuerySchema,
+    response: M25RevenueCycleSummaryResponseSchema,
   },
 });

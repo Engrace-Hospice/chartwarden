@@ -55,6 +55,10 @@ const POSTMARK_DEFAULT_TIMEOUT_MS = 10_000;
 const POSTMARK_DEFAULT_MAX_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 250;
 const MAX_BACKOFF_MS = 5_000;
+/** Default production provider's hard wall-time ceiling: three aborted requests plus two capped backoffs. */
+export const POSTMARK_LINK_DELIVERY_MAX_DURATION_MS =
+  POSTMARK_DEFAULT_TIMEOUT_MS * POSTMARK_DEFAULT_MAX_ATTEMPTS +
+  MAX_BACKOFF_MS * (POSTMARK_DEFAULT_MAX_ATTEMPTS - 1);
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 

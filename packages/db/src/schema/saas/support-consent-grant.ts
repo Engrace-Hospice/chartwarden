@@ -9,7 +9,7 @@ import { sql } from "drizzle-orm";
 import { check, index, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
-// `assist` (migration 1481) is the non-PHI scope an onboarding help request creates: a session on it can never be elevated.
+// `assist` (migration 1485) is the non-PHI scope an onboarding help request creates: a session on it can never be elevated.
 export const supportConsentGrantScope = pgEnum("support_consent_grant_scope", [
   "organization_scoped",
   "patient_scoped",

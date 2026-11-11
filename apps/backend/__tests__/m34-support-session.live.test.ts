@@ -217,7 +217,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       .sort()) {
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
     }
-    // The REAL provisioning script, AFTER the migrations (so migration 1480's conditional carrier block ran with no carrier):
+    // The REAL provisioning script, AFTER the migrations (so migration 1484's conditional carrier block ran with no carrier):
     // the script alone must give the carrier what a session needs, which is what a fresh production database relies on.
     const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
       cwd: join(__dirname, "../../.."),

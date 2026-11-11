@@ -62,11 +62,21 @@ const ValidationWorklist = lazy(() =>
 const BillingWorkQueue = lazy(() =>
   import("./work-queue").then((m) => ({ default: m.BillingWorkQueue })),
 );
+const BillingOperations = lazy(() =>
+  import("./billing-operations").then((m) => ({ default: m.BillingOperations })),
+);
 
 export const billingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 23,
   slug: "23-billing-medicare",
   screens: [
+    {
+      id: "billing.operations",
+      path: "/billing/operations",
+      title: "Billing Operations",
+      navGroup: "Billing",
+      screen: BillingOperations,
+    },
     // --- AR dashboard landing (§5.1 #1) ---
     {
       id: "billing.ar-dashboard",

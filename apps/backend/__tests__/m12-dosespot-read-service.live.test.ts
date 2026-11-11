@@ -24,6 +24,8 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+/** The roster administrator recorded as each link's maker (never the linked member, so the member may confirm it). */
+const ROSTER_ADMIN = "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a";
 const USER = "33333333-3333-3333-3333-333333333333";
 /** An actor on neither §2.7 axis — not the named prescriber, not on the patient's caseload. */
 const STRANGER_USER = "33333333-3333-3333-3333-3333333333ff";
@@ -297,7 +299,13 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
   });
 
   it("writes are live (M12L): enrollPrescriber persists and reads back on the roster under RLS", async () => {
-    const enrolled = await service.enrollPrescriber(ORG_A, seeded[ORG_A].membership, ["III", "IV"]);
+    const enrolled = await service.enrollPrescriber(
+      ORG_A,
+      seeded[ORG_A].membership,
+      ["III", "IV"],
+      undefined,
+      ROSTER_ADMIN,
+    );
     expect(enrolled.enrolled).toBe(true);
     const { prescribers } = await service.listPrescribers(ORG_A);
     const row = prescribers.find((p) => p.membershipId === seeded[ORG_A].membership);

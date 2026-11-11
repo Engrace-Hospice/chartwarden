@@ -7,6 +7,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { RegulatoryDecimal } from "@chartwarden/shared/money";
 import { decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { ValidationError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import {
   type AgingBucketLabel,
@@ -63,6 +64,7 @@ export function buildDrizzleM25ReadService(
   const AE = schema.appealCaseEvent;
   const TO = schema.denialTaxonomyOverlay;
   const PR = schema.patientResponsibilityLedger;
+  const CS = schema.claimmdEraM25Stage;
 
   /**
    * GAP-148 — the provider-entity scope condition, from the SERVER-assembled actor. `undefined` scope =
@@ -84,6 +86,259 @@ export function buildDrizzleM25ReadService(
   };
 
   return {
+    async claimMdTenantOperationalHealth(actor, providerEntityId) {
+      return withOrgContext(db, actor, async (tx) => {
+        const scope = and(
+          eq(CS.organizationId, actor.organizationId),
+          peScope(CS.providerEntityId, actor, providerEntityId),
+        );
+        const rows = await tx
+          .select({ state: CS.state, count: sql<string>`count(*)::text` })
+          .from(CS)
+          .where(scope)
+          .groupBy(CS.state);
+        const [dates] = await tx
+          .select({
+            latest: sql<Date | null>`max(${CS.updatedAt})`,
+            oldestException: sql<Date | null>`min(${CS.updatedAt}) filter (where ${CS.state} <> 'staged')`,
+          })
+          .from(CS)
+          .where(scope);
+        const states = Object.fromEntries(rows.map((row) => [row.state, Number(row.count)]));
+        const stageCount = Object.values(states).reduce((sum, value) => sum + value, 0);
+        const exceptionCount = Object.entries(states).reduce(
+          (sum, [state, value]) => sum + (state === "staged" ? 0 : value),
+          0,
+        );
+        return {
+          scope: "tenant_attributed_m25_stages" as const,
+          providerEntityId,
+          completeness: "exact_for_authorized_provider_stages" as const,
+          stageCount,
+          states,
+          exceptionCount,
+          oldestExceptionAt: dates?.oldestException ? iso(dates.oldestException) : null,
+          latestStageAt: dates?.latest ? iso(dates.latest) : null,
+          centralCapture: {
+            status: "restricted" as const,
+            reasonCode: "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE" as const,
+          },
+          requestBudget: {
+            status: "unavailable" as const,
+            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION" as const,
+          },
+          sampledAt: new Date().toISOString(),
+        };
+      });
+    },
+    async commercialClaimPaymentFacts(actor, query) {
+      return withOrgContext(db, actor, async (tx) => {
+        const scope = and(
+          eq(RA.organizationId, actor.organizationId),
+          peScope(RA.providerEntityId, actor, query.providerEntityId),
+          eq(RA.payerId, query.payerId),
+          eq(RL.organizationId, actor.organizationId),
+          eq(RL.claimId, query.claimId),
+        );
+        const [totals] = await tx
+          .select({
+            reported: sql<string>`coalesce(round(sum(case when ${RA.parseStatus} in ('parsed','posted','partial_posted') then ${RL.clp04TotalPaymentAmount} * 100 else 0 end), 0), 0)::text`,
+            posted: sql<string>`coalesce(round(sum(case when ${RA.parseStatus} in ('posted','partial_posted') and ${RL.matchState} = 'posted' and ${RL.clp02StatusCode} <> 22 and ${RL.clp04TotalPaymentAmount} > 0 then ${RL.clp04TotalPaymentAmount} * 100 else 0 end), 0), 0)::text`,
+            count: sql<string>`count(*) filter (where ${RA.parseStatus} in ('parsed','posted','partial_posted'))::text`,
+          })
+          .from(RL)
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(scope);
+        const details = await tx
+          .select({
+            remittanceAdviceId: RA.id,
+            remittanceLineId: RL.id,
+            payerReportedPaymentCents: sql<string>`round(${RL.clp04TotalPaymentAmount} * 100, 0)::text`,
+            adviceStatus: RA.parseStatus,
+            lineMatchState: RL.matchState,
+            receivedAt: RA.receivedAt,
+            clp02StatusCode: RL.clp02StatusCode,
+          })
+          .from(RL)
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(and(scope, inArray(RA.parseStatus, ["parsed", "posted", "partial_posted"])))
+          .orderBy(desc(RA.receivedAt), desc(RA.id), desc(RL.id))
+          .limit(100);
+        return {
+          items: details.map((row) => {
+            const posted =
+              (row.adviceStatus === "posted" || row.adviceStatus === "partial_posted") &&
+              row.lineMatchState === "posted" &&
+              row.clp02StatusCode !== 22 &&
+              BigInt(row.payerReportedPaymentCents) > 0n;
+            return {
+              remittanceAdviceId: row.remittanceAdviceId,
+              remittanceLineId: row.remittanceLineId,
+              payerReportedPaymentCents: row.payerReportedPaymentCents,
+              m25PostedPaymentCents: posted ? row.payerReportedPaymentCents : null,
+              adviceStatus: row.adviceStatus as "parsed" | "posted" | "partial_posted",
+              lineMatchState: row.lineMatchState,
+              receivedAt: iso(row.receivedAt),
+            };
+          }),
+          payerReportedPaymentCents: totals?.reported ?? "0",
+          m25PostedPaymentCents: totals?.posted ?? "0",
+          completeness: "exact_for_matched_m25_remittance_lines" as const,
+          historyRecordCount: Number(totals?.count ?? 0),
+          detailTruncated: Number(totals?.count ?? 0) > 100,
+        };
+      });
+    },
+    async revenueCycleSummary(actor, filters) {
+      const from = new Date(`${filters.fromDate}T00:00:00.000Z`);
+      const through = new Date(`${filters.toDate}T00:00:00.000Z`);
+      through.setUTCDate(through.getUTCDate() + 1);
+      if (
+        !Number.isFinite(from.getTime()) ||
+        !Number.isFinite(through.getTime()) ||
+        through <= from ||
+        through.getTime() - from.getTime() > 366 * 86_400_000
+      ) {
+        throw new ValidationError(
+          "Revenue Cycle report date range is invalid or exceeds 366 days.",
+          [],
+        );
+      }
+      return withOrgContext(db, actor, async (tx) => {
+        const receivedWhere = and(
+          eq(RA.organizationId, actor.organizationId),
+          peScope(RA.providerEntityId, actor, filters.providerEntityId),
+          gte(RA.receivedAt, from),
+          lt(RA.receivedAt, through),
+        );
+        const [envelopes] = await tx
+          .select({
+            count: sql<string>`count(*)::text`,
+            reportedCount: sql<string>`count(*) filter (where ${RA.parseStatus} in ('parsed','posted','partial_posted'))::text`,
+            total: sql<string>`coalesce(round(sum(case when ${RA.parseStatus} in ('parsed','posted','partial_posted') then ${RA.totalPaymentAmount} * 100 else 0 end), 0), 0)::text`,
+            plb: sql<string>`coalesce(round(sum(case when ${RA.parseStatus} in ('parsed','posted','partial_posted') then ${RA.plbTotalAmount} * 100 else 0 end), 0), 0)::text`,
+            fullyPosted: sql<string>`count(*) filter (where ${RA.parseStatus} = 'posted')::text`,
+            partialPosted: sql<string>`count(*) filter (where ${RA.parseStatus} = 'partial_posted')::text`,
+            latest: sql<Date | null>`max(${RA.receivedAt})`,
+          })
+          .from(RA)
+          .where(receivedWhere);
+
+        const claimPaymentWhere = and(
+          eq(RA.organizationId, actor.organizationId),
+          peScope(RA.providerEntityId, actor, filters.providerEntityId),
+          gte(RA.receivedAt, from),
+          lt(RA.receivedAt, through),
+          inArray(RA.parseStatus, ["parsed", "posted", "partial_posted"]),
+        );
+        const [reportedLines] = await tx
+          .select({
+            total: sql<string>`coalesce(round(sum(${RL.clp04TotalPaymentAmount} * 100), 0), 0)::text`,
+            unmatched: sql<string>`count(*) filter (where ${RL.matchState} = 'unmatched')::text`,
+          })
+          .from(RL)
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(claimPaymentWhere);
+        const [postedLines] = await tx
+          .select({
+            total: sql<string>`coalesce(round(sum(${RL.clp04TotalPaymentAmount} * 100), 0), 0)::text`,
+          })
+          .from(RL)
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(
+            and(
+              claimPaymentWhere,
+              eq(RA.parseStatus, "posted"),
+              eq(RL.matchState, "posted"),
+              sql`${RL.clp02StatusCode} <> 22`,
+              sql`${RL.clp04TotalPaymentAmount} > 0`,
+            ),
+          );
+        const [allPostedLines] = await tx
+          .select({
+            total: sql<string>`coalesce(round(sum(${RL.clp04TotalPaymentAmount} * 100), 0), 0)::text`,
+          })
+          .from(RL)
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(
+            and(
+              claimPaymentWhere,
+              inArray(RA.parseStatus, ["posted", "partial_posted"]),
+              eq(RL.matchState, "posted"),
+              sql`${RL.clp02StatusCode} <> 22`,
+              sql`${RL.clp04TotalPaymentAmount} > 0`,
+            ),
+          );
+
+        const lineIds = tx
+          .select({ id: RL.id })
+          .from(RL)
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(claimPaymentWhere);
+        const serviceLineIds = tx
+          .select({ id: schema.remittanceServiceLine.id })
+          .from(schema.remittanceServiceLine)
+          .innerJoin(
+            RL,
+            and(
+              eq(schema.remittanceServiceLine.remittanceLineId, RL.id),
+              eq(schema.remittanceServiceLine.receivedAt, RL.receivedAt),
+            ),
+          )
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(claimPaymentWhere);
+        const adjustmentRows = await tx
+          .select({
+            group: schema.remittanceAdjustment.casGroupCode,
+            cents: sql<string>`coalesce(round(sum(${schema.remittanceAdjustment.adjustmentAmount} * 100), 0), 0)::text`,
+          })
+          .from(schema.remittanceAdjustment)
+          .where(
+            and(
+              eq(schema.remittanceAdjustment.organizationId, actor.organizationId),
+              gte(schema.remittanceAdjustment.receivedAt, from),
+              lt(schema.remittanceAdjustment.receivedAt, through),
+              or(
+                inArray(schema.remittanceAdjustment.remittanceLineId, lineIds),
+                inArray(schema.remittanceAdjustment.remittanceServiceLineId, serviceLineIds),
+              ),
+            ),
+          )
+          .groupBy(schema.remittanceAdjustment.casGroupCode);
+        const reportedAdjustmentsByGroup: Record<string, string> = {
+          CO: "0",
+          CR: "0",
+          OA: "0",
+          PI: "0",
+          PR: "0",
+        };
+        for (const row of adjustmentRows) reportedAdjustmentsByGroup[row.group] = row.cents;
+        return {
+          dateBasis: "era_received_at_utc",
+          fromDate: filters.fromDate,
+          toDate: filters.toDate,
+          providerEntityId: filters.providerEntityId ?? null,
+          completeness: "exact_for_m25_remittance_advice",
+          receivedAdviceCount: Number(envelopes?.count ?? 0),
+          reportedAdviceCount: Number(envelopes?.reportedCount ?? 0),
+          reportedEraPaymentCents: envelopes?.total ?? "0",
+          fullyPostedClaimPaymentCents: postedLines?.total ?? "0",
+          postedClaimPaymentCents: allPostedLines?.total ?? "0",
+          fullyPostedAdviceCount: Number(envelopes?.fullyPosted ?? 0),
+          partialPostedAdviceCount: Number(envelopes?.partialPosted ?? 0),
+          reportedClaimPaymentCents: reportedLines?.total ?? "0",
+          reportedAdjustmentsByGroup,
+          reportedPlbCents: envelopes?.plb ?? "0",
+          unmatchedLineCount: Number(reportedLines?.unmatched ?? 0),
+          latestReceivedAt: envelopes?.latest ? iso(envelopes.latest) : null,
+          claimMdStagesIncluded: false,
+          authoritativeAr: {
+            status: "unavailable",
+            reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER",
+          },
+        };
+      });
+    },
     async listAdvices(actor, filters, cursor, limit) {
       const c = decodeCursor(actor.organizationId, cursor, isCreatedAtKeyset);
       return withOrgContext(db, actor, async (tx) => {

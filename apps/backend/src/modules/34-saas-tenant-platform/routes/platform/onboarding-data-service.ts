@@ -27,7 +27,7 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type {
@@ -63,6 +63,7 @@ import type {
   OnboardingFields,
   OnboardingTenantResolver,
 } from "./onboarding-data-types";
+import { buildDoseSpotLane } from "./onboarding-dosespot-lane";
 import { listActiveMembers } from "./onboarding-members";
 import type { WriteResult, WriteSpec } from "./onboarding-write-types";
 import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
@@ -244,11 +245,13 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           const done = await run(tx, target);
           // A pending go-live attestation said this data was ready: the write makes that stale, so it is voided in the same
           // transaction (the attestation and the write commit or roll back together).
-          await voidPendingGoLiveForDataChange(tx, {
-            organizationId: target.organizationId,
-            revokedByUserId: op.userId,
-            revokedByMembershipId: op.membershipId,
-          });
+          if (done.dataChanged !== false) {
+            await voidPendingGoLiveForDataChange(tx, {
+              organizationId: target.organizationId,
+              revokedByUserId: op.userId,
+              revokedByMembershipId: op.membershipId,
+            });
+          }
           await recordOnboardingAudit(tx, op, target, {
             eventType: spec.event,
             resourceKind: spec.resourceKind,
@@ -290,6 +293,38 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       `this change is accepted only while the tenant is ${list} (it is ${status.replaceAll("_", " ")})`,
       409,
     );
+  }
+
+  /**
+   * Apply the onboarding-status gate before work that cannot be rolled back (for example, a DoseSpot vendor call).
+   * The normal `write` path repeats this check under the same shared lock before recording the result.
+   */
+  async function precheck(op: OnboardingOperator, orgSlug: string, spec: WriteSpec): Promise<void> {
+    const target = await targetOf(orgSlug);
+    const refusedStatus = await withOrgContext<DbClient, string | null>(
+      db,
+      { organizationId: target.organizationId, userId: op.userId },
+      async (tx) => {
+        await lockTenantOnboardingShared(tx, target.organizationId);
+        const [account] = await tx
+          .select({ status: ACCOUNT.status })
+          .from(ACCOUNT)
+          .where(eq(ACCOUNT.organizationId, target.organizationId))
+          .limit(1);
+        if (!account) throw new NotFoundError("tenant");
+        const accepted = spec.allowedStatuses ?? ONBOARDING_WRITABLE_STATUSES;
+        if (spec.anyTenantStatus || accepted.has(account.status)) return null;
+        await recordOnboardingAudit(tx, op, target, {
+          eventType: EVENTS.writeRefused,
+          resourceKind: spec.resourceKind,
+          outcome: "denied",
+          reason: spec.reason,
+          detail: { attemptedEvent: spec.event, tenantStatus: account.status },
+        });
+        return account.status;
+      },
+    );
+    if (refusedStatus !== null) throw statusRefusal(spec, refusedStatus);
   }
 
   /** Post-commit, best effort: let the advance sweep settle whatever step this write satisfied. */
@@ -458,6 +493,15 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     return result;
   }
 
+  /** The closed reasons and the ticket shape of a BAA revoke (M23's own set, which M34 may not import; M23 validates again). */
+  const BAA_REVOKE_REASON_CODES: ReadonlySet<string> = new Set([
+    "vendor_terminated",
+    "account_closed",
+    "baa_expired",
+    "other",
+  ]);
+  const BAA_REVOKE_TICKET = /^[A-Z][A-Z0-9]{1,9}-\d{1,8}$/;
+
   return {
     listProviderEntities: (op, orgSlug) =>
       read(op, orgSlug, "provider_entity", async (t) => ({
@@ -572,7 +616,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       return settleStepAfter(organizationId, result);
     },
 
-    verifyClearinghouseBaa: (op, orgSlug, reason, expected) =>
+    verifyClearinghouseBaa: (op, orgSlug, reason, expected, options) =>
       write(
         op,
         orgSlug,
@@ -587,6 +631,48 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             tx,
             scopeOf(op, t.organizationId),
             expected,
+            options,
+          );
+          return {
+            value: done.view,
+            resourceId: done.resourceId,
+            dataChanged: done.dataChanged,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      ),
+
+    revokeClearinghouseBaa: async (op, orgSlug, input, expected) => {
+      // The audit row's `reason` is built from these two values, so they are checked HERE too (the route did, M23 will): a caller that
+      // skipped the route's schema must never get its text into a `write_failed` row, which is written before M23 sees the request.
+      if (
+        !BAA_REVOKE_REASON_CODES.has(input.reasonCode) ||
+        !BAA_REVOKE_TICKET.test(input.ticketRef)
+      ) {
+        throw new ValidationError("request validation failed", [
+          {
+            field: BAA_REVOKE_REASON_CODES.has(input.reasonCode) ? "ticketRef" : "reasonCode",
+            code: "INVALID",
+            message: "a closed reasonCode and a ticketRef such as SEC-42 are required",
+          },
+        ]);
+      }
+      return write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.clearinghouseBaaRevoked,
+          resourceKind: CLEARINGHOUSE_KIND,
+          // built from the two request fields the route already validated against a closed set and a pattern: never caller text
+          reason: `baa_revoked:${input.reasonCode}:${input.ticketRef}`,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await clearinghousePort().revokeBaa(
+            tx,
+            scopeOf(op, t.organizationId),
+            expected,
+            input,
           );
           return {
             value: done.view,
@@ -594,7 +680,8 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             ...(done.detail ? { detail: done.detail } : {}),
           };
         },
-      ),
+      );
+    },
 
     releaseClearinghouseCredentials: (op, orgSlug, reason) =>
       write(
@@ -675,5 +762,17 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       ),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),
+
+    // Tenant onboarding slice 4: the DoseSpot lane reuses this service's lock, audit, status and settle helpers.
+    ...buildDoseSpotLane({
+      port: () => deps.dosespot,
+      targetOf,
+      scopeOf,
+      write,
+      precheck,
+      read,
+      settle: settleStepAfter,
+      ...(deps.logError ? { logError: deps.logError } : {}),
+    }),
   };
 }

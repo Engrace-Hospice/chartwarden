@@ -2,6 +2,7 @@
 // clinical-lead review (change the text here, never the codes). Sending the message and asking are two calls: the message is
 // stored first, then POST /escalations names the colleague (the server derives class `important`, 60 min). Asking is NOT a page
 // and NOT the emergency path, and opening a message never counts as taking responsibility.
+import { sharedAttemptKeys } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { REQUEST_TIMEOUT_MS } from "./messaging-utils";
 
@@ -30,11 +31,14 @@ export async function requestResponse(
   assigneeUserId: string,
 ): Promise<RequestOutcome> {
   try {
-    const { data, response } = await client.POST("/api/v1/messaging/escalations", {
-      params: { header: { "Idempotency-Key": crypto.randomUUID() } },
-      body: { message_id: messageId, assigned_user_id: assigneeUserId },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    const fingerprint = JSON.stringify(["messaging.escalations", messageId, assigneeUserId]);
+    const { data, response } = await sharedAttemptKeys.run(fingerprint, (idempotencyKey) =>
+      client.POST("/api/v1/messaging/escalations", {
+        params: { header: { "Idempotency-Key": idempotencyKey } },
+        body: { message_id: messageId, assigned_user_id: assigneeUserId },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }),
+    );
     if (data) return "ok";
     const status = response?.status;
     return status === undefined || status >= 500 || status === 409 ? "indeterminate" : "refused";

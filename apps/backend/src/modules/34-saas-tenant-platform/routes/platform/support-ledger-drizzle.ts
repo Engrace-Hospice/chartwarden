@@ -3,7 +3,7 @@
 // The recorder behind the ledger hook (./support-ledger-hook.ts), over the PLATFORM credential. One audited platform transaction:
 // resolve the tenant's organization from its slug, find the operator's OPEN session on it (their membership, not closed, not
 // past its expiry), and append one `ops.write` row to the TENANT's ledger. The platform carrier is the only role that may write
-// that kind (migration 1480 pins the tenant role to `session.close`), so a ledger row can never be forged from the tenant lane.
+// that kind (migration 1484 pins the tenant role to `session.close`), so a ledger row can never be forged from the tenant lane.
 // When the operator holds several open sessions on the tenant (one per consent grant) the row goes to the most recently started.
 // No open session: nothing is written. The platform-context entry itself is audited like every other (`platform.bypass_invoked`).
 import { type DbClient, schema } from "@chartwarden/db";

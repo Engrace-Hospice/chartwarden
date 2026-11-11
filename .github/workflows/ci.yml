@@ -31,7 +31,7 @@ concurrency:
 jobs:
   build-and-verify:
     runs-on: [self-hosted, Linux, X64, ci]
-    # Build batches run as separate tsc processes with a 4 GiB heap ceiling; other Node tools
+    # Build batches run as separate tsc processes with a 6 GiB heap ceiling; other Node tools
     # retain their existing limit.
     env:
       NODE_OPTIONS: --max-old-space-size=6144
@@ -353,6 +353,12 @@ jobs:
               name: "M12 DoseSpot crons",
               scripts: "test:m12:crons-transmit:live test:m12:crons-housekeeping:live",
             }
+          # Tenant onboarding slice 4 (ADR-0111) - a tenant's DoseSpot clinic registration on the real roles: RLS + grants + CHECKs, the
+          # clinic key sealed under the REAL tenant key ring (never in the clear, bound to org / environment / clinic), the
+          # draft -> registered -> verified -> active lifecycle through the tenant lane and the platform-operator lane (onboarding-only,
+          # deactivate excepted, audited with a reason), the layered resolver on the real adapter (a row is never served from the env map),
+          # the sign gate (live registration AND a linked prescriber), a prescriber's vendor enrolment, and wizard step 10 settling.
+          - { name: "M12 tenant DoseSpot", scripts: "test:m12:tenant-dosespot:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
@@ -507,6 +513,8 @@ jobs:
           # ADR-0053 amendment D7 - Claim.MD webhook intake: signature refusals, atomic batch, dedupe, encryption, platform-only table.
           - { name: "M23 Claim.MD webhook", scripts: "test:m23:claimmd-webhook:live" }
           - { name: "M23 Claim.MD response inbox", scripts: "test:m23:claimmd-response-inbox:live" }
+          # ADR-0053 amendment D7 - Claim.MD webhook intake: signature refusals, atomic batch, dedupe, encryption, platform-only table.
+          - { name: "M23 Claim.MD webhook", scripts: "test:m23:claimmd-webhook:live" }
           # M23 per-(provider entity, route) EDI profile (migration 1269): the compare-and-set upsert, FORCEd RLS as chartwarden_app, the CHECKs, no delete, the audit row.
           - { name: "M23 EDI profile", scripts: "test:m23:edi-profile:live" }
           # M23 submit/retry workers and the 999/277CA crons over the bound clearinghouse transport (in-memory), real catalog-validating publisher, legacy portal forbidden (#707).
@@ -998,6 +1006,7 @@ jobs:
           - { name: "M36 family messaging", scripts: "test:m36:family-messaging:live" }
           # ADR-0098 (PROPOSED) / WP 6.9 - death-event coordination board (migration 1201) as chartwarden_app: the real death consumer (both events converge on ONE board of six items, a duplicate or a transfer creates nothing, flag off opens nothing, nobody eligible fails loudly and writes nothing), no app DELETE / frozen identity columns / items born open / only the owner completes / completed_at is the database clock / done is final / a flagged item cannot be completed, FORCEd RLS, the routes (owner / supervisor / care team see it; stranger, Part 2-refused viewer and other tenant get the missing-board 404; flag off 404 before parse), idempotent owner completion, audited reassignment with fixed-text alerts, offboarding move or needs_owner flag, audit rows omit the patient id.
           - { name: "M36 death board", scripts: "test:m36:death-board:live" }
+          - { name: "M36 death notifications", scripts: "test:m36:death-notifications:live" }
           # ADR-0095 (PROPOSED) / WP 6.5 - AI thread summaries and reply drafts as chartwarden_app over the REAL M32 pipeline and ledger with a fake in-process model: the backend receives no name, id, patient or clock time and never a redacted, held or deleted message; one ai_invocation row and one m36.ai.summary_viewed audit row per call; the human decision lands only for its own actor and channel; message, draft, schedule, task, link and outbox tables stay byte-identical (the AI cannot send, queue, order or write); flag off, no permission, non-member, other tenant, removed member and Part 2 patient are refused with the answer a random id gets.
           - { name: "M36 AI summaries and drafts", scripts: "test:m36:ai:live" }
           # ADR-0086 (PROPOSED) / WP 5.6 S2 - message legal-hold overlay (migration 1138): chartwarden_app records but cannot update or delete overlay rows, cross-tenant reads nothing, the SECURITY DEFINER backstop refuses DELETE and body_cipher UPDATE of a held message with 23001 (destruction credential and app edit) and allows both after release, the tenant eraser refuses cleanly under a hold.
@@ -1463,6 +1472,9 @@ jobs:
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
           # ADR-0110 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
           - { name: "Claims-billing worker hold", scripts: "test:claims-billing:worker-hold:live" }
+          # Review of slice 4 (M3) - the M12 degradation alerts' alert-once-per-episode memory on a real Valkey: shared across processes (a
+          # recovery is announced by whichever replica sees it), survives a restart, refreshed while the fault lasts, lapses when nobody reports it.
+          - { name: "M12 episode store", scripts: "test:m12:episode-store:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,
@@ -1776,13 +1788,12 @@ jobs:
           scripts/object-store-conformance/rustfs-up.sh --down
 
   e2e:
-    # F-024 (#41, second half): the 18-test Playwright suite — and the SIX axe-core WCAG 2A/AA scans it
-    # carries, the repo's ENTIRE automated accessibility coverage — ran in no CI job. `test:e2e` was
+    # F-024 (#41, second half): the Playwright suite and its axe-core WCAG 2A/AA scans ran in no CI job.
+    # `test:e2e` was
     # invisible to `arch:live-suites` until #41 widened its detection, and was then explicitly DEFERRED
     # rather than wired, because the suite could not be run at all: `bun run db:reset` aborted partway
-    # through its seed chain (#39), and 10 of the 18 specs were red against selectors and a screen that
-    # had since been redesigned (#56). Both are fixed and the suite is 18/18, so the deferral is retired
-    # and this job replaces it.
+    # through its seed chain (#39), and several specs were red against selectors and a screen that had
+    # since been redesigned (#56). Both are fixed, so the deferral is retired and this job replaces it.
     #
     # This is the ONLY job that exercises the product the way a person uses it: a real Chromium against
     # the real Vite app, proxied to a real Fastify backend, over a real migrated and seeded Postgres.
@@ -1925,16 +1936,21 @@ jobs:
       # single spec ran. The browser download itself needs no root.
       - name: Install the Chromium build this Playwright version pins
         run: bunx playwright install chromium
-      # The system libraries Chromium links against are a one-time runner setup. Install them here only
-      # when passwordless sudo exists; otherwise say so and rely on what the runner already has (a launch
-      # failure in the specs then names the missing library, instead of the install step hiding it).
+      # The system libraries Chromium links against are a one-time runner setup. Probe the command
+      # Playwright actually needs, not an unrelated `sudo true`: a restricted sudoers policy may allow
+      # one while refusing `apt-get`. If it is allowed, install-deps remains fail-loud.
       - name: Install Chromium system libraries when sudo allows
         run: |
-          if sudo -n true 2>/dev/null; then
+          if sudo -n -- sh -c 'apt-get --version' >/dev/null 2>&1; then
             bunx playwright install-deps chromium
           else
-            echo "no passwordless sudo: relying on the runner's preinstalled Chromium libraries"
+            echo "no passwordless sudo permission for apt-get: relying on the runner's preinstalled Chromium libraries"
           fi
+      # `playwright test --list` never starts a browser. Launch before the expensive database/stack setup
+      # so a missing runner library reports the Chromium loader error here, not at the first product spec.
+      - name: Verify Chromium can launch
+        run: |
+          bun -e 'import { chromium } from "@playwright/test"; const browser = await chromium.launch({ headless: true }); await browser.close(); console.log("Chromium launch smoke passed");'
       - name: Migrate
         run: bun run db:migrate
       # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
@@ -1967,35 +1983,42 @@ jobs:
       # creates the bucket for every tenant missing one.
       - name: Create the demo tenant's storage bucket
         run: bun run storage:reconcile-tenants
-      - name: Start the web app and wait for it to serve
+      - name: Start the web, admin and portal apps and wait for them to serve
         run: |
           (cd apps/web && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/web.log" 2>&1 &)
+          (cd apps/admin && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/admin.log" 2>&1 &)
+          (cd apps/portal && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/portal.log" 2>&1 &)
           for i in $(seq 1 90); do
-            if curl -sf http://localhost:5173 > /dev/null; then
-              echo "web up after ${i}s"; exit 0
+            if curl -sf http://localhost:5173 > /dev/null \
+              && curl -sf http://localhost:5175 > /dev/null \
+              && curl -sf http://localhost:5174/portal/ > /dev/null; then
+              echo "all three apps up after ${i}s"; exit 0
             fi
             sleep 1
           done
-          echo "the web dev server did not serve within 90s" >&2
-          cat "$RUNNER_TEMP/e2e-logs/web.log" >&2; exit 1
+          echo "the web/admin/portal dev servers did not all serve within 90s" >&2
+          cat "$RUNNER_TEMP/e2e-logs/web.log" >&2
+          cat "$RUNNER_TEMP/e2e-logs/admin.log" >&2
+          cat "$RUNNER_TEMP/e2e-logs/portal.log" >&2
+          exit 1
       # `forbidOnly` is already on under CI (playwright.config.ts), so a stray `.only` fails the job
       # rather than silently shrinking the suite to one test — the browser-side version of the
       # self-skip this workflow's live jobs guard against.
-      - name: 20 browser specs — 13 critical-workflow + 7 axe-core WCAG 2A/AA scans (real stack)
-        run: bun run test:e2e --grep-invert "#852"
-      # #852: everything added with the browser-coverage increment (patient-scoped axe walk, role matrix,
-      # six-viewport smoke) was authored without a live stack. Advisory (`continue-on-error`) until each
-      # has a first green run here; then drop the step's flag and the `--grep-invert` above.
-      - name: Browser-coverage additions — patient axe walk + role matrix (advisory, #852)
-        id: e2e_new
-        continue-on-error: true
+      - name: Chromium browser workflows and axe-core WCAG 2A/AA scans (real stack)
+        run: bun run test:e2e
+      - name: Patient axe walk and role-matrix additions (#852)
         run: bun run test:e2e:new
-      - name: Six-viewport layout smoke (advisory, #852)
+      - name: Six-viewport layout smoke (#852)
         id: e2e_viewports
-        continue-on-error: true
         run: bun run test:e2e:viewports
+      - name: Authenticated admin-console and portal smoke (#852)
+        id: e2e_apps
+        env:
+          E2E_ADMIN_URL: http://localhost:5175
+          E2E_PORTAL_URL: http://localhost:5174
+        run: bun run test:e2e:apps
       - name: Upload the Playwright report, traces and stack logs
-        if: failure() || steps.e2e_new.outcome == 'failure' || steps.e2e_viewports.outcome == 'failure'
+        if: failure() || steps.e2e_viewports.outcome == 'failure' || steps.e2e_apps.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-artifacts

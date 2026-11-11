@@ -66,10 +66,11 @@ export function RetransmitModal({
       <div className="wx-modal-body">
         <h2>Retransmit medication order</h2>
         <p>
-          DoseSpot did not accept this prescription. Retransmitting creates a replacement order that
+          This prescription failed to transmit. Retransmitting creates a replacement order that
           corrects this one; you then send it for signature and sign it, and it is transmitted
           again. This order is kept unchanged as history.
         </p>
+        <p>It may still have been sent: check DoseSpot first.</p>
         <p className="wx-source-line">
           Only the order's prescriber or the named ordering physician may retransmit it.
         </p>

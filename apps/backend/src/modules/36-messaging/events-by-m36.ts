@@ -798,4 +798,71 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m36.death_board.opened",
+    moduleOwner: "m36",
+    description:
+      "A death-event coordination board was CREATED (ADR-0098; the notification cascade). Ids and one instant only: no patient id and no text. Published in the board-creating transaction, only when the board is new (a replay or the second death event publishes nothing). M36's own death-notification consumer fans out the fixed-text internal notices (flag messaging.death_notifications).",
+    payloadSchema: Type.Object(
+      { organizationId: id, boardId: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.death_notification.sent",
+    moduleOwner: "m36",
+    description:
+      "A death notification reached its recipient: an internal in-app notice, or an external funeral-home link whose BAA gate passed. Ids, the recipient kind enum and one instant. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        notificationId: id,
+        boardId: id,
+        recipientKind: Type.String({ minLength: 1 }),
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.death_notification.acked",
+    moduleOwner: "m36",
+    description:
+      "An internal recipient explicitly acknowledged a death notification (an authenticated act, never a read receipt). Ids, the recipient kind enum and one instant. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        notificationId: id,
+        boardId: id,
+        recipientKind: Type.String({ minLength: 1 }),
+        ackedBy: id,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.death_notification.blocked",
+    moduleOwner: "m36",
+    description:
+      "An external death notification was REFUSED because no BAA is on file for the entity (nothing left the perimeter). Ids, the recipient kind enum and one instant. A supervisor is alerted in-app. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        notificationId: id,
+        boardId: id,
+        recipientKind: Type.String({ minLength: 1 }),
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 ];

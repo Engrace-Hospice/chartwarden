@@ -3789,7 +3789,7 @@ const successDot = {
   placeItems: "center",
   borderRadius: "9999px",
   background: "color-mix(in srgb, var(--color-success) 12%, transparent)",
-  color: "var(--color-success)",
+  color: "var(--color-success-pill-fg)",
   fontSize: "0.72rem",
   fontWeight: 800,
 } as const;

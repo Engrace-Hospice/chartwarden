@@ -51,6 +51,7 @@ export function registerClaimMdEraReviewRoutes(
     async (request, reply) => {
       const query = request.query as {
         providerEntityId?: string;
+        locationId?: string;
         state?: string;
         payer?: string;
         fromDate?: string;
@@ -63,6 +64,7 @@ export function registerClaimMdEraReviewRoutes(
           actorOf(request),
           {
             providerEntityId: query.providerEntityId,
+            locationId: query.locationId,
             state: query.state,
             payer: query.payer,
             fromDate: query.fromDate,

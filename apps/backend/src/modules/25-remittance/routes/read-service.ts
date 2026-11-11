@@ -116,6 +116,75 @@ export interface DenialMetricsView {
   readonly totalDollarOpen: string;
 }
 
+/** Read-only M25 activity totals. Amounts are integer-cent strings to retain NUMERIC precision. */
+export interface RevenueCycleM25Summary {
+  readonly dateBasis: "era_received_at_utc";
+  readonly fromDate: string | null;
+  readonly toDate: string | null;
+  readonly providerEntityId: string | null;
+  readonly completeness: "exact_for_m25_remittance_advice";
+  readonly receivedAdviceCount: number;
+  readonly reportedAdviceCount: number;
+  /** BPR02 from parse-complete M25 advice envelopes; includes envelope-level PLB effect. */
+  readonly reportedEraPaymentCents: string;
+  readonly reportedClaimPaymentCents: string;
+  /** Sum of CLP04 from fully posted M25 advice only. Partial-post envelopes are excluded. */
+  readonly fullyPostedClaimPaymentCents: string;
+  /** Actual positive claim-level M25 effects on posted lines, including posted lines in partial_posted advice. */
+  readonly postedClaimPaymentCents: string;
+  readonly fullyPostedAdviceCount: number;
+  readonly partialPostedAdviceCount: number;
+  readonly reportedAdjustmentsByGroup: Readonly<Record<string, string>>;
+  /** Provider-level PLB reported by source, not allocated to claims. */
+  readonly reportedPlbCents: string;
+  readonly unmatchedLineCount: number;
+  readonly latestReceivedAt: string | null;
+  readonly claimMdStagesIncluded: false;
+  readonly authoritativeAr: {
+    readonly status: "unavailable";
+    readonly reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER";
+  };
+}
+
+/** Tenant-safe Claim.MD staging health. It intentionally contains no account cursor or inbox facts. */
+export interface ClaimMdTenantOperationalHealth {
+  readonly scope: "tenant_attributed_m25_stages";
+  readonly providerEntityId: string;
+  readonly completeness: "exact_for_authorized_provider_stages";
+  readonly stageCount: number;
+  readonly states: Readonly<Record<string, number>>;
+  readonly exceptionCount: number;
+  readonly oldestExceptionAt: string | null;
+  readonly latestStageAt: string | null;
+  readonly centralCapture: {
+    readonly status: "restricted";
+    readonly reasonCode: "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE";
+  };
+  readonly requestBudget: {
+    readonly status: "unavailable";
+    readonly reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
+  };
+  readonly sampledAt: string;
+}
+
+/** M25-owned payment facts for one exact, source-authorized commercial claim identity. */
+export interface M25CommercialClaimPaymentFacts {
+  readonly items: readonly {
+    readonly remittanceAdviceId: string;
+    readonly remittanceLineId: string;
+    readonly payerReportedPaymentCents: string;
+    readonly m25PostedPaymentCents: string | null;
+    readonly adviceStatus: "parsed" | "posted" | "partial_posted";
+    readonly lineMatchState: string;
+    readonly receivedAt: string;
+  }[];
+  readonly payerReportedPaymentCents: string;
+  readonly m25PostedPaymentCents: string;
+  readonly completeness: "exact_for_matched_m25_remittance_lines";
+  readonly historyRecordCount: number;
+  readonly detailTruncated: boolean;
+}
+
 export interface DenialWorklistFilters {
   readonly providerEntityId?: string;
   readonly assigneeMembershipId?: string;
@@ -126,6 +195,19 @@ export interface DenialWorklistFilters {
 
 /** The READ surface every M25 GET route composes over. All reads are RLS-scoped to the actor's org. */
 export interface M25ReadService {
+  claimMdTenantOperationalHealth(
+    actor: M25ReadActor,
+    providerEntityId: string,
+  ): Promise<ClaimMdTenantOperationalHealth>;
+  revenueCycleSummary(
+    actor: M25ReadActor,
+    filters: { providerEntityId?: string; fromDate: string; toDate: string },
+  ): Promise<RevenueCycleM25Summary>;
+  /** Internal owner seam: caller must first authorize the commercial claim with M41. */
+  commercialClaimPaymentFacts(
+    actor: M25ReadActor,
+    query: { claimId: string; providerEntityId: string; payerId: string },
+  ): Promise<M25CommercialClaimPaymentFacts>;
   listAdvices(
     actor: M25ReadActor,
     filters: { providerEntityId?: string; parseStatus?: string },

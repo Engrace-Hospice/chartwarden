@@ -13,6 +13,7 @@ import type { ResolverArgs } from "../resolution";
 import type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 import { BEREAVEMENT_ALERT_RULES } from "./alert-rules-bereavement";
 import { BILLING_CAP_ALERT_RULES } from "./alert-rules-billing-cap";
+import { DOSESPOT_ALERT_RULES } from "./alert-rules-dosespot";
 
 export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 
@@ -319,6 +320,80 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     severityFloor: "warn",
     recipientResolver: "role_set",
     // WP 6.9 (ADR-0098): supervisors are told a death-board item has no available owner. Org-wide by role; tenants re-aim it through the alert-rule admin.
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // M36 death-notification cascade (flag messaging.death_notifications): fixed-text, PHI-free, in-app only. The attending is a named user
+  // (CareTeamProvider.attendingUserId); the other internal kinds are role-resolved and, when nobody holds the role, fall back to the tenant admins.
+  {
+    eventType: "m36.death_notification.attending",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.death_notification.medical_director",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["medical_director"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.death_notification.bereavement_coordinator",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["bereavement_coordinator"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.death_notification.billing_lead",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["billing_manager", "biller"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // pharmacy_liaison / dme_liaison: NO rule on purpose. Their role keys are undecided, so the service sends those two notices straight to the
+  // tenant-admin fallback (death-notification-alerts.ts DEATH_NOTIFICATION_DEFERRED_ROLE_KINDS). Re-add a role_set rule here when the keys are decided.
+  {
+    eventType: "m36.death_notification.blocked_no_baa",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don", "compliance_officer"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.death_notification.send_stranded",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don", "compliance_officer"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.death_notification.unacked",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
     channelsOverride: ["in_app"],
     systemLocked: false,
@@ -1794,6 +1869,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // M12 DoseSpot e-prescribing: the adapter-health pair (M36 `dosespot-alerts` consumer) and the registration going out of service.
+  ...DOSESPOT_ALERT_RULES,
   // ADR-0109 D7 — the M16 bereavement program's oversight alerts (death intake, physician letter, overdue assessment).
   ...BEREAVEMENT_ALERT_RULES,
 ];

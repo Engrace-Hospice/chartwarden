@@ -64,3 +64,74 @@ export class RetryableError extends Error {
 export function isRetryableError(value: unknown): value is RetryableError {
   return value instanceof RetryableError;
 }
+
+/**
+ * The org has no LIVE DoseSpot registration at the moment of the call (never configured, or deactivated / rotated since the caller
+ * last looked). It is a {@link DegradedError} (non-retryable, so a caller that never had a config still sees a refusal), but a
+ * WORKER holding queued work must treat it as a pause, not a rejection: the order goes back to `queued` with no retry spent
+ * (ADR-0111 D6: "queued ones wait"), exactly like an open circuit. Without the distinction a deactivation committed mid-batch
+ * would permanently fail every order the sweep had already claimed.
+ */
+export class NotEnabledError extends DegradedError {
+  constructor(
+    integration: "dosespot",
+    operation: DoseSpotOperation,
+    customerMessage: string,
+    correlationId: string,
+  ) {
+    super(integration, operation, false, customerMessage, correlationId);
+    this.name = "NotEnabledError";
+  }
+}
+
+export function isNotEnabledError(value: unknown): value is NotEnabledError {
+  return value instanceof NotEnabledError;
+}
+
+/**
+ * The org's config could not be READ or OPENED at the moment of the call: a database lookup failed, the tenant key ring or the KEK was
+ * unavailable, or the sealed credential would not open. Nothing was sent to DoseSpot. It is a RETRYABLE {@link DegradedError}, so the BullMQ
+ * layer retries a job, and a worker holding queued work treats it like {@link NotEnabledError}: the order WAITS with no retry spent (a
+ * platform fault must not exhaust a tenant's orders). The original fault is kept on `cause` for the worker's log; it is never put in the
+ * customer message (a database error holds bound values).
+ */
+export class ConfigUnavailableError extends DegradedError {
+  constructor(
+    integration: "dosespot",
+    operation: DoseSpotOperation,
+    customerMessage: string,
+    correlationId: string,
+    cause?: unknown,
+  ) {
+    super(integration, operation, true, customerMessage, correlationId);
+    this.name = "ConfigUnavailableError";
+    if (cause !== undefined) this.cause = cause;
+  }
+}
+
+export function isConfigUnavailableError(value: unknown): value is ConfigUnavailableError {
+  return value instanceof ConfigUnavailableError;
+}
+
+/**
+ * DoseSpot may have acted on the request but did not confirm it: a 2xx whose answer cannot be read or does not carry the id the call exists
+ * to return, or, for a prescription SEND, a lost answer (a timeout, a reset) or a 5xx other than 503. What it was asked to create or send
+ * (a clinician, a prescription) may well exist: unlike a refusal this is an AMBIGUOUS outcome, and a caller
+ * that holds a claim must keep it rather than release it for a retry that could create a duplicate. A non-retryable {@link DegradedError}
+ * (no in-call retry, the same planning as before for a worker), told apart by its class.
+ */
+export class UnconfirmedOutcomeError extends DegradedError {
+  constructor(
+    integration: "dosespot",
+    operation: DoseSpotOperation,
+    customerMessage: string,
+    correlationId: string,
+  ) {
+    super(integration, operation, false, customerMessage, correlationId);
+    this.name = "UnconfirmedOutcomeError";
+  }
+}
+
+export function isUnconfirmedOutcomeError(value: unknown): value is UnconfirmedOutcomeError {
+  return value instanceof UnconfirmedOutcomeError;
+}

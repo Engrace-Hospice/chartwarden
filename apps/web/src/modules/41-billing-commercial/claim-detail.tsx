@@ -8,7 +8,9 @@ import {
   LoadingSpinner,
   Panel,
   StatusPill,
+  newIdempotencyKey,
   useApiClient,
+  useAttemptKey,
   useClaimsBilling,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
@@ -16,7 +18,9 @@ import type { paths } from "@chartwarden/ui";
 // things a biller needs before it can go out: the PAYER and PLAN, the AUTHORIZATION on file, the COORDINATION OF BENEFITS, and the
 // VALIDATION (with audited overrides of soft blocks). Lines are the priced level-of-care stretches.
 //   GET  /api/v1/billing/commercial/claims/{id}            claim, plan, authorizations, lines, latest validation (read-audited)
-//   POST .../validate | .../ready | .../void                the lifecycle (Idempotency-Key is added by the client)
+//   POST .../validate | .../ready | .../void                the lifecycle. The routes declare the Idempotency-Key header, so it is named here:
+//                                                           one key per intent from useAttemptKey for the writes (ready, void, the corrected
+//                                                           draft, submit), a new one per click for validate, which only recomputes.
 // An authorization is shown by status and period, never its number. A blocked "ready" is a 409 whose message tells the user what
 // to fix; it is shown inline, never as a toast. Authorization to write is the server's; the buttons follow the session's grants.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -47,6 +51,8 @@ type ClaimView =
   paths["/api/v1/billing/commercial/claims/{id}"]["get"]["responses"][200]["content"]["application/json"];
 type SendGate =
   paths["/api/v1/billing/commercial/claims/{id}/send-gate"]["get"]["responses"][200]["content"]["application/json"];
+type PaymentReconciliation =
+  paths["/api/v1/billing/commercial/claims/{id}/payment-reconciliation"]["get"]["responses"][200]["content"]["application/json"];
 
 type Load =
   | { readonly status: "loading" }
@@ -89,6 +95,7 @@ const ACTION_NOTICE: Record<Action, string> = {
 
 function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
   const client = useApiClient();
+  const attempt = useAttemptKey();
   // ADR-0110 — marking ready (and so sending) is new claims-billing work; validate and void stay open.
   const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
@@ -105,6 +112,13 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
   const [sendGate, setSendGate] = useState<SendGate | null>(null);
   const [sendGateBusy, setSendGateBusy] = useState(false);
   const [sendGateError, setSendGateError] = useState<string | null>(null);
+  const [paymentReconciliation, setPaymentReconciliation] = useState<
+    | { status: "loading" }
+    | { status: "ready"; value: PaymentReconciliation }
+    | { status: "denied" | "error" }
+  >({ status: "loading" });
+  const [paymentRetry, setPaymentRetry] = useState(0);
+  const paymentRequestKeyRef = useRef("");
   const voidControls = useRef<HTMLSpanElement>(null);
   const voidWasOpen = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -134,6 +148,38 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
     };
   }, [client, claimId, reloadKey]);
 
+  const canReadRemittance =
+    permissions.includes("commercial_billing.read") && permissions.includes("remittance.read");
+  // This M41 detail request intersects M41 caseload access with M25 remittance.read. It is read-only.
+  useEffect(() => {
+    let active = true;
+    const requestKey = `${claimId}|${paymentRetry}`;
+    paymentRequestKeyRef.current = requestKey;
+    setPaymentReconciliation({ status: "loading" });
+    if (!canReadRemittance || !claimId) {
+      setPaymentReconciliation({ status: "denied" });
+      return () => {
+        active = false;
+      };
+    }
+    void client
+      .GET("/api/v1/billing/commercial/claims/{id}/payment-reconciliation", {
+        params: { path: { id: claimId } },
+      })
+      .then(({ data, response }) => {
+        if (!active || paymentRequestKeyRef.current !== requestKey) return;
+        if (data) setPaymentReconciliation({ status: "ready", value: data });
+        else setPaymentReconciliation({ status: response.status === 403 ? "denied" : "error" });
+      })
+      .catch(() => {
+        if (active && paymentRequestKeyRef.current === requestKey)
+          setPaymentReconciliation({ status: "error" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [canReadRemittance, claimId, client, paymentRetry]);
+
   const view = load.status === "ready" ? load.view : null;
   const payerId = view?.plan.payerId;
   useEffect(() => {
@@ -157,9 +203,15 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
     setActionError(null);
     setNotice(null);
     try {
-      const { error, response } = await client.POST(ACTION_PATH[action], {
-        params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } },
-      });
+      const send = (idempotencyKey: string) =>
+        client.POST(ACTION_PATH[action], {
+          params: { path: { id: claimId }, header: { "Idempotency-Key": idempotencyKey } },
+        });
+      // Ready and void change the claim: one key per intent. Validate only recomputes, so every click is a new request.
+      const { error, response } =
+        action === "validate"
+          ? await send(newIdempotencyKey()) // idempotency: fresh per click (re-run): validating reads the claim as it is now
+          : await attempt.run(`${action}|${claimId}`, send);
       if (error) {
         const env = (error as { error?: { code?: string; message?: string } }).error;
         const redirect = authFailureRedirect(response.status, env?.code, window.location.pathname);
@@ -189,12 +241,16 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
     setCorrectionBusy(true);
     setActionError(null);
     try {
-      const { data, error, response } = await client.POST(
-        "/api/v1/billing/commercial/claims/{id}/corrections/clearinghouse-rejection",
-        {
-          params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } },
-          body: { reasonCode: correctionReason },
-        },
+      const { data, error, response } = await attempt.run(
+        `correction|${claimId}|${correctionReason}`,
+        (idempotencyKey) =>
+          client.POST(
+            "/api/v1/billing/commercial/claims/{id}/corrections/clearinghouse-rejection",
+            {
+              params: { path: { id: claimId }, header: { "Idempotency-Key": idempotencyKey } },
+              body: { reasonCode: correctionReason },
+            },
+          ),
       );
       if (error || !data) {
         const env = (error as { error?: { code?: string; message?: string } } | undefined)?.error;
@@ -247,9 +303,10 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
     setSendGateBusy(true);
     setSendGateError(null);
     try {
-      const { data, error, response } = await client.POST(
-        "/api/v1/billing/commercial/claims/{id}/submit",
-        { params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } } },
+      const { data, error, response } = await attempt.run(`submit|${claimId}`, (idempotencyKey) =>
+        client.POST("/api/v1/billing/commercial/claims/{id}/submit", {
+          params: { path: { id: claimId }, header: { "Idempotency-Key": idempotencyKey } },
+        }),
       );
       if (error || !data) {
         const env = (error as { error?: { code?: string; message?: string } } | undefined)?.error;
@@ -376,6 +433,98 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
         <ClaimsBillingNotice />
 
         <BillingTabs />
+
+        <Panel title="Remittance payment reconciliation" icon="dollar">
+          <p className="wx-row-sub">
+            Payer-reported ERA amounts and M25-posted claim-line payments are shown separately. This
+            is not bank settlement or an accounts-receivable balance.
+          </p>
+          {paymentReconciliation.status === "loading" ? (
+            <output aria-live="polite">Loading payment reconciliation…</output>
+          ) : null}
+          {paymentReconciliation.status === "denied" ? (
+            <output>Payment reconciliation is unavailable for your current permissions.</output>
+          ) : null}
+          {paymentReconciliation.status === "error" ? (
+            <div role="alert">
+              <p>Payment reconciliation could not be loaded. No zero balance is inferred.</p>
+              <Button tone="secondary" size="sm" onClick={() => setPaymentRetry((key) => key + 1)}>
+                Retry payment read
+              </Button>
+            </div>
+          ) : null}
+          {paymentReconciliation.status === "ready" ? (
+            <>
+              <dl className="wx-kv">
+                <dt>Current claim charge</dt>
+                <dd>{dollars(paymentReconciliation.value.claim.currentChargeCents)}</dd>
+                <dt>Original submitted charge</dt>
+                <dd>
+                  Unavailable: immutable submitted amount is not present in this source contract.
+                </dd>
+                <dt>Payer-reported claim payment</dt>
+                <dd>
+                  {formatCents(paymentReconciliation.value.payments.payerReportedPaymentCents)}
+                </dd>
+                <dt>M25 posted claim payment</dt>
+                <dd>{formatCents(paymentReconciliation.value.payments.m25PostedPaymentCents)}</dd>
+                <dt>Authoritative accounts receivable</dt>
+                <dd>Unavailable: no canonical receivable ledger.</dd>
+              </dl>
+              {paymentReconciliation.value.payments.items.length === 0 ? (
+                <p className="wx-rail-empty">
+                  No matched M25 remittance lines are available for this claim.
+                </p>
+              ) : (
+                <div className="wx-table-scroll">
+                  <table>
+                    <caption className="wx-sr-only">
+                      Remittance payment sources for this commercial claim
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">ERA received</th>
+                        <th scope="col">Advice state</th>
+                        <th scope="col">Payer reported</th>
+                        <th scope="col">M25 posted</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paymentReconciliation.value.payments.items.map((item) => (
+                        <tr key={item.remittanceLineId}>
+                          <td>
+                            {new Date(item.receivedAt).toLocaleDateString("en-US", {
+                              timeZone: "UTC",
+                            })}
+                          </td>
+                          <td>
+                            {item.adviceStatus === "partial_posted"
+                              ? "Partially posted advice"
+                              : item.adviceStatus === "posted"
+                                ? "Posted advice"
+                                : "Parsed; not posted"}
+                          </td>
+                          <td>{formatCents(item.payerReportedPaymentCents)}</td>
+                          <td>
+                            {item.m25PostedPaymentCents === null
+                              ? "Not posted"
+                              : formatCents(item.m25PostedPaymentCents)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {paymentReconciliation.value.payments.detailTruncated ? (
+                    <output>
+                      Showing the 100 most recent remittance lines; the aggregate covers{" "}
+                      {paymentReconciliation.value.payments.historyRecordCount} source records.
+                    </output>
+                  ) : null}
+                </div>
+              )}
+            </>
+          ) : null}
+        </Panel>
 
         {actionError ? <InlineAlert tone="error">{actionError}</InlineAlert> : null}
         {notice ? <InlineAlert tone="success">{notice}</InlineAlert> : null}
@@ -679,4 +828,14 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
       </aside>
     </div>
   );
+}
+
+function formatCents(value: string): string {
+  try {
+    const amount = BigInt(value);
+    const abs = amount < 0n ? -amount : amount;
+    return `${amount < 0n ? "−" : ""}$${(abs / 100n).toLocaleString("en-US")}.${String(abs % 100n).padStart(2, "0")}`;
+  } catch {
+    return "Unavailable";
+  }
 }

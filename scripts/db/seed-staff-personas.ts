@@ -1,13 +1,13 @@
 /**
  * ChartWarden — discipline-persona staff seed (local dev). NOT for production.
  *
- * `scripts/db/seed.ts` creates 4 demo logins (administrator, org_admin, clinician, auditor), all
- * with broad permission-CATEGORY grants. What none of them carry is a **discipline role-key token**
+ * `scripts/db/seed.ts` creates the base demo logins with broad permission-CATEGORY grants. Those
+ * category roles do not themselves carry a **discipline role-key token**
  * — the clinical write routes across M7/M8/M9/M10/M11/M12/M13/M15/M17 all separately check
  * `context.roles` for a specific key like `"rn"`/`"lpn"`/`"md"`/`"msw"`/`"chaplain"` (M7's
  * `DISCIPLINE_ROLE_TOKENS`, M8's `isRn()`, M9's `discipline_can_record_scale` ABAC, M10's
  * `hope.authorDisciplineAllowed`, M11's `discipline_can_order`/cosign-role re-derivation, M14's IDG
- * quorum, M15's required-signer quorum) — none of the 4 existing roles carry ANY of these tokens, so
+ * quorum, M15's required-signer quorum) — none of the base category roles carry these tokens, so
  * every one of those routes 403s regardless of how many permission keys the caller holds. This was
  * confirmed by tracing `context.roles` end-to-end through `packages/auth/src/identity/
  * db-session-store.ts` — it's the literal `role.key` values bound to the membership. Those seven
@@ -18,14 +18,15 @@
  * This script adds distinct staff logins, one per discipline persona, each granted the same
  * `clinical` permission-category set `casey@chartwarden.local` already gets (so the route's
  * `requirePermission` check passes) PLUS the specific role-key token(s) the ABAC/discipline checks
- * actually look for. Separate logins (not just extra roles bolted onto the existing 4) so
+ * actually look for. It also binds the base Casey persona to the RN role and credential needed by
+ * the shared clinical demo workflows. Separate staff logins keep
  * different-person-required scenarios — M11 cosign (drafter ≠ cosigner), M13 witness (different
  * membership), M15 supervisory visit (aide ≠ RN), M14 IDG quorum (4 distinct disciplines in one
  * meeting) — have a real second/third/fourth actor to use, not the same demo account role-juggling
  * against itself.
  *
  * Idempotent: additive-only — deletes/recreates just these fixed emails' Better Auth + membership
- * rows, never touches the org or the original 4 `db:seed` accounts.
+ * rows, never touches the org or the base `db:seed` accounts.
  * Prereqs: bun run db:seed (org + admin@chartwarden.local must exist — admin holds role.manage/role.assign
  * and every permission, so no anti-escalation block) AND bun run db:seed:org-structure (each
  * persona's membership is scoped to that script's fixed provider_entity/location).
@@ -510,7 +511,7 @@ async function main(): Promise<void> {
 
   await db.end();
 
-  // --- Append to CREDENTIALS.local.md (don't clobber the original 4 accounts' block). ---
+  // --- Append to CREDENTIALS.local.md (don't clobber the base accounts' block). ---
   const credsPath = SEED_CREDENTIALS_PATH;
   const existing = readFileSync(credsPath, "utf8");
   const marker = "\n## Discipline personas (bun run db:seed:staff)\n";
@@ -520,7 +521,7 @@ async function main(): Promise<void> {
     marker.trimStart(),
     "",
     "> Additive staff logins carrying the discipline role-key tokens (`rn`, `lpn`, `md`, `msw`, …)",
-    "> the clinical write routes gate on — the original 4 accounts above hold broad permission",
+    "> the clinical write routes gate on — the base accounts above hold broad permission",
     "> categories but no discipline token, so M7/M8/M9/M10/M11/M12/M13/M15/M17 writes 403 for them.",
     "",
     "| Persona | Email | Password | Role key(s) | Username |",

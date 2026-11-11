@@ -49,6 +49,13 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.review.task_needs_decision",
       "m36.death_board.assigned",
       "m36.death_board.needs_owner",
+      "m36.death_notification.attending",
+      "m36.death_notification.medical_director",
+      "m36.death_notification.bereavement_coordinator",
+      "m36.death_notification.billing_lead",
+      "m36.death_notification.blocked_no_baa",
+      "m36.death_notification.send_stranded",
+      "m36.death_notification.unacked",
       "alarm_ingest.nurse_call",
       "alarm_ingest.patient_sensor",
       "alarm_ingest.equipment",
@@ -147,6 +154,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // A tenant's clearinghouse is not live (nothing chosen, a draft config, or outside): its claim jobs are HELD and say so once.
       "m23.clearinghouse.unbound_hold",
       "m41.clearinghouse.unbound_with_work",
+      "m23.tenant_clearinghouse.baa_revoked",
+      "m23.clearinghouse.revoked_responses_pending",
       // A tenant billing outside ChartWarden recorded a NOE / NOTR it filed AFTER the due date.
       "m23.noe.filed_externally_late",
       "m23.notr.filed_externally_late",
@@ -244,6 +253,14 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.cop_review_overdue",
       "mdm.baa_expiring",
       "mdm.physician_deactivated",
+      // M12 DoseSpot e-prescribing: adapter degraded / recovered (M36 `dosespot-alerts`) and the registration deactivated.
+      "m12.dosespot_degraded",
+      "m12.dosespot_recovered",
+      // M12: a transmission whose outcome DoseSpot left unconfirmed is held, not retried.
+      "m12.medication_order.transmission_unconfirmed",
+      // M12: a transmission that exhausted its retry budget (or was resolved by an administrator as never sent) pages the administrators.
+      "m12.medication_order.transmission_failed",
+      "m12.dosespot_config.deactivated",
       // ADR-0109 D7 — the M16 bereavement program's oversight alerts.
       "m16.bereavement.death_intake",
       "m16.bereavement.physician_letter_pending_review",

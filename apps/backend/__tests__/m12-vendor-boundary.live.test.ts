@@ -21,11 +21,17 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient, schema } from "@chartwarden/db";
-import { createUnboundDoseSpotClient } from "@chartwarden/dosespot";
+import {
+  ConfigUnavailableError,
+  DegradedError,
+  NotEnabledError,
+  createUnboundDoseSpotClient,
+} from "@chartwarden/dosespot";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { DrizzleQueryError } from "drizzle-orm/errors";
 import Fastify from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { dosespotSyncDemographicsForOrg } from "../src/modules/05-patient/index";
 import type { DoseSpotWriteOutboxPort } from "../src/modules/12-dosespot/dosespot-route-service-db";
@@ -34,6 +40,8 @@ import {
   type DoseSpotSyncWorkerDeps,
   DosespotSyncQueueRepository,
   M12_OUTBOX_EVENTS,
+  createDoseSpotClinicService,
+  createDrizzleConfigStore,
   createDrizzleMedicationOrderEraseStore,
   createEnvWebhookSecretResolver,
   createUnboundWebhookSecretResolver,
@@ -44,6 +52,8 @@ import {
   registerDoseSpotWebhookRoute,
   runDoseSpotSyncQueueDrain,
 } from "../src/modules/12-dosespot/index";
+import { SYNC_MAX_ATTEMPTS } from "../src/modules/12-dosespot/jobs/sync-outcome";
+import { PATIENT_NOT_AT_CURRENT_CLINIC_TEXT } from "../src/modules/12-dosespot/jobs/worker";
 import { FakeDoseSpotVendor, FakeDoseSpotWebhookSender } from "./_fake-dosespot-vendor";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -948,6 +958,429 @@ describe.skipIf(!DB_URL)(
           processing_outcome: "order_not_found",
         });
         await app.close();
+      });
+    });
+
+    // ── ADR-0111 D6: a tenant that registered DoseSpot but is not live keeps its rows; a transient failure backs off and ends ───────────
+    describe("a tenant that is not live yet keeps its sync rows pending; a transient failure backs off and ends", () => {
+      /** Stands for a value that must never reach a persisted or logged message. */
+      const MARKER_DRUG_FOR_FAULT = "Morphine-MARKER-5d3";
+      /** A vendor whose patient upsert always throws `fault()` (the call is logged first: a test can assert it was never reached). */
+      class FailingVendor extends FakeDoseSpotVendor {
+        constructor(private readonly fault: () => Error) {
+          super();
+        }
+        override async upsertPatient(orgId: string): Promise<never> {
+          this.calls.push({ method: "upsertPatient", orgId });
+          throw this.fault();
+        }
+      }
+      const notEnabled = () =>
+        new NotEnabledError("dosespot", "upsertPatient", "E-prescribe is not enabled.", "c1");
+      const registerClinic = async (org: string, status: "registered" | "active") => {
+        const m = memberOf[org];
+        await admin.query("DELETE FROM dosespot_clinic_registration WHERE organization_id=$1", [
+          org,
+        ]);
+        await admin.query(
+          `INSERT INTO dosespot_clinic_registration (organization_id, environment, status, clinic_id, service_clinician_id,
+             secret_cipher, secret_dek_ref, registered_at, registered_by_membership_id, verified_at, verified_by_membership_id,
+             activated_at, activated_by_membership_id, set_by_membership_id)
+           VALUES ($1,'sandbox',$2,'clinic-1','900','sealed','dek-1', now(), $3,
+             CASE WHEN $2 = 'active' THEN now() END, CASE WHEN $2 = 'active' THEN $3::uuid END,
+             CASE WHEN $2 = 'active' THEN now() END, CASE WHEN $2 = 'active' THEN $3::uuid END, $3)`,
+          [org, status, m],
+        );
+      };
+      const rowOf = async (id: string) =>
+        (
+          await q(
+            "SELECT status, attempt_count, claimed_at, processed_at, last_error FROM dosespot_sync_queue WHERE id=$1",
+            [id],
+          )
+        )[0];
+      const syncRows = (patientId: string) =>
+        q("SELECT last_sync_outcome FROM dosespot_patient_sync WHERE patient_id=$1", [patientId]);
+      afterEach(async () => {
+        await admin.query("DELETE FROM dosespot_clinic_registration");
+        await admin.query("DELETE FROM dosespot_sync_queue");
+      });
+
+      it("a registered tenant whose config is not live: its rows are not claimed at all, nothing is sent, nothing is recorded as failed; they run the moment it is live", async () => {
+        await registerClinic(ORG_A, "registered");
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        const vendor = new FailingVendor(notEnabled);
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], { doseSpotClient: vendor, config: { configFor: async () => null } }),
+        );
+        expect(vendor.calls).toEqual([]);
+        expect(await rowOf(job)).toMatchObject({
+          status: "pending",
+          attempt_count: 0,
+          claimed_at: null,
+          processed_at: null,
+        });
+        expect(await syncRows(patientId)).toEqual([]);
+
+        // live now: the very same row runs
+        const live = new FakeDoseSpotVendor({ dosespotPatientId: "ds-live-1" });
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], {
+            doseSpotClient: live,
+            config: { configFor: async () => ({}) as never },
+          }),
+        );
+        expect((await rowOf(job)).status).toBe("completed");
+        expect(await syncRows(patientId)).toEqual([{ last_sync_outcome: "success" }]);
+      });
+
+      it("a registered tenant whose config could not be read is skipped the same way, and said (ids and the error class only)", async () => {
+        await registerClinic(ORG_A, "active");
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        const warned: Array<Record<string, string | number>> = [];
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], {
+            doseSpotClient: new FailingVendor(notEnabled),
+            config: {
+              configFor: async () => {
+                throw new ConfigUnavailableError("dosespot", "upsertPatient", "no key ring", "c2");
+              },
+            },
+            warn: (fields) => warned.push(fields),
+          }),
+        );
+        expect((await rowOf(job)).status).toBe("pending");
+        expect(warned).toEqual([{ organizationId: ORG_A, cause: "ConfigUnavailableError" }]);
+      });
+
+      it("a tenant that never registered anything keeps the old behaviour: `not enabled` ends its row (its patients are not parked for the day it switches DoseSpot on)", async () => {
+        const patientId = await seedPatient(ORG_B);
+        const job = await enqueueAs(ORG_B, "patient_sync", patientId);
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_B], {
+            doseSpotClient: new FailingVendor(notEnabled),
+            config: { configFor: async () => null },
+          }),
+        );
+        expect(await rowOf(job)).toMatchObject({
+          status: "failed",
+          last_error: "E-prescribe is not enabled.",
+        });
+      });
+
+      it("a registration that stops being live MID-batch (no preflight saw it) puts the row back with no attempt spent and no failed sync recorded", async () => {
+        await registerClinic(ORG_A, "active");
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], { doseSpotClient: new FailingVendor(notEnabled) }),
+        );
+        expect(await rowOf(job)).toMatchObject({
+          status: "pending",
+          attempt_count: 0,
+          last_error: "E-prescribe is not enabled.",
+        });
+        expect(await syncRows(patientId)).toEqual([]);
+      });
+
+      it("a failure whose message carries the statement's bound parameters persists none of them: not in last_error, not in the audit row", async () => {
+        const MARKER = "Morphine-MARKER-7c1";
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        const vendor = new FailingVendor(
+          () =>
+            new DrizzleQueryError(
+              'insert into "medication_history_record" ("drug_name") values ($1)',
+              [MARKER],
+              Object.assign(new Error("duplicate key value violates unique constraint"), {
+                code: "23505",
+                severity: "ERROR",
+                detail: `Key (drug_name)=(${MARKER}) already exists.`,
+                table: "medication_history_record",
+              }),
+            ),
+        );
+        await runDoseSpotSyncQueueDrain(workerDeps([ORG_A], { doseSpotClient: vendor }));
+        const ended = await rowOf(job);
+        expect(ended.status).toBe("failed");
+        expect(ended.last_error).toContain("23505"); // diagnosable
+        expect(ended.last_error).not.toContain(MARKER);
+        const audited = await q(
+          "SELECT 1 FROM audit_event WHERE before::text LIKE $1 OR after::text LIKE $1 OR context::text LIKE $1",
+          [`%${MARKER}%`],
+        );
+        expect(audited).toEqual([]);
+        // and the audit trigger did see the write (the assertion above is not vacuous)
+        expect(
+          (
+            await q(
+              "SELECT 1 FROM audit_event WHERE resource_kind = 'dosespot_sync_queue' AND resource_id = $1",
+              [job],
+            )
+          ).length,
+        ).toBeGreaterThan(0);
+      });
+
+      const clinicService = createDoseSpotClinicService({
+        probe: { probe: async () => "ok" },
+        env: { DOSESPOT_SANDBOX_ENABLED: "true" },
+      });
+      /** The tenant moves to another DoseSpot clinic (the real PUT: the registration changes and the old clinic's vendor ids are cleared). */
+      const move = () =>
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: USER }, (tx) =>
+          clinicService.put(
+            createDrizzleConfigStore(tx as unknown as DbClient),
+            {
+              organizationId: ORG_A,
+              userId: USER,
+              membershipId: memberOf[ORG_A] as string,
+              lane: "tenant",
+            },
+            { environment: "production", clinicId: "clinic-new" },
+            1,
+          ),
+        );
+
+      it("a patient upsert that overlapped a clinic move records NO vendor id (the old clinic's): the row waits and runs again under the new registration", async () => {
+        await registerClinic(ORG_A, "active");
+        /** The idempotency key of every upsert, in order (the Fake does not keep it). */
+        const upsertKeys: Array<string | undefined> = [];
+        /** The registration target the worker said it began each upsert under (the adapter refuses a request that would go out under another). */
+        const upsertTargets: Array<string | undefined> = [];
+        class MovingVendor extends FakeDoseSpotVendor {
+          override async upsertPatient(
+            orgId: string,
+            payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
+            idempotencyKey?: string,
+            options?: { expectedTarget?: string },
+          ) {
+            upsertKeys.push(idempotencyKey);
+            upsertTargets.push(options?.expectedTarget);
+            const out = await super.upsertPatient(orgId, payload);
+            if (this.calls.filter((c) => c.method === "upsertPatient").length === 1) await move();
+            return out;
+          }
+        }
+        class KeyLoggingVendor extends FakeDoseSpotVendor {
+          override async upsertPatient(
+            orgId: string,
+            payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
+            idempotencyKey?: string,
+            options?: { expectedTarget?: string },
+          ) {
+            upsertKeys.push(idempotencyKey);
+            upsertTargets.push(options?.expectedTarget);
+            return super.upsertPatient(orgId, payload);
+          }
+        }
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        const warned: Array<Record<string, string | number>> = [];
+        const vendor = new MovingVendor({ dosespotPatientId: "old-clinic-patient-1" });
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], { doseSpotClient: vendor, warn: (fields) => warned.push(fields) }),
+        );
+        expect(await syncRows(patientId)).toEqual([]); // the old clinic's id was not recorded
+        expect(await rowOf(job)).toMatchObject({ status: "pending", attempt_count: 0 });
+        expect(warned).toEqual([{ organizationId: ORG_A, patientId, class: "registration_moved" }]);
+        expect(
+          (await eventsOf("m12.dosespot_patient_synced", ORG_A)).filter(
+            (e) => (e.payload as { patientId?: string }).patientId === patientId,
+          ),
+        ).toHaveLength(0);
+
+        // the registration is the new clinic's now: the same row runs again and records the id the NEW clinic issues
+        const next = new KeyLoggingVendor({ dosespotPatientId: "new-clinic-patient-1" });
+        await runDoseSpotSyncQueueDrain(workerDeps([ORG_A], { doseSpotClient: next }));
+        expect((await rowOf(job)).status).toBe("completed");
+        // the patient did not change, but the clinic did: the second upsert does NOT carry the key the old clinic already answered
+        expect(upsertKeys).toHaveLength(2);
+        expect(upsertKeys[0]).toMatch(/^patient:[0-9a-f-]+:.+:[0-9a-f]{16}$/);
+        expect(upsertKeys[1]).toMatch(/^patient:[0-9a-f-]+:.+:[0-9a-f]{16}$/);
+        expect(upsertKeys[1]).not.toBe(upsertKeys[0]);
+        expect(upsertKeys.join(" ")).not.toContain("clinic-");
+        // and each upsert named the clinic it began under, so the adapter can refuse a request that would go out under another
+        expect(upsertTargets).toEqual(["sandbox:clinic-1", "production:clinic-new"]);
+        expect(
+          await q(
+            "SELECT last_dosespot_patient_id id FROM dosespot_patient_sync WHERE patient_id=$1",
+            [patientId],
+          ),
+        ).toEqual([{ id: "new-clinic-patient-1" }]);
+      });
+
+      it("a patient upsert that FAILS for good after a clinic move (the old clinic's patient id refused under the new one) does not end the row: it waits and runs again", async () => {
+        await registerClinic(ORG_A, "active");
+        class MoveThenRefuse extends FakeDoseSpotVendor {
+          override async upsertPatient(orgId: string): Promise<never> {
+            this.calls.push({ method: "upsertPatient", orgId });
+            await move();
+            throw new DegradedError(
+              "dosespot",
+              "upsertPatient",
+              false,
+              "DoseSpot rejected the request (HTTP 404).",
+              "c7",
+            );
+          }
+        }
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        const warned: Array<Record<string, string | number>> = [];
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], {
+            doseSpotClient: new MoveThenRefuse(),
+            warn: (fields) => warned.push(fields),
+          }),
+        );
+        expect(await rowOf(job)).toMatchObject({ status: "pending", attempt_count: 0 }); // not failed, no attempt spent
+        expect(await syncRows(patientId)).toEqual([]); // and no sync failure recorded for the patient
+        expect(warned).toEqual([{ organizationId: ORG_A, patientId, class: "registration_moved" }]);
+      });
+
+      // `dosespot_sync_queue_pending_uq` allows one PENDING row per (org, kind, patient). A demographic change enqueues a pending row while the first is
+      // still processing; when the processing row then goes back to `pending` (a defer or a requeue) it would collide with it.
+      describe("a processing row that goes back to pending while a sibling is already pending ends instead of colliding with it", () => {
+        const siblingThenFail = (patientId: string, fault: () => Error) =>
+          class extends FailingVendor {
+            constructor() {
+              super(fault);
+            }
+            override async upsertPatient(orgId: string): Promise<never> {
+              await enqueueAs(ORG_A, "patient_sync", patientId); // the change lands while this row is processing: a pending sibling
+              return super.upsertPatient(orgId);
+            }
+          };
+
+        it("a DEFER (the registration is not live mid-batch): no unique violation, the row ends, the sibling stays pending, the drain does not throw", async () => {
+          await registerClinic(ORG_A, "active");
+          const patientId = await seedPatient(ORG_A);
+          const first = await enqueueAs(ORG_A, "patient_sync", patientId);
+          const Vendor = siblingThenFail(patientId, notEnabled);
+          await runDoseSpotSyncQueueDrain(workerDeps([ORG_A], { doseSpotClient: new Vendor() }));
+          expect(await rowOf(first)).toMatchObject({
+            status: "completed",
+            last_error: "superseded by a newer pending job for the same patient",
+          });
+          expect(
+            await q(
+              "SELECT status FROM dosespot_sync_queue WHERE patient_id=$1 AND id<>$2 ORDER BY enqueued_at",
+              [patientId, first],
+            ),
+          ).toEqual([{ status: "pending" }]);
+        });
+
+        it("a REQUEUE (a transient vendor failure) does the same, and the attempt it spent is counted", async () => {
+          await registerClinic(ORG_A, "active");
+          const patientId = await seedPatient(ORG_A);
+          const first = await enqueueAs(ORG_A, "patient_sync", patientId);
+          const Vendor = siblingThenFail(
+            patientId,
+            () => new DegradedError("dosespot", "upsertPatient", true, "Vendor busy.", "c8"),
+          );
+          await runDoseSpotSyncQueueDrain(workerDeps([ORG_A], { doseSpotClient: new Vendor() }));
+          expect(await rowOf(first)).toMatchObject({ status: "completed", attempt_count: 1 });
+          expect(
+            (
+              await q(
+                "SELECT count(*)::int n FROM dosespot_sync_queue WHERE patient_id=$1 AND status='pending'",
+                [patientId],
+              )
+            )[0]?.n,
+          ).toBe(1);
+        });
+      });
+
+      it("a row whose outcome cannot be recorded is ended as failed (a class only, no message) and the org's later rows still run", async () => {
+        await registerClinic(ORG_A, "active");
+        const [p1, p2] = [await seedPatient(ORG_A), await seedPatient(ORG_A)];
+        const r1 = await enqueueAs(ORG_A, "patient_sync", p1);
+        const r2 = await enqueueAs(ORG_A, "patient_sync", p2);
+        let armed = false;
+        class ArmingVendor extends FakeDoseSpotVendor {
+          override async upsertPatient(
+            orgId: string,
+            payload: Parameters<FakeDoseSpotVendor["upsertPatient"]>[1],
+          ) {
+            if (payload.chartwardenPatientId === p1) armed = true; // the NEXT clock read is the first row's settle
+            return super.upsertPatient(orgId, payload);
+          }
+        }
+        const warned: Array<Record<string, string | number>> = [];
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_A], {
+            doseSpotClient: new ArmingVendor(),
+            warn: (fields) => warned.push(fields),
+            now: () => {
+              if (armed) {
+                armed = false;
+                throw new Error(`clock fault ${MARKER_DRUG_FOR_FAULT}`);
+              }
+              return new Date();
+            },
+          }),
+        );
+        const ended = await rowOf(r1);
+        expect(ended.status).toBe("failed");
+        expect(ended.last_error).toContain("Error"); // the class
+        expect(ended.last_error).not.toContain(MARKER_DRUG_FOR_FAULT); // never the message
+        expect((await rowOf(r2)).status).toBe("completed"); // not stranded in `processing`
+        expect(warned.filter((w) => w.patientId === p1)).toHaveLength(1);
+        expect(JSON.stringify(warned)).not.toContain(MARKER_DRUG_FOR_FAULT);
+      });
+
+      it("a MedHx fetch for a patient whose vendor id a clinic move cleared ends with a message that says so; one for a never-synced patient keeps its own", async () => {
+        const moved = await seedPatient(ORG_B);
+        await admin.query(
+          "INSERT INTO dosespot_patient_sync (organization_id, patient_id, last_sync_outcome, last_error_class) VALUES ($1,$2,'failed','registration_retargeted')",
+          [ORG_B, moved],
+        );
+        const never = await seedPatient(ORG_B);
+        const movedJob = await enqueueAs(ORG_B, "medhx_fetch", moved);
+        const neverJob = await enqueueAs(ORG_B, "medhx_fetch", never);
+        await runDoseSpotSyncQueueDrain(
+          workerDeps([ORG_B], { doseSpotClient: new FakeDoseSpotVendor() }),
+        );
+        expect(await rowOf(movedJob)).toMatchObject({
+          status: "failed",
+          last_error: PATIENT_NOT_AT_CURRENT_CLINIC_TEXT,
+        });
+        const neverRow = await rowOf(neverJob);
+        expect(neverRow.status).toBe("failed");
+        expect(neverRow.last_error).toContain("the prior patient-sync has not succeeded yet");
+      });
+
+      it(`a retryable failure backs off by attempt count and the row ends after ${SYNC_MAX_ATTEMPTS} attempts (never retried every tick forever)`, async () => {
+        const patientId = await seedPatient(ORG_A);
+        const job = await enqueueAs(ORG_A, "patient_sync", patientId);
+        const vendor = new FailingVendor(
+          () => new DegradedError("dosespot", "upsertPatient", true, "Vendor busy.", "c3"),
+        );
+        let clock = new Date("2026-11-09T12:00:00.000Z");
+        const tick = () =>
+          runDoseSpotSyncQueueDrain(
+            workerDeps([ORG_A], { doseSpotClient: vendor, now: () => clock }),
+          );
+        const minutes = (n: number) => new Date(clock.getTime() + n * 60_000);
+        for (let attempt = 1; attempt <= SYNC_MAX_ATTEMPTS; attempt += 1) {
+          await tick();
+          expect(vendor.calls).toHaveLength(attempt);
+          if (attempt < SYNC_MAX_ATTEMPTS) {
+            expect(await rowOf(job)).toMatchObject({ status: "pending", attempt_count: attempt });
+            // inside the backoff window the row is NOT claimed again
+            await tick();
+            expect(vendor.calls).toHaveLength(attempt);
+            clock = minutes(Math.min(2 ** (attempt - 1), 60) + 1);
+          }
+        }
+        const ended = await rowOf(job);
+        expect(ended).toMatchObject({ status: "failed", attempt_count: SYNC_MAX_ATTEMPTS });
+        expect(ended.last_error).toBe(`Vendor busy. (gave up after ${SYNC_MAX_ATTEMPTS} attempts)`);
+        await tick();
+        expect(vendor.calls).toHaveLength(SYNC_MAX_ATTEMPTS); // a failed row is never claimed again
+        expect(await syncRows(patientId)).toEqual([{ last_sync_outcome: "failed" }]);
       });
     });
   },

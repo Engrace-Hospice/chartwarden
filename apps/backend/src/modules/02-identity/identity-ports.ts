@@ -433,6 +433,8 @@ export interface CollaboratorScope {
   readonly sessionTtlSec?: number;
   /** Redemptions spent including this one (durable store only). */
   readonly useCount?: number;
+  /** The funeral_home entity a funeral link was minted for (durable store; absent only on revoked legacy links before migration 1479). */
+  readonly funeralHomeEntityId?: string;
 }
 
 /** What a durable store reports about a refused redemption of a link it KNOWS (audit-only; never sent to a client). */
@@ -457,6 +459,10 @@ export interface CollaboratorLinkStore {
     sessionTtlSec?: number;
     /** Redemptions the link allows (default 1 - single use). Durable store only. */
     maxUses?: number;
+    /** Funeral links: the MDM funeral_home entity whose BAA was checked; re-checked at redemption. Durable store only. */
+    funeralHomeEntityId?: string;
+    /** Optional M36 send-attempt id, used to reconcile only the credential minted by that attempt. */
+    disclosureAttemptId?: string;
   }): Promise<CreatedLink> | CreatedLink;
   /** Atomically consume a token → its scope. Throws on expired/used (route maps to 410/409). */
   consume(token: string): Promise<CollaboratorScope> | CollaboratorScope;
@@ -466,7 +472,21 @@ export interface CollaboratorLinkStore {
    */
   release?(scope: { organizationId: string; linkId: string }): Promise<void>;
   /** Revoke ONE link (durable store only), e.g. when its token could not be delivered. Idempotent and org-scoped. */
-  revoke?(scope: { organizationId: string; linkId: string }): Promise<void>;
+  revoke(scope: { organizationId: string; linkId: string }): Promise<void>;
+  /** Revoke the live funeral credential minted by one M36 disclosure attempt, plus a pinned id when known. */
+  revokeForDisclosureAttempt?(scope: {
+    organizationId: string;
+    disclosureAttemptId: string;
+    linkId?: string;
+  }): Promise<number>;
+  /**
+   * The funeral link a redeemed session belongs to (durable store only): its id and the funeral home whose BAA was checked at mint (null on a
+   * revoked legacy link minted before migration 1479). Null when no such active link. Lets a funeral-home session read re-check the BAA.
+   */
+  funeralLinkForPrincipal?(scope: {
+    organizationId: string;
+    principalUserId: string;
+  }): Promise<{ linkId: string; funeralHomeEntityId: string | null } | null>;
   /** Revoke every live link for a patient (durable store only) - e.g. the patient is no longer deceased. */
   revokeForPatient?(scope: { organizationId: string; patientId: string }): Promise<number>;
 }
@@ -669,6 +689,16 @@ export interface IdentityRouteDeps {
    * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE` (fail closed).
    */
   deceasedPatients?: DeceasedPatientReader;
+  /**
+   * An executed, unexpired BAA is on file for this funeral home as of `asOf` (M40's register, injected: M2 may not import it; the
+   * composition root binds the SAME rule the M36 death notice uses). Unbound -> `POST /funeral/invite` refuses 503
+   * `FUNERAL_BAA_UNAVAILABLE`; false or a throw -> 409 `FUNERAL_HOME_BAA_REQUIRED`. Fail closed.
+   */
+  funeralHomeBaaActive?: (
+    organizationId: string,
+    funeralHomeId: string,
+    asOf: Date,
+  ) => Promise<boolean>;
   /**
    * GAP-115 follow-up - the server-only Better Auth session mint behind link redemption. Unbound ->
    * `POST /collaborators/consume` keeps its legacy slice behaviour (no session row); a durable mount ALWAYS binds
@@ -1074,10 +1104,14 @@ export function createInMemoryCollaboratorLinkStore(): {
         organizationId,
         patientId,
         kind: kind ?? "external_collaborator",
+        linkId,
         expiresAtMs: Date.now() + ttlMs,
         consumed: false,
       });
       return { linkId, expiresAt: new Date(Date.now() + ttlMs).toISOString(), token };
+    },
+    async revoke({ linkId }) {
+      for (const link of links.values()) if (link.linkId === linkId) link.consumed = true; // a spent link cannot be redeemed
     },
     consume(token) {
       const link = links.get(token);

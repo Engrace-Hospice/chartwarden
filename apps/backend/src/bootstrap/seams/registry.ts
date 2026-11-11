@@ -39,6 +39,7 @@ import {
   bereavementRiskNarrativeProviderDenyStub,
   bereavementRiskTierProviderDenyStub,
   billableEncounterReaderDenyStub,
+  billingServiceModeReaderDenyStub,
   billingStatusProviderDenyStub,
   capAccrualReaderDenyStub,
   capProjectionProviderDenyStub,
@@ -758,14 +759,6 @@ export const REQUIRED_SEAMS = [
     phi: false,
     denyStub: claimsBillingEntitlementReaderDenyStub,
   },
-  // Slice 2 — an org's NET COLLECTIONS for a period, the M35 billing-service meter (owner M25). One aggregate dollar total
-  // per call, no patient row, claim id or MBI crosses → phi:false.
-  {
-    key: "NetCollectionsReader",
-    ownerModule: 25,
-    phi: false,
-    denyStub: netCollectionsReaderDenyStub,
-  },
   // Owner decision D1 (2026-11-06): a suspended / paused / canceled subscription still blocks NEW claims work; M23's
   // claims-billing decision reads it. Aggregate subscription status → phi:false.
   {
@@ -780,6 +773,21 @@ export const REQUIRED_SEAMS = [
     ownerModule: 23,
     phi: false,
     denyStub: tenantClearinghouseReaderDenyStub,
+  },
+  // Slice 2 (tenant pricing) — the subscription's billing service mode (owner M35). One enum value per org → phi:false.
+  {
+    key: "BillingServiceModeReader",
+    ownerModule: 35,
+    phi: false,
+    denyStub: billingServiceModeReaderDenyStub,
+  },
+  // Slice 2 — an org's NET COLLECTIONS for a period, the M35 billing-service meter (owner M25). One aggregate dollar total
+  // per call, no patient row, claim id or MBI crosses → phi:false.
+  {
+    key: "NetCollectionsReader",
+    ownerModule: 25,
+    phi: false,
+    denyStub: netCollectionsReaderDenyStub,
   },
   {
     key: "RevenueMetricsProvider",

@@ -11,6 +11,7 @@ import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-83
 import { and, eq, or, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
+import { decimalDollarsToCents } from "../domain/era-match-review";
 import type { WriteOutboxPort } from "../routes/write-service";
 import { claimMdEraM25SerializationKey } from "./claimmd-era-duplicate";
 import type {
@@ -60,17 +61,102 @@ export interface M25ValidatedPostingInput {
 }
 
 export interface M25TransactionPostingPort {
+  /** M25-owned interpretation for the constrained Claim.MD controlled-posting contract. */
+  assessClaimMdFinancialFacts(claim: ParsedClaim835): Promise<M25ClaimMdFinancialAssessment>;
   /**
    * Apply the single supported, already-validated claim association inside the caller's transaction.
    * No transaction is opened here; callers must own authorization and transaction lifecycle.
-   * This internal seam intentionally accepts only the narrow no-adjustment/no-PLB fully-paid case.
+   * This internal seam accepts only the established fully-paid case and the BIL-4.2 OA review-only partial case.
    */
   postValidatedClaimInTransaction(
     tx: M25Tx,
     actor: M25IngestActor,
     input: M25ValidatedPostingInput,
   ): Promise<{ readonly outcome: "posted" | "already_posted"; readonly remittanceLineId?: string }>;
+  /** Atomic all-claim variant. The association array is aligned with the immutable parsed CLP order. */
+  postValidatedClaimsInTransaction(
+    tx: M25Tx,
+    actor: M25IngestActor,
+    input: Omit<M25ValidatedPostingInput, "association"> & {
+      readonly associations: readonly M25ValidatedClaimAssociation[];
+    },
+  ): Promise<{
+    readonly outcome: "posted" | "already_posted";
+    readonly remittanceLineIds: readonly string[];
+  }>;
 }
+
+export type M25ClaimMdFinancialAssessment =
+  | {
+      readonly status: "fully_paid";
+      readonly chargeCents: number;
+      readonly paidCents: number;
+      readonly patientResponsibilityCents: 0;
+      readonly adjustments: readonly [];
+      readonly unresolvedCents: 0;
+    }
+  | {
+      readonly status: "partial_paid";
+      readonly chargeCents: number;
+      readonly paidCents: number;
+      readonly patientResponsibilityCents: 0;
+      readonly adjustments: readonly [
+        M25ClaimMdReportedAdjustment & {
+          readonly scope: "claim";
+          readonly groupCode: "OA";
+          readonly reasonCode: string;
+          readonly amountCents: number;
+          readonly classification: "other_adjustment_unresolved";
+          readonly m25Action: "flagged_review";
+        },
+      ];
+      readonly unresolvedCents: number;
+    }
+  | {
+      readonly status: "unsupported";
+      readonly blocker:
+        | "UNSUPPORTED_FINANCIAL_FACTS"
+        | "ADJUSTMENT_CLASSIFICATION_UNAVAILABLE"
+        | "CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"
+        | "PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE"
+        | "PAYER_REDUCTION_POLICY_UNAVAILABLE";
+      readonly chargeCents: number | null;
+      readonly paidCents: number | null;
+      readonly patientResponsibilityCents: number | null;
+      readonly adjustments: readonly M25ClaimMdReportedAdjustment[];
+      readonly unresolvedCents: number | null;
+    };
+
+export interface M25ClaimMdReportedAdjustment {
+  readonly scope: "claim";
+  readonly groupCode: "CO" | "PR" | "OA" | "PI" | "CR" | "unknown";
+  readonly reasonCode: string | null;
+  readonly amountCents: number | null;
+  readonly responsibility:
+    | "provider_reported"
+    | "patient_reported"
+    | "other_unallocated"
+    | "payer_initiated_reported"
+    | "correction_or_reversal_reported"
+    | "unsupported";
+  /** Classification of the reported source fact is not authorization to perform this action. */
+  readonly accountingDisposition: "unresolved_review" | "policy_required";
+  readonly policyVersion: null;
+  readonly m25Action: "flagged_review" | "not_authorized";
+  readonly classification:
+    | "contractual_obligation_reported"
+    | "patient_responsibility_reported"
+    | "other_adjustment_unresolved"
+    | "payer_initiated_reduction_reported"
+    | "correction_or_reversal_reported"
+    | "unsupported";
+}
+type M25ClaimMdFinancialBlocker =
+  | "UNSUPPORTED_FINANCIAL_FACTS"
+  | "ADJUSTMENT_CLASSIFICATION_UNAVAILABLE"
+  | "CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"
+  | "PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE"
+  | "PAYER_REDUCTION_POLICY_UNAVAILABLE";
 
 // Keep the privileged internal seam off the M25 ingest service object passed to route registrars.
 // The direct-file accessor is intentionally not re-exported by the M25 module barrel.
@@ -178,6 +264,14 @@ export interface M25IngestDrizzleDeps {
 
 function money(n: number): string {
   return n.toFixed(2);
+}
+
+function moneyCents(n: number): bigint {
+  const normalized = money(n);
+  const negative = normalized.startsWith("-");
+  const [whole = "0", fraction = "00"] = normalized.replace(/^-/, "").split(".");
+  const cents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
+  return negative ? -cents : cents;
 }
 
 /**
@@ -298,6 +392,171 @@ export function buildDrizzleM25IngestService(
       return looked.category as DenialCategory;
     }
     return null;
+  }
+
+  async function assessClaimMdFinancialFacts(
+    claim: ParsedClaim835,
+  ): Promise<M25ClaimMdFinancialAssessment> {
+    const chargeCents = decimalDollarsToCents(claim.totalCharge);
+    const paidCents = decimalDollarsToCents(claim.totalPayment);
+    const patientResponsibilityCents = decimalDollarsToCents(claim.patientResponsibility);
+    const unsupported = (
+      blocker:
+        | M25ClaimMdFinancialBlocker
+        | "CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"
+        | "PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE"
+        | "PAYER_REDUCTION_POLICY_UNAVAILABLE",
+      adjustments: readonly M25ClaimMdReportedAdjustment[] = [],
+    ): M25ClaimMdFinancialAssessment => ({
+      status: "unsupported",
+      blocker,
+      chargeCents,
+      paidCents,
+      patientResponsibilityCents,
+      adjustments,
+      unresolvedCents: chargeCents !== null && paidCents !== null ? chargeCents - paidCents : null,
+    });
+
+    const reportedAdjustments = claim.adjustments.map(
+      (adjustment): M25ClaimMdReportedAdjustment => {
+        const groupCode = ["CO", "PR", "OA", "PI", "CR"].includes(adjustment.groupCode ?? "")
+          ? (adjustment.groupCode as M25ClaimMdReportedAdjustment["groupCode"])
+          : "unknown";
+        const responsibility: M25ClaimMdReportedAdjustment["responsibility"] =
+          groupCode === "CO"
+            ? "provider_reported"
+            : groupCode === "PR"
+              ? "patient_reported"
+              : groupCode === "OA"
+                ? "other_unallocated"
+                : groupCode === "PI"
+                  ? "payer_initiated_reported"
+                  : groupCode === "CR"
+                    ? "correction_or_reversal_reported"
+                    : "unsupported";
+        const classification: M25ClaimMdReportedAdjustment["classification"] =
+          groupCode === "CO"
+            ? "contractual_obligation_reported"
+            : groupCode === "PR"
+              ? "patient_responsibility_reported"
+              : groupCode === "OA"
+                ? "other_adjustment_unresolved"
+                : groupCode === "PI"
+                  ? "payer_initiated_reduction_reported"
+                  : groupCode === "CR"
+                    ? "correction_or_reversal_reported"
+                    : "unsupported";
+        return {
+          scope: "claim",
+          groupCode,
+          reasonCode: adjustment.reasonCode ?? null,
+          amountCents: decimalDollarsToCents(adjustment.amount),
+          responsibility,
+          accountingDisposition: groupCode === "OA" ? "unresolved_review" : "policy_required",
+          policyVersion: null,
+          m25Action: groupCode === "OA" ? "flagged_review" : "not_authorized",
+          classification,
+        };
+      },
+    );
+
+    if (
+      claim.statusCode !== 1 ||
+      chargeCents === null ||
+      chargeCents <= 0 ||
+      paidCents === null ||
+      paidCents <= 0 ||
+      claim.remarks.length > 0 ||
+      claim.serviceLines.length > 0
+    )
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    if (
+      paidCents === chargeCents &&
+      claim.adjustments.length === 0 &&
+      patientResponsibilityCents === 0
+    ) {
+      return {
+        status: "fully_paid",
+        chargeCents,
+        paidCents,
+        patientResponsibilityCents: 0,
+        adjustments: [],
+        unresolvedCents: 0,
+      };
+    }
+
+    const adjustment = claim.adjustments[0];
+    if (
+      paidCents >= chargeCents ||
+      claim.adjustments.length !== 1 ||
+      !adjustment ||
+      !/^\d{1,5}$/.test(adjustment.reasonCode) ||
+      adjustment.quantity !== undefined ||
+      (claim.references?.length ?? 0) > 0
+    )
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    const amountCents = decimalDollarsToCents(adjustment.amount);
+    const unresolvedCents = chargeCents - paidCents;
+    if (amountCents === null || amountCents <= 0 || amountCents !== unresolvedCents)
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    const catalogCategory = await resolveCategory(adjustment.reasonCode);
+    if (
+      !catalogCategory ||
+      catalogCategory === "denial" ||
+      catalogCategory === "recoupment" ||
+      catalogCategory === "unmapped"
+    )
+      return unsupported("ADJUSTMENT_CLASSIFICATION_UNAVAILABLE", reportedAdjustments);
+
+    // A payer-reported group describes responsibility; it does not itself authorize a M25 effect.
+    // Retain the source facts and fail closed where the tenant/payer policy contract is absent.
+    if (adjustment.groupCode === "CO") {
+      if (patientResponsibilityCents !== 0)
+        return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+      return unsupported("CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE", reportedAdjustments);
+    }
+
+    if (adjustment.groupCode === "PR") {
+      if (patientResponsibilityCents !== amountCents)
+        return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+      return unsupported("PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE", reportedAdjustments);
+    }
+    if (adjustment.groupCode === "PI") {
+      if (patientResponsibilityCents !== 0)
+        return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+      return unsupported("PAYER_REDUCTION_POLICY_UNAVAILABLE", reportedAdjustments);
+    }
+
+    if (adjustment.groupCode !== "OA" || patientResponsibilityCents !== 0)
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    const routed = routeAdjustment("OA", effectiveCategory(catalogCategory).category, "mapped");
+    if (routed.postAction !== "flagged_review" || routed.seedDenial || routed.seedPrLedger)
+      return unsupported("ADJUSTMENT_CLASSIFICATION_UNAVAILABLE", reportedAdjustments);
+
+    return {
+      status: "partial_paid",
+      chargeCents,
+      paidCents,
+      patientResponsibilityCents: 0,
+      adjustments: [
+        {
+          scope: "claim",
+          groupCode: "OA",
+          reasonCode: adjustment.reasonCode,
+          amountCents,
+          classification: "other_adjustment_unresolved",
+          responsibility: "other_unallocated",
+          accountingDisposition: "unresolved_review",
+          policyVersion: null,
+          m25Action: "flagged_review",
+        },
+      ],
+      unresolvedCents,
+    };
   }
 
   /** Post one CLP claim's line + service lines + adjustments + remarks. Returns the match/posting facts. */
@@ -916,12 +1175,8 @@ export function buildDrizzleM25IngestService(
     });
   }
 
-  const serviceWithInternalPort = {
-    async postValidatedClaimInTransaction(
-      tx: M25Tx,
-      actor: M25IngestActor,
-      input: M25ValidatedPostingInput,
-    ) {
+  const postValidatedClaimsInTransaction: M25TransactionPostingPort["postValidatedClaimsInTransaction"] =
+    async (tx, actor, input) => {
       // This is an internal M25 domain seam, not a route. The caller owns authorization and `tx`;
       // the function never opens/commits a transaction or performs network I/O.
       const [advice] = await tx
@@ -945,17 +1200,24 @@ export function buildDrizzleM25IngestService(
         .limit(1);
       if (!advice || advice.organizationId !== actor.organizationId)
         throw new Error("M25_ADVICE_NOT_FOUND");
-      if (
-        advice.providerEntityId !== input.association.providerEntityId ||
-        input.association.organizationId !== actor.organizationId
-      )
-        throw new Error("M25_EXPLICIT_ASSOCIATION_SCOPE_MISMATCH");
-      if (
-        !input.association.evidenceId.trim() ||
-        !Number.isInteger(input.association.evidenceVersion) ||
-        input.association.evidenceVersion < 1
-      )
-        throw new Error("M25_EXPLICIT_ASSOCIATION_EVIDENCE_INVALID");
+      if (input.associations.length < 1 || input.associations.length !== input.parsed.claims.length)
+        throw new Error("M25_EXPLICIT_ASSOCIATION_COUNT_MISMATCH");
+      const claimIds = new Set<string>();
+      for (const association of input.associations) {
+        if (
+          advice.providerEntityId !== association.providerEntityId ||
+          association.organizationId !== actor.organizationId
+        )
+          throw new Error("M25_EXPLICIT_ASSOCIATION_SCOPE_MISMATCH");
+        if (
+          !association.evidenceId.trim() ||
+          !Number.isInteger(association.evidenceVersion) ||
+          association.evidenceVersion < 1 ||
+          claimIds.has(association.claimId)
+        )
+          throw new Error("M25_EXPLICIT_ASSOCIATION_EVIDENCE_INVALID");
+        claimIds.add(association.claimId);
+      }
       if (
         advice.fileSha256.toLowerCase() !== input.sourceFileSha256.toLowerCase() ||
         m25ContentDigestOf(input.parsed) !== advice.contentDigest ||
@@ -964,36 +1226,41 @@ export function buildDrizzleM25IngestService(
       )
         throw new Error("M25_POSTING_SOURCE_STALE");
       if (advice.parseStatus === "posted" || advice.parseStatus === "partial_posted") {
-        const [priorLine] = await tx
+        const priorLines = await tx
           .select({ id: RL.id, claimId: RL.claimId })
           .from(RL)
           .where(eq(RL.remittanceAdviceId, advice.id))
-          .limit(1);
-        if (!priorLine || priorLine.claimId !== input.association.claimId)
+          .orderBy(RL.receivedAt, RL.id);
+        const priorByClaim = new Map(priorLines.map((line) => [line.claimId, line.id]));
+        const remittanceLineIds = input.associations.map((association) =>
+          priorByClaim.get(association.claimId),
+        );
+        if (
+          priorLines.length !== input.associations.length ||
+          remittanceLineIds.some((lineId) => !lineId)
+        )
           throw new Error("M25_POSTING_IDEMPOTENCY_CONFLICT");
-        return { outcome: "already_posted" as const, remittanceLineId: priorLine.id };
+        return {
+          outcome: "already_posted" as const,
+          remittanceLineIds: remittanceLineIds as string[],
+        };
       }
       if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed")
         throw new Error("M25_ADVICE_NOT_POSTABLE");
 
-      // BIL-3.4.3 deliberately enables only an uncomplicated, fully paid claim-level case.
-      // Unsupported facts are refused before any financial row or outbox event is written.
-      const claim = input.parsed.claims[0];
+      const claims = input.parsed.claims;
       const plb = input.parsed.providerAdjustments ?? [];
+      const assessments = await Promise.all(claims.map(assessClaimMdFinancialFacts));
       if (
-        input.parsed.claims.length !== 1 ||
+        claims.length < 1 ||
         plb.length !== 0 ||
         (input.parsed.providerAdjustmentTotal ?? 0) !== 0 ||
         (input.parsed.unknownSegments?.length ?? 0) !== 0 ||
-        !claim ||
-        claim.statusCode !== 1 ||
-        claim.totalPayment <= 0 ||
-        money(claim.totalCharge) !== money(claim.totalPayment) ||
-        money(claim.patientResponsibility) !== "0.00" ||
-        claim.adjustments.length !== 0 ||
-        claim.remarks.length !== 0 ||
-        claim.serviceLines.length !== 0 ||
-        classifyPostingOutcome(claim.statusCode, claim.totalCharge, claim.totalPayment) !== "paid"
+        assessments.some((assessment) => assessment.status === "unsupported") ||
+        (claims.length !== 1 &&
+          assessments.some((assessment) => assessment.status === "partial_paid")) ||
+        claims.reduce((sum, claim) => sum + moneyCents(claim.totalPayment), 0n) !==
+          moneyCents(input.parsed.totalPaymentAmount)
       )
         throw new Error("M25_POSTING_FACTS_UNSUPPORTED");
       if (!advice.checkOrEftTraceNumber || !advice.contentDigest)
@@ -1013,12 +1280,15 @@ export function buildDrizzleM25IngestService(
             eq(RA.payerId, advice.payerId),
             eq(RA.checkOrEftTraceNumber, trace),
             eq(RA.totalPaymentAmount, advice.totalPaymentAmount),
-            eq(RA.contentDigest, advice.contentDigest),
             sql`${RA.id} <> ${input.adviceId}`,
             sql`${RA.parseStatus} IN ('posted','partial_posted')`,
           ),
         )
         .limit(1);
+      // The staged-plan preflight treats a repeated payer/provider/trace/amount as a
+      // potential duplicate even when payload bytes differ. Repeat that conservative
+      // check under the same transaction lock so concurrent plans cannot both post
+      // merely because their parsed 835 content digests differ.
       if (prior) throw new Error("M25_CROSS_SOURCE_DUPLICATE_EFFECT");
 
       const result = await postClaimsInTransaction(
@@ -1032,12 +1302,35 @@ export function buildDrizzleM25IngestService(
           payerId: advice.payerId,
           totalPaymentAmount: advice.totalPaymentAmount,
         },
-        [claim],
-        [input.association],
+        claims,
+        input.associations,
       );
-      if (result.outcome !== "posted" || result.unmatchedLineCount !== 0)
+      if (
+        result.outcome !== "posted" ||
+        result.unmatchedLineCount !== 0 ||
+        result.postedLineCount !== claims.length
+      )
         throw new Error("M25_EXPLICIT_ASSOCIATION_NOT_POSTED");
-      return { outcome: "posted" as const, remittanceLineId: result.remittanceLineIds[0] };
+      return { outcome: "posted" as const, remittanceLineIds: result.remittanceLineIds };
+    };
+  const serviceWithInternalPort = {
+    assessClaimMdFinancialFacts,
+    postValidatedClaimsInTransaction,
+    async postValidatedClaimInTransaction(
+      tx: M25Tx,
+      actor: M25IngestActor,
+      input: M25ValidatedPostingInput,
+    ) {
+      const result = await postValidatedClaimsInTransaction(tx, actor, {
+        adviceId: input.adviceId,
+        sourceFileSha256: input.sourceFileSha256,
+        parsed: input.parsed,
+        associations: [input.association],
+      });
+      return {
+        outcome: result.outcome,
+        remittanceLineId: result.remittanceLineIds[0],
+      };
     },
 
     async receiveAdvice(
@@ -1362,6 +1655,10 @@ export function buildDrizzleM25IngestService(
     },
   };
   const { postValidatedClaimInTransaction, ...service } = serviceWithInternalPort;
-  internalPostingPorts.set(service, { postValidatedClaimInTransaction });
+  internalPostingPorts.set(service, {
+    assessClaimMdFinancialFacts: serviceWithInternalPort.assessClaimMdFinancialFacts,
+    postValidatedClaimInTransaction: serviceWithInternalPort.postValidatedClaimInTransaction,
+    postValidatedClaimsInTransaction: serviceWithInternalPort.postValidatedClaimsInTransaction,
+  });
   return service;
 }

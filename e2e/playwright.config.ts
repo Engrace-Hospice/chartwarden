@@ -66,8 +66,8 @@ export default defineConfig({
       testMatch: VIEWPORT_SPEC,
       use: { ...devices["Desktop Chrome"], viewport: { width, height } },
     })),
-    // #852 — the other two SPAs. Each has its own dev server, which the CI e2e job does not start, so
-    // the specs skip (with the reason in their output) until E2E_ADMIN_URL / E2E_PORTAL_URL is set.
+    // #852 — the other two SPAs. The CI E2E job starts them and supplies these URLs; local runs skip
+    // with an explicit reason until the developer starts the corresponding server.
     {
       name: "admin-console",
       testMatch: ADMIN_SPEC,

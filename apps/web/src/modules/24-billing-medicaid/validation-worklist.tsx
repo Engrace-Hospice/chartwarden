@@ -339,7 +339,12 @@ export function MedicaidValidationWorklist(): JSX.Element {
               />
             </div>
           ) : (
-            <div style={tableWrapStyle}>
+            <div
+              style={tableWrapStyle}
+              aria-label="Validation results"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: Horizontally scrollable results need keyboard focus.
+              tabIndex={0}
+            >
               <table style={{ ...tableStyle, fontSize: "0.875rem" }}>
                 <thead>
                   <tr style={headRowStyle}>

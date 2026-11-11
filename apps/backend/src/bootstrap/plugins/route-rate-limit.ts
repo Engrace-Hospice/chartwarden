@@ -89,6 +89,28 @@ export const HELP_REQUEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "closed",
 };
 
+/** M12 `POST /tenant/dosespot/verify` and the platform copy (a vendor token mint per request): 6/min/user and 30/min/org. Fail-open: an availability control. */
+export const DOSESPOT_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 6,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
+/**
+ * M34 `POST /platform/tenants/:orgSlug/clearinghouse/baa/revoke`: a kill switch that takes one tenant's claims, notices and response pulls
+ * out of service. Counted per OPERATOR ACROSS tenants (the route names no `scopeOf`, so the bucket is the operator in the platform org:
+ * one session or one compromised operator cannot revoke every tenant) and per platform in total. 10 per operator and 20 in all per ten
+ * minutes: enough for a vendor ending many agreements at once, not for a sweep. Fail-OPEN: a stop that cannot fire while the limiter's
+ * store is down is the worse failure, and every revoke still writes its audit row and raises the tenant's alert and the ops notice.
+ */
+export const CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 20,
+  windowMs: 10 * 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,

@@ -19,7 +19,8 @@
 #                        are refused: give them as files under BACKUP_SECRETS_DIR. Only the variables a restore needs
 #                        reach the containers (RESTORE_ENV_ALLOW).
 #   BACKUP_SECRETS_DIR   host directory with the secret files, mounted read-only at /run/secrets
-#   BACKUP_IMAGE         image built from this directory (default chartwarden-backup:local)
+#   BACKUP_IMAGE         image to restore with. Default: CHARTWARDEN_BACKUP_IMAGE from .env.production when present,
+#                        otherwise chartwarden-backup:local for development drills.
 #   RESTORE_ID           default: a random hex id
 #   RESTORE_PG_PORT      host port for the restored Postgres (default 55433), bound to 127.0.0.1
 #   RESTORE_MINIO_PORT   host port for the restored MinIO (default 59000), bound to 127.0.0.1
@@ -30,7 +31,11 @@ set -Eeuo pipefail
 umask 077
 
 LABEL=chartwarden-restore
-IMAGE="${BACKUP_IMAGE:-chartwarden-backup:local}"
+IMAGE="${BACKUP_IMAGE:-}"
+if [ -z "$IMAGE" ] && [ -r .env.production ]; then
+  IMAGE="$(sed -n 's/^CHARTWARDEN_BACKUP_IMAGE=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')"
+fi
+IMAGE="${IMAGE:-chartwarden-backup:local}"
 DEFAULT_MINIO_IMAGE=cgr.dev/chainguard/minio@sha256:32c504bea4574d8f29d719b37bc0dad920ecf3e22b81dc5cea0bb105af2ce10f
 log() { printf '%s restore %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
 die() {

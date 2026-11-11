@@ -52,7 +52,7 @@ const EXPORT_PURPOSE = ["baa_termination", "migration"] as const;
 // §3.6/§3.8/§3.9 + M1 feature_flag vocab mirrors (the canonical enums live in @chartwarden/db; M34 never
 // imports the M1 flag schema — these literal unions are local mirrors so no flag-schema edge is created).
 const SUPPORT_SESSION_STATUS = ["open", "expired", "closed"] as const;
-// `assist` is the non-PHI scope a help request's approval creates (slice 7; the DB enum gains it in migration 1481, piece 7S).
+// `assist` is the non-PHI scope a help request's approval creates (slice 7; the DB enum gains it in migration 1485, piece 7S).
 const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped", "assist"] as const;
 const SIGNUP_INTENT_STATUS = ["new", "qualified", "provisioned", "abandoned", "rejected"] as const;
 const SIGNUP_INTENT_SOURCE = [

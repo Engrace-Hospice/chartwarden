@@ -242,10 +242,22 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m12.medication_order.transmission_unconfirmed",
+    moduleOwner: "m12",
+    description:
+      "DoseSpot left a NewRx call's outcome unconfirmed (it accepted the call but its answer was unreadable or carried no prescription id, the send's answer was lost, or the send was answered with a 5xx other than 503), so the prescription may already exist there. The order is HELD in flight (never failed, never retried, never re-sent) until an organization administrator checks the prescriber's DoseSpot account and resolves it (sent, with the DoseSpot prescription id, or not sent); M36 alerts the tenant's administrators, and again after 24 hours if it is still held. Ids only.",
+    payloadSchema: Type.Object({
+      orderId: id,
+      lastErrorClass: Type.String(),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m12.medication_order.transmission_failed",
     moduleOwner: "m12",
     description:
-      "The `transmit-newrx` worker exhausted its retry budget; M36 high-severity, M30 survey log.",
+      "A signed prescription failed to transmit: the `transmit-newrx` worker exhausted its retry budget, an administrator resolved a held order as never sent (`lastErrorClass` resolved_not_sent), or the transmission sweep found a SENT order the pharmacy has not confirmed receiving within 24 hours (`lastErrorClass` no_pharmacy_ack_24h). The first two never reached the pharmacy; the sweep's may have, so check DoseSpot before the prescriber retransmits. Consumed by M36's `dosespot-alerts`, which alerts the tenant's administrators (critical).",
     payloadSchema: Type.Object({
       orderId: id,
       lastErrorClass: Type.String(),
@@ -257,8 +269,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     // both confirmed as `QualityMedicationOrderConsumer`'s only two real methods), neither about
     // transmission failures. No incident kind, measure, or seam anywhere references DoseSpot
     // transmission failures. A pure producer-side guess, the F-180 shape.
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -481,11 +492,38 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.dosespot_degraded",
     moduleOwner: "m12",
     description:
-      "The DoseSpot circuit breaker opened; M36 system alert to org_admin + ChartWarden ops (DR_BCP §10.4.3).",
+      "DoseSpot e-prescribing is degraded for the organization: the circuit breaker opened, its configuration could not be opened, or signed orders have waited in the queue over an hour (`lastErrorClass` names which). Consumed by M36's `dosespot-alerts`, which alerts the tenant's administrators.",
     payloadSchema: Type.Object({
       breakerName: id,
       openedAt: isoInstant,
       lastErrorClass: Type.String(),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  // ── tenant onboarding slice 4 (ADR-0111): the clinic registration going live / out of service ───────────
+  {
+    eventName: "m12.dosespot_config.activated",
+    moduleOwner: "m12",
+    description:
+      "A tenant's DoseSpot clinic registration went active (connection tested, then activated): e-prescribing now transmits for the organization. Ids and the environment only; never a credential.",
+    payloadSchema: Type.Object({
+      registrationId: id,
+      environment: Type.Union([Type.Literal("sandbox"), Type.Literal("production")]),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m12.dosespot_config.deactivated",
+    moduleOwner: "m12",
+    description:
+      "A tenant's DoseSpot clinic registration stopped being active (deactivated, or its credential or target changed): newly signed orders activate locally and queued ones wait. M36 alert to the tenant's administrators. Ids, the environment and the cause only.",
+    payloadSchema: Type.Object({
+      registrationId: id,
+      environment: Type.Union([Type.Literal("sandbox"), Type.Literal("production")]),
+      cause: Type.Union([Type.Literal("deactivated"), Type.Literal("credential_changed")]),
     }),
     declaredConsumers: [],
     seamConsumers: ["m36"],
@@ -495,10 +533,9 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.dosespot_recovered",
     moduleOwner: "m12",
     description:
-      "The DoseSpot circuit breaker closed; the queued-on-recovery worker drains the backlog.",
+      "A DoseSpot degradation ended (the circuit breaker closed, the configuration opens again, or no order waits past the threshold); the queued-on-recovery worker drains the backlog. Consumed by M36's `dosespot-alerts` as the paired notice.",
     payloadSchema: Type.Object({ breakerName: id, closedAt: isoInstant }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

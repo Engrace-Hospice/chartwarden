@@ -12,11 +12,22 @@ const OutboxEventRedirect = lazy(() =>
   import("./outbox-list").then((m) => ({ default: m.OutboxEventRedirect })),
 );
 const OutboxList = lazy(() => import("./outbox-list").then((m) => ({ default: m.OutboxList })));
+const ClaimMdRecoveryReadiness = lazy(() =>
+  import("./claimmd-recovery-readiness").then((m) => ({ default: m.ClaimMdRecoveryReadiness })),
+);
 
 export const opsAdminScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 1,
   slug: "01-ops",
   screens: [
+    {
+      id: "admin.ops.claimmd-recovery-readiness",
+      path: "/admin/ops/claimmd-recovery-readiness",
+      title: "Claim.MD recovery readiness",
+      navGroup: "Platform",
+      requiredPermission: "billing.rule_config.platform_admin",
+      screen: ClaimMdRecoveryReadiness,
+    },
     {
       id: "admin.ops.outbox",
       path: "/admin/ops/outbox",

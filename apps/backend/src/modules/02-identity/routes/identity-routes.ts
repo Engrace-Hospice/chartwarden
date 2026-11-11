@@ -283,6 +283,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       membershipId: membership?.membershipId ?? null,
       displayName: membership?.displayName ?? null,
       roles: [...actor.roles],
+      providerEntityIds: [...request.context.providerEntityIds],
       locationIds: [...request.context.locationIds],
       orgWidePatientScope: hasOrgWideScope(actor.roles),
       isAdmin: membership?.isAdmin ?? false,

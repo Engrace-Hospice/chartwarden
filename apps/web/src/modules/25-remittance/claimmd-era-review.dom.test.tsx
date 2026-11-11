@@ -1,5 +1,5 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
@@ -113,7 +113,10 @@ const summary = {
   reconciliationEligible: true,
 };
 
-const calls: { method: string; path: string }[] = [];
+const calls: { method: string; path: string; key: string | null }[] = [];
+/** What the next approval / execution write gets: nothing at all, a gateway page, or the API's refusal (then it succeeds). */
+type WriteReply = "no answer" | "gateway" | "refused";
+let writeScript: WriteReply[] = [];
 let activeRow: ReviewRow = row;
 let failRequests = false;
 let decisionSaved = false;
@@ -127,7 +130,11 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const request = new Request(input as RequestInfo, init);
   const url = new URL(request.url);
   const path = url.pathname;
-  calls.push({ method: request.method, path: `${path}${url.search}` });
+  calls.push({
+    method: request.method,
+    path: `${path}${url.search}`,
+    key: request.headers.get("Idempotency-Key"),
+  });
   if (path.endsWith("/matching/claims/0/decision") && request.method === "POST") {
     decisionSaved = true;
     return new Response(
@@ -164,6 +171,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         providerEntityId: row.providerEntityId,
         payer: "Synthetic Payer",
         paymentCents: 13_000,
+        billedCents: 15_000,
+        unresolvedCents: 0,
+        providerAdjustments: [],
+        claims: [],
         claimId: CLAIM,
         eligible: !postingExecuted,
         status: postingExecuted ? "already_posted" : "eligible",
@@ -197,6 +208,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
                       reason: "Executed synthetic posting plan",
                       adviceId: STAGE,
                       remittanceLineId: "90000000-0000-4000-8000-000000000009",
+                      remittanceLineIds: ["90000000-0000-4000-8000-000000000009"],
                     },
                   ]
                 : []),
@@ -206,7 +218,20 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       { status: 200, headers: { "content-type": "application/json" } },
     );
   }
+  const scripted = (isWrite: boolean): Response | null => {
+    const next = isWrite ? writeScript.shift() : undefined;
+    if (next === "no answer") throw new TypeError("Failed to fetch");
+    if (next === "gateway") return new Response("{}", { status: 502 });
+    if (next === "refused")
+      return new Response(JSON.stringify({ error: { code: "PLAN_STALE", message: "stale" } }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    return null;
+  };
   if (postingScenario && path.endsWith("/approval") && request.method === "POST") {
+    const reply = scripted(true);
+    if (reply) return reply;
     postingApproved = true;
     return new Response(
       JSON.stringify({ planId: "80000000-0000-4000-8000-000000000008", outcome: "approved" }),
@@ -214,6 +239,8 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     );
   }
   if (postingScenario && path.endsWith("/execution") && request.method === "POST") {
+    const reply = scripted(true);
+    if (reply) return reply;
     postingExecuted = true;
     return new Response(
       JSON.stringify({
@@ -471,6 +498,82 @@ afterEach(() => {
   postingScenario = false;
   postingApproved = false;
   postingExecuted = false;
+  writeScript = [];
+});
+
+const POSTING_REVIEWER = {
+  userId: "synthetic-user",
+  organizationId: "synthetic-org",
+  membershipId: "synthetic-membership",
+  roles: ["finance_reviewer"],
+  permissions: [
+    "remittance.read",
+    "remittance.financial_review",
+    "remittance.posting.approve",
+    "remittance.posting.execute",
+  ],
+  isAdmin: false,
+};
+
+/** Open the posting plan of the staged ERA and type the reason the approval and execution carry. */
+async function openPostingPlan(): Promise<void> {
+  postingScenario = true;
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  render(
+    <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
+      <SessionProvider session={POSTING_REVIEWER}>
+        <ToastProvider>
+          <MemoryRouter>
+            <ClaimMdEraReview />
+          </MemoryRouter>
+        </ToastProvider>
+      </SessionProvider>
+    </ApiClientProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Review remittance from Synthetic Payer" }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Review posting readiness" }));
+  await screen.findByText("Eligible");
+  fireEvent.change(screen.getByRole("textbox", { name: "Posting action reason" }), {
+    target: { value: "Approved synthetic posting plan" },
+  });
+}
+
+const writesTo = (suffix: string) =>
+  calls.filter((call) => call.method === "POST" && call.path.endsWith(suffix));
+
+/** Press the button until `suffix` has been written `count` times, waiting for each attempt to finish. */
+async function pressUntilWritten(name: string, suffix: string, count: number): Promise<void> {
+  for (let sent = writesTo(suffix).length + 1; sent <= count; sent += 1) {
+    fireEvent.click(await screen.findByRole("button", { name }));
+    await waitFor(() => expect(writesTo(suffix)).toHaveLength(sent));
+    await waitFor(() => expect(screen.queryByRole("button", { name, busy: true })).toBeNull());
+  }
+}
+
+describe("M25 Claim.MD ERA posting writes: one Idempotency-Key per intent", () => {
+  it.each([
+    ["approval", "Approve plan", "/approval"],
+    ["execution", "Execute approved posting", "/execution"],
+  ])(
+    "the %s write is replayed under the same key after no answer or a gateway page, and renewed by an answer",
+    async (_name, button, suffix) => {
+      await openPostingPlan();
+      if (suffix === "/execution") await pressUntilWritten("Approve plan", "/approval", 1);
+      const replies: WriteReply[] = ["no answer", "gateway", "refused"];
+      writeScript = [...replies];
+
+      await pressUntilWritten(button, suffix, replies.length + 1);
+
+      const keys = writesTo(suffix).map((call) => call.key);
+      expect(keys[0]).toBeTruthy();
+      expect(keys[1]).toBe(keys[0]); // retried after no answer
+      expect(keys[2]).toBe(keys[0]); // retried after a gateway page
+      expect(keys[3]).toBeTruthy();
+      expect(keys[3]).not.toBe(keys[2]); // the API's refusal was an answer: the next attempt is a new intent
+    },
+  );
 });
 
 describe("M25 Claim.MD ERA nonposting review", () => {
@@ -611,7 +714,7 @@ describe("M25 Claim.MD ERA nonposting review", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve plan" }));
     expect(await screen.findByText("Approved")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Execute approved posting" }));
-    expect(await screen.findByText(/M25 remittance record created/)).toBeTruthy();
+    expect(await screen.findByText(/M25 committed 1 claim record/)).toBeTruthy();
     expect(
       calls.some((call) => call.method === "POST" && call.path.endsWith("/posting-plan")),
     ).toBe(true);

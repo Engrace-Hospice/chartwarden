@@ -1,0 +1,120 @@
+// apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-dosespot-typebox.ts — request contracts of the
+// platform copy of the DoseSpot registration routes (`/api/v1/platform/tenants/:orgSlug/dosespot…`, tenant onboarding slice 4).
+// The bodies are M12's own (`PutClinicBodySchema`; the enrolment body is just the reason, M12's `EnrollPrescriberVendorBodySchema` being empty); M12 re-validates
+// each with its schema, so these are the published copies plus the operator's `reason`. Credentials are write-only. Each is ONE
+// flat object with `additionalProperties: false` (a Composite drops that flag, so an extra field would slip through).
+import { type TSchema, Type } from "@sinclair/typebox";
+import { OnboardingReasonSchema } from "./onboarding-data-typebox";
+
+const { reason } = OnboardingReasonSchema.properties;
+const UUID_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+
+export const OnboardingDoseSpotPutRequest = Type.Object(
+  {
+    environment: Type.Union([Type.Literal("sandbox"), Type.Literal("production")], {
+      description:
+        "The DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production needs the platform to have enabled it.",
+    }),
+    clinicId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+    serviceClinicianId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+    clinicKey: Type.Optional(
+      Type.String({
+        minLength: 8,
+        maxLength: 512,
+        description: "Write-only: sealed under the tenant's own key and never returned.",
+      }),
+    ),
+    subscriptionKey: Type.Optional(
+      Type.String({
+        minLength: 8,
+        maxLength: 512,
+        description:
+          "Write-only. Platform support may set the clinic's own Subscription-Key; a tenant administrator may only rotate one that was set.",
+      }),
+    ),
+    usePlatformSubscriptionKey: Type.Optional(
+      Type.Boolean({
+        description:
+          "Attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone: the repair for a registration whose stored credential cannot be opened. Contradicts a subscriptionKey in the same call.",
+      }),
+    ),
+    reason,
+  },
+  { additionalProperties: false },
+);
+
+/** Enrolment takes no identity: the NPI and legal name come from the roster-linked physician record, so only the reason is sent. */
+export const OnboardingDoseSpotEnrollRequest = Type.Object(
+  { reason },
+  { additionalProperties: false },
+);
+
+export const OnboardingDoseSpotMembershipParamsSchema = Type.Object({
+  orgSlug: Type.String({ minLength: 1, maxLength: 128 }),
+  membershipId: Type.String({ pattern: UUID_PATTERN }),
+});
+
+// ── response copies (M12's own views, published here because M34 may not import M12) ──
+const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
+const Iso = Type.String({ format: "date-time" });
+const ProbeOutcome = Type.Union([
+  Type.Literal("ok"),
+  Type.Literal("credential_rejected"),
+  Type.Literal("unreachable"),
+]);
+
+/** The tenant's DoseSpot registration, masked: `hasSecret`, never the credential. */
+export const OnboardingDoseSpotViewSchema = Type.Object({
+  source: Type.Union([Type.Literal("tenant"), Type.Literal("platform_env"), Type.Literal("none")]),
+  status: Nullable(
+    Type.Union([
+      Type.Literal("draft"),
+      Type.Literal("registered"),
+      Type.Literal("verified"),
+      Type.Literal("active"),
+    ]),
+  ),
+  environment: Nullable(Type.Union([Type.Literal("sandbox"), Type.Literal("production")])),
+  clinicId: Nullable(Type.String()),
+  serviceClinicianId: Nullable(Type.String()),
+  hasSecret: Type.Boolean(),
+  live: Type.Boolean(),
+  notLiveReason: Nullable(
+    Type.Union([Type.Literal("sandbox_not_enabled"), Type.Literal("environment_unavailable")]),
+  ),
+  registeredAt: Nullable(Iso),
+  verifiedAt: Nullable(Iso),
+  activatedAt: Nullable(Iso),
+  lastTest: Type.Union([Type.Object({ outcome: ProbeOutcome, at: Iso }), Type.Null()]),
+  prescribersEnrolled: Type.Integer(),
+  queuedTransmissions: Type.Integer(),
+  version: Nullable(Type.Integer()),
+  updatedAt: Nullable(Iso),
+});
+
+export const OnboardingDoseSpotVerifyResponseSchema = Type.Object({
+  config: OnboardingDoseSpotViewSchema,
+  test: Type.Object({ outcome: ProbeOutcome }),
+});
+
+export const OnboardingDoseSpotEnrollViewSchema = Type.Object({
+  membershipId: Type.String(),
+  enrolledWithDoseSpot: Type.Literal(true),
+});
+
+/** The roster and whether each prescriber is linked to DoseSpot. No NPI, no DEA number, no vendor id. */
+export const OnboardingDoseSpotPrescriberListSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      membershipId: Type.String(),
+      onRoster: Type.Boolean(),
+      enrolledWithDoseSpot: Type.Boolean(),
+      vendorEnrollmentRequestedAt: Nullable(Iso),
+      linkConfirmed: Type.Boolean({
+        description:
+          "The prescriber has confirmed the physician record linked to them (from their own account; there is no operator route for it). An enrolment is refused 409 DOSESPOT_PRACTITIONER_UNCONFIRMED until they have.",
+      }),
+    }),
+  ),
+});

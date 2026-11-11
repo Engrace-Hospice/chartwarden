@@ -29,6 +29,7 @@ import {
   type MonthPeriod,
   calendarMonthOf,
   daysLiveInMonth,
+  expectedCensusDays,
   isFinalizable,
   monthsFromThrough,
 } from "./statement-period";
@@ -115,17 +116,30 @@ export function planMonths(facts: ContractFacts, at: Date): MonthWork[] {
 const NO_COLLECTIONS: NetCollections = { netCents: 0, remittanceCount: 0, pendingCount: 0 };
 
 /**
- * A closed month is flagged for review when fewer than this percentage of its live days has a census observation. The ADC is the mean
- * of the days OBSERVED, so a sweep that was down for most of the month still bills, on a mean of the few days it did see, and a final
- * statement is frozen (migration 1412), so nobody can correct it afterwards: the flag is what makes an operator look before that
- * happens to the next one. 80% tolerates a day or two lost to a deploy (one missed day of 30 is 97%), and flags a real outage (25 of 30
- * days down leaves 17%). A draft is never flagged on this: an open month has not had its days yet.
+ * A closed month is flagged for review when fewer than this percentage of the days its census COULD have been observed on has an
+ * observation. The ADC is the mean of the days OBSERVED, so a sweep that was down for most of a month still bills, on a mean of the few
+ * days it did see, and a final statement is frozen (migration 1412), so nobody can correct it afterwards: the flag is what makes an
+ * operator look before that happens to the next one. 80% tolerates a day or two lost to a deploy (one missed day of 30 is 97%), and
+ * flags a real outage (25 of 30 days down leaves 17%). A draft is never flagged on this: an open month has not had its days yet.
  */
 export const MIN_CENSUS_COVERAGE_PERCENT = 80;
 
-/** True when `observedDays` of a month's `daysLive` live days is below {@link MIN_CENSUS_COVERAGE_PERCENT}. */
-export const isSparseCensus = (observedDays: number, daysLive: number): boolean =>
-  daysLive > 0 && observedDays * 100 < daysLive * MIN_CENSUS_COVERAGE_PERCENT;
+/**
+ * True when `observedDays` of the `expectedDays` is below {@link MIN_CENSUS_COVERAGE_PERCENT}, in integers. `expectedDays` is
+ * {@link expectedCensusDays} (the days that held a sweep inside the live window), not the days live: see there. A month with no
+ * expected day expects nothing, so it is never sparse. In a month of four expected days or fewer the percentage leaves no slack:
+ * any missing day is below 80%, which is right for a month that short.
+ */
+export const isSparseCensus = (observedDays: number, expectedDays: number): boolean =>
+  expectedDays > 0 && observedDays * 100 < expectedDays * MIN_CENSUS_COVERAGE_PERCENT;
+
+/** The same judgement for one month of one contract (a settlement month reads no census, so it is never sparse). */
+export const isSparseCensusMonth = (
+  facts: Pick<ContractFacts, "windows">,
+  work: Pick<MonthWork, "period" | "settlement">,
+  observedDays: number,
+): boolean =>
+  !work.settlement && isSparseCensus(observedDays, expectedCensusDays(work.period, facts.windows));
 
 /** The prior-period lines for a statement of `target`: every FINAL earlier statement whose month collected more since it closed. */
 export function priorPeriodLinesFor(
@@ -257,7 +271,7 @@ export function buildStatementValues(input: BuildInput) {
     needsReview:
       meters.staff.basis === "ledger_unfiltered" ||
       (work.finalize && meters.collections.pendingCount > 0) ||
-      (work.finalize && isSparseCensus(adc.days, work.daysLive)),
+      (work.finalize && isSparseCensusMonth(facts, work, adc.days)),
     computedAt: at,
     finalizedAt: work.finalize ? at : null,
   };

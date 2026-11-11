@@ -33,9 +33,10 @@ export type ClearinghouseTransportFactories = Partial<
 /**
  * Why an organization has no usable clearinghouse (nothing is sent for it either way; the reason decides what a worker does):
  * `not_chosen` (nothing chosen yet) and `not_active` (a draft / verified config) HOLD work until the tenant finishes setup;
- * `outside` (the tenant bills outside ChartWarden) never transmits at all.
+ * `baa_revoked` (a platform operator revoked the vendor BAA) holds work the same way, and its acknowledgment and remittance pulls
+ * skip with an alert when responses are still owed; `outside` (the tenant bills outside ChartWarden) never transmits at all.
  */
-export type UnboundReason = "not_chosen" | "not_active" | "outside";
+export type UnboundReason = "not_chosen" | "not_active" | "baa_revoked" | "outside";
 
 export interface ClearinghouseBinding {
   /** The configured vendor, or null when the platform has not bound one. */
@@ -124,6 +125,8 @@ const unbound = (unboundReason: UnboundReason): ClearinghouseBinding =>
 export const UNBOUND_NOT_CHOSEN: ClearinghouseBinding = unbound("not_chosen");
 /** The binding of an organization whose config is a draft or verified (not live yet). */
 export const UNBOUND_NOT_ACTIVE: ClearinghouseBinding = unbound("not_active");
+/** The binding of an organization whose vendor BAA a platform operator revoked (not live; held like `not_active`, but says why). */
+export const UNBOUND_BAA_REVOKED: ClearinghouseBinding = unbound("baa_revoked");
 /** The binding of an organization that bills outside ChartWarden. */
 export const UNBOUND_OUTSIDE: ClearinghouseBinding = unbound("outside");
 /** The generic unbound binding (= nothing chosen). */

@@ -106,6 +106,7 @@ describe("the route gate", () => {
       ["clearinghouse_not_chosen", "has not chosen a clearinghouse"],
       ["clearinghouse_outside", "bills outside ChartWarden"],
       ["clearinghouse_not_active", "clearinghouse is set up but not active"],
+      ["clearinghouse_baa_revoked", "vendor BAA was revoked"],
       ["never_purchased", "has not purchased the claims-billing add-on"],
       ["lapsed", "claims-billing add-on has ended"],
       ["subscription_suspended", "subscription is suspended"],

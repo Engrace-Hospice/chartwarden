@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 2043,
-    "enriched": 2043,
+    "routes": 2068,
+    "enriched": 2068,
     "deficit": 0,
-    "mutating": 1172,
+    "mutating": 1187,
     "mutatingNoBody": 1,
-    "gets": 818,
+    "gets": 828,
     "getsNoResponse": 9
   },
   "modules": [
@@ -41,10 +41,10 @@
     },
     {
       "module": "05-patient",
-      "routes": 48,
-      "enriched": 48,
+      "routes": 49,
+      "enriched": 49,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 28,
       "mutatingNoBody": 0,
       "gets": 21,
       "getsNoResponse": 4
@@ -111,12 +111,12 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
-      "enriched": 34,
+      "routes": 43,
+      "enriched": 43,
       "deficit": 0,
-      "mutating": 23,
+      "mutating": 30,
       "mutatingNoBody": 0,
-      "gets": 11,
+      "gets": 13,
       "getsNoResponse": 0
     },
     {
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 109,
-      "enriched": 109,
+      "routes": 110,
+      "enriched": 110,
       "deficit": 0,
       "mutating": 59,
       "mutatingNoBody": 0,
-      "gets": 48,
+      "gets": 49,
       "getsNoResponse": 0
     },
     {
@@ -241,12 +241,12 @@
     },
     {
       "module": "25-remittance",
-      "routes": 168,
-      "enriched": 168,
+      "routes": 177,
+      "enriched": 177,
       "deficit": 0,
-      "mutating": 109,
+      "mutating": 113,
       "mutatingNoBody": 0,
-      "gets": 56,
+      "gets": 61,
       "getsNoResponse": 0
     },
     {
@@ -331,12 +331,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 100,
-      "enriched": 100,
+      "routes": 97,
+      "enriched": 97,
       "deficit": 0,
       "mutating": 63,
       "mutatingNoBody": 0,
-      "gets": 36,
+      "gets": 33,
       "getsNoResponse": 0
     },
     {
@@ -351,12 +351,12 @@
     },
     {
       "module": "36-messaging",
-      "routes": 212,
-      "enriched": 212,
+      "routes": 215,
+      "enriched": 215,
       "deficit": 0,
-      "mutating": 105,
+      "mutating": 107,
       "mutatingNoBody": 0,
-      "gets": 89,
+      "gets": 90,
       "getsNoResponse": 1
     },
     {
@@ -401,22 +401,22 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 29,
-      "enriched": 29,
+      "routes": 31,
+      "enriched": 31,
       "deficit": 0,
       "mutating": 18,
       "mutatingNoBody": 0,
-      "gets": 11,
+      "gets": 13,
       "getsNoResponse": 0
     },
     {
       "module": "bootstrap",
-      "routes": 12,
-      "enriched": 12,
+      "routes": 15,
+      "enriched": 15,
       "deficit": 0,
-      "mutating": 2,
+      "mutating": 3,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 12,
       "getsNoResponse": 1
     }
   ]

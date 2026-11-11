@@ -491,6 +491,20 @@ function createM23TestBackend(): {
   };
 
   const readService: M23ReadRouteService = {
+    async listInDoubtSubmissions() {
+      return {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+        count: { kind: "lower_bound", value: 0 },
+      };
+    },
+    async getSubmissionForInvestigation() {
+      throw new NotFoundError("in-doubt submission not found");
+    },
+    async getInDoubtSubmission() {
+      throw new NotFoundError("in-doubt submission not found");
+    },
     async listValidationOverrides(_actor, filter, _cursor, _limit) {
       const items = validationRunDetail.results
         .filter((r) => r.override !== null)

@@ -9,6 +9,7 @@
 //   - the auditor invite delivery throws (the enrolment route answers 503 AUDITOR_LINK_DELIVERY_FAILED).
 // An unbound production boot writes a loud line naming each missing / invalid variable (names only, never values).
 import {
+  POSTMARK_LINK_DELIVERY_MAX_DURATION_MS,
   type TransactionalEmailTransport,
   createPostmarkTransactionalEmailTransport,
   resolvePostmarkConfig,
@@ -25,6 +26,8 @@ export interface TransactionalEmailBinding {
   readonly linkDeliveryAvailable: boolean;
   /** The transport the invite deliveries use: the real one, or one that THROWS when production is unbound. */
   readonly linkEmailTransport: TransactionalEmailTransport;
+  /** Hard provider wall-time ceiling, including retries/backoff; must remain below the M36 reconciliation lease. */
+  readonly linkDeliveryMaxDurationMs: number;
 }
 
 export interface TransactionalEmailBindingOptions {
@@ -75,5 +78,11 @@ export function bindTransactionalEmail(
           throw new Error("transactional email provider is not bound (POSTMARK_* unset)");
         },
       };
-  return { emailTransport, providerBound, linkDeliveryAvailable, linkEmailTransport };
+  return {
+    emailTransport,
+    providerBound,
+    linkDeliveryAvailable,
+    linkEmailTransport,
+    linkDeliveryMaxDurationMs: POSTMARK_LINK_DELIVERY_MAX_DURATION_MS,
+  };
 }

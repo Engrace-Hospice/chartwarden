@@ -17,6 +17,8 @@ const FILES = ["apps/web/src/shell/alert-inbox.tsx", "apps/web/src/shell/notific
 
 /** Files allowed to use the words, each WITH a reason (a ratchet: add only for a real, different meaning). */
 const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
+  "apps/backend/src/modules/36-messaging/routes/death-notification-routes.ts":
+    "M36 death-notification cascade (ADR-0098) the routes: an explicit per-recipient acknowledgment action; reading the list never acknowledges a notice",
   "apps/backend/src/modules/36-messaging/emergency/emergency-service.ts":
     "ADR-0106 the emergency message service: each frozen recipient's explicit, self-only acknowledgment instant and the author's who-has-not-acknowledged read; opening a message still writes only a read receipt",
   "apps/backend/src/modules/36-messaging/emergency/emergency-sweep.ts":
@@ -179,6 +181,8 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
  * labelled acknowledged by code outside the aggregate.
  */
 const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
+  "apps/backend/src/modules/36-messaging/death-notification/":
+    "M36 death-notification cascade (ADR-0098): a per-recipient acknowledgment of a death notice, an explicit authenticated action stamped by the database clock; delivery of the in-app notice and opening it never write it, and no receipt is labelled acknowledged",
   "apps/backend/src/modules/36-messaging/ack-broadcast/":
     "WP 6.8 (ADR-0097) the acknowledge-required broadcast: a separate per-recipient acknowledgment, an explicit action stamped by the database clock; opening or reading never writes it and no receipt is labelled acknowledged",
   "apps/backend/src/modules/36-messaging/ack-requests/":
@@ -200,7 +204,15 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
 };
 
 /** The schema owns the retired column; the test files below pin that it stays NULL. */
-const ACKED_AT_ALLOWED = ["packages/db/src/schema/messaging/message-receipts.ts"];
+// The death-notification table (migration 1305) has its OWN acked_at / acked_by: an explicit, authenticated acknowledgment of a notice, never a receipt
+// column. The retired column this ratchet guards lived on the message receipts.
+const ACKED_AT_ALLOWED = [
+  "packages/db/src/schema/messaging/message-receipts.ts",
+  "apps/backend/src/modules/36-messaging/death-notification/death-notification-service.ts",
+  "apps/backend/src/modules/36-messaging/death-notification/death-notification-store.ts",
+  "apps/backend/src/modules/36-messaging/death-notification/death-notification-store-memory.ts",
+  "apps/backend/src/modules/36-messaging/routes/death-notification-typebox.ts",
+];
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

@@ -53,6 +53,8 @@ function headerAuth(request: FastifyRequest): void {
 }
 
 const ORG = "org_a";
+/** The roster administrator recorded as each link's maker (never the linked member, so the member may confirm it). */
+const ROSTER_ADMIN = "roster_admin";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ADMISSION = "33333333-3333-4333-8333-333333333333";
 const PHYS = "44444444-4444-4444-8444-444444444444";
@@ -420,7 +422,7 @@ describe("GAP-035 — sign decides signer eligibility and the named prescriber s
     const { app, backend } = makeServer();
     const id = await pendingOrder(app);
     // The roster maps md_2 to the named prescriber's MDM id BEFORE the record step (NAMED_PRESCRIBER_NOT_ENROLLED otherwise).
-    await backend.enrollPrescriber(ORG, "md_2", ["II", "III"], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", ["II", "III"], PHYS, ROSTER_ADMIN);
     const verbal = await recordVerbal(app, id, RN_VERBAL, PHYS);
     expect(verbal.statusCode).toBe(200);
     // The drafter (md_1) is a physician but their roster row does not map to the named prescriber.
@@ -872,7 +874,7 @@ describe("GAP-035 follow-up — retransmit applies the sign standing rule", () =
 
   it("a physician whose roster row maps to the order's named physician may retransmit", async () => {
     const { app, backend } = makeServer([failedOrder]);
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     const res = await retransmit(app, MD2);
     expect(res.statusCode).toBe(201);
     await app.close();
@@ -903,7 +905,7 @@ describe("GAP-035 follow-up — retransmit applies the sign standing rule", () =
 
     it("is true for a physician whose roster row maps to the order's named physician", async () => {
       const { app, backend } = makeServer([failedOrder]);
-      await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+      await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
       const res = await detail(app, MD2);
       expect(res.statusCode).toBe(200);
       expect(res.json().viewerMayRetransmit).toBe(true);
@@ -1010,7 +1012,7 @@ describe("GAP-035 follow-up — verbal record needs an enrolled named prescriber
   it("a revoked roster row does not count as enrolled", async () => {
     const { app, backend } = makeServer();
     const id = await pendingOrder(app);
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     await backend.revokePrescriber(ORG, "md_2", "left the practice");
     const res = await record(app, id, PHYS);
     expect(res.statusCode).toBe(422);
@@ -1021,7 +1023,7 @@ describe("GAP-035 follow-up — verbal record needs an enrolled named prescriber
   it("records the verbal order once an active roster row maps to the named MDM id", async () => {
     const { app, backend } = makeServer();
     const id = await pendingOrder(app);
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     const res = await record(app, id, PHYS);
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("verbal_pending");
@@ -1038,8 +1040,14 @@ describe("GAP-035 follow-up — the named-prescriber directory and roster expose
 
   it("lists only ACTIVE prescribers that carry an MDM id, to a caller who may record verbal orders", async () => {
     const { app, backend } = makeServer();
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
-    await backend.enrollPrescriber(ORG, "md_off", [], "55555555-5555-4555-8555-555555555555");
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
+    await backend.enrollPrescriber(
+      ORG,
+      "md_off",
+      [],
+      "55555555-5555-4555-8555-555555555555",
+      ROSTER_ADMIN,
+    );
     await backend.revokePrescriber(ORG, "md_off", "left");
     const res = await app.inject({
       method: "GET",
@@ -1066,7 +1074,7 @@ describe("GAP-035 follow-up — the named-prescriber directory and roster expose
 
   it("the admin roster returns each row's externalPhysicianMdmId", async () => {
     const { backend } = makeServer();
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     const { prescribers } = await backend.listPrescribers(ORG);
     expect(prescribers.find((p) => p.membershipId === "md_2")?.externalPhysicianMdmId).toBe(PHYS);
   });
@@ -1119,7 +1127,7 @@ describe("GAP-031 parity — verbal / sign-controlled-initiate discipline claims
   it("verbal: refuses a recorderDiscipline the caller does not hold (422 DISCIPLINE_NOT_HELD)", async () => {
     const { app, backend } = makeServer();
     const id = await pendingOrder(app);
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     const res = await verbal(app, id, RN_VERBAL, "hospice_physician");
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("DISCIPLINE_NOT_HELD");
@@ -1130,7 +1138,7 @@ describe("GAP-031 parity — verbal / sign-controlled-initiate discipline claims
   it("verbal: an LPN (below the RN+ floor) is refused with VERBAL_RECORDER_NOT_ELIGIBLE even claiming its own discipline", async () => {
     const { app, backend } = makeServer();
     const id = await pendingOrder(app);
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     const res = await verbal(app, id, LPN_VERBAL, "lpn");
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
     expect(res.json().error.code).toBe("VERBAL_RECORDER_NOT_ELIGIBLE");
@@ -1141,7 +1149,7 @@ describe("GAP-031 parity — verbal / sign-controlled-initiate discipline claims
   it("verbal: an RN-equivalent recorder who holds the claimed discipline succeeds", async () => {
     const { app, backend } = makeServer();
     const id = await pendingOrder(app);
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     const res = await verbal(app, id, RN_VERBAL, "rn_case_manager");
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("verbal_pending");
@@ -1189,8 +1197,10 @@ describe("GAP-031 parity — verbal / sign-controlled-initiate discipline claims
 describe("MDM-id uniqueness — enrollPrescriber", () => {
   it("the service refuses a second active roster row for the same MDM id (409 MDM_ID_ALREADY_ENROLLED)", async () => {
     const { backend, app } = makeServer();
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
-    await expect(backend.enrollPrescriber(ORG, "md_3", [], PHYS)).rejects.toMatchObject({
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
+    await expect(
+      backend.enrollPrescriber(ORG, "md_3", [], PHYS, ROSTER_ADMIN),
+    ).rejects.toMatchObject({
       code: "MDM_ID_ALREADY_ENROLLED",
       statusCode: 409,
     });
@@ -1199,8 +1209,10 @@ describe("MDM-id uniqueness — enrollPrescriber", () => {
 
   it("re-enrolling the same membership with its own MDM id is idempotent", async () => {
     const { backend, app } = makeServer();
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
-    await expect(backend.enrollPrescriber(ORG, "md_2", ["III"], PHYS)).resolves.toMatchObject({
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
+    await expect(
+      backend.enrollPrescriber(ORG, "md_2", ["III"], PHYS, ROSTER_ADMIN),
+    ).resolves.toMatchObject({
       externalPhysicianMdmId: PHYS,
     });
     await app.close();
@@ -1208,9 +1220,11 @@ describe("MDM-id uniqueness — enrollPrescriber", () => {
 
   it("a revoked row frees the MDM id for another membership", async () => {
     const { backend, app } = makeServer();
-    await backend.enrollPrescriber(ORG, "md_2", [], PHYS);
+    await backend.enrollPrescriber(ORG, "md_2", [], PHYS, ROSTER_ADMIN);
     await backend.revokePrescriber(ORG, "md_2", "left");
-    await expect(backend.enrollPrescriber(ORG, "md_3", [], PHYS)).resolves.toBeDefined();
+    await expect(
+      backend.enrollPrescriber(ORG, "md_3", [], PHYS, ROSTER_ADMIN),
+    ).resolves.toBeDefined();
     await app.close();
   });
 });

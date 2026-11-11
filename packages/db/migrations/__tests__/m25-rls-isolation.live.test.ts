@@ -338,6 +338,31 @@ describe.skipIf(!DB_URL)(
       ).rejects.toThrow();
     });
 
+    it("tenant operational stage aggregates exclude central and foreign-tenant records", async () => {
+      const own = await withOrg(ORG_A, () =>
+        db.query<{ state: string; count: number }>(
+          `SELECT state, count(*)::int AS count
+             FROM claimmd_era_m25_stage
+            GROUP BY state
+            ORDER BY state`,
+        ),
+      );
+      const foreign = await withOrg(ORG_B, () =>
+        db.query<{ state: string; count: number }>(
+          `SELECT state, count(*)::int AS count
+             FROM claimmd_era_m25_stage
+            WHERE id=$1
+            GROUP BY state`,
+          [a.eraStage],
+        ),
+      );
+      expect(own.rows.some((row) => row.state === "staged" && row.count > 0)).toBe(true);
+      expect(foreign.rows).toHaveLength(0);
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT count(*) FROM claimmd_era_inbox")),
+      ).rejects.toThrow();
+    });
+
     it("every M25 RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0083_remittance_m25_rls.sql"), "utf8");
       const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];

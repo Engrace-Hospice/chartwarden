@@ -8,7 +8,7 @@ import type {
   TransmittingClearinghouseVendor,
 } from "@chartwarden/types";
 import type { ConnectionProbeOutcome } from "@chartwarden/x12-837-client";
-import type { BaaPin, BaaView, RecordBaaInput } from "./baa";
+import type { BaaPin, BaaRevokeReasonCode, BaaView, RecordBaaInput } from "./baa";
 import type { ConfigStore } from "./config-store";
 import type { ClearinghouseSecretCipher } from "./secret-cipher";
 
@@ -18,10 +18,9 @@ export interface ClearinghouseActor {
   readonly userId: string;
   readonly membershipId: string;
   /**
-   * `platform` only for the platform-ops lane (it records a reason and is the only lane that may set test mode in production).
-   * Absent = the tenant's own lane: the safe default for anything that did not say.
+   * Required and never defaulted: security-sensitive rules grant only on a positive tenant or platform lane.
    */
-  readonly lane?: "platform";
+  readonly lane: "tenant" | "platform";
 }
 
 export interface PutClearinghouseInput {
@@ -130,15 +129,47 @@ export interface VerifyPlan {
   readonly secret: string | null;
 }
 
+export interface RevokeBaaInput {
+  readonly reasonCode: BaaRevokeReasonCode;
+  readonly ticketRef: string;
+}
+
+export interface VerifyBaaOptions {
+  readonly acknowledgePreviousRevocation?: boolean;
+}
+
+export interface RevokeImpact {
+  readonly attemptsInFlight: number;
+  readonly attemptsSentInWindow: number;
+  readonly queuedClaims: number;
+  readonly queuedCommercialSubmissions: number;
+}
+
+export interface RevokeBaaResult {
+  readonly view: ClearinghouseConfigView;
+  readonly wasActive: boolean;
+  readonly impact: RevokeImpact;
+  readonly configId: string;
+  readonly reasonCode: BaaRevokeReasonCode;
+  readonly vendor: TransmittingClearinghouseVendor;
+  readonly credentialCleared: boolean;
+}
+
 export interface PutResult {
   readonly created: boolean;
   readonly view: ClearinghouseConfigView;
   /** Names of the fields the put changed (never values), for the field-level audit row. */
   readonly changedFields: readonly string[];
+  /** True when recent-production traffic was deliberately bypassed because the tenant's vendor BAA is revoked. */
+  readonly lockExceptionUsed?: boolean;
 }
 
 export interface TenantClearinghouseService {
-  view(store: ConfigStore, organizationId: string): Promise<ClearinghouseConfigView>;
+  view(
+    store: ConfigStore,
+    organizationId: string,
+    options?: { readonly operator?: boolean },
+  ): Promise<ClearinghouseConfigView>;
   /**
    * Every refusal `put` would make before it writes, WITHOUT writing: the body's own rules, the If-Match, the switch's locks and a
    * missing credential, read on `store` with no row lock. A caller that must do something else FIRST (an operator's switch out of
@@ -171,7 +202,14 @@ export interface TenantClearinghouseService {
     store: ConfigStore,
     actor: ClearinghouseActor,
     expected: BaaPin,
+    options?: VerifyBaaOptions,
   ): Promise<ClearinghouseConfigView>;
+  revokeBaa(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    expected: BaaPin,
+    input: RevokeBaaInput,
+  ): Promise<RevokeBaaResult>;
   /** Step 1: read-only, no lock. */
   prepareVerify(
     store: ConfigStore,

@@ -1,4 +1,4 @@
-import { ErrorBoundary, createApiClient, initTheme } from "@chartwarden/ui";
+import { ErrorBoundary, clearIdempotencyKeys, createApiClient, initTheme } from "@chartwarden/ui";
 // ChartWarden type trio — SELF-HOSTED (DESIGN.md §3). No third-party CDN: external font requests would
 // leak client IPs on a PHI app. Variable faces for the display/UI axes; static weights for the mono
 // identifier face (no variable build exists). Family names: "Manrope Variable" / "Inter Variable" /
@@ -58,7 +58,13 @@ import { terminologyScreens } from "./modules/38-terminology";
 import { consentScreens } from "./modules/39-consent";
 import { mdmScreens } from "./modules/40-mdm";
 import { commercialBillingScreens } from "./modules/41-billing-commercial";
-import { AppShell, createScreenRegistry, handleObservedResponse, systemScreens } from "./shell";
+import {
+  AppShell,
+  createScreenRegistry,
+  handleObservedResponse,
+  onSessionExpired,
+  systemScreens,
+} from "./shell";
 
 // Apply the resolved Lantern theme (stored choice, else OS preference) before the first paint — no flash.
 initTheme();
@@ -74,6 +80,9 @@ const registry = createScreenRegistry();
 const client = createApiClient({
   onResponseStatus: handleObservedResponse,
 });
+// The shell decides the session is dead (not every 401 is: a mistyped unlock or step-up code, a session with no organization yet),
+// so the held Idempotency-Keys are dropped here and not inside the client: the next sign-in on this tab starts clean.
+onSessionExpired(() => clearIdempotencyKeys(client));
 
 // Module web-slices register here as they land (Track A/B).
 registry.register(systemScreens); // M1 system/utility pages (403/404/500/offline/… — Track A)

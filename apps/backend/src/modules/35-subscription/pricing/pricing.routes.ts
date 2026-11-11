@@ -202,7 +202,7 @@ export function registerPricingRoutes(app: FastifyInstance, deps: PricingRouteDe
     { preHandler: PRICING_READ_GUARDS },
     async (request) => {
       const body = parse(PricePreviewBody, request.body);
-      return buildPricePreview(await plans.get(body.planId), {
+      return buildPricePreview(await plans.getOffered(body.planId), {
         staffCount: body.staffCount,
         averageDailyCensus: body.averageDailyCensus,
         expectedNetCollectionsCents: body.expectedNetCollectionsCents,

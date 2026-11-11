@@ -1,7 +1,6 @@
 // apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-go-live.ts - the compliance officer and the two-party
 // go-live: who may be the officer, the officer's attestation, the platform approval (which opens the organization) and the
 // voiding of an attestation that no longer holds. Runs against ONE open store transaction the caller supplies.
-import { ChartWardenError } from "@chartwarden/types";
 import { normalizeOptionalNote, normalizeReason } from "./evidence";
 import {
   assertApproverDidNotWriteBaa,

@@ -10,10 +10,9 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — Billing landing (M23 §5.1 #1, Track B / ADR-0030; 2026-09-25
-// redesign, mockup "Billing / Claims"). Four headline cards, the org's claims table, and a right rail with
-// the A/R aging buckets, the claim pipeline by state, and the NOE/NOTR filing-window posture.
+// redesign, mockup "Billing / Claims"). Claim-state cards, the organization's claims table, and a right rail
+// with the claim pipeline by state and NOE/NOTR filing-window posture. No authoritative A/R ledger is present.
 //   GET /api/v1/billing/claims        → the claims table (cursor pages of 50, "Load more").
-//   GET /api/v1/billing/ar-dashboard  → the four A/R aging buckets.
 //   GET /api/v1/billing/metrics       → claim counts and amounts by state.
 //   GET /api/v1/noe-records / notr-records → filing-window posture.
 // Claims carry no submitted/paid dates, so the cards are current counts by state, not month-to-date
@@ -28,12 +27,6 @@ import { useSession } from "../../shell/session";
 import { BillingNeedsAttention } from "./billing-home-attention";
 import { claimStateTone, dollars, statusLabel } from "./billing-status";
 
-interface ArAging {
-  bucket0to30Cents: number;
-  bucket31to60Cents: number;
-  bucket61to90Cents: number;
-  bucket90PlusCents: number;
-}
 interface MetricsBucket {
   key: string;
   count: number;
@@ -125,17 +118,9 @@ function servicePeriod(from: string, to: string): string {
     `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
   return `${md(a)} – ${md(b)}/${b.getFullYear()}`;
 }
-const wholeDollars = (cents: number): string =>
-  (cents / 100).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-
 export function ArDashboard(): JSX.Element {
   const client = useApiClient();
   const permissions = useSession()?.permissions;
-  const [aging, setAging] = useState<Load<ArAging>>(null);
   const [buckets, setBuckets] = useState<Load<MetricsBucket[]>>(null);
   const [noe, setNoe] = useState<Load<NoticeWindowRecord[]>>(null);
   const [notr, setNotr] = useState<Load<NoticeWindowRecord[]>>(null);
@@ -160,7 +145,6 @@ export function ArDashboard(): JSX.Element {
         .then((r) => active && set(r.error ? "error" : pick(r.data)))
         .catch(() => active && set("error"));
     setClaims(null);
-    void settle<ArAging>(client.GET("/api/v1/billing/ar-dashboard"), setAging, (d) => d as ArAging);
     void settle<MetricsBucket[]>(
       client.GET("/api/v1/billing/metrics"),
       setBuckets,
@@ -248,11 +232,6 @@ export function ArDashboard(): JSX.Element {
     keys.reduce((n, k) => n + (byState.get(k)?.[f] ?? 0), 0);
   const totalClaims = Array.isArray(buckets) ? buckets.reduce((n, b) => n + b.count, 0) : 0;
   const denied = byState.get("denied")?.count ?? 0;
-  const over30 =
-    aging && aging !== "error"
-      ? aging.bucket31to60Cents + aging.bucket61to90Cents + aging.bucket90PlusCents
-      : null;
-  const openAr = aging && aging !== "error" ? (over30 ?? 0) + aging.bucket0to30Cents : null;
 
   const q = search.trim().toLowerCase();
   const visible = (Array.isArray(claims) ? claims : []).filter(
@@ -273,7 +252,10 @@ export function ArDashboard(): JSX.Element {
         <header className="wx-page-head">
           <div>
             <h1 style={{ fontSize: "1.875rem" }}>Billing / Claims</h1>
-            <p>Medicare claims, remittances, denials and accounts receivable.</p>
+            <p>
+              Medicare claims, remittance status and payer adjudication. Authoritative A/R is
+              unavailable.
+            </p>
           </div>
           <div style={{ display: "flex", gap: "0.625rem" }}>
             <Link to="/billing/claims" className="wx-btn-secondary">
@@ -300,15 +282,9 @@ export function ArDashboard(): JSX.Element {
           />
           <Kpi
             icon="check-circle"
-            label="Paid"
+            label="Paid claims"
             value={buckets === "error" ? "—" : buckets ? sum(PAID, "count") : null}
-            hint={
-              buckets === "error"
-                ? "Unavailable"
-                : buckets
-                  ? wholeDollars(sum(PAID, "amountCents"))
-                  : ""
-            }
+            hint="Claim state; see M25 for posted remittance amounts"
             color={Array.isArray(buckets) && sum(PAID, "count") > 0 ? t.success : undefined}
           />
           <Kpi
@@ -326,16 +302,9 @@ export function ArDashboard(): JSX.Element {
           />
           <Kpi
             icon="clock"
-            label="A/R > 30 days"
-            value={aging === "error" ? "—" : over30 === null ? null : wholeDollars(over30)}
-            hint={
-              aging === "error"
-                ? "Unavailable"
-                : openAr === null
-                  ? ""
-                  : `of ${wholeDollars(openAr)} open`
-            }
-            color={(over30 ?? 0) > 0 ? t.warning : undefined}
+            label="Authoritative open A/R"
+            value="Unavailable"
+            hint="No canonical receivable ledger or aging basis"
           />
         </div>
 
@@ -497,17 +466,12 @@ export function ArDashboard(): JSX.Element {
         )}
       </div>
 
-      <aside className="wx-with-rail-side" aria-label="Receivables">
-        <Panel title="A/R Aging" icon="bar-chart">
-          {aging === null ? (
-            <LoadingSpinner />
-          ) : aging === "error" ? (
-            <p className="wx-rail-empty" style={{ padding: 0 }}>
-              A/R aging is unavailable.
-            </p>
-          ) : (
-            <ArAgingBars aging={aging} />
-          )}
+      <aside className="wx-with-rail-side" aria-label="Financial reporting">
+        <Panel title="Authoritative A/R" icon="bar-chart">
+          <p className="wx-rail-empty" style={{ padding: 0 }}>
+            WardenX does not currently have a canonical receivable balance or aging basis for this
+            view. Expected payer amounts on claims are not open A/R balances.
+          </p>
         </Panel>
 
         <Panel
@@ -579,46 +543,6 @@ function Kpi({
 }): JSX.Element {
   return (
     <KpiCard icon={icon} accentColor={color} label={label} value={value ?? "…"} detail={hint} />
-  );
-}
-
-function ArAgingBars({ aging }: { aging: ArAging }): JSX.Element {
-  const bars = [
-    { label: "0–30", cents: aging.bucket0to30Cents },
-    { label: "31–60", cents: aging.bucket31to60Cents },
-    { label: "61–90", cents: aging.bucket61to90Cents },
-    { label: "90+", cents: aging.bucket90PlusCents },
-  ];
-  const total = bars.reduce((n, b) => n + b.cents, 0);
-  if (total === 0) {
-    return (
-      <p className="wx-row-sub" style={{ margin: 0 }}>
-        No open claims in accounts receivable.
-      </p>
-    );
-  }
-  const max = Math.max(...bars.map((b) => b.cents), 1);
-  return (
-    <figure style={{ margin: 0 }}>
-      <figcaption className="wx-row-sub" style={{ marginBottom: "0.5rem" }}>
-        {wholeDollars(total)} open, by days outstanding
-      </figcaption>
-      <div className="wx-bars">
-        {bars.map((b) => (
-          <div key={b.label} title={`${b.label} days: ${dollars(b.cents)}`}>
-            <span className="wx-bar-value wx-nums">{wholeDollars(b.cents)}</span>
-            <span
-              className="wx-bar"
-              style={{
-                height: `${Math.max(3, (b.cents / max) * 100)}%`,
-                background: b.label === "90+" ? t.warning : t.primary,
-              }}
-            />
-            <span className="wx-bar-label">{b.label}</span>
-          </div>
-        ))}
-      </div>
-    </figure>
   );
 }
 

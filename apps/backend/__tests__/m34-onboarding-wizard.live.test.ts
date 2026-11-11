@@ -59,7 +59,10 @@ import {
   recordOrganizationActivationReconciled,
   runOrganizationActivationReconcile,
 } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
-import { evaluateGoLiveGuards } from "../src/modules/34-saas-tenant-platform/onboarding/go-live";
+import {
+  assertApproverDidNotWriteBaa,
+  evaluateGoLiveGuards,
+} from "../src/modules/34-saas-tenant-platform/onboarding/go-live";
 import { voidPendingGoLiveForDataChange } from "../src/modules/34-saas-tenant-platform/onboarding/go-live-void";
 import type {
   PlatformActor,
@@ -371,12 +374,16 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       )
     ).rows[0].id;
   /** A document row in `org` (the signed BAA kind unless another is named), as the upload route would have filed it. */
-  const fileDocument = async (org: string, kind = "tenant_baa"): Promise<string> =>
+  const fileDocument = async (
+    org: string,
+    kind = "tenant_baa",
+    createdBy = "e5000000-0000-4000-8000-0000000000e5",
+  ): Promise<string> =>
     (
       await admin.query(
         `INSERT INTO document (organization_id, retention_class, source_kind, aggregate_type, title, created_by_membership_id)
-         VALUES ($1,'compliance','user_upload',$2::document_aggregate_type,'Signed agreement','e5000000-0000-4000-8000-0000000000e5') RETURNING id`,
-        [org, kind],
+         VALUES ($1,'compliance','user_upload',$2::document_aggregate_type,'Signed agreement',$3) RETURNING id`,
+        [org, kind, createdBy],
       )
     ).rows[0].id;
   const statusOf = async (tenant: string, key: string): Promise<string> =>
@@ -2087,6 +2094,51 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           documentFiled: true,
           documentUploadedByMembershipId: "e5000000-0000-4000-8000-0000000000e5",
         });
+
+        // The uploader is named by USER too, resolved on the carrier from the membership the document recorded. A revoked membership is
+        // terminal (a returning operator is re-invited as a new row), so an uploader whose membership was revoked and re-granted has a new
+        // membership id that never equals the recorded one: the user is what still matches the approver.
+        const [oldGrant] = (
+          await admin.query(
+            `INSERT INTO membership (user_id, organization_id, status, revoked_at) VALUES ($1,$2,'revoked', now()) RETURNING id`,
+            [OPS_USER, ORG_S6],
+          )
+        ).rows;
+        const revokedUpload = await fileDocument(ORG_S6, "tenant_baa", oldGrant.id);
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S6, revokedUpload],
+        );
+        const named = await governing();
+        expect(named).toMatchObject({
+          documentFiled: true,
+          documentUploadedByMembershipId: oldGrant.id,
+          documentUploadedByUserId: OPS_USER,
+        });
+        // the approver's CURRENT membership is a different id, yet the approval is refused on the user
+        expect(OPS_MEMBERSHIP).not.toBe(oldGrant.id);
+        const refusalFor = (approver: { userId: string; membershipId: string }): string | null => {
+          try {
+            assertApproverDidNotWriteBaa(named ?? undefined, approver);
+            return null;
+          } catch (error) {
+            return (error as ChartWardenError).code;
+          }
+        };
+        expect(refusalFor({ userId: OPS_USER, membershipId: OPS_MEMBERSHIP })).toBe(
+          "GO_LIVE_APPROVER_WROTE_BAA",
+        );
+        // another operator (another user, another membership) is not refused
+        expect(
+          refusalFor({
+            userId: "a0000000-0000-4000-8000-000000007799",
+            membershipId: "b0000000-0000-4000-8000-000000007799",
+          }),
+        ).toBeNull();
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S6, ownDocument],
+        );
 
         // a document whose content was destroyed (a tombstone) is not a filed agreement: the status rests on nothing again
         await admin.query("UPDATE document SET status = 'destroyed_tombstone' WHERE id = $1", [

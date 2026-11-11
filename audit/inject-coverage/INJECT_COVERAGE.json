@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2031,
-    "coveredRoutes": 2031,
-    "directRoutesReferenced": 1847
+    "routes": 2053,
+    "coveredRoutes": 2053,
+    "directRoutesReferenced": 1863
   },
   "modules": [
     {
@@ -40,6 +40,7 @@
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
@@ -90,7 +91,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 48,
+      "routes": 49,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -117,7 +118,7 @@
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
-      "directRoutesReferenced": 48
+      "directRoutesReferenced": 49
     },
     {
       "module": "06-admission",
@@ -240,18 +241,21 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
+      "routes": 43,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
+        "apps/backend/__tests__/m12-roster-write-routes.test.ts",
+        "apps/backend/__tests__/m12-tenant-dosespot-get-actor.test.ts",
+        "apps/backend/__tests__/m12-tenant-dosespot-routes.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 35
     },
     {
       "module": "13-emar",
@@ -397,12 +401,13 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 109,
+      "routes": 110,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
+        "apps/backend/__tests__/claimmd-ops-recovery-readiness.live.test.ts",
         "apps/backend/__tests__/claims-billing-gate-clearinghouse.test.ts",
         "apps/backend/__tests__/m23-claimmd-webhook-route.test.ts",
         "apps/backend/__tests__/m23-claimmd-webhook.live.test.ts",
@@ -433,10 +438,11 @@
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
+        "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
         "apps/backend/__tests__/m41-enrollment-reports.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 76
+      "directRoutesReferenced": 77
     },
     {
       "module": "24-billing-medicaid",
@@ -452,9 +458,10 @@
     },
     {
       "module": "25-remittance",
-      "routes": 168,
+      "routes": 177,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/claimmd-ops-recovery-readiness.live.test.ts",
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
@@ -469,10 +476,11 @@
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",
+        "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 148
+      "directRoutesReferenced": 155
     },
     {
       "module": "26-cap",
@@ -566,7 +574,7 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 100,
+      "routes": 97,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
@@ -575,15 +583,14 @@
         "apps/backend/__tests__/m34-onboarding-baa-document.test.ts",
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
+        "apps/backend/__tests__/m34-onboarding-dosespot-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
-        "apps/backend/__tests__/m34-slice7-contract-routes.test.ts",
-        "apps/backend/__tests__/m34-support-session-routes.test.ts",
-        "apps/backend/__tests__/m34-support-session.live.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 99
+      "directRoutesReferenced": 97
     },
     {
       "module": "35-subscription",
@@ -594,6 +601,7 @@
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m35-pricing-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
@@ -601,7 +609,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 212,
+      "routes": 215,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -628,6 +636,7 @@
         "apps/backend/__tests__/m36-clinical-link.live.test.ts",
         "apps/backend/__tests__/m36-death-board-routes.test.ts",
         "apps/backend/__tests__/m36-death-board.live.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-delivery-target.live.test.ts",
         "apps/backend/__tests__/m36-delivery-target.test.ts",
@@ -742,6 +751,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
         "apps/backend/__tests__/mdm-routes.test.ts"
       ],
@@ -749,7 +759,7 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 29,
+      "routes": 31,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
@@ -761,7 +771,7 @@
         "apps/backend/__tests__/m41-commercial-submission-routes.test.ts",
         "apps/backend/__tests__/m41-enrollment-reports.live.test.ts"
       ],
-      "directRoutesReferenced": 20
+      "directRoutesReferenced": 21
     }
   ]
 }

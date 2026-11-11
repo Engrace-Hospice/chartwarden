@@ -275,7 +275,21 @@ describe("portal documents to sign (ADR-0107)", () => {
     expect(signs[1]?.headers.get("idempotency-key")).toBe(signs[0]?.headers.get("idempotency-key"));
   });
 
-  it("starts a fresh Idempotency-Key after a 5xx answer, which the server would otherwise replay", async () => {
+  it.each([
+    [
+      "an app 5xx answer (it carries the API error envelope), which the server would otherwise replay",
+      503,
+      { error: { code: "INTERNAL", message: "m" } },
+      false,
+    ],
+    [
+      "the in-flight 409, which says the first attempt is still running",
+      409,
+      { error: { code: "IDEMPOTENCY_IN_FLIGHT", message: "m" } },
+      true,
+    ],
+    ["a gateway page that never reached the app", 503, {}, true],
+  ])("Idempotency-Key after %s", async (_label, status, body, keeps) => {
     const seen: Seen[] = [];
     let signCalls = 0;
     render(
@@ -285,7 +299,7 @@ describe("portal documents to sign (ADR-0107)", () => {
             if (s.path !== SIGN) return undefined;
             signCalls += 1;
             return signCalls === 1
-              ? json({}, 503)
+              ? json(body, status)
               : json({ request: ITEMS[0], alreadySigned: false });
           }),
           seen,
@@ -302,9 +316,9 @@ describe("portal documents to sign (ADR-0107)", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Sign" }));
     await waitFor(() => expect(signCalls).toBe(2));
     const signs = seen.filter((s) => s.path === SIGN);
-    expect(signs[1]?.headers.get("idempotency-key")).not.toBe(
-      signs[0]?.headers.get("idempotency-key"),
-    );
+    const sameKey =
+      signs[1]?.headers.get("idempotency-key") === signs[0]?.headers.get("idempotency-key");
+    expect(sameKey).toBe(keeps);
   });
 
   it.each([

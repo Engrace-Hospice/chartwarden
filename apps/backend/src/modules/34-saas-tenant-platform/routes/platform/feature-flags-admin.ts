@@ -21,6 +21,7 @@ import {
 import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { screenFreeText, screenValue } from "../free-text";
 import {
   FeatureFlagListQuerySchema,
   FeatureFlagParamsSchema,
@@ -98,6 +99,8 @@ export function registerFeatureFlagAdminRoutes(
     async (request, reply) => {
       const { userId } = actorOf(request);
       const body = parse(UpsertFeatureFlagRequest, request.body);
+      screenFreeText({ rationale: body.rationale });
+      screenValue("value", body.value); // a JSON value is stored too (and tenant-readable for a tenant flag): every string leaf
       const res = await service.upsertFeatureFlag(userId, {
         flagKey: body.flagKey,
         organizationId: body.organizationId ?? null,

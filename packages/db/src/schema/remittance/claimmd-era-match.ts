@@ -41,7 +41,6 @@ export const claimMdEraMatchDecision = pgTable(
       t.claimIndex,
       t.decisionVersion,
     ),
-    byOrg: index("claimmd_era_match_decision_org_ix").on(t.organizationId, t.createdAt),
   }),
 );
 

@@ -2,203 +2,25 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 217 statically-routable `web` screen(s) — 26/217 E2E-reached, 205/217 axe-reached.
+**Coverage:** 218 statically-routable `web` screen(s) — 205/218 E2E-reached, 205/218 axe-reached.
 
 ## Zero E2E coverage
 
 | Screen id | Module | Path | Permission |
 |---|---|---|---|
-| `saas.account` | 34-saas | `/admin/account` | tenant.read_own |
-| `emar.administration-policy` | 13-emar | `/admin/administration-policy` | administration.admin.policy |
-| `billing.surveyor-audit` | 23-billing-medicare | `/admin/billing-audit` | billing.claim.read |
-| `evv.metrics` | 18-evv | `/admin/evv-metrics` | evv.read_metrics |
-| `documents.template-library` | 22-documents | `/admin/forms/templates` | documents.read_templates |
-| `saas.onboarding` | 34-saas | `/admin/onboarding` | onboarding.read_own |
-| `portal.admin` | 31-portal | `/admin/portal` | portal.account.read_list |
-| `prescribing.prescriber-roster` | 12-dosespot | `/admin/prescribers` | prescribing.admin.roster |
-| `prescribing.policy` | 12-dosespot | `/admin/prescribing-policy` | prescribing.admin.policy |
-| `assessment.scale-licenses` | 09-assessments | `/admin/scales/licenses` | assessment.license_read |
-| `assessment.scale-policies` | 09-assessments | `/admin/scales/policies` | assessment.policy_read |
-| `scheduling.metrics` | 17-scheduling | `/admin/scheduling-metrics` | visit.read_metrics |
-| `saas.agency-setup` | 34-saas | `/admin/setup` | org.manage |
-| `saas.support-grants` | 34-saas | `/admin/support-grants` | support_consent_grant.list_own |
-| `volunteer.compliance` | 15-discipline-care-plans | `/admin/volunteer-compliance` | volunteer_compliance.read |
-| `volunteer.ratio` | 15-discipline-care-plans | `/admin/volunteer-ratio` | volunteer_compliance.read_ratio |
-| `admission.census` | 06-admission | `/admissions` | admission.read |
-| `admission.discharges` | 06-admission | `/admissions/discharges` | discharge.create |
-| `admission.readmit-list` | 06-admission | `/admissions/readmit` | admission.create |
-| `audit.log-viewer` | 04-audit | `/audit` | audit.read |
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
-| `bereavement.caseload` | 16-bereavement | `/bereavement` | bereavement.dashboard.counselor |
-| `bereavement.intake` | 16-bereavement | `/bereavement/eligible` | bereavement.plan.assign_counselor |
-| `bereavement.groups` | 16-bereavement | `/bereavement/groups` | bereavement.group.read |
-| `bereavement.library` | 16-bereavement | `/bereavement/library` | bereavement.library.read |
-| `bereavement.mailings` | 16-bereavement | `/bereavement/mailings` | bereavement.mailing.read |
-| `bereavement.mailings.settings` | 16-bereavement | `/bereavement/mailings/settings` | bereavement.mailing.manage |
-| `bereavement.memorials` | 16-bereavement | `/bereavement/memorials` | bereavement.memorial.rsvp |
-| `bereavement.supervisor` | 16-bereavement | `/bereavement/supervisor` | bereavement.dashboard.supervisor |
-| `billing.claim.new` | 23-billing-medicare | `/billing/claims/new` | billing.claim.assemble |
-| `billing.dde-queue` | 23-billing-medicare | `/billing/dde` | billing.dde.read |
-| `billing.eligibility` | 23-billing-medicare | `/billing/eligibility` | billing.eligibility.read |
-| `billing.mac-credentials` | 23-billing-medicare | `/billing/mac-credentials` | billing.mac_credential.read |
-| `billing.metrics` | 23-billing-medicare | `/billing/metrics` | billing.claim.read_metrics |
-| `billing.noe` | 23-billing-medicare | `/billing/noe` | billing.noe.read |
-| `billing.notr` | 23-billing-medicare | `/billing/notr` | billing.notr.read |
-| `billing.overrides` | 23-billing-medicare | `/billing/overrides` | billing.validation.read_override |
-| `billing.work-queue` | 23-billing-medicare | `/billing/queue` | billing.claim.read |
-| `billing.rate-tables` | 23-billing-medicare | `/billing/rate-tables` | billing.rate_table.read |
-| `billing.rule-config` | 23-billing-medicare | `/billing/rule-config` | billing.rule_config.read |
-| `billing.sequestration` | 23-billing-medicare | `/billing/sequestration-policy` | billing.sequestration_policy.read |
-| `billing.transfer-notices` | 23-billing-medicare | `/billing/transfer-notices` | billing.noe.read |
-| `billing.wage-indexes` | 23-billing-medicare | `/billing/wage-indexes` | billing.wage_index.read |
+| `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
-| `cap.dashboard` | 26-cap | `/cap` | cap.projection.read |
-| `cap.events` | 26-cap | `/cap/events` | cap.event.read |
-| `cap.periods` | 26-cap | `/cap/periods` | cap.period.read |
-| `cap.psr` | 26-cap | `/cap/psr` | cap.psr.read |
-| `cap.settlement` | 26-cap | `/cap/settlements` | cap.settlement.read |
-| `admission.compliance` | 06-admission | `/compliance/admissions` | compliance.read |
-| `ai.compliance` | 32-ai-platform | `/compliance/ai` | ai.invocation.read |
-| `audit.exports` | 04-audit | `/compliance/audit/exports` | audit.export |
-| `audit.integrity-report` | 04-audit | `/compliance/audit/integrity` | audit.integrity |
-| `audit.legal-holds` | 04-audit | `/compliance/legal-holds` | legalhold.read |
-| `privacy.restricted-patients` | 05-patient | `/compliance/privacy` | privacy.admin |
-| `audit.privacy-requests` | 04-audit | `/compliance/privacy-requests` | audit.disclosure_report |
-| `cost_report.list` | 27-cost-report | `/cost-reports` | cost_report.read |
-| `cost_report.bad_debt` | 27-cost-report | `/cost-reports/bad-debt` | cost_report.read |
-| `cost_report.rules` | 27-cost-report | `/cost-reports/rules` | cost_report.read_rules |
-| `cost_report.snapshots` | 27-cost-report | `/cost-reports/snapshots` | cost_report.read_snapshot_detail |
-| `cost_report.validation` | 27-cost-report | `/cost-reports/validation` | cost_report.read |
-| `cost_report.workspace` | 27-cost-report | `/cost-reports/workspace` | cost_report.read |
-| `evv.aggregator-submissions` | 18-evv | `/evv/aggregator-submissions` | evv.aggregator.read |
-| `evv.dashboard` | 18-evv | `/evv/dashboard` | evv.read_metrics |
-| `evv.events` | 18-evv | `/evv/events` | evv.read |
-| `evv.geofence-policy` | 18-evv | `/evv/geofence-policy` | evv.policy.read |
-| `evv.missing-resolutions` | 18-evv | `/evv/missing-resolutions` | evv.missing_resolution.read |
 | `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
-| `hope.dashboard` | 10-hope | `/hope` | hope.schedule.read |
-| `hope.compliance` | 10-hope | `/hope/compliance` | hope.dashboard.read |
-| `hope.sfv-worklist` | 10-hope | `/hope/sfv` | hope.sfv.read |
-| `hope.submission-worklist` | 10-hope | `/hope/submissions` | hope.submission.read |
-| `idg.action-items` | 14-idg | `/idg/action-items` | idg.read |
-| `intake.review-queue` | 22-documents | `/intake` | intake.read |
-| `ipu.units` | 37-ipu | `/ipu` | m37.unit.read |
-| `ipu.census` | 37-ipu | `/ipu/census` | m37.census.read |
-| `ipu.equipment` | 37-ipu | `/ipu/equipment` | m37.equipment.read |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
 | `identity.required-password-change` | 02-identity | `/login/change-password` | (none) |
-| `identity.organization-select` | 02-identity | `/login/organization` | (none) |
 | `identity.passkey-enrolment` | 02-identity | `/login/passkey` | (none) |
-| `mdm.console` | 40-mdm | `/mdm` | mdm.physician.read |
-| `ai.my-preferences` | 32-ai-platform | `/me/ai-preferences` | ai.clinician_opt_out.read |
-| `oncall.me` | 19-oncall | `/me/oncall` | oncall.read_schedule |
-| `safety.me` | 20-field-safety | `/me/safety` | safety.sos.raise |
-| `safety.me.check_ins` | 20-field-safety | `/me/safety/check-ins` | safety.check_in.read |
-| `safety.me.consent` | 20-field-safety | `/me/safety/consent` | safety.consent.read_self |
-| `scheduling.my-visits` | 17-scheduling | `/me/visits` | visit.read |
-| `medicaid.ar-dashboard` | 24-billing-medicaid | `/medicaid/billing/ar-dashboard` | medicaid.claim.read_ar_dashboard |
-| `medicaid.claim.new` | 24-billing-medicaid | `/medicaid/billing/claims/new` | medicaid.claim.assemble |
-| `medicaid.eligibility` | 24-billing-medicaid | `/medicaid/billing/eligibility` | medicaid.eligibility.read |
-| `medicaid.metrics` | 24-billing-medicaid | `/medicaid/billing/metrics` | medicaid.claim.read_metrics |
-| `medicaid.overrides` | 24-billing-medicaid | `/medicaid/billing/override-audit` | medicaid.validation.read_override |
-| `medicaid.work-queue` | 24-billing-medicaid | `/medicaid/billing/queue` | medicaid.claim.read |
-| `medicaid.rb-arrangements` | 24-billing-medicaid | `/medicaid/billing/rb-arrangements` | medicaid.rb_arrangement.read |
-| `medicaid.rule-config` | 24-billing-medicaid | `/medicaid/billing/rule-config` | medicaid.rule_config.read |
-| `medicaid.trading-partners` | 24-billing-medicaid | `/medicaid/billing/trading-partner-credentials` | medicaid.trading_partner.read |
-| `medicaid.validation-worklist` | 24-billing-medicaid | `/medicaid/billing/validation-worklist` | medicaid.validation.read_run |
-| `messaging.alarm-sources` | 36-messaging | `/messaging/alarm-sources` | messaging.alarm_ingest.manage |
-| `messaging.response-analytics` | 36-messaging | `/messaging/analytics` | messaging.analytics.read |
-| `messaging.ack-broadcast` | 36-messaging | `/messaging/broadcasts` | messaging.read |
-| `messaging.death-board` | 36-messaging | `/messaging/death-board` | messaging.read |
 | `messaging.devices` | 36-messaging | `/messaging/devices` | (none) |
-| `messaging.export` | 36-messaging | `/messaging/export` | messaging.export.request |
-| `messaging.family` | 36-messaging | `/messaging/family` | messaging.family.respond |
-| `messaging.break-glass` | 36-messaging | `/messaging/governance/break-glass` | messaging.break_glass.review |
-| `messaging.export-approvals` | 36-messaging | `/messaging/governance/export-approvals` | messaging.export.approve |
-| `messaging.retention` | 36-messaging | `/messaging/governance/retention` | messaging.retention.manage |
-| `messaging.session-governance` | 36-messaging | `/messaging/governance/sessions` | messaging.sessions.manage |
-| `messaging.inbox` | 36-messaging | `/messaging/inbox` | messaging.read |
-| `messaging.on-call` | 36-messaging | `/messaging/on-call` | messaging.oncall.read |
-| `messaging.partners` | 36-messaging | `/messaging/partners` | messaging.share.manage |
-| `messaging.preferences` | 36-messaging | `/messaging/preferences` | messaging.read |
-| `messaging.saved-replies` | 36-messaging | `/messaging/saved-replies` | messaging.send |
-| `messaging.global-search-settings` | 36-messaging | `/messaging/search-settings` | messaging.global_search.manage |
-| `messaging.unacknowledged` | 36-messaging | `/messaging/unacknowledged` | messaging.review |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
-| `orders.held-transmissions` | 11-orders | `/orders/held-transmissions` | orders.transmission.view_held |
-| `orders.results-review` | 11-orders | `/orders/results-pending-review` | orders.read |
-| `orders.verbal-expiring` | 11-orders | `/orders/verbal-expiring` | orders.read |
-| `ai.opt-in` | 32-ai-platform | `/organization/ai/opt-in` | ai.tenant_opt_in |
-| `ai.routing` | 32-ai-platform | `/organization/ai/routing` | ai.tenant_opt_in |
 | `messaging.partner-share` | 36-messaging | `/partner/share` | (none) |
-| `cap.platform_constants` | 26-cap | `/platform/cap/constants` | cap.platform_constant.read |
-| `prescribing.sign-inbox` | 12-dosespot | `/prescribing/sign-inbox` | prescribing.read |
-| `prescribing.verbal-orders` | 12-dosespot | `/prescribing/verbal-orders` | prescribing.read |
-| `quality.hub` | 30-quality | `/quality` | quality.measure.read |
-| `quality.mortality` | 30-quality | `/quality/mortality` | mortality.read |
-| `quality.qapi-incidents` | 30-quality | `/quality/qapi` | incident.read |
-| `admission.referral-new` | 06-admission | `/referrals/new` | referral.create |
-| `prescribing.refill-inbox` | 12-dosespot | `/refills` | prescribing.read |
-| `remittance.worklist` | 25-remittance | `/remittance` | remittance.read |
-| `remittance.adrs` | 25-remittance | `/remittance/adrs` | adr.read |
-| `remittance.appeals` | 25-remittance | `/remittance/appeals` | appeal.read |
-| `remittance.audits` | 25-remittance | `/remittance/audits` | audit_request.read |
-| `remittance.claimmd-era-review` | 25-remittance | `/remittance/claimmd-era-review` | remittance.read |
-| `remittance.denials` | 25-remittance | `/remittance/denials` | denial.worklist.read |
-| `remittance.payer-appeal-paths` | 25-remittance | `/remittance/payer-appeal-paths` | payer_appeal_path.read |
-| `remittance.playbooks` | 25-remittance | `/remittance/playbooks` | playbook.read |
-| `remittance.report` | 25-remittance | `/remittance/report` | medical_review.report.read |
-| `remittance.representative-forms` | 25-remittance | `/remittance/representative-forms` | representative_form.configure |
-| `remittance.taxonomy` | 25-remittance | `/remittance/taxonomy` | taxonomy.read |
-| `remittance.tpe` | 25-remittance | `/remittance/tpe` | tpe.read |
-| `reporting.admin` | 33-reporting | `/reports/admin` | report.admin.mv_list |
-| `reporting.schedules` | 33-reporting | `/reports/schedules` | report.schedule.list |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
-| `authz.roles-permissions` | 03-authorization | `/roles` | role.read |
-| `safety.dashboard` | 20-field-safety | `/safety` | safety.dashboard.read |
-| `safety.check_ins` | 20-field-safety | `/safety/check-ins` | safety.dashboard.read |
-| `safety.high_risk_areas` | 20-field-safety | `/safety/high-risk-areas` | safety.high_risk_area.read |
-| `safety.incidents` | 20-field-safety | `/safety/incidents` | safety_incident.read |
-| `safety.incident.new` | 20-field-safety | `/safety/incidents/new` | safety_incident.create |
-| `safety.metrics` | 20-field-safety | `/safety/metrics` | safety.dashboard.read |
-| `safety.policy` | 20-field-safety | `/safety/policy` | safety_policy.read |
-| `safety.sos.active` | 20-field-safety | `/safety/sos` | safety.sos.read |
-| `safety.subscriptions` | 20-field-safety | `/safety/supervisor-subscriptions` | safety_supervisor.read |
-| `scheduling.clinician-credentials` | 17-scheduling | `/scheduling/clinician-credentials` | membership_credential.read |
-| `scheduling.proposals` | 17-scheduling | `/scheduling/proposals` | visit.proposal.read |
-| `scheduling.recurring` | 17-scheduling | `/scheduling/recurring` | recurring_visit.read |
-| `scheduling.time-off` | 17-scheduling | `/scheduling/time-off` | time_off.read_team |
-| `scheduling.week` | 17-scheduling | `/scheduling/week` | visit.read_team |
-| `search.global` | 05-patient | `/search` | patient.read |
-| `orders.standing` | 11-orders | `/standing-orders` | orders.read |
-| `billing.overview` | 35-subscription | `/subscription` | subscription.read |
-| `billing.dunning` | 35-subscription | `/subscription/dunning` | subscription.read |
-| `billing.invoices` | 35-subscription | `/subscription/invoices` | invoice.read |
-| `billing.payment-methods` | 35-subscription | `/subscription/payment_methods` | payment_method.read |
-| `billing.plan` | 35-subscription | `/subscription/plan` | subscription.read |
-| `billing.promos` | 35-subscription | `/subscription/promos` | subscription.read |
-| `billing.usage` | 35-subscription | `/subscription/usage` | usage.read |
-| `supplies.dashboard` | 21-supplies | `/supplies` | supplies.request.read |
-| `supplies.comfort_kit_templates` | 21-supplies | `/supplies/comfort-kit-templates` | comfort_kit.template.read |
-| `supplies.dispatch.new` | 21-supplies | `/supplies/dispatches/new` | comfort_kit.dispatch.create |
-| `supplies.items` | 21-supplies | `/supplies/items` | supplies.item.read |
-| `supplies.par_stock` | 21-supplies | `/supplies/par-stock` | par_stock.read |
-| `supplies.vendor_routing` | 21-supplies | `/supplies/vendor-routing` | vendor_routing.read |
-| `portal.telehealth` | 31-portal | `/telehealth` | telehealth.read_list |
-| `terminology.admin` | 38-terminology | `/terminology` | terminology.read |
-| `triage.queue` | 19-oncall | `/triage` | triage.read |
-| `triage.escalations` | 19-oncall | `/triage/escalations` | triage.read_escalations |
-| `triage.intake` | 19-oncall | `/triage/intake` | triage.open |
-| `triage.metrics` | 19-oncall | `/triage/metrics` | triage.read |
-| `triage.paper_reentry` | 19-oncall | `/triage/paper-reentry` | triage.paper_reentry |
-| `oncall.policy` | 19-oncall | `/triage/policy` | oncall.read_policy |
-| `triage.protocols` | 19-oncall | `/triage/protocols` | triage.read |
-| `oncall.shifts` | 19-oncall | `/triage/shifts` | oncall.read_schedule |
-| `oncall.vendors` | 19-oncall | `/triage/vendors` | oncall.read_policy |
-| `encounter.cosignature-queue` | 08-encounters | `/work/cosignatures` | encounter.cosign |
-| `encounter.my-drafts` | 08-encounters | `/work/drafts` | encounter.author |
 
 ## Zero axe coverage
 
@@ -206,6 +28,7 @@
 |---|---|---|---|
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
+| `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
@@ -219,106 +42,92 @@
 
 ## Dynamic web screens (#852)
 
-28/118 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
+42/118 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
-| `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | medicaid.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `hope.admission-overview` | `/admissions/:admissionId/hope` | hope.timepoint.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `hope.sfv-capture` | `/admissions/:admissionId/hope/sfv/:sfvId` | hope.timepoint.write | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `hope.timepoint-capture` | `/admissions/:admissionId/hope/timepoints/:kind` | hope.timepoint.write | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.detail` | `/admissions/:id` | admission.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.death-pronouncement` | `/admissions/:id/death` | discharge.death | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.discharge` | `/admissions/:id/discharge` | discharge.create | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.discharge-details` | `/admissions/:id/discharge-details` | admission.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.level-of-care-change` | `/admissions/:id/level-of-care/new` | loc.change | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.readmit` | `/admissions/:id/readmit` | admission.create | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.transfer-in` | `/admissions/:id/transfer-in` | transfer.in | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.groups.detail` | `/bereavement/groups/:groupId` | bereavement.group.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.mailings.run` | `/bereavement/mailings/runs/:runId` | bereavement.mailing.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.memorials.detail` | `/bereavement/memorials/:serviceId` | bereavement.memorial.rsvp | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.plan` | `/bereavement/plans/:planId` | bereavement.plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.plan.closeout` | `/bereavement/plans/:planId/closeout` | bereavement.plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | bereavement.plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | bereavement.contact.flag_complicated_grief | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.plan.history` | `/bereavement/plans/:planId/history` | bereavement.plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | bereavement.outreach.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | bereavement.risk.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.plan.seed` | `/bereavement/plans/:planId/seed` | bereavement.plan.activate | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `bereavement.predeath` | `/bereavement/pre-death/:admissionId` | bereavement.assessment_draft.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `billing.claim` | `/billing/claims/:claimId` | billing.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `billing.claim.acknowledgments` | `/billing/claims/:claimId/acknowledgments` | billing.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `billing.claim.submissions` | `/billing/claims/:claimId/submissions` | billing.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `billing.claim.validation` | `/billing/claims/:claimId/validation` | billing.validation.read_run | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `billing.noe.detail` | `/billing/noe/:noeId` | billing.noe.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `billing.notr.detail` | `/billing/notr/:notrId` | billing.notr.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `care-plan.summary` | `/care-plans/:planId/summary` | care_plan.read_summary | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `care-plan.versions` | `/care-plans/:planId/versions` | care_plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `care-plan.version-detail` | `/care-plans/:planId/versions/:versionId` | care_plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `commercial.claim` | `/commercial/billing/claims/:claimId` | commercial_billing.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `commercial.claim-send-gate` | `/commercial/billing/claims/:claimId/send-gate` | commercial_billing.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `commercial.claim-timeline` | `/commercial/billing/claims/:claimId/timeline` | commercial_billing.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `consent.recipients-dpoa` | `/consents/:consentId/recipients` | consent.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.discharge-cosign` | `/discharges/:id/cosign` | discharge.cosign_for_cause | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `documents.version-history` | `/documents/:documentId/versions` | documents.read_history | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `evv.event-detail` | `/evv/events/:eventId` | evv.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `hope.assessment-detail` | `/hope/assessments/:id` | hope.timepoint.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `hope.submission-detail` | `/hope/submissions/:id` | hope.submission.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `idg.meeting-detail` | `/idg/meetings/:id` | idg.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `idg.meeting-live` | `/idg/meetings/:id/live` | idg.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `idg.minutes` | `/idg/meetings/:id/minutes` | idg.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `idg.packet` | `/idg/meetings/:meetingId/packets/:patientId` | idg.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `documents.intake-batch` | `/intake/:batchId` | intake.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `intake.review-workspace` | `/intake/:batchId/review` | intake.review | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | medicaid.claim.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `hope.sfv-capture` | `/admissions/:admissionId/hope/sfv/:sfvId` | hope.timepoint.write | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `hope.timepoint-capture` | `/admissions/:admissionId/hope/timepoints/:kind` | hope.timepoint.write | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.groups.detail` | `/bereavement/groups/:groupId` | bereavement.group.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.mailings.run` | `/bereavement/mailings/runs/:runId` | bereavement.mailing.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.memorials.detail` | `/bereavement/memorials/:serviceId` | bereavement.memorial.rsvp | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.plan` | `/bereavement/plans/:planId` | bereavement.plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.plan.closeout` | `/bereavement/plans/:planId/closeout` | bereavement.plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | bereavement.plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | bereavement.contact.flag_complicated_grief | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.plan.history` | `/bereavement/plans/:planId/history` | bereavement.plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | bereavement.outreach.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | bereavement.risk.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.plan.seed` | `/bereavement/plans/:planId/seed` | bereavement.plan.activate | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `bereavement.predeath` | `/bereavement/pre-death/:admissionId` | bereavement.assessment_draft.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.claim` | `/billing/claims/:claimId` | billing.claim.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.claim.acknowledgments` | `/billing/claims/:claimId/acknowledgments` | billing.claim.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.claim.submissions` | `/billing/claims/:claimId/submissions` | billing.claim.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.claim.validation` | `/billing/claims/:claimId/validation` | billing.validation.read_run | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.noe.detail` | `/billing/noe/:noeId` | billing.noe.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.notr.detail` | `/billing/notr/:notrId` | billing.notr.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `care-plan.summary` | `/care-plans/:planId/summary` | care_plan.read_summary | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `care-plan.versions` | `/care-plans/:planId/versions` | care_plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `care-plan.version-detail` | `/care-plans/:planId/versions/:versionId` | care_plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `commercial.claim` | `/commercial/billing/claims/:claimId` | commercial_billing.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `commercial.claim-send-gate` | `/commercial/billing/claims/:claimId/send-gate` | commercial_billing.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `commercial.claim-timeline` | `/commercial/billing/claims/:claimId/timeline` | commercial_billing.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `consent.recipients-dpoa` | `/consents/:consentId/recipients` | consent.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `admission.discharge-cosign` | `/discharges/:id/cosign` | discharge.cosign_for_cause | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `documents.version-history` | `/documents/:documentId/versions` | documents.read_history | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `evv.event-detail` | `/evv/events/:eventId` | evv.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `hope.assessment-detail` | `/hope/assessments/:id` | hope.timepoint.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `hope.submission-detail` | `/hope/submissions/:id` | hope.submission.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `idg.meeting-detail` | `/idg/meetings/:id` | idg.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `idg.meeting-live` | `/idg/meetings/:id/live` | idg.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `idg.minutes` | `/idg/meetings/:id/minutes` | idg.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `idg.packet` | `/idg/meetings/:meetingId/packets/:patientId` | idg.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `documents.intake-batch` | `/intake/:batchId` | intake.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `intake.review-workspace` | `/intake/:batchId/review` | intake.review | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `identity.accept-invitation` | `/invite/:token` | (none) | pre-auth token route: needs a live single-use invite/link token and a signed-out context |
-| `ipu.bedside` | `/ipu/admissions/:id` | m37.ipu_admission.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `medicaid.claim` | `/medicaid/billing/claims/:claimId` | medicaid.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `medicaid.claim.acknowledgments` | `/medicaid/billing/claims/:claimId/acknowledgments` | medicaid.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `medicaid.claim.submissions` | `/medicaid/billing/claims/:claimId/submissions` | medicaid.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `medicaid.claim.validation` | `/medicaid/billing/claims/:claimId/validation` | medicaid.validation.read_run | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `medicaid.rb-arrangement` | `/medicaid/billing/rb-arrangements/:arrangementId` | medicaid.rb_arrangement.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `prescribing.medication-detail` | `/medication-orders/:id` | prescribing.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `prescribing.edit-medication-draft` | `/medication-orders/:id/edit` | prescribing.draft | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `messaging.offboarding` | `/messaging/governance/offboarding/:userId` | messaging.offboarding.manage | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `ipu.bedside` | `/ipu/admissions/:id` | m37.ipu_admission.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `medicaid.rb-arrangement` | `/medicaid/billing/rb-arrangements/:arrangementId` | medicaid.rb_arrangement.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `messaging.offboarding` | `/messaging/governance/offboarding/:userId` | messaging.offboarding.manage | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `messaging.notification-landing` | `/n/:id` | (none) | pre-auth token route: needs a live single-use invite/link token and a signed-out context |
-| `orders.detail` | `/orders/:id` | orders.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `emar.administration-detail` | `/patients/:patientId/administrations/:id` | administration.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `assessment.detail` | `/patients/:patientId/assessments/:assessmentId` | assessment.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `emar.comfort-kit` | `/patients/:patientId/comfort-kit/:deploymentId` | comfort_kit.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `consent.detail` | `/patients/:patientId/consents/:consentId` | consent.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `discipline-plan.idg-revision` | `/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId` | discipline_plan.idg_revise | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `discipline-plan.versions` | `/patients/:patientId/discipline-plans/:kind/versions` | discipline_plan.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `discipline-plan.aide-poc.edit` | `/patients/:patientId/discipline-plans/aide-poc/:versionId/edit` | discipline_plan.author | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `discipline-plan.assessment` | `/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId` | discipline_assessment.author | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `encounter.read` | `/patients/:patientId/encounters/:encounterId` | encounter.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `encounter.compose` | `/patients/:patientId/encounters/:encounterId/compose` | encounter.author | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `emar.iv-session` | `/patients/:patientId/iv-sessions/:sessionId` | administration.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `emar.reconciliation-worksheet` | `/patients/:patientId/reconciliation/:worksheetId` | reconciliation.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `assessment.scale-trend` | `/patients/:patientId/scales/:scaleType` | assessment.read_trend | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `admission.referral-detail` | `/referrals/:id` | referral.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `prescribing.refill-detail` | `/refills/:id` | prescribing.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `reporting.dashboard` | `/reports/dashboards/:dashboardId` | report.dashboard.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `reporting.role-dashboard` | `/reports/role/:roleKey` | report.dashboard.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `safety.incident.detail` | `/safety/incidents/:incidentId` | safety_incident.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `safety.sos.detail` | `/safety/sos/:sosAlertId` | safety.sos.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `scheduling.visit-detail` | `/scheduling/visits/:visitId` | visit.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `billing.invoice-detail` | `/subscription/invoices/:id` | invoice.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `supplies.dispatch` | `/supplies/dispatches/:dispatchId` | comfort_kit.dispatch.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `supplies.dispatch.perpetual_log` | `/supplies/dispatches/:dispatchId/perpetual-log` | comfort_kit.perpetual_log.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `supplies.request` | `/supplies/requests/:supplyRequestId` | supplies.request.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `supplies.return` | `/supplies/returns/:returnId` | comfort_kit.return.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `orders.detail` | `/orders/:id` | orders.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `emar.administration-detail` | `/patients/:patientId/administrations/:id` | administration.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `assessment.detail` | `/patients/:patientId/assessments/:assessmentId` | assessment.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `emar.comfort-kit` | `/patients/:patientId/comfort-kit/:deploymentId` | comfort_kit.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `consent.detail` | `/patients/:patientId/consents/:consentId` | consent.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `discipline-plan.idg-revision` | `/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId` | discipline_plan.idg_revise | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `discipline-plan.versions` | `/patients/:patientId/discipline-plans/:kind/versions` | discipline_plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `discipline-plan.aide-poc.edit` | `/patients/:patientId/discipline-plans/aide-poc/:versionId/edit` | discipline_plan.author | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `discipline-plan.assessment` | `/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId` | discipline_assessment.author | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `encounter.read` | `/patients/:patientId/encounters/:encounterId` | encounter.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `encounter.compose` | `/patients/:patientId/encounters/:encounterId/compose` | encounter.author | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `emar.iv-session` | `/patients/:patientId/iv-sessions/:sessionId` | administration.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `emar.reconciliation-worksheet` | `/patients/:patientId/reconciliation/:worksheetId` | reconciliation.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `assessment.scale-trend` | `/patients/:patientId/scales/:scaleType` | assessment.read_trend | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `admission.referral-detail` | `/referrals/:id` | referral.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `prescribing.refill-detail` | `/refills/:id` | prescribing.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `reporting.dashboard` | `/reports/dashboards/:dashboardId` | report.dashboard.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `reporting.role-dashboard` | `/reports/role/:roleKey` | report.dashboard.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `safety.incident.detail` | `/safety/incidents/:incidentId` | safety_incident.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `safety.sos.detail` | `/safety/sos/:sosAlertId` | safety.sos.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `scheduling.visit-detail` | `/scheduling/visits/:visitId` | visit.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.invoice-detail` | `/subscription/invoices/:id` | invoice.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `supplies.dispatch` | `/supplies/dispatches/:dispatchId` | comfort_kit.dispatch.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `supplies.dispatch.perpetual_log` | `/supplies/dispatches/:dispatchId/perpetual-log` | comfort_kit.perpetual_log.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `supplies.request` | `/supplies/requests/:supplyRequestId` | supplies.request.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `supplies.return` | `/supplies/returns/:returnId` | comfort_kit.return.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `identity.accept-tenant-invitation` | `/tenant-invite/:token` | (none) | pre-auth token route: needs a live single-use invite/link token and a signed-out context |
-| `triage.call` | `/triage/calls/:triageCallId` | triage.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `triage.call.history` | `/triage/calls/:triageCallId/history` | triage.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `triage.call.transcript` | `/triage/calls/:triageCallId/transcript` | triage.read_transcript | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `triage.protocol` | `/triage/protocols/:protocolId` | triage.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
-| `oncall.shift` | `/triage/shifts/:shiftId` | oncall.read_schedule | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `triage.call` | `/triage/calls/:triageCallId` | triage.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `triage.call.history` | `/triage/calls/:triageCallId/history` | triage.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `triage.call.transcript` | `/triage/calls/:triageCallId/transcript` | triage.read_transcript | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `triage.protocol` | `/triage/protocols/:protocolId` | triage.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `oncall.shift` | `/triage/shifts/:shiftId` | oncall.read_schedule | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 
 ## Viewports, admin/portal, authorization (#852)
 
 - **Six viewports** (320, 375, 768, 1024, 1440, 1920 wide) — `viewport-matrix.spec.ts`, run only by the `viewport-*` Playwright projects (`bun run test:e2e:viewports`): Home, census and a patient chart, axe plus a no-horizontal-document-scroll (WCAG 1.4.10) check. Not multiplied across the other specs.
-- **`admin`/`portal` apps** (39 + 18 registered screens) — `admin-console-smoke.spec.ts` and `portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth screens only, skipped unless `E2E_ADMIN_URL` / `E2E_PORTAL_URL` point at a running dev server (the CI e2e job starts `web` only). Their session-gated screens are not walked: the console needs a `platform_ops` login and the portal a magic-link mailbox.
-- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: Clinician and Compliance Auditor denied on billing / agency-setup / audit / staff routes, Auditor and Administrator allowed where their permissions reach.
+- **`admin`/`portal` apps** (43 + 19 registered screens) — `admin-console-smoke.spec.ts` and `portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth plus authenticated platform-ops and patient-self surfaces. CI starts all three SPAs and supplies `E2E_ADMIN_URL` / `E2E_PORTAL_URL`; local runs skip unless those URLs point at running servers. Credentials come from the synthetic seed, and portal password sign-in avoids a mail sink.
+- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: the clinical-only Clinician is denied on billing, agency-setup, audit and staff reads; the Compliance Auditor is denied on billing and agency setup but allowed to read audit events; the Administrator is allowed across the matrix.
 
 ## Not measured here (by design)
 

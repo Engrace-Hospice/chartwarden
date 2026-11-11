@@ -6,7 +6,7 @@
 //
 // "Run HETS check" (only with `billing.eligibility.check`) POSTs /api/v1/billing/eligibility/check with an
 // Idempotency-Key (202: the worker runs the 270/271), then polls the read until a newer check lands.
-import { Button, InlineAlert, useApiClient } from "@chartwarden/ui";
+import { Button, InlineAlert, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
@@ -44,6 +44,7 @@ export function useHetsHospicePeriods(
       ? opts.electionDate
       : undefined;
   const client = useApiClient();
+  const attempt = useAttemptKey();
   const session = useSession();
   const canCheck = session?.permissions?.includes(HETS_CHECK_PERMISSION) ?? false;
   const pollMs = opts.pollMs ?? DEFAULT_POLL_MS;
@@ -99,14 +100,21 @@ export function useHetsHospicePeriods(
       const before = load.kind === "loaded" ? load.view : null;
       setChecking(true);
       setCheckMessage(null);
-      const idem =
-        typeof globalThis.crypto?.randomUUID === "function"
-          ? globalThis.crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`;
-      const { error, response } = await client.POST("/api/v1/billing/eligibility/check", {
-        headers: { "Idempotency-Key": idem },
-        body: { patientId, providerEntityId, asOfServiceDate },
-      });
+      const result = await attempt
+        .run(JSON.stringify([patientId, providerEntityId, asOfServiceDate]), (idempotencyKey) =>
+          client.POST("/api/v1/billing/eligibility/check", {
+            headers: { "Idempotency-Key": idempotencyKey },
+            body: { patientId, providerEntityId, asOfServiceDate },
+          }),
+        )
+        .catch(() => null);
+      if (result === null) {
+        if (!mounted.current) return;
+        setChecking(false);
+        setCheckMessage("The HETS check could not be started. Confirm the period manually.");
+        return;
+      }
+      const { error, response } = result;
       if (error || (response && response.status !== 202)) {
         if (!mounted.current) return;
         setChecking(false);
@@ -134,7 +142,7 @@ export function useHetsHospicePeriods(
         "The HETS check is still running. Come back to this step in a minute, or confirm the period manually.",
       );
     },
-    [client, fetchView, load, patientId, pollMs],
+    [attempt, client, fetchView, load, patientId, pollMs],
   );
 
   return { load, canCheck, checking, checkMessage, runCheck };

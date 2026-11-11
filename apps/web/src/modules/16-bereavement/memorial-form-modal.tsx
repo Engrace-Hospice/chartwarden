@@ -1,7 +1,7 @@
 // apps/web/src/modules/16-bereavement — the memorial-service form (ADR-0109 D10, routes 68 / 70), shared by "New memorial service" (no
 // version: a create) and "Edit" (the version the page READ goes in `If-Match`). One Idempotency-Key per attempt; a lost response retries
 // under the same key. Nothing here writes invitation wording: that is the invitation mailing run's, written by staff on its own page.
-import { useApiClient } from "@chartwarden/ui";
+import { useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
@@ -12,7 +12,6 @@ import {
   TextAreaField,
   TextField,
   primaryButtonStyle,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { intOrNull, isHttpsUrl, isoToLocal, localToIso, orNull } from "./program-status";
 import { type Memorial, type MemorialBody, createMemorial, updateMemorial } from "./programs-api";
@@ -90,7 +89,7 @@ export function MemorialFormModal({
   onStale?: (message: string) => void;
 }): JSX.Element {
   const client = useApiClient();
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const [draft, setDraft] = useState<Draft>(() => draftOf(service));
   // The link as the reader saw it when the dialog OPENED: a late reload of `service` must not read as "changed" (and clear the stored link).
   const [openedJoinUrl] = useState(() => draftOf(service).joinUrl);
@@ -113,7 +112,7 @@ export function MemorialFormModal({
     const res = service
       ? await updateMemorial(client, service.serviceId, service.version, body, key)
       : await createMemorial(client, body, key);
-    keys.settle(res.status);
+    keys.settle(res.status, res.error);
     setBusy(false);
     if (res.error || !res.data) {
       const message = errorMessage(res.error, "The memorial service could not be saved.");

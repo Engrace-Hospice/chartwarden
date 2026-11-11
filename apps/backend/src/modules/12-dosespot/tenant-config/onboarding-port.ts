@@ -1,0 +1,284 @@
+// apps/backend/src/modules/12-dosespot/tenant-config/onboarding-port.ts — M12's side of the platform onboarding seam
+// (bootstrap/onboarding-dosespot-port.ts): a platform operator registers a tenant's DoseSpot clinic through the SAME service the
+// tenant's own admin uses, on the caller's transaction (scoped to the target org, attributed to the operator). The body is
+// parsed here with M12's own schemas; nothing returned carries a credential. The operator's lane is `platform`, the one lane
+// that may set a Subscription-Key.
+import { type DbClient, schema } from "@chartwarden/db";
+import type { ConnectionProbeOutcome } from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
+import { desc, eq } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
+import type {
+  OnboardingDoseSpotPort,
+  OnboardingDoseSpotResult,
+  OnboardingPlan,
+  OnboardingWriteScope,
+} from "../../../bootstrap/onboarding-dosespot-port";
+import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
+import { parse } from "../routes/dosespot-typebox";
+import { CLINIC_AUDIT_EVENTS } from "./audit-port";
+import { mapBounded } from "./bounded";
+import { createDrizzleConfigStore } from "./config-store";
+import {
+  type ClinicAlertPort,
+  type ClinicServiceChange,
+  alertAfterCommit,
+  applyInTransaction,
+  changeOfPut,
+  changeOfTransition,
+  registrationOf,
+} from "./effects";
+import type { PractitionerDirectoryPort } from "./practitioner-profile";
+import {
+  type EnrollPlan,
+  type PrescriberEnrollmentService,
+  linkConfirmedBy,
+} from "./prescriber-enrollment";
+import { createDrizzleRosterStore } from "./roster-store";
+import type { ClinicActor, ClinicConfigView, DoseSpotClinicService, VerifyPlan } from "./service";
+import { PutClinicBodySchema } from "./typebox";
+
+const P = schema.dosespotPrescribers;
+
+/** How many physician records the roster list resolves at once. */
+const LIST_DIRECTORY_CONCURRENCY = 8;
+
+interface RosterListRow {
+  readonly organizationId: string;
+  readonly membershipId: string;
+  readonly enrolledWithDoseSpot: string | null;
+  readonly revokedAt: Date | null;
+  readonly requestedAt: Date | null;
+  readonly mdmId: string | null;
+  readonly confirmedMdmId: string | null;
+  readonly confirmedNpi: string | null;
+  readonly confirmedBy: string | null;
+  readonly linkedBy: string | null;
+}
+
+const actorFor = (scope: OnboardingWriteScope): ClinicActor => ({
+  organizationId: scope.organizationId,
+  userId: scope.operatorUserId,
+  membershipId: scope.operatorMembershipId,
+  lane: "platform",
+});
+
+const asEnrollActor = (scope: OnboardingWriteScope) => ({
+  ...actorFor(scope),
+  request: scope.request,
+});
+
+export function buildDoseSpotClinicOnboardingPort(deps: {
+  readonly db: DbClient;
+  readonly service: DoseSpotClinicService;
+  readonly outbox: DoseSpotWriteOutboxPort;
+  readonly enrollment: PrescriberEnrollmentService;
+  /** The physician records' CURRENT NPI, so the roster list answers "confirmed?" exactly as the enrolment gate does. */
+  readonly directory: PractitionerDirectoryPort;
+  /** A structured warning (pino's `(fields, message)` shape): organization id and error class only, never a value. */
+  readonly warn?: (fields: Record<string, string | number>, message: string) => void;
+  readonly alerts?: ClinicAlertPort;
+}): OnboardingDoseSpotPort {
+  const { db, service } = deps;
+
+  /** The enrolment gate's own test. A directory failure on this row is that row's `false`, never the whole list's failure. */
+  async function isLinkConfirmed(r: RosterListRow): Promise<boolean> {
+    if (r.mdmId === null || r.confirmedMdmId === null) return false;
+    try {
+      const physician = await deps.directory.resolvePhysician(r.organizationId, r.mdmId);
+      const npi = physician?.canonical.identifierValue ?? null;
+      if (npi === null) return false;
+      return linkConfirmedBy(
+        {
+          membershipId: r.membershipId,
+          externalPhysicianMdmId: r.mdmId,
+          linkConfirmedMdmId: r.confirmedMdmId,
+          linkConfirmedNpi: r.confirmedNpi,
+          linkConfirmedByMembershipId: r.confirmedBy,
+          linkedByMembershipId: r.linkedBy,
+        },
+        { physicianMdmId: r.mdmId, npi },
+      );
+    } catch (cause) {
+      deps.warn?.(
+        {
+          organizationId: r.organizationId,
+          cause: cause instanceof Error ? cause.name : "unknown",
+        },
+        "DoseSpot roster list: a physician record could not be resolved; that prescriber is shown as unconfirmed",
+      );
+      return false;
+    }
+  }
+
+  /**
+   * The outbox event for the change (in the operator's transaction) and the registration row's id for the audit row. The go-live
+   * void is the platform write wrapper's own (it runs in this same transaction for every onboarding write), so none is passed.
+   */
+  async function finish(
+    tx: DbClient,
+    scope: OnboardingWriteScope,
+    view: ClinicConfigView,
+    change: ClinicServiceChange | null,
+    extra: Omit<OnboardingDoseSpotResult, "resourceId" | "view" | "afterCommit"> = {},
+  ): Promise<OnboardingDoseSpotResult> {
+    const registration = await registrationOf(createDrizzleConfigStore(tx), scope.organizationId);
+    await applyInTransaction(
+      tx,
+      { outbox: deps.outbox },
+      {
+        organizationId: scope.organizationId,
+        userId: scope.operatorUserId,
+        membershipId: scope.operatorMembershipId,
+        registration,
+        change,
+      },
+    );
+    return {
+      resourceId: registration.id,
+      view,
+      ...extra,
+      ...(change?.kind === "deactivated" && deps.alerts
+        ? {
+            afterCommit: () =>
+              alertAfterCommit(deps.alerts, scope.organizationId, registration, change),
+          }
+        : {}),
+    };
+  }
+
+  return {
+    get: (scope) =>
+      withOrgContext<DbClient, object>(
+        db,
+        { organizationId: scope.organizationId, userId: scope.operatorUserId },
+        (tx) => service.view(createDrizzleConfigStore(tx), scope.organizationId),
+      ),
+
+    async put(tx, scope, body, expectedVersion) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const input = parse(PutClinicBodySchema, body);
+      const result = await service.put(
+        createDrizzleConfigStore(tx),
+        actorFor(scope),
+        input,
+        expectedVersion,
+      );
+      // A no-op save changed nothing: no event, but the row still exists for the audit row to name.
+      return finish(tx, scope, result.view, changeOfPut(result), {
+        created: result.created,
+        changedFields: result.changedFields,
+      });
+    },
+
+    async prepareVerify(scope) {
+      return withOrgContext<DbClient, VerifyPlan>(
+        db,
+        { organizationId: scope.organizationId, userId: scope.operatorUserId },
+        (tx) => service.prepareVerify(createDrizzleConfigStore(tx), actorFor(scope)),
+      );
+    },
+
+    async runProbe(plan: OnboardingPlan) {
+      return service.runProbe(plan as VerifyPlan);
+    },
+
+    async completeVerify(tx, scope, plan, outcome) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const { view, test } = await service.completeVerify(
+        createDrizzleConfigStore(tx),
+        actorFor(scope),
+        plan as VerifyPlan,
+        outcome as ConnectionProbeOutcome,
+      );
+      return finish(tx, scope, view, null, {
+        test,
+        detail: { testOutcome: test.outcome, status: view.status ?? "none" },
+      });
+    },
+
+    async deactivate(tx, scope) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const result = await service.deactivate(createDrizzleConfigStore(tx), actorFor(scope));
+      return finish(tx, scope, result.view, changeOfTransition(result, "deactivated"));
+    },
+
+    async listPrescribers(scope) {
+      const rows = await withOrgContext<DbClient, ReadonlyArray<RosterListRow>>(
+        db,
+        { organizationId: scope.organizationId, userId: scope.operatorUserId },
+        async (tx) =>
+          tx
+            .select({
+              organizationId: P.organizationId,
+              membershipId: P.membershipId,
+              enrolledWithDoseSpot: P.dosespotPrescriberId,
+              revokedAt: P.revokedAt,
+              requestedAt: P.vendorEnrollmentRequestedAt,
+              mdmId: P.externalPhysicianMdmId,
+              confirmedMdmId: P.linkConfirmedMdmId,
+              confirmedNpi: P.linkConfirmedNpi,
+              confirmedBy: P.linkConfirmedByMembershipId,
+              linkedBy: P.linkedByMembershipId,
+            })
+            .from(P)
+            .where(eq(P.organizationId, scope.organizationId))
+            .orderBy(desc(P.createdAt))
+            .limit(500),
+      );
+      // no NPI, no DEA number, no vendor id: only whether each roster prescriber is linked
+      const out = await mapBounded(rows, LIST_DIRECTORY_CONCURRENCY, async (r) => ({
+        membershipId: r.membershipId,
+        onRoster: r.revokedAt === null,
+        enrolledWithDoseSpot: r.enrolledWithDoseSpot !== null,
+        vendorEnrollmentRequestedAt: r.requestedAt ? r.requestedAt.toISOString() : null,
+        // why an enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED): the prescriber has not confirmed the CURRENT link. Only the
+        // prescriber can; there is no operator route for it. The SAME test as the enrolment gate (`linkConfirmedBy`): the row's own member
+        // confirmed this record AND the NPI the record carries now.
+        linkConfirmed: await isLinkConfirmed(r),
+      }));
+      return out;
+    },
+
+    prepareEnroll(scope, membershipId) {
+      return deps.enrollment.prepare(asEnrollActor(scope), membershipId);
+    },
+
+    callVendor: (plan) => deps.enrollment.callVendor(plan as EnrollPlan),
+
+    async completeEnroll(tx, scope, plan, vendorId) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const enrollPlan = plan as EnrollPlan;
+      const store = createDrizzleRosterStore(tx);
+      if (vendorId === null) {
+        // already linked: nothing was called or recorded; the audit row still names the roster row
+        const [row] = await tx
+          .select({ id: P.id })
+          .from(P)
+          .where(eq(P.membershipId, enrollPlan.membershipId))
+          .limit(1);
+        if (!row) throw new ChartWardenError("INTERNAL_ERROR", "the roster row vanished", 500);
+        return {
+          resourceId: row.id,
+          view: { membershipId: enrollPlan.membershipId, enrolledWithDoseSpot: true },
+        };
+      }
+      const { rosterId } = await deps.enrollment.complete(
+        store,
+        tx,
+        asEnrollActor(scope),
+        enrollPlan,
+        vendorId,
+      );
+      return {
+        resourceId: rosterId,
+        view: { membershipId: enrollPlan.membershipId, enrolledWithDoseSpot: true },
+        detail: {
+          event: CLINIC_AUDIT_EVENTS.prescriberEnrolled,
+          nppesVerified: enrollPlan.profile?.nppesVerified ?? false,
+        },
+      };
+    },
+  };
+}

@@ -322,6 +322,8 @@ async function main(): Promise<void> {
 
   // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────
   try {
+    // The persisted local fixture stops at a validated claim today: submission below is expected to
+    // prove the typed fail-closed answer until a state/program route is certified.
     await seedMedicaidCoverage(admin.organizationId, PROVIDER_ENTITY_ID, patientId);
 
     await stepUpSession(admin.userId);
@@ -351,7 +353,9 @@ async function main(): Promise<void> {
         providerEntityId: PROVIDER_ENTITY_ID,
         serviceFrom,
         serviceTo,
-        kind: "hospice_only",
+        // The demo patient keeps Medicare primary and Medicaid secondary (rank 2). Billing policy
+        // authorizes that payer order only for the combined hospice + room-and-board claim shape.
+        kind: "combined_hospice_rb",
       },
     });
     const claimData = claim.data as unknown as { id: string; version: number } | undefined;
@@ -382,10 +386,16 @@ async function main(): Promise<void> {
       },
       body: { channelHint: "direct_mmis" },
     });
-    if (submit.error)
+    const submitCode = (submit.error as { error?: { code?: string } } | undefined)?.error?.code;
+    if (submitCode === "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY") {
+      log.ok(
+        "Medicaid (M24): 1 combined hospice + R&B claim assembled and validated; electronic submit refused because no state/program route is certified",
+      );
+    } else if (submit.error) {
       throw new Error(`medicaid claim submit failed: ${JSON.stringify(submit.error)}`);
-
-    log.ok("Medicaid (M24): 1 claim assembled, validated, and submitted (Oregon adapter)");
+    } else {
+      log.ok("Medicaid (M24): 1 combined hospice + R&B claim assembled, validated, and submitted");
+    }
   } catch (err) {
     log.fail(`M24 Medicaid: ${String(err)}`);
   }

@@ -278,12 +278,17 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       { admissionId: randomUUID(), hospiceAdmissionDate: "2025-11-01" },
       now,
     );
+    const patientPayerId = randomUUID();
     // The fixture's ids are labels; the claim columns are uuids.
     const seams = {
       ...fixed,
       patientPayer: {
         medicarePrimaryForRange: async () => ({
-          patientPayerId: randomUUID(),
+          patientPayerId,
+          medicarePrimary: true,
+        }),
+        medicarePrimaryForRangeInTransaction: async () => ({
+          patientPayerId,
           medicarePrimary: true,
         }),
       },

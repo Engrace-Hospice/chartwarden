@@ -101,10 +101,28 @@ export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
     },
     {
       key: "baa-verified",
-      label: "An operator verified the vendor BAA",
-      state: view.baa?.verified ? "ok" : "pending",
-      ...(view.baa?.verified ? { detail: `Verified ${when(view.baa.verified.at)}` } : {}),
+      label: view.baa?.revoked
+        ? "The vendor BAA was revoked"
+        : "An operator verified the vendor BAA",
+      state: view.baa?.revoked ? "blocked" : view.baa?.verified ? "ok" : "pending",
+      ...(view.baa?.revoked
+        ? {
+            detail: `Revoked ${when(view.baa.revokedAt ?? view.baa.recordedAt)}${view.baa.revokedReasonCode ? ` (${view.baa.revokedReasonCode.replaceAll("_", " ")})` : ""}.`,
+          }
+        : view.baa?.verified
+          ? { detail: `Verified ${when(view.baa.verified.at)}` }
+          : {}),
     },
+    ...(view.baa?.previousRevocation
+      ? [
+          {
+            key: "baa-previous-revocation",
+            label: "A previous vendor BAA was revoked",
+            state: "pending" as const,
+            detail: `${when(view.baa.previousRevocation.at)}${view.baa.previousRevocation.sameDocument ? "; this record points to the same document and verification needs an explicit acknowledgement" : ""}.`,
+          },
+        ]
+      : []),
     {
       key: "connection",
       label: "The connection is verified",
@@ -125,6 +143,7 @@ export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
 
 export interface ClearinghouseActions {
   readonly canVerifyBaa: boolean;
+  readonly canRevokeBaa: boolean;
   readonly canVerifyConnection: boolean;
   /**
    * What to say where an Activate button used to be: only the tenant's own billing administrator activates its clearinghouse
@@ -136,6 +155,7 @@ export interface ClearinghouseActions {
 
 const NO_ACTIONS: ClearinghouseActions = {
   canVerifyBaa: false,
+  canRevokeBaa: false,
   canVerifyConnection: false,
   tenantActivationNote: null,
 };
@@ -145,7 +165,8 @@ export function clearinghouseActions(view: ClearinghouseView): ClearinghouseActi
   const baaVerified = view.baa?.verified != null;
   const connectionVerified = view.status === "verified";
   return {
-    canVerifyBaa: view.baaRequired && view.baa !== null && !baaVerified,
+    canVerifyBaa: view.baaRequired && view.baa !== null && !view.baa.revoked && !baaVerified,
+    canRevokeBaa: view.baaRequired && view.baa !== null && !view.baa.revoked,
     canVerifyConnection: view.status === "draft" && view.hasSecret,
     tenantActivationNote: !connectionVerified
       ? null

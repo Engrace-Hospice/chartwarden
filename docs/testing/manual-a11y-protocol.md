@@ -118,10 +118,12 @@ the release issue. One block per screen per pairing. Any Fail becomes a GitHub i
 Sign-off: <name>, <date>. Open Fails: <count>.
 ```
 
-## Not automated and not covered here
+## Automated structure versus this manual protocol
 
-- The admin console (`apps/admin`) beyond its pre-auth screens needs a `platform_ops` login the demo seed
-  does not provide to the browser suite; run sections 1 to 3 on it by hand.
-- Portal session-gated screens require a magic-link mailbox; run them by hand.
+- The browser suite now signs into `apps/admin` with the synthetic `platform_ops` seed and axe-walks
+  every static console screen. This protocol still owns keyboard, focus, zoom and screen-reader checks.
+- The browser suite signs into `apps/portal` with the synthetic patient-self password account and
+  axe-walks its patient-scoped screens without a mail sink. Run the iOS/VoiceOver and other manual
+  checks above separately; automated axe results are not manual accessibility certification.
 - WCAG 2.2 success criteria not listed above are either covered by axe (2A/AA rule set used by the
   suite) or not applicable to this product (audio, video, time-based media). Re-evaluate if media is added.

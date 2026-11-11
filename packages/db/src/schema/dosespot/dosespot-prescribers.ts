@@ -37,6 +37,21 @@ export const dosespotPrescribers = pgTable(
     // Migration 0412 — the last IAL2-expiry stage alerted ('warn' | 'critical'); NULL = none / reset on re-verify.
     ial2AlertStage: text("ial2_alert_stage"),
 
+    // Migration 1427 — committed BEFORE the DoseSpot vendor call (create-then-record); `dosespotPrescriberId` is the vendor link.
+    vendorEnrollmentRequestedAt: timestamp("vendor_enrollment_requested_at", {
+      withTimezone: true,
+    }),
+    // Migration 1430 — the PRESCRIBER's own confirmation that `externalPhysicianMdmId` is them (all four set together, or none). The CHECK
+    // binds the record to the row's own member (by = membership_id, no NULL operand); a trigger additionally requires the transaction's
+    // declared actor (`app.user_id`) to be that member's user when a confirmation is set. The application's route and enrolment gate do
+    // the rest (own session, step-up, human actor). See the migration for exactly what is enforced where.
+    linkConfirmedMdmId: uuid("link_confirmed_mdm_id"),
+    linkConfirmedNpi: text("link_confirmed_npi"),
+    linkConfirmedAt: timestamp("link_confirmed_at", { withTimezone: true }),
+    linkConfirmedByMembershipId: uuid("link_confirmed_by_membership_id"),
+    // Migration 1433 — the membership that set (or last changed) `externalPhysicianMdmId`. A confirmation by that same member is refused (the
+    // confirm service) and so is the enrolment of such a link (the gate): one person cannot both link and confirm. NULL = a link that predates it.
+    linkedByMembershipId: uuid("linked_by_membership_id"),
     enrolledAt: timestamp("enrolled_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     revocationReason: text("revocation_reason"),
@@ -54,6 +69,10 @@ export const dosespotPrescribers = pgTable(
     activeMdmUnique: uniqueIndex("dosespot_prescriber_active_mdm_unique")
       .on(t.organizationId, t.externalPhysicianMdmId)
       .where(sql`external_physician_mdm_id IS NOT NULL AND revoked_at IS NULL`),
+    linkConfirmation: check(
+      "dosespot_prescriber_link_confirmation_ck",
+      sql`(link_confirmed_mdm_id IS NULL AND link_confirmed_npi IS NULL AND link_confirmed_at IS NULL AND link_confirmed_by_membership_id IS NULL) OR (link_confirmed_mdm_id IS NOT NULL AND link_confirmed_npi IS NOT NULL AND link_confirmed_npi ~ '^[0-9]{10}$' AND link_confirmed_at IS NOT NULL AND link_confirmed_by_membership_id IS NOT NULL AND link_confirmed_by_membership_id = membership_id)`,
+    ),
     epcsConsistency: check(
       "dosespot_prescriber_epcs_consistency",
       sql`(epcs_enabled = true) <= (ial2_status = 'verified' AND dea IS NOT NULL AND array_length(dea_authorized_schedules, 1) > 0)`,

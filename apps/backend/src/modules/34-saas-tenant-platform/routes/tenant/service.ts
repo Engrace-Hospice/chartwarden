@@ -41,7 +41,7 @@ export interface EnqueuePort {
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ──────────────────────
 
-/** `assist` is the non-PHI scope a help request creates (slice 7; the DB enum gains it in migration 1481, piece 7S). */
+/** `assist` is the non-PHI scope a help request creates (slice 7; the DB enum gains it in migration 1485, piece 7S). */
 export type SupportConsentGrantScope = "organization_scoped" | "patient_scoped" | "assist";
 
 export interface SupportConsentGrantView {

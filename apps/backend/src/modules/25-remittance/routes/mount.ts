@@ -14,6 +14,7 @@ import { registerAppealRoutes } from "./appeals.routes";
 import { registerAuditRequestRoutes } from "./audit-request.routes";
 import { registerAuditResponseRoutes } from "./audit-response.routes";
 import { registerBeneficiaryAppealRoutes } from "./beneficiary-appeal.routes";
+import { registerBillingOperationsInvestigationRoutes } from "./billing-operations-investigations";
 import { registerCaseViewRoutes } from "./case-view.routes";
 import { registerClaimMdEraReviewRoutes } from "./claimmd-era-review.routes";
 import { registerDenialRoutes } from "./denials.routes";
@@ -73,6 +74,11 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   registerRemittanceRoutes(app, { readService, writeService });
   if (services.claimMdEraReviewService)
     registerClaimMdEraReviewRoutes(app, services.claimMdEraReviewService);
+  if (services.billingOperationsInvestigationService)
+    registerBillingOperationsInvestigationRoutes(
+      app,
+      services.billingOperationsInvestigationService,
+    );
   registerDenialRoutes(app, { readService, writeService });
   registerAppealRoutes(app, { readService, writeService });
   registerTaxonomyRoutes(app, { readService, writeService });

@@ -44,6 +44,14 @@ const DEFAULT_COLLAB_SESSION_TTL_SEC = 8 * 3600;
 const TOKEN_SECRET_BYTES = 32;
 /** The synthetic principal's domain: reserved by RFC 6761 - it can never receive mail. */
 const PRINCIPAL_EMAIL_DOMAIN = "principals.chartwarden.invalid";
+const LIVE_FUNERAL_CREDENTIAL_INDEX = "collaborator_link_one_live_funeral_credential_uq";
+
+function uniqueConstraint(err: unknown): string | undefined {
+  const own = err as { code?: string; constraint?: string; cause?: unknown };
+  if (own?.code === "23505") return own.constraint;
+  if (own?.cause && own.cause !== err) return uniqueConstraint(own.cause);
+  return undefined;
+}
 
 /** `<orgId uuid>.<43 url-safe base64 chars>` - the shape of a 256-bit secret. */
 const TOKEN_RE =
@@ -125,26 +133,64 @@ export function createDbCollaboratorLinkStore(
       }
       const token = mintLinkToken(input.organizationId);
       const expiresAt = new Date(now().getTime() + linkTtlSec * 1000);
-      const [row] = await withOrgContext(
-        db,
-        { organizationId: input.organizationId, userId: NO_USER },
-        (tx) =>
-          tx
-            .insert(LINKS)
-            .values({
-              organizationId: input.organizationId,
-              providerEntityId: site.providerEntityId,
-              locationId: site.locationId,
-              patientId: input.patientId,
-              kind,
-              invitedByMembershipId: input.invitedByMembershipId,
-              tokenHash: hashLinkToken(token),
-              expiresAt,
-              sessionTtlSec,
-              maxUses,
-            })
-            .returning({ id: LINKS.id, expiresAt: LINKS.expiresAt }),
-      );
+      let rows: Array<{ id: string; expiresAt: Date }>;
+      try {
+        rows = await withOrgContext(
+          db,
+          { organizationId: input.organizationId, userId: NO_USER },
+          async (tx) => {
+            // Expiry is evaluated on the database clock. Retire an unused expired credential before the
+            // partial unique index arbitrates the replacement, so expiry cannot block this case forever.
+            if (kind === "funeral_home" && input.funeralHomeEntityId) {
+              await tx
+                .update(LINKS)
+                .set({ revokedAt: sql`now()` })
+                .where(
+                  and(
+                    eq(LINKS.organizationId, input.organizationId),
+                    eq(LINKS.patientId, input.patientId),
+                    eq(LINKS.kind, "funeral_home"),
+                    eq(LINKS.funeralHomeEntityId, input.funeralHomeEntityId),
+                    isNull(LINKS.revokedAt),
+                    isNull(LINKS.consumedAt),
+                    sql`${LINKS.expiresAt} <= now()`,
+                  ),
+                );
+            }
+            return tx
+              .insert(LINKS)
+              .values({
+                organizationId: input.organizationId,
+                providerEntityId: site.providerEntityId,
+                locationId: site.locationId,
+                patientId: input.patientId,
+                kind,
+                invitedByMembershipId: input.invitedByMembershipId,
+                tokenHash: hashLinkToken(token),
+                expiresAt,
+                sessionTtlSec,
+                maxUses,
+                ...(input.funeralHomeEntityId
+                  ? { funeralHomeEntityId: input.funeralHomeEntityId }
+                  : {}),
+                ...(input.disclosureAttemptId
+                  ? { disclosureAttemptId: input.disclosureAttemptId }
+                  : {}),
+              })
+              .returning({ id: LINKS.id, expiresAt: LINKS.expiresAt });
+          },
+        );
+      } catch (err) {
+        if (uniqueConstraint(err) === LIVE_FUNERAL_CREDENTIAL_INDEX) {
+          throw new ChartWardenError(
+            "FUNERAL_LINK_ALREADY_ACTIVE",
+            "an unspent funeral-home credential already exists for this case; revoke or consume it before retrying",
+            409,
+          );
+        }
+        throw err;
+      }
+      const [row] = rows;
       if (!row) throw new Error("collaborator link insert returned no row");
       return { linkId: row.id, expiresAt: row.expiresAt.toISOString(), token };
     },
@@ -180,6 +226,7 @@ export function createDbCollaboratorLinkStore(
             sessionTtlSec: LINKS.sessionTtlSec,
             useCount: LINKS.useCount,
             principalUserId: LINKS.principalUserId,
+            funeralHomeEntityId: LINKS.funeralHomeEntityId,
           });
         const row = claimed[0];
         if (!row) {
@@ -218,6 +265,7 @@ export function createDbCollaboratorLinkStore(
           principalUserId: row.principalUserId,
           sessionTtlSec: row.sessionTtlSec,
           useCount: row.useCount,
+          ...(row.funeralHomeEntityId ? { funeralHomeEntityId: row.funeralHomeEntityId } : {}),
         };
       }
       const known = outcome.known;
@@ -269,6 +317,44 @@ export function createDbCollaboratorLinkStore(
             ),
           ),
       );
+    },
+
+    async revokeForDisclosureAttempt({ organizationId, disclosureAttemptId, linkId }) {
+      const rows = await withOrgContext(db, { organizationId, userId: NO_USER }, (tx) =>
+        tx
+          .update(LINKS)
+          .set({ revokedAt: new Date() })
+          .where(
+            and(
+              eq(LINKS.organizationId, organizationId),
+              linkId
+                ? sql`(${LINKS.disclosureAttemptId} = ${disclosureAttemptId}::uuid OR ${LINKS.id} = ${linkId}::uuid)`
+                : eq(LINKS.disclosureAttemptId, disclosureAttemptId),
+              isNull(LINKS.revokedAt),
+            ),
+          )
+          .returning({ id: LINKS.id }),
+      );
+      return rows.length;
+    },
+
+    async funeralLinkForPrincipal({ organizationId, principalUserId }) {
+      const rows = await withOrgContext(db, { organizationId, userId: NO_USER }, (tx) =>
+        tx
+          .select({ id: LINKS.id, home: LINKS.funeralHomeEntityId })
+          .from(LINKS)
+          .where(
+            and(
+              eq(LINKS.organizationId, organizationId),
+              eq(LINKS.principalUserId, principalUserId),
+              eq(LINKS.kind, "funeral_home"),
+              isNull(LINKS.revokedAt),
+            ),
+          )
+          .limit(1),
+      );
+      const row = rows[0];
+      return row ? { linkId: row.id, funeralHomeEntityId: row.home } : null;
     },
 
     async revokeForPatient({ organizationId, patientId }) {

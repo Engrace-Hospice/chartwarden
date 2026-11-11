@@ -45,7 +45,7 @@ import {
   requireIdempotencyKey,
   requireIfMatch,
 } from "@chartwarden/shared/route-kit";
-import { ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
@@ -60,6 +60,8 @@ import {
   ClaimIdParamsSchema,
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
+  InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema,
 } from "./billing-typebox";
 import {
   CLAIM_CASELOAD,
@@ -316,6 +318,36 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
         },
         q.cursor,
         q.limit,
+      );
+    },
+  );
+
+  // Submission-first operational read: uncertainty is selected from durable attempts, then joined to
+  // claims in the same tenant and narrowed by the same server-derived provider scope as the claim queue.
+  app.get(
+    "/api/v1/billing/claims/in-doubt-submissions",
+    {
+      preHandler: [READ],
+      schema: {
+        querystring: InDoubtSubmissionListQuerySchema,
+        response: { 200: InDoubtSubmissionListResponseSchema },
+      },
+      config: { auditRead: { resourceKind: "claim_submission", list: true } },
+    },
+    async (request) => {
+      const query = parse(InDoubtSubmissionListQuerySchema, request.query);
+      const scope = resolveClaimProviderScope(request);
+      if (query.providerEntityId && scope && !scope.includes(query.providerEntityId)) {
+        throw new NotFoundError("in-doubt submission provider not found");
+      }
+      return deps.readService.listInDoubtSubmissions(
+        actorOf(request),
+        {
+          providerEntityId: query.providerEntityId,
+          providerEntityScope: scope,
+        },
+        query.cursor,
+        query.limit,
       );
     },
   );

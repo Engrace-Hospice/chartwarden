@@ -569,7 +569,6 @@ export function PatientIdgHistory(): JSX.Element {
                                   className="wx-mini-avatar"
                                   aria-hidden
                                   style={{
-                                    color: tint(badge),
                                     background: `color-mix(in srgb, ${tint(badge)} 14%, ${t.surfaceLowest})`,
                                   }}
                                 >

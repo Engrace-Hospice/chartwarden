@@ -3,7 +3,7 @@
 // Create carries an `Idempotency-Key`; an edit also carries the group version the page READ in `If-Match`. A 409/404 on an edit means the
 // group moved under the reader: the dialog closes and the page reloads and says why. While a group is open its schedule (recurrence) is fixed:
 // only a draft's schedule can change, and a drop-in group has none. The format itself is chosen once, at creation.
-import { useApiClient } from "@chartwarden/ui";
+import { useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
@@ -16,7 +16,6 @@ import {
   TextField,
   plainFieldset,
   primaryButtonStyle,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { intOrNull, isHttpsUrl, isUuid, orNull } from "./program-status";
 import {
@@ -107,7 +106,7 @@ export function GroupFormModal({
   const [openedJoinUrl] = useState(() => draftOf(group).joinUrl);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
   const setRec = (key: keyof Draft["recurrence"], value: string) =>
@@ -172,7 +171,7 @@ export function GroupFormModal({
             rec ? { ...common, recurrence: rec } : common,
             key,
           );
-    keys.settle(res.status);
+    keys.settle(res.status, res.error);
     setBusy(false);
     if (res.error || !res.data) {
       const message = errorMessage(res.error, "The group could not be saved.");

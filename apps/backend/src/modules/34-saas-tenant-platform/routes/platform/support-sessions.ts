@@ -186,6 +186,8 @@ export function registerSupportSessionRoutes(
     async (request) => {
       const { membershipId } = writeActorOf(request);
       const actorIp = request.ip ?? null;
+      // `note` is accepted and DISCARDED: closeSession takes no note, and closing is always permitted, so a refusal here would only
+      // block it. A change that stores the note must screen it (screenFreeText) first.
       parse(CloseSessionRequest, request.body);
       return service.closeSession({
         supportSessionId: sessionIdOf(request),

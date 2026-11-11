@@ -1,21 +1,100 @@
 // @chartwarden/shared — Idempotency helper (M1 Foundation §3.10; M1-T08).
 //
-// Core of the `Idempotency-Key` mutation guard (W-M1-10). The request fingerprint is a
-// SHA-256 of (organization_id, key, body) per SEC-025 / M01-F13, so the same key with a
-// different body is a CONFLICT rather than a silent replay. A `pending` state guards the
-// concurrent-duplicate race (M01-F15). Storage is dependency-injected (IdempotencyStore):
-// packages/shared is a leaf and never imports @chartwarden/db — the real Valkey/Postgres
-// store is supplied by the M1 backend bootstrap (M1-T10) and the HTTP middleware that
-// wraps this helper is wired there too.
-import { createHash } from "node:crypto";
-import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
+// Core of the `Idempotency-Key` mutation guard (W-M1-10). The request fingerprint is an HMAC-SHA-256 of
+// (organization_id, key, body) under a SERVER key (SEC-025 / M01-F13), so the same key with a different body is a
+// CONFLICT rather than a silent replay (and a record written under another server key is STALE, not a conflict). It is KEYED because the body can be a credential: a plain hash in the
+// table would let anyone who can read it test guesses for the secret offline; an HMAC cannot be tested without the
+// server key. A `pending` state guards the concurrent-duplicate race (M01-F15). Storage is dependency-injected
+// (IdempotencyStore): packages/shared is a leaf and never imports @chartwarden/db or reads the environment — the real
+// Valkey/Postgres store and the server key are supplied by the M1 backend bootstrap (M1-T10), where the HTTP
+// middleware that wraps this helper is wired too.
+import { createHash, createHmac } from "node:crypto";
+import {
+  ChartWardenError,
+  ERROR_CODES,
+  IdempotencyConflictError,
+  IdempotencyKeyStaleError,
+} from "@chartwarden/types";
 
-/** SHA-256 hex of (organization_id, key, body) — the request fingerprint (SEC-025 / F13). */
-export function computeIdempotencyHash(organizationId: string, key: string, body: unknown): string {
-  // Stable, canonical-enough serialization: undefined bodies normalize to null so the
-  // hash is deterministic across "no body" representations.
-  const canonical = JSON.stringify({ organizationId, key, body: body ?? null });
-  return createHash("sha256").update(canonical).digest("hex");
+/** Marks a keyed fingerprint. A stored value without it is the pre-HMAC plain SHA-256 (see {@link idempotencyHashMatches}). */
+export const IDEMPOTENCY_HASH_PREFIX = "h1:";
+
+/** Stable, canonical-enough serialization: undefined bodies normalize to null so the hash is deterministic. */
+const canonicalRequest = (organizationId: string, key: string, body: unknown): string =>
+  JSON.stringify({ organizationId, key, body: body ?? null });
+
+/** The label the key id is an HMAC of, so the id is a function of the server key and nothing else. */
+const KEY_ID_LABEL = "chartwarden:idempotency:key-id";
+/** A stored keyed fingerprint: `h1:` + the key id + `:` + the HMAC. */
+const KEYED_HASH = /^h1:([0-9a-f]{8}):[0-9a-f]{64}$/;
+
+/**
+ * A short, non-secret label of the server key: the first 8 hex characters of HMAC(key, a fixed label). Every fingerprint carries it, so a
+ * mismatch can be told apart as "the server's key changed since this record was written" (stale) from "another body" (conflict). It is
+ * the same for every row under one key, so it gives a reader of the table nothing to test a BODY guess against. It does let a reader test
+ * CANDIDATE SERVER SECRETS offline (the label is public and the tag is 32 bits), so the fingerprint's strength against someone who can read
+ * the table rests on BETTER_AUTH_SECRET being generated high-entropy, never chosen; production boot checks its presence and length only.
+ */
+export function idempotencyKeyId(hmacKey: string | Uint8Array): string {
+  return createHmac("sha256", hmacKey).update(KEY_ID_LABEL).digest("hex").slice(0, 8);
+}
+
+/** `h1:` + key id + `:` + HMAC-SHA-256 hex of (organization_id, key, body) under the server key — the request fingerprint (SEC-025 / F13). */
+export function computeIdempotencyHash(
+  organizationId: string,
+  key: string,
+  body: unknown,
+  hmacKey: string | Uint8Array,
+): string {
+  return `${IDEMPOTENCY_HASH_PREFIX}${idempotencyKeyId(hmacKey)}:${createHmac("sha256", hmacKey)
+    .update(canonicalRequest(organizationId, key, body))
+    .digest("hex")}`;
+}
+
+/**
+ * Was the STORED fingerprint written under a different server key than the one computing `requestHash` (a rotated `BETTER_AUTH_SECRET`)?
+ * Only two well-formed keyed values with different key ids say so; a legacy (plain SHA-256) or malformed record never does, so the
+ * caller keeps reporting those as an ordinary conflict.
+ */
+export function idempotencyKeyIsStale(stored: string, requestHash: string): boolean {
+  const storedId = KEYED_HASH.exec(stored)?.[1];
+  const currentId = KEYED_HASH.exec(requestHash)?.[1];
+  return storedId !== undefined && currentId !== undefined && storedId !== currentId;
+}
+
+/**
+ * The date (UTC, inclusive) by which the legacy plain-SHA-256 arm must be gone. The real trigger is "one idempotency TTL after the keyed
+ * fingerprint is deployed everywhere"; this is the calendar proxy for it, picked with about five weeks of margin after 2026-11-09 (the date
+ * is a judgement, not a fact about any deploy). If the keyed fingerprint ships later than a TTL before it (later than early December), move
+ * the date in the same change that moves the deploy, and the compliance row's `review_by` (CW-SEC-02) with it.
+ */
+export const LEGACY_ARM_REMOVE_AFTER = "2026-12-15";
+
+/**
+ * The fingerprint this module stored BEFORE it was keyed: plain SHA-256 hex. Only ever COMPUTED, to recognise a record written
+ * before the deploy that introduced the keyed hash (records live 24 h), so a client's retry of an in-flight or completed request
+ * still replays instead of being re-executed. It is never written. REMOVAL: remove this function, the legacy arm that uses it and
+ * {@link LEGACY_ARM_REMOVE_AFTER} once every environment has passed one TTL (24 h) after the keyed fingerprint deployed there; a test
+ * fails after that date while this function still exists, so the arm cannot be forgotten.
+ */
+export function legacyIdempotencyHash(organizationId: string, key: string, body: unknown): string {
+  return createHash("sha256")
+    .update(canonicalRequest(organizationId, key, body))
+    .digest("hex");
+}
+
+/**
+ * Does a STORED fingerprint belong to this request? A keyed (`h1:`) record matches only the same keyed value, so a record written
+ * under another server key (a rotated secret) is a clean mismatch (409), never a replay. A record without the prefix is the legacy
+ * form and matches when the legacy hash of the same request does; `legacy` is lazy so the plain hash is not computed otherwise.
+ */
+export function idempotencyHashMatches(
+  stored: string,
+  requestHash: string,
+  legacy: () => string,
+): boolean {
+  if (stored === requestHash) return true;
+  return !stored.startsWith(IDEMPOTENCY_HASH_PREFIX) && stored === legacy();
 }
 
 /** The cached outcome of a completed idempotent mutation. */
@@ -26,7 +105,12 @@ export interface IdempotentResponse {
 
 /** A stored idempotency record: in-flight (`pending`) or finished (`complete`). */
 export type IdempotencyRecord =
-  | { readonly state: "pending"; readonly requestHash: string }
+  | {
+      readonly state: "pending";
+      readonly requestHash: string;
+      /** How long the claim has been pending, by the store's own clock; absent when the store cannot say (treated as young). */
+      readonly pendingForMs?: number;
+    }
   | {
       readonly state: "complete";
       readonly requestHash: string;
@@ -45,10 +129,12 @@ export interface IdempotencyStore {
   putPending(organizationId: string, key: string, requestHash: string): Promise<boolean>;
   complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
   /**
-   * Drops the caller's own still-`pending` claim so the SAME key can run again. For an outcome that must not be
-   * replayed because the write did not happen (a deadlock/serialization 409, any 5xx): caching it would answer every
-   * retry with the failure for the whole TTL. Only the claimant's row goes: a row that is no longer `pending`, or whose
-   * `requestHash` is another claimant's, is left alone.
+   * Drops the caller's own still-`pending` claim so the SAME key can run again. For a failure that must not be
+   * replayed because NOTHING of the request committed (a deadlock/serialization 409, a 5xx that followed no durable write; the
+   * HTTP middleware proves that with the per-request commit tracker before it calls this): caching it would answer every
+   * retry with the failure for the whole TTL while the write never ran. A failure that followed a commit is completed, not
+   * released: re-running it would write twice. Only the claimant's row goes: a row that is no longer `pending`, or whose
+   * `requestHash` is another claimant's, is left alone. If this call fails the key stays `pending` until its TTL.
    */
   release(organizationId: string, key: string, requestHash: string): Promise<void>;
 }
@@ -56,26 +142,78 @@ export interface IdempotencyStore {
 /** The one `Idempotency-Key`-reused-with-a-different-body error (409 IDEMPOTENCY_CONFLICT, SEC-025). */
 export { IdempotencyConflictError };
 
-/** Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 CONFLICT. */
-export class IdempotencyInFlightError extends ConflictError {
+/**
+ * Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 IDEMPOTENCY_IN_FLIGHT. Its own code,
+ * not the plain CONFLICT: a client must be able to tell "your first request is still running, retry with the same key" from a
+ * business-rule 409, because renewing the key on this answer would write twice.
+ */
+export class IdempotencyInFlightError extends ChartWardenError {
   constructor(readonly key: string) {
-    super("Idempotency-Key request is still being processed");
+    super(
+      "IDEMPOTENCY_IN_FLIGHT",
+      "Idempotency-Key request is still being processed",
+      ERROR_CODES.IDEMPOTENCY_IN_FLIGHT,
+    );
     this.name = "IdempotencyInFlightError";
   }
 }
 
-/** Replay a stored record: its response when complete; a conflict on a different body; in flight otherwise. */
-function replay(record: IdempotencyRecord, key: string, requestHash: string): IdempotentResponse {
-  if (record.requestHash !== requestHash) throw new IdempotencyConflictError();
+/** The stale-key error (409 IDEMPOTENCY_KEY_STALE): a record written under another server key (the secret was rotated since). */
+export { IdempotencyKeyStaleError };
+
+/**
+ * How long a claim may stay `pending` before a duplicate is told the key is STUCK rather than in flight: the longest a request
+ * handler is meant to run plus a wide margin. Nothing in the platform runs a handler for more than a minute or two (database
+ * statements, outbound calls and the proxy all time out well inside that; report and export builds run as queued jobs), so a
+ * claim still pending after fifteen minutes belongs to a process that died after claiming it, or to a request whose outcome
+ * could not be recorded. Far under the 24 hour record TTL, which is how long a client would otherwise loop on IN_FLIGHT.
+ */
+export const IDEMPOTENCY_PENDING_MAX_AGE_MS = 15 * 60 * 1000;
+
+/**
+ * Thrown when a duplicate finds the first request still `pending` after IDEMPOTENCY_PENDING_MAX_AGE_MS — 409
+ * IDEMPOTENCY_KEY_STUCK. The first request's outcome is unknown (it may have been applied), so the client is told not to retry
+ * with this key and to read the resource to find out. The row is never reclaimed, released or re-run by this path.
+ */
+export class IdempotencyKeyStuckError extends ChartWardenError {
+  constructor(readonly key: string) {
+    super(
+      "IDEMPOTENCY_KEY_STUCK",
+      "The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this key: read the resource to see whether the change was applied, and use a new key only if it was not.",
+      ERROR_CODES.IDEMPOTENCY_KEY_STUCK,
+    );
+    this.name = "IdempotencyKeyStuckError";
+  }
+}
+
+/**
+ * Replay a stored record: its response when complete; a conflict or stale-key error on a mismatched fingerprint; stuck or in
+ * flight otherwise. Legacy plain hashes remain replayable during the bounded migration arm.
+ */
+function replay(
+  record: IdempotencyRecord,
+  key: string,
+  requestHash: string,
+  legacyHash: () => string,
+): IdempotentResponse {
+  if (!idempotencyHashMatches(record.requestHash, requestHash, legacyHash)) {
+    throw idempotencyKeyIsStale(record.requestHash, requestHash)
+      ? new IdempotencyKeyStaleError()
+      : new IdempotencyConflictError();
+  }
   if (record.state === "complete") return record.response;
+  if ((record.pendingForMs ?? 0) > IDEMPOTENCY_PENDING_MAX_AGE_MS)
+    throw new IdempotencyKeyStuckError(key);
   throw new IdempotencyInFlightError(key);
 }
 
 /**
  * Claim `(organizationId, key)` for a request fingerprinted `requestHash`. Resolves `null` when THIS caller
  * now owns the key and must run the handler (then `store.complete` it); otherwise resolves the cached
- * response to replay. Throws {@link IdempotencyConflictError} for a different body and
- * {@link IdempotencyInFlightError} while the first request is still pending. The claim (`putPending`) is the
+ * response to replay. Throws {@link IdempotencyConflictError} for a different body,
+ * {@link IdempotencyKeyStaleError} for a record under another server key, and
+ * {@link IdempotencyInFlightError} while the first request is still pending, and {@link IdempotencyKeyStuckError} once it has been
+ * pending for longer than IDEMPOTENCY_PENDING_MAX_AGE_MS. The claim (`putPending`) is the
  * serialization point (GAP-007): a caller that loses it never runs the handler — it reloads the winner's
  * record, and a record that vanished in between is reported in flight so the client retries.
  */
@@ -84,12 +222,13 @@ export async function claimIdempotencyKey(
   organizationId: string,
   key: string,
   requestHash: string,
+  legacyHash: () => string,
 ): Promise<IdempotentResponse | null> {
   const existing = await store.load(organizationId, key);
-  if (existing) return replay(existing, key, requestHash);
+  if (existing) return replay(existing, key, requestHash, legacyHash);
   if (await store.putPending(organizationId, key, requestHash)) return null;
   const winner = await store.load(organizationId, key);
-  if (winner) return replay(winner, key, requestHash);
+  if (winner) return replay(winner, key, requestHash, legacyHash);
   throw new IdempotencyInFlightError(key);
 }
 
@@ -106,9 +245,12 @@ export async function runIdempotent(
   key: string,
   body: unknown,
   handler: () => Promise<IdempotentResponse>,
+  hmacKey: string | Uint8Array,
 ): Promise<IdempotentResponse> {
-  const requestHash = computeIdempotencyHash(organizationId, key, body);
-  const cached = await claimIdempotencyKey(store, organizationId, key, requestHash);
+  const requestHash = computeIdempotencyHash(organizationId, key, body, hmacKey);
+  const cached = await claimIdempotencyKey(store, organizationId, key, requestHash, () =>
+    legacyIdempotencyHash(organizationId, key, body),
+  );
   if (cached) return cached;
   const response = await handler();
   await store.complete(organizationId, key, response);

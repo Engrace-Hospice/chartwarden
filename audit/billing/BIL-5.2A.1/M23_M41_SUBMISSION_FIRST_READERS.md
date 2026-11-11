@@ -1,0 +1,6 @@
+# M23/M41 submission-first readers
+
+- M23: `M23ReadRouteService.listInDoubtSubmissions` reads `claim_submission` first, then joins the same-organization claim and requires matching provider identity. `GET /api/v1/billing/claims/in-doubt-submissions` applies `resolveClaimProviderScope` and only accepts the optional provider filter as a narrowing condition. The DTO exposes attempt index, reason code, source time, provider and claim control reference; no raw submission or patient/member fields.
+- M41: `CommercialClaimReadService.listInDoubtSubmissions` selects `commercial_submission.status = in_doubt` first, joins its same-organization, same-provider claim and payer plan, and runs `assertPatientReachable` for each candidate. `GET /api/v1/billing/commercial/submissions/in-doubt` retains `commercial_billing.read` and `commercial_billing_provider_scope` authorization.
+- Both readers cap page size at 100 and use timestamp plus submission UUID keysets. M41 scans at most 500 records per request to apply caseload filtering; a scan-cap continuation is reported, not treated as exhaustion.
+- The former ordinary-claim-page uncertainty enrichment was removed. Older uncertain submissions no longer depend on appearing in the ordinary claim page.

@@ -1,169 +1,9 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 217,
-  "e2eReachedCount": 26,
+  "totalStaticWebScreens": 218,
+  "e2eReachedCount": 205,
   "axeReachedCount": 205,
   "zeroE2eCoverage": [
-    {
-      "id": "saas.account",
-      "module": "34-saas",
-      "path": "/admin/account",
-      "permission": "tenant.read_own",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "emar.administration-policy",
-      "module": "13-emar",
-      "path": "/admin/administration-policy",
-      "permission": "administration.admin.policy",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.surveyor-audit",
-      "module": "23-billing-medicare",
-      "path": "/admin/billing-audit",
-      "permission": "billing.claim.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "evv.metrics",
-      "module": "18-evv",
-      "path": "/admin/evv-metrics",
-      "permission": "evv.read_metrics",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "documents.template-library",
-      "module": "22-documents",
-      "path": "/admin/forms/templates",
-      "permission": "documents.read_templates",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "saas.onboarding",
-      "module": "34-saas",
-      "path": "/admin/onboarding",
-      "permission": "onboarding.read_own",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "portal.admin",
-      "module": "31-portal",
-      "path": "/admin/portal",
-      "permission": "portal.account.read_list",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "prescribing.prescriber-roster",
-      "module": "12-dosespot",
-      "path": "/admin/prescribers",
-      "permission": "prescribing.admin.roster",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "prescribing.policy",
-      "module": "12-dosespot",
-      "path": "/admin/prescribing-policy",
-      "permission": "prescribing.admin.policy",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "assessment.scale-licenses",
-      "module": "09-assessments",
-      "path": "/admin/scales/licenses",
-      "permission": "assessment.license_read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "assessment.scale-policies",
-      "module": "09-assessments",
-      "path": "/admin/scales/policies",
-      "permission": "assessment.policy_read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "scheduling.metrics",
-      "module": "17-scheduling",
-      "path": "/admin/scheduling-metrics",
-      "permission": "visit.read_metrics",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "saas.agency-setup",
-      "module": "34-saas",
-      "path": "/admin/setup",
-      "permission": "org.manage",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "saas.support-grants",
-      "module": "34-saas",
-      "path": "/admin/support-grants",
-      "permission": "support_consent_grant.list_own",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "volunteer.compliance",
-      "module": "15-discipline-care-plans",
-      "path": "/admin/volunteer-compliance",
-      "permission": "volunteer_compliance.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "volunteer.ratio",
-      "module": "15-discipline-care-plans",
-      "path": "/admin/volunteer-ratio",
-      "permission": "volunteer_compliance.read_ratio",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "admission.census",
-      "module": "06-admission",
-      "path": "/admissions",
-      "permission": "admission.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "admission.discharges",
-      "module": "06-admission",
-      "path": "/admissions/discharges",
-      "permission": "discharge.create",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "admission.readmit-list",
-      "module": "06-admission",
-      "path": "/admissions/readmit",
-      "permission": "admission.create",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "audit.log-viewer",
-      "module": "04-audit",
-      "path": "/audit",
-      "permission": "audit.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
     {
       "id": "identity.auditor-enrolment",
       "module": "02-identity",
@@ -181,180 +21,12 @@
       "axeReached": false
     },
     {
-      "id": "bereavement.caseload",
-      "module": "16-bereavement",
-      "path": "/bereavement",
-      "permission": "bereavement.dashboard.counselor",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "bereavement.intake",
-      "module": "16-bereavement",
-      "path": "/bereavement/eligible",
-      "permission": "bereavement.plan.assign_counselor",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "bereavement.groups",
-      "module": "16-bereavement",
-      "path": "/bereavement/groups",
-      "permission": "bereavement.group.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "bereavement.library",
-      "module": "16-bereavement",
-      "path": "/bereavement/library",
-      "permission": "bereavement.library.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "bereavement.mailings",
-      "module": "16-bereavement",
-      "path": "/bereavement/mailings",
-      "permission": "bereavement.mailing.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "bereavement.mailings.settings",
-      "module": "16-bereavement",
-      "path": "/bereavement/mailings/settings",
-      "permission": "bereavement.mailing.manage",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "bereavement.memorials",
-      "module": "16-bereavement",
-      "path": "/bereavement/memorials",
-      "permission": "bereavement.memorial.rsvp",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "bereavement.supervisor",
-      "module": "16-bereavement",
-      "path": "/bereavement/supervisor",
-      "permission": "bereavement.dashboard.supervisor",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.claim.new",
+      "id": "billing.operations",
       "module": "23-billing-medicare",
-      "path": "/billing/claims/new",
-      "permission": "billing.claim.assemble",
+      "path": "/billing/operations",
+      "permission": "(none)",
       "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.dde-queue",
-      "module": "23-billing-medicare",
-      "path": "/billing/dde",
-      "permission": "billing.dde.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.eligibility",
-      "module": "23-billing-medicare",
-      "path": "/billing/eligibility",
-      "permission": "billing.eligibility.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.mac-credentials",
-      "module": "23-billing-medicare",
-      "path": "/billing/mac-credentials",
-      "permission": "billing.mac_credential.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.metrics",
-      "module": "23-billing-medicare",
-      "path": "/billing/metrics",
-      "permission": "billing.claim.read_metrics",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.noe",
-      "module": "23-billing-medicare",
-      "path": "/billing/noe",
-      "permission": "billing.noe.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.notr",
-      "module": "23-billing-medicare",
-      "path": "/billing/notr",
-      "permission": "billing.notr.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.overrides",
-      "module": "23-billing-medicare",
-      "path": "/billing/overrides",
-      "permission": "billing.validation.read_override",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.work-queue",
-      "module": "23-billing-medicare",
-      "path": "/billing/queue",
-      "permission": "billing.claim.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.rate-tables",
-      "module": "23-billing-medicare",
-      "path": "/billing/rate-tables",
-      "permission": "billing.rate_table.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.rule-config",
-      "module": "23-billing-medicare",
-      "path": "/billing/rule-config",
-      "permission": "billing.rule_config.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.sequestration",
-      "module": "23-billing-medicare",
-      "path": "/billing/sequestration-policy",
-      "permission": "billing.sequestration_policy.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.transfer-notices",
-      "module": "23-billing-medicare",
-      "path": "/billing/transfer-notices",
-      "permission": "billing.noe.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.wage-indexes",
-      "module": "23-billing-medicare",
-      "path": "/billing/wage-indexes",
-      "permission": "billing.wage_index.read",
-      "e2eReached": false,
-      "axeReached": true
+      "axeReached": false
     },
     {
       "id": "scheduling.calendar",
@@ -363,190 +35,6 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
-    },
-    {
-      "id": "cap.dashboard",
-      "module": "26-cap",
-      "path": "/cap",
-      "permission": "cap.projection.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cap.events",
-      "module": "26-cap",
-      "path": "/cap/events",
-      "permission": "cap.event.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cap.periods",
-      "module": "26-cap",
-      "path": "/cap/periods",
-      "permission": "cap.period.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cap.psr",
-      "module": "26-cap",
-      "path": "/cap/psr",
-      "permission": "cap.psr.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cap.settlement",
-      "module": "26-cap",
-      "path": "/cap/settlements",
-      "permission": "cap.settlement.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "admission.compliance",
-      "module": "06-admission",
-      "path": "/compliance/admissions",
-      "permission": "compliance.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "ai.compliance",
-      "module": "32-ai-platform",
-      "path": "/compliance/ai",
-      "permission": "ai.invocation.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "audit.exports",
-      "module": "04-audit",
-      "path": "/compliance/audit/exports",
-      "permission": "audit.export",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "audit.integrity-report",
-      "module": "04-audit",
-      "path": "/compliance/audit/integrity",
-      "permission": "audit.integrity",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "audit.legal-holds",
-      "module": "04-audit",
-      "path": "/compliance/legal-holds",
-      "permission": "legalhold.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "privacy.restricted-patients",
-      "module": "05-patient",
-      "path": "/compliance/privacy",
-      "permission": "privacy.admin",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "audit.privacy-requests",
-      "module": "04-audit",
-      "path": "/compliance/privacy-requests",
-      "permission": "audit.disclosure_report",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cost_report.list",
-      "module": "27-cost-report",
-      "path": "/cost-reports",
-      "permission": "cost_report.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cost_report.bad_debt",
-      "module": "27-cost-report",
-      "path": "/cost-reports/bad-debt",
-      "permission": "cost_report.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cost_report.rules",
-      "module": "27-cost-report",
-      "path": "/cost-reports/rules",
-      "permission": "cost_report.read_rules",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cost_report.snapshots",
-      "module": "27-cost-report",
-      "path": "/cost-reports/snapshots",
-      "permission": "cost_report.read_snapshot_detail",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cost_report.validation",
-      "module": "27-cost-report",
-      "path": "/cost-reports/validation",
-      "permission": "cost_report.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "cost_report.workspace",
-      "module": "27-cost-report",
-      "path": "/cost-reports/workspace",
-      "permission": "cost_report.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "evv.aggregator-submissions",
-      "module": "18-evv",
-      "path": "/evv/aggregator-submissions",
-      "permission": "evv.aggregator.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "evv.dashboard",
-      "module": "18-evv",
-      "path": "/evv/dashboard",
-      "permission": "evv.read_metrics",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "evv.events",
-      "module": "18-evv",
-      "path": "/evv/events",
-      "permission": "evv.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "evv.geofence-policy",
-      "module": "18-evv",
-      "path": "/evv/geofence-policy",
-      "permission": "evv.policy.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "evv.missing-resolutions",
-      "module": "18-evv",
-      "path": "/evv/missing-resolutions",
-      "permission": "evv.missing_resolution.read",
-      "e2eReached": false,
-      "axeReached": true
     },
     {
       "id": "messaging.family-contact",
@@ -565,78 +53,6 @@
       "axeReached": false
     },
     {
-      "id": "hope.dashboard",
-      "module": "10-hope",
-      "path": "/hope",
-      "permission": "hope.schedule.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "hope.compliance",
-      "module": "10-hope",
-      "path": "/hope/compliance",
-      "permission": "hope.dashboard.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "hope.sfv-worklist",
-      "module": "10-hope",
-      "path": "/hope/sfv",
-      "permission": "hope.sfv.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "hope.submission-worklist",
-      "module": "10-hope",
-      "path": "/hope/submissions",
-      "permission": "hope.submission.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "idg.action-items",
-      "module": "14-idg",
-      "path": "/idg/action-items",
-      "permission": "idg.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "intake.review-queue",
-      "module": "22-documents",
-      "path": "/intake",
-      "permission": "intake.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "ipu.units",
-      "module": "37-ipu",
-      "path": "/ipu",
-      "permission": "m37.unit.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "ipu.census",
-      "module": "37-ipu",
-      "path": "/ipu/census",
-      "permission": "m37.census.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "ipu.equipment",
-      "module": "37-ipu",
-      "path": "/ipu/equipment",
-      "permission": "m37.equipment.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
       "id": "identity.mfa-challenge",
       "module": "02-identity",
       "path": "/login/2fa",
@@ -653,188 +69,12 @@
       "axeReached": false
     },
     {
-      "id": "identity.organization-select",
-      "module": "02-identity",
-      "path": "/login/organization",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
       "id": "identity.passkey-enrolment",
       "module": "02-identity",
       "path": "/login/passkey",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
-    },
-    {
-      "id": "mdm.console",
-      "module": "40-mdm",
-      "path": "/mdm",
-      "permission": "mdm.physician.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "ai.my-preferences",
-      "module": "32-ai-platform",
-      "path": "/me/ai-preferences",
-      "permission": "ai.clinician_opt_out.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "oncall.me",
-      "module": "19-oncall",
-      "path": "/me/oncall",
-      "permission": "oncall.read_schedule",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.me",
-      "module": "20-field-safety",
-      "path": "/me/safety",
-      "permission": "safety.sos.raise",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.me.check_ins",
-      "module": "20-field-safety",
-      "path": "/me/safety/check-ins",
-      "permission": "safety.check_in.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.me.consent",
-      "module": "20-field-safety",
-      "path": "/me/safety/consent",
-      "permission": "safety.consent.read_self",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "scheduling.my-visits",
-      "module": "17-scheduling",
-      "path": "/me/visits",
-      "permission": "visit.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.ar-dashboard",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/ar-dashboard",
-      "permission": "medicaid.claim.read_ar_dashboard",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.claim.new",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/claims/new",
-      "permission": "medicaid.claim.assemble",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.eligibility",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/eligibility",
-      "permission": "medicaid.eligibility.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.metrics",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/metrics",
-      "permission": "medicaid.claim.read_metrics",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.overrides",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/override-audit",
-      "permission": "medicaid.validation.read_override",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.work-queue",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/queue",
-      "permission": "medicaid.claim.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.rb-arrangements",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/rb-arrangements",
-      "permission": "medicaid.rb_arrangement.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.rule-config",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/rule-config",
-      "permission": "medicaid.rule_config.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.trading-partners",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/trading-partner-credentials",
-      "permission": "medicaid.trading_partner.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "medicaid.validation-worklist",
-      "module": "24-billing-medicaid",
-      "path": "/medicaid/billing/validation-worklist",
-      "permission": "medicaid.validation.read_run",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.alarm-sources",
-      "module": "36-messaging",
-      "path": "/messaging/alarm-sources",
-      "permission": "messaging.alarm_ingest.manage",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.response-analytics",
-      "module": "36-messaging",
-      "path": "/messaging/analytics",
-      "permission": "messaging.analytics.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.ack-broadcast",
-      "module": "36-messaging",
-      "path": "/messaging/broadcasts",
-      "permission": "messaging.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.death-board",
-      "module": "36-messaging",
-      "path": "/messaging/death-board",
-      "permission": "messaging.read",
-      "e2eReached": false,
-      "axeReached": true
     },
     {
       "id": "messaging.devices",
@@ -845,156 +85,12 @@
       "axeReached": false
     },
     {
-      "id": "messaging.export",
-      "module": "36-messaging",
-      "path": "/messaging/export",
-      "permission": "messaging.export.request",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.family",
-      "module": "36-messaging",
-      "path": "/messaging/family",
-      "permission": "messaging.family.respond",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.break-glass",
-      "module": "36-messaging",
-      "path": "/messaging/governance/break-glass",
-      "permission": "messaging.break_glass.review",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.export-approvals",
-      "module": "36-messaging",
-      "path": "/messaging/governance/export-approvals",
-      "permission": "messaging.export.approve",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.retention",
-      "module": "36-messaging",
-      "path": "/messaging/governance/retention",
-      "permission": "messaging.retention.manage",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.session-governance",
-      "module": "36-messaging",
-      "path": "/messaging/governance/sessions",
-      "permission": "messaging.sessions.manage",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.inbox",
-      "module": "36-messaging",
-      "path": "/messaging/inbox",
-      "permission": "messaging.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.on-call",
-      "module": "36-messaging",
-      "path": "/messaging/on-call",
-      "permission": "messaging.oncall.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.partners",
-      "module": "36-messaging",
-      "path": "/messaging/partners",
-      "permission": "messaging.share.manage",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.preferences",
-      "module": "36-messaging",
-      "path": "/messaging/preferences",
-      "permission": "messaging.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.saved-replies",
-      "module": "36-messaging",
-      "path": "/messaging/saved-replies",
-      "permission": "messaging.send",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.global-search-settings",
-      "module": "36-messaging",
-      "path": "/messaging/search-settings",
-      "permission": "messaging.global_search.manage",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "messaging.unacknowledged",
-      "module": "36-messaging",
-      "path": "/messaging/unacknowledged",
-      "permission": "messaging.review",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
       "id": "messaging.notifications",
       "module": "36-messaging",
       "path": "/notifications",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
-    },
-    {
-      "id": "orders.held-transmissions",
-      "module": "11-orders",
-      "path": "/orders/held-transmissions",
-      "permission": "orders.transmission.view_held",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "orders.results-review",
-      "module": "11-orders",
-      "path": "/orders/results-pending-review",
-      "permission": "orders.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "orders.verbal-expiring",
-      "module": "11-orders",
-      "path": "/orders/verbal-expiring",
-      "permission": "orders.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "ai.opt-in",
-      "module": "32-ai-platform",
-      "path": "/organization/ai/opt-in",
-      "permission": "ai.tenant_opt_in",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "ai.routing",
-      "module": "32-ai-platform",
-      "path": "/organization/ai/routing",
-      "permission": "ai.tenant_opt_in",
-      "e2eReached": false,
-      "axeReached": true
     },
     {
       "id": "messaging.partner-share",
@@ -1005,532 +101,12 @@
       "axeReached": false
     },
     {
-      "id": "cap.platform_constants",
-      "module": "26-cap",
-      "path": "/platform/cap/constants",
-      "permission": "cap.platform_constant.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "prescribing.sign-inbox",
-      "module": "12-dosespot",
-      "path": "/prescribing/sign-inbox",
-      "permission": "prescribing.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "prescribing.verbal-orders",
-      "module": "12-dosespot",
-      "path": "/prescribing/verbal-orders",
-      "permission": "prescribing.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "quality.hub",
-      "module": "30-quality",
-      "path": "/quality",
-      "permission": "quality.measure.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "quality.mortality",
-      "module": "30-quality",
-      "path": "/quality/mortality",
-      "permission": "mortality.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "quality.qapi-incidents",
-      "module": "30-quality",
-      "path": "/quality/qapi",
-      "permission": "incident.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "admission.referral-new",
-      "module": "06-admission",
-      "path": "/referrals/new",
-      "permission": "referral.create",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "prescribing.refill-inbox",
-      "module": "12-dosespot",
-      "path": "/refills",
-      "permission": "prescribing.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.worklist",
-      "module": "25-remittance",
-      "path": "/remittance",
-      "permission": "remittance.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.adrs",
-      "module": "25-remittance",
-      "path": "/remittance/adrs",
-      "permission": "adr.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.appeals",
-      "module": "25-remittance",
-      "path": "/remittance/appeals",
-      "permission": "appeal.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.audits",
-      "module": "25-remittance",
-      "path": "/remittance/audits",
-      "permission": "audit_request.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.claimmd-era-review",
-      "module": "25-remittance",
-      "path": "/remittance/claimmd-era-review",
-      "permission": "remittance.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.denials",
-      "module": "25-remittance",
-      "path": "/remittance/denials",
-      "permission": "denial.worklist.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.payer-appeal-paths",
-      "module": "25-remittance",
-      "path": "/remittance/payer-appeal-paths",
-      "permission": "payer_appeal_path.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.playbooks",
-      "module": "25-remittance",
-      "path": "/remittance/playbooks",
-      "permission": "playbook.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.report",
-      "module": "25-remittance",
-      "path": "/remittance/report",
-      "permission": "medical_review.report.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.representative-forms",
-      "module": "25-remittance",
-      "path": "/remittance/representative-forms",
-      "permission": "representative_form.configure",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.taxonomy",
-      "module": "25-remittance",
-      "path": "/remittance/taxonomy",
-      "permission": "taxonomy.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "remittance.tpe",
-      "module": "25-remittance",
-      "path": "/remittance/tpe",
-      "permission": "tpe.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "reporting.admin",
-      "module": "33-reporting",
-      "path": "/reports/admin",
-      "permission": "report.admin.mv_list",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "reporting.schedules",
-      "module": "33-reporting",
-      "path": "/reports/schedules",
-      "permission": "report.schedule.list",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
       "id": "identity.reset-password",
       "module": "02-identity",
       "path": "/reset-password",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
-    },
-    {
-      "id": "authz.roles-permissions",
-      "module": "03-authorization",
-      "path": "/roles",
-      "permission": "role.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.dashboard",
-      "module": "20-field-safety",
-      "path": "/safety",
-      "permission": "safety.dashboard.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.check_ins",
-      "module": "20-field-safety",
-      "path": "/safety/check-ins",
-      "permission": "safety.dashboard.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.high_risk_areas",
-      "module": "20-field-safety",
-      "path": "/safety/high-risk-areas",
-      "permission": "safety.high_risk_area.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.incidents",
-      "module": "20-field-safety",
-      "path": "/safety/incidents",
-      "permission": "safety_incident.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.incident.new",
-      "module": "20-field-safety",
-      "path": "/safety/incidents/new",
-      "permission": "safety_incident.create",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.metrics",
-      "module": "20-field-safety",
-      "path": "/safety/metrics",
-      "permission": "safety.dashboard.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.policy",
-      "module": "20-field-safety",
-      "path": "/safety/policy",
-      "permission": "safety_policy.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.sos.active",
-      "module": "20-field-safety",
-      "path": "/safety/sos",
-      "permission": "safety.sos.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "safety.subscriptions",
-      "module": "20-field-safety",
-      "path": "/safety/supervisor-subscriptions",
-      "permission": "safety_supervisor.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "scheduling.clinician-credentials",
-      "module": "17-scheduling",
-      "path": "/scheduling/clinician-credentials",
-      "permission": "membership_credential.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "scheduling.proposals",
-      "module": "17-scheduling",
-      "path": "/scheduling/proposals",
-      "permission": "visit.proposal.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "scheduling.recurring",
-      "module": "17-scheduling",
-      "path": "/scheduling/recurring",
-      "permission": "recurring_visit.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "scheduling.time-off",
-      "module": "17-scheduling",
-      "path": "/scheduling/time-off",
-      "permission": "time_off.read_team",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "scheduling.week",
-      "module": "17-scheduling",
-      "path": "/scheduling/week",
-      "permission": "visit.read_team",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "search.global",
-      "module": "05-patient",
-      "path": "/search",
-      "permission": "patient.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "orders.standing",
-      "module": "11-orders",
-      "path": "/standing-orders",
-      "permission": "orders.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.overview",
-      "module": "35-subscription",
-      "path": "/subscription",
-      "permission": "subscription.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.dunning",
-      "module": "35-subscription",
-      "path": "/subscription/dunning",
-      "permission": "subscription.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.invoices",
-      "module": "35-subscription",
-      "path": "/subscription/invoices",
-      "permission": "invoice.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.payment-methods",
-      "module": "35-subscription",
-      "path": "/subscription/payment_methods",
-      "permission": "payment_method.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.plan",
-      "module": "35-subscription",
-      "path": "/subscription/plan",
-      "permission": "subscription.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.promos",
-      "module": "35-subscription",
-      "path": "/subscription/promos",
-      "permission": "subscription.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "billing.usage",
-      "module": "35-subscription",
-      "path": "/subscription/usage",
-      "permission": "usage.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "supplies.dashboard",
-      "module": "21-supplies",
-      "path": "/supplies",
-      "permission": "supplies.request.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "supplies.comfort_kit_templates",
-      "module": "21-supplies",
-      "path": "/supplies/comfort-kit-templates",
-      "permission": "comfort_kit.template.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "supplies.dispatch.new",
-      "module": "21-supplies",
-      "path": "/supplies/dispatches/new",
-      "permission": "comfort_kit.dispatch.create",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "supplies.items",
-      "module": "21-supplies",
-      "path": "/supplies/items",
-      "permission": "supplies.item.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "supplies.par_stock",
-      "module": "21-supplies",
-      "path": "/supplies/par-stock",
-      "permission": "par_stock.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "supplies.vendor_routing",
-      "module": "21-supplies",
-      "path": "/supplies/vendor-routing",
-      "permission": "vendor_routing.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "portal.telehealth",
-      "module": "31-portal",
-      "path": "/telehealth",
-      "permission": "telehealth.read_list",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "terminology.admin",
-      "module": "38-terminology",
-      "path": "/terminology",
-      "permission": "terminology.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "triage.queue",
-      "module": "19-oncall",
-      "path": "/triage",
-      "permission": "triage.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "triage.escalations",
-      "module": "19-oncall",
-      "path": "/triage/escalations",
-      "permission": "triage.read_escalations",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "triage.intake",
-      "module": "19-oncall",
-      "path": "/triage/intake",
-      "permission": "triage.open",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "triage.metrics",
-      "module": "19-oncall",
-      "path": "/triage/metrics",
-      "permission": "triage.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "triage.paper_reentry",
-      "module": "19-oncall",
-      "path": "/triage/paper-reentry",
-      "permission": "triage.paper_reentry",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "oncall.policy",
-      "module": "19-oncall",
-      "path": "/triage/policy",
-      "permission": "oncall.read_policy",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "triage.protocols",
-      "module": "19-oncall",
-      "path": "/triage/protocols",
-      "permission": "triage.read",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "oncall.shifts",
-      "module": "19-oncall",
-      "path": "/triage/shifts",
-      "permission": "oncall.read_schedule",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "oncall.vendors",
-      "module": "19-oncall",
-      "path": "/triage/vendors",
-      "permission": "oncall.read_policy",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "encounter.cosignature-queue",
-      "module": "08-encounters",
-      "path": "/work/cosignatures",
-      "permission": "encounter.cosign",
-      "e2eReached": false,
-      "axeReached": true
-    },
-    {
-      "id": "encounter.my-drafts",
-      "module": "08-encounters",
-      "path": "/work/drafts",
-      "permission": "encounter.author",
-      "e2eReached": false,
-      "axeReached": true
     }
   ],
   "zeroAxeCoverage": [
@@ -1546,6 +122,14 @@
       "id": "identity.auditor-redeem",
       "module": "02-identity",
       "path": "/auditor/redeem",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "billing.operations",
+      "module": "23-billing-medicare",
+      "path": "/billing/operations",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -1632,242 +216,202 @@
     }
   ],
   "dynamicWebScreens": 118,
-  "dynamicAxeReachedCount": 28,
+  "dynamicAxeReachedCount": 42,
   "dynamicExcluded": [
     {
       "id": "medicaid.surveyor-read",
       "path": "/admin/medicaid-billing-audit/:claimId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "hope.admission-overview",
-      "path": "/admissions/:admissionId/hope",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "hope.sfv-capture",
       "path": "/admissions/:admissionId/hope/sfv/:sfvId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "hope.timepoint-capture",
       "path": "/admissions/:admissionId/hope/timepoints/:kind",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "admission.detail",
-      "path": "/admissions/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "admission.death-pronouncement",
-      "path": "/admissions/:id/death",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "admission.discharge",
-      "path": "/admissions/:id/discharge",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "admission.discharge-details",
-      "path": "/admissions/:id/discharge-details",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "admission.level-of-care-change",
-      "path": "/admissions/:id/level-of-care/new",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "admission.readmit",
-      "path": "/admissions/:id/readmit",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "admission.transfer-in",
-      "path": "/admissions/:id/transfer-in",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.groups.detail",
       "path": "/bereavement/groups/:groupId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.mailings.run",
       "path": "/bereavement/mailings/runs/:runId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.memorials.detail",
       "path": "/bereavement/memorials/:serviceId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.plan",
       "path": "/bereavement/plans/:planId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.plan.closeout",
       "path": "/bereavement/plans/:planId/closeout",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.contact",
       "path": "/bereavement/plans/:planId/contacts/:contactId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.contact.screen",
       "path": "/bereavement/plans/:planId/contacts/:contactId/screen",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.plan.history",
       "path": "/bereavement/plans/:planId/history",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.plan.outreach",
       "path": "/bereavement/plans/:planId/outreach",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.plan.risk",
       "path": "/bereavement/plans/:planId/risk",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.plan.seed",
       "path": "/bereavement/plans/:planId/seed",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "bereavement.predeath",
       "path": "/bereavement/pre-death/:admissionId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "billing.claim",
       "path": "/billing/claims/:claimId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "billing.claim.acknowledgments",
       "path": "/billing/claims/:claimId/acknowledgments",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "billing.claim.submissions",
       "path": "/billing/claims/:claimId/submissions",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "billing.claim.validation",
       "path": "/billing/claims/:claimId/validation",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "billing.noe.detail",
       "path": "/billing/noe/:noeId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "billing.notr.detail",
       "path": "/billing/notr/:notrId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "care-plan.summary",
       "path": "/care-plans/:planId/summary",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "care-plan.versions",
       "path": "/care-plans/:planId/versions",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "care-plan.version-detail",
       "path": "/care-plans/:planId/versions/:versionId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "commercial.claim",
       "path": "/commercial/billing/claims/:claimId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "commercial.claim-send-gate",
       "path": "/commercial/billing/claims/:claimId/send-gate",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "commercial.claim-timeline",
       "path": "/commercial/billing/claims/:claimId/timeline",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "consent.recipients-dpoa",
       "path": "/consents/:consentId/recipients",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "admission.discharge-cosign",
       "path": "/discharges/:id/cosign",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "documents.version-history",
       "path": "/documents/:documentId/versions",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "evv.event-detail",
       "path": "/evv/events/:eventId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "hope.assessment-detail",
       "path": "/hope/assessments/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "hope.submission-detail",
       "path": "/hope/submissions/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "idg.meeting-detail",
       "path": "/idg/meetings/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "idg.meeting-live",
       "path": "/idg/meetings/:id/live",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "idg.minutes",
       "path": "/idg/meetings/:id/minutes",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "idg.packet",
       "path": "/idg/meetings/:meetingId/packets/:patientId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "documents.intake-batch",
       "path": "/intake/:batchId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "intake.review-workspace",
       "path": "/intake/:batchId/review",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "identity.accept-invitation",
@@ -1877,47 +421,17 @@
     {
       "id": "ipu.bedside",
       "path": "/ipu/admissions/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "medicaid.claim",
-      "path": "/medicaid/billing/claims/:claimId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "medicaid.claim.acknowledgments",
-      "path": "/medicaid/billing/claims/:claimId/acknowledgments",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "medicaid.claim.submissions",
-      "path": "/medicaid/billing/claims/:claimId/submissions",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "medicaid.claim.validation",
-      "path": "/medicaid/billing/claims/:claimId/validation",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "medicaid.rb-arrangement",
       "path": "/medicaid/billing/rb-arrangements/:arrangementId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "prescribing.medication-detail",
-      "path": "/medication-orders/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "prescribing.edit-medication-draft",
-      "path": "/medication-orders/:id/edit",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "messaging.offboarding",
       "path": "/messaging/governance/offboarding/:userId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "messaging.notification-landing",
@@ -1927,132 +441,132 @@
     {
       "id": "orders.detail",
       "path": "/orders/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "emar.administration-detail",
       "path": "/patients/:patientId/administrations/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "assessment.detail",
       "path": "/patients/:patientId/assessments/:assessmentId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "emar.comfort-kit",
       "path": "/patients/:patientId/comfort-kit/:deploymentId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "consent.detail",
       "path": "/patients/:patientId/consents/:consentId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "discipline-plan.idg-revision",
       "path": "/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "discipline-plan.versions",
       "path": "/patients/:patientId/discipline-plans/:kind/versions",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "discipline-plan.aide-poc.edit",
       "path": "/patients/:patientId/discipline-plans/aide-poc/:versionId/edit",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "discipline-plan.assessment",
       "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "encounter.read",
       "path": "/patients/:patientId/encounters/:encounterId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "encounter.compose",
       "path": "/patients/:patientId/encounters/:encounterId/compose",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "emar.iv-session",
       "path": "/patients/:patientId/iv-sessions/:sessionId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "emar.reconciliation-worksheet",
       "path": "/patients/:patientId/reconciliation/:worksheetId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "assessment.scale-trend",
       "path": "/patients/:patientId/scales/:scaleType",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "admission.referral-detail",
       "path": "/referrals/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "prescribing.refill-detail",
       "path": "/refills/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "reporting.dashboard",
       "path": "/reports/dashboards/:dashboardId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "reporting.role-dashboard",
       "path": "/reports/role/:roleKey",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "safety.incident.detail",
       "path": "/safety/incidents/:incidentId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "safety.sos.detail",
       "path": "/safety/sos/:sosAlertId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "scheduling.visit-detail",
       "path": "/scheduling/visits/:visitId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "billing.invoice-detail",
       "path": "/subscription/invoices/:id",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "supplies.dispatch",
       "path": "/supplies/dispatches/:dispatchId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "supplies.dispatch.perpetual_log",
       "path": "/supplies/dispatches/:dispatchId/perpetual-log",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "supplies.request",
       "path": "/supplies/requests/:supplyRequestId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "supplies.return",
       "path": "/supplies/returns/:returnId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "identity.accept-tenant-invitation",
@@ -2062,27 +576,27 @@
     {
       "id": "triage.call",
       "path": "/triage/calls/:triageCallId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "triage.call.history",
       "path": "/triage/calls/:triageCallId/history",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "triage.call.transcript",
       "path": "/triage/calls/:triageCallId/transcript",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "triage.protocol",
       "path": "/triage/protocols/:protocolId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
       "id": "oncall.shift",
       "path": "/triage/shifts/:shiftId",
-      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     }
   ],
   "rows": [
@@ -2091,7 +605,7 @@
       "module": "34-saas",
       "path": "/admin/account",
       "permission": "tenant.read_own",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2099,7 +613,7 @@
       "module": "13-emar",
       "path": "/admin/administration-policy",
       "permission": "administration.admin.policy",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2107,7 +621,7 @@
       "module": "23-billing-medicare",
       "path": "/admin/billing-audit",
       "permission": "billing.claim.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2115,7 +629,7 @@
       "module": "18-evv",
       "path": "/admin/evv-metrics",
       "permission": "evv.read_metrics",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2123,7 +637,7 @@
       "module": "22-documents",
       "path": "/admin/forms/templates",
       "permission": "documents.read_templates",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2131,7 +645,7 @@
       "module": "34-saas",
       "path": "/admin/onboarding",
       "permission": "onboarding.read_own",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2139,7 +653,7 @@
       "module": "31-portal",
       "path": "/admin/portal",
       "permission": "portal.account.read_list",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2147,7 +661,7 @@
       "module": "12-dosespot",
       "path": "/admin/prescribers",
       "permission": "prescribing.admin.roster",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2155,7 +669,7 @@
       "module": "12-dosespot",
       "path": "/admin/prescribing-policy",
       "permission": "prescribing.admin.policy",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2163,7 +677,7 @@
       "module": "09-assessments",
       "path": "/admin/scales/licenses",
       "permission": "assessment.license_read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2171,7 +685,7 @@
       "module": "09-assessments",
       "path": "/admin/scales/policies",
       "permission": "assessment.policy_read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2179,7 +693,7 @@
       "module": "17-scheduling",
       "path": "/admin/scheduling-metrics",
       "permission": "visit.read_metrics",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2187,7 +701,7 @@
       "module": "34-saas",
       "path": "/admin/setup",
       "permission": "org.manage",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2203,7 +717,7 @@
       "module": "34-saas",
       "path": "/admin/support-grants",
       "permission": "support_consent_grant.list_own",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2211,7 +725,7 @@
       "module": "15-discipline-care-plans",
       "path": "/admin/volunteer-compliance",
       "permission": "volunteer_compliance.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2219,7 +733,7 @@
       "module": "15-discipline-care-plans",
       "path": "/admin/volunteer-ratio",
       "permission": "volunteer_compliance.read_ratio",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2227,7 +741,7 @@
       "module": "06-admission",
       "path": "/admissions",
       "permission": "admission.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2235,7 +749,7 @@
       "module": "06-admission",
       "path": "/admissions/discharges",
       "permission": "discharge.create",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2251,7 +765,7 @@
       "module": "06-admission",
       "path": "/admissions/readmit",
       "permission": "admission.create",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2259,7 +773,7 @@
       "module": "04-audit",
       "path": "/audit",
       "permission": "audit.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2283,7 +797,7 @@
       "module": "16-bereavement",
       "path": "/bereavement",
       "permission": "bereavement.dashboard.counselor",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2291,7 +805,7 @@
       "module": "16-bereavement",
       "path": "/bereavement/eligible",
       "permission": "bereavement.plan.assign_counselor",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2299,7 +813,7 @@
       "module": "16-bereavement",
       "path": "/bereavement/groups",
       "permission": "bereavement.group.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2307,7 +821,7 @@
       "module": "16-bereavement",
       "path": "/bereavement/library",
       "permission": "bereavement.library.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2315,7 +829,7 @@
       "module": "16-bereavement",
       "path": "/bereavement/mailings",
       "permission": "bereavement.mailing.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2323,7 +837,7 @@
       "module": "16-bereavement",
       "path": "/bereavement/mailings/settings",
       "permission": "bereavement.mailing.manage",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2331,7 +845,7 @@
       "module": "16-bereavement",
       "path": "/bereavement/memorials",
       "permission": "bereavement.memorial.rsvp",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2339,7 +853,7 @@
       "module": "16-bereavement",
       "path": "/bereavement/supervisor",
       "permission": "bereavement.dashboard.supervisor",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2363,7 +877,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/claims/new",
       "permission": "billing.claim.assemble",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2371,7 +885,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/dde",
       "permission": "billing.dde.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2379,7 +893,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/eligibility",
       "permission": "billing.eligibility.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2387,7 +901,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/mac-credentials",
       "permission": "billing.mac_credential.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2395,7 +909,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/metrics",
       "permission": "billing.claim.read_metrics",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2403,7 +917,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/noe",
       "permission": "billing.noe.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2411,15 +925,23 @@
       "module": "23-billing-medicare",
       "path": "/billing/notr",
       "permission": "billing.notr.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
+    },
+    {
+      "id": "billing.operations",
+      "module": "23-billing-medicare",
+      "path": "/billing/operations",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "billing.overrides",
       "module": "23-billing-medicare",
       "path": "/billing/overrides",
       "permission": "billing.validation.read_override",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2427,7 +949,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/queue",
       "permission": "billing.claim.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2435,7 +957,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/rate-tables",
       "permission": "billing.rate_table.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2443,7 +965,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/rule-config",
       "permission": "billing.rule_config.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2451,7 +973,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/sequestration-policy",
       "permission": "billing.sequestration_policy.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2459,7 +981,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/transfer-notices",
       "permission": "billing.noe.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2467,7 +989,7 @@
       "module": "23-billing-medicare",
       "path": "/billing/wage-indexes",
       "permission": "billing.wage_index.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2483,7 +1005,7 @@
       "module": "26-cap",
       "path": "/cap",
       "permission": "cap.projection.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2491,7 +1013,7 @@
       "module": "26-cap",
       "path": "/cap/events",
       "permission": "cap.event.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2499,7 +1021,7 @@
       "module": "26-cap",
       "path": "/cap/periods",
       "permission": "cap.period.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2507,7 +1029,7 @@
       "module": "26-cap",
       "path": "/cap/psr",
       "permission": "cap.psr.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2515,7 +1037,7 @@
       "module": "26-cap",
       "path": "/cap/settlements",
       "permission": "cap.settlement.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2571,7 +1093,7 @@
       "module": "06-admission",
       "path": "/compliance/admissions",
       "permission": "compliance.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2579,7 +1101,7 @@
       "module": "32-ai-platform",
       "path": "/compliance/ai",
       "permission": "ai.invocation.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2587,7 +1109,7 @@
       "module": "04-audit",
       "path": "/compliance/audit/exports",
       "permission": "audit.export",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2595,7 +1117,7 @@
       "module": "04-audit",
       "path": "/compliance/audit/integrity",
       "permission": "audit.integrity",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2603,7 +1125,7 @@
       "module": "04-audit",
       "path": "/compliance/legal-holds",
       "permission": "legalhold.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2611,7 +1133,7 @@
       "module": "05-patient",
       "path": "/compliance/privacy",
       "permission": "privacy.admin",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2619,7 +1141,7 @@
       "module": "04-audit",
       "path": "/compliance/privacy-requests",
       "permission": "audit.disclosure_report",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2627,7 +1149,7 @@
       "module": "27-cost-report",
       "path": "/cost-reports",
       "permission": "cost_report.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2635,7 +1157,7 @@
       "module": "27-cost-report",
       "path": "/cost-reports/bad-debt",
       "permission": "cost_report.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2643,7 +1165,7 @@
       "module": "27-cost-report",
       "path": "/cost-reports/rules",
       "permission": "cost_report.read_rules",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2651,7 +1173,7 @@
       "module": "27-cost-report",
       "path": "/cost-reports/snapshots",
       "permission": "cost_report.read_snapshot_detail",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2659,7 +1181,7 @@
       "module": "27-cost-report",
       "path": "/cost-reports/validation",
       "permission": "cost_report.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2667,7 +1189,7 @@
       "module": "27-cost-report",
       "path": "/cost-reports/workspace",
       "permission": "cost_report.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2683,7 +1205,7 @@
       "module": "18-evv",
       "path": "/evv/aggregator-submissions",
       "permission": "evv.aggregator.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2691,7 +1213,7 @@
       "module": "18-evv",
       "path": "/evv/dashboard",
       "permission": "evv.read_metrics",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2707,7 +1229,7 @@
       "module": "18-evv",
       "path": "/evv/events",
       "permission": "evv.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2715,7 +1237,7 @@
       "module": "18-evv",
       "path": "/evv/geofence-policy",
       "permission": "evv.policy.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2723,7 +1245,7 @@
       "module": "18-evv",
       "path": "/evv/missing-resolutions",
       "permission": "evv.missing_resolution.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2747,7 +1269,7 @@
       "module": "10-hope",
       "path": "/hope",
       "permission": "hope.schedule.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2755,7 +1277,7 @@
       "module": "10-hope",
       "path": "/hope/compliance",
       "permission": "hope.dashboard.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2763,7 +1285,7 @@
       "module": "10-hope",
       "path": "/hope/sfv",
       "permission": "hope.sfv.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2771,7 +1293,7 @@
       "module": "10-hope",
       "path": "/hope/submissions",
       "permission": "hope.submission.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2779,7 +1301,7 @@
       "module": "14-idg",
       "path": "/idg/action-items",
       "permission": "idg.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2795,7 +1317,7 @@
       "module": "22-documents",
       "path": "/intake",
       "permission": "intake.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2803,7 +1325,7 @@
       "module": "37-ipu",
       "path": "/ipu",
       "permission": "m37.unit.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2819,7 +1341,7 @@
       "module": "37-ipu",
       "path": "/ipu/census",
       "permission": "m37.census.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2827,7 +1349,7 @@
       "module": "37-ipu",
       "path": "/ipu/equipment",
       "permission": "m37.equipment.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2859,7 +1381,7 @@
       "module": "02-identity",
       "path": "/login/organization",
       "permission": "(none)",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2875,7 +1397,7 @@
       "module": "40-mdm",
       "path": "/mdm",
       "permission": "mdm.physician.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2883,7 +1405,7 @@
       "module": "32-ai-platform",
       "path": "/me/ai-preferences",
       "permission": "ai.clinician_opt_out.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2899,7 +1421,7 @@
       "module": "19-oncall",
       "path": "/me/oncall",
       "permission": "oncall.read_schedule",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2907,7 +1429,7 @@
       "module": "20-field-safety",
       "path": "/me/safety",
       "permission": "safety.sos.raise",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2915,7 +1437,7 @@
       "module": "20-field-safety",
       "path": "/me/safety/check-ins",
       "permission": "safety.check_in.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2923,7 +1445,7 @@
       "module": "20-field-safety",
       "path": "/me/safety/consent",
       "permission": "safety.consent.read_self",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2931,7 +1453,7 @@
       "module": "17-scheduling",
       "path": "/me/visits",
       "permission": "visit.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2939,7 +1461,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/ar-dashboard",
       "permission": "medicaid.claim.read_ar_dashboard",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2955,7 +1477,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/claims/new",
       "permission": "medicaid.claim.assemble",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2963,7 +1485,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/eligibility",
       "permission": "medicaid.eligibility.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2971,7 +1493,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/metrics",
       "permission": "medicaid.claim.read_metrics",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2979,7 +1501,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/override-audit",
       "permission": "medicaid.validation.read_override",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2987,7 +1509,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/queue",
       "permission": "medicaid.claim.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -2995,7 +1517,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/rb-arrangements",
       "permission": "medicaid.rb_arrangement.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3003,7 +1525,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/rule-config",
       "permission": "medicaid.rule_config.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3011,7 +1533,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/trading-partner-credentials",
       "permission": "medicaid.trading_partner.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3019,7 +1541,7 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/validation-worklist",
       "permission": "medicaid.validation.read_run",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3035,7 +1557,7 @@
       "module": "36-messaging",
       "path": "/messaging/alarm-sources",
       "permission": "messaging.alarm_ingest.manage",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3043,7 +1565,7 @@
       "module": "36-messaging",
       "path": "/messaging/analytics",
       "permission": "messaging.analytics.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3051,7 +1573,7 @@
       "module": "36-messaging",
       "path": "/messaging/broadcasts",
       "permission": "messaging.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3059,7 +1581,7 @@
       "module": "36-messaging",
       "path": "/messaging/death-board",
       "permission": "messaging.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3075,7 +1597,7 @@
       "module": "36-messaging",
       "path": "/messaging/export",
       "permission": "messaging.export.request",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3083,7 +1605,7 @@
       "module": "36-messaging",
       "path": "/messaging/family",
       "permission": "messaging.family.respond",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3091,7 +1613,7 @@
       "module": "36-messaging",
       "path": "/messaging/governance/break-glass",
       "permission": "messaging.break_glass.review",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3099,7 +1621,7 @@
       "module": "36-messaging",
       "path": "/messaging/governance/export-approvals",
       "permission": "messaging.export.approve",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3107,7 +1629,7 @@
       "module": "36-messaging",
       "path": "/messaging/governance/retention",
       "permission": "messaging.retention.manage",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3115,7 +1637,7 @@
       "module": "36-messaging",
       "path": "/messaging/governance/sessions",
       "permission": "messaging.sessions.manage",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3123,7 +1645,7 @@
       "module": "36-messaging",
       "path": "/messaging/inbox",
       "permission": "messaging.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3131,7 +1653,7 @@
       "module": "36-messaging",
       "path": "/messaging/on-call",
       "permission": "messaging.oncall.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3139,7 +1661,7 @@
       "module": "36-messaging",
       "path": "/messaging/partners",
       "permission": "messaging.share.manage",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3147,7 +1669,7 @@
       "module": "36-messaging",
       "path": "/messaging/preferences",
       "permission": "messaging.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3155,7 +1677,7 @@
       "module": "36-messaging",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3163,7 +1685,7 @@
       "module": "36-messaging",
       "path": "/messaging/search-settings",
       "permission": "messaging.global_search.manage",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3171,7 +1693,7 @@
       "module": "36-messaging",
       "path": "/messaging/unacknowledged",
       "permission": "messaging.review",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3203,7 +1725,7 @@
       "module": "11-orders",
       "path": "/orders/held-transmissions",
       "permission": "orders.transmission.view_held",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3211,7 +1733,7 @@
       "module": "11-orders",
       "path": "/orders/results-pending-review",
       "permission": "orders.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3219,7 +1741,7 @@
       "module": "11-orders",
       "path": "/orders/verbal-expiring",
       "permission": "orders.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3227,7 +1749,7 @@
       "module": "32-ai-platform",
       "path": "/organization/ai/opt-in",
       "permission": "ai.tenant_opt_in",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3235,7 +1757,7 @@
       "module": "32-ai-platform",
       "path": "/organization/ai/routing",
       "permission": "ai.tenant_opt_in",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3259,7 +1781,7 @@
       "module": "26-cap",
       "path": "/platform/cap/constants",
       "permission": "cap.platform_constant.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3267,7 +1789,7 @@
       "module": "12-dosespot",
       "path": "/prescribing/sign-inbox",
       "permission": "prescribing.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3275,7 +1797,7 @@
       "module": "12-dosespot",
       "path": "/prescribing/verbal-orders",
       "permission": "prescribing.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3283,7 +1805,7 @@
       "module": "30-quality",
       "path": "/quality",
       "permission": "quality.measure.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3291,7 +1813,7 @@
       "module": "30-quality",
       "path": "/quality/mortality",
       "permission": "mortality.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3299,7 +1821,7 @@
       "module": "30-quality",
       "path": "/quality/qapi",
       "permission": "incident.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3315,7 +1837,7 @@
       "module": "06-admission",
       "path": "/referrals/new",
       "permission": "referral.create",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3323,7 +1845,7 @@
       "module": "12-dosespot",
       "path": "/refills",
       "permission": "prescribing.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3331,7 +1853,7 @@
       "module": "25-remittance",
       "path": "/remittance",
       "permission": "remittance.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3339,7 +1861,7 @@
       "module": "25-remittance",
       "path": "/remittance/adrs",
       "permission": "adr.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3347,7 +1869,7 @@
       "module": "25-remittance",
       "path": "/remittance/appeals",
       "permission": "appeal.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3355,7 +1877,7 @@
       "module": "25-remittance",
       "path": "/remittance/audits",
       "permission": "audit_request.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3363,7 +1885,7 @@
       "module": "25-remittance",
       "path": "/remittance/claimmd-era-review",
       "permission": "remittance.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3371,7 +1893,7 @@
       "module": "25-remittance",
       "path": "/remittance/denials",
       "permission": "denial.worklist.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3379,7 +1901,7 @@
       "module": "25-remittance",
       "path": "/remittance/payer-appeal-paths",
       "permission": "payer_appeal_path.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3387,7 +1909,7 @@
       "module": "25-remittance",
       "path": "/remittance/playbooks",
       "permission": "playbook.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3395,7 +1917,7 @@
       "module": "25-remittance",
       "path": "/remittance/report",
       "permission": "medical_review.report.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3403,7 +1925,7 @@
       "module": "25-remittance",
       "path": "/remittance/representative-forms",
       "permission": "representative_form.configure",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3411,7 +1933,7 @@
       "module": "25-remittance",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3419,7 +1941,7 @@
       "module": "25-remittance",
       "path": "/remittance/tpe",
       "permission": "tpe.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3435,7 +1957,7 @@
       "module": "33-reporting",
       "path": "/reports/admin",
       "permission": "report.admin.mv_list",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3443,7 +1965,7 @@
       "module": "33-reporting",
       "path": "/reports/schedules",
       "permission": "report.schedule.list",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3459,7 +1981,7 @@
       "module": "03-authorization",
       "path": "/roles",
       "permission": "role.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3467,7 +1989,7 @@
       "module": "20-field-safety",
       "path": "/safety",
       "permission": "safety.dashboard.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3475,7 +1997,7 @@
       "module": "20-field-safety",
       "path": "/safety/check-ins",
       "permission": "safety.dashboard.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3483,7 +2005,7 @@
       "module": "20-field-safety",
       "path": "/safety/high-risk-areas",
       "permission": "safety.high_risk_area.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3491,7 +2013,7 @@
       "module": "20-field-safety",
       "path": "/safety/incidents",
       "permission": "safety_incident.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3499,7 +2021,7 @@
       "module": "20-field-safety",
       "path": "/safety/incidents/new",
       "permission": "safety_incident.create",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3507,7 +2029,7 @@
       "module": "20-field-safety",
       "path": "/safety/metrics",
       "permission": "safety.dashboard.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3515,7 +2037,7 @@
       "module": "20-field-safety",
       "path": "/safety/policy",
       "permission": "safety_policy.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3523,7 +2045,7 @@
       "module": "20-field-safety",
       "path": "/safety/sos",
       "permission": "safety.sos.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3531,7 +2053,7 @@
       "module": "20-field-safety",
       "path": "/safety/supervisor-subscriptions",
       "permission": "safety_supervisor.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3539,7 +2061,7 @@
       "module": "17-scheduling",
       "path": "/scheduling/clinician-credentials",
       "permission": "membership_credential.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3555,7 +2077,7 @@
       "module": "17-scheduling",
       "path": "/scheduling/proposals",
       "permission": "visit.proposal.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3563,7 +2085,7 @@
       "module": "17-scheduling",
       "path": "/scheduling/recurring",
       "permission": "recurring_visit.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3571,7 +2093,7 @@
       "module": "17-scheduling",
       "path": "/scheduling/time-off",
       "permission": "time_off.read_team",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3579,7 +2101,7 @@
       "module": "17-scheduling",
       "path": "/scheduling/week",
       "permission": "visit.read_team",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3587,7 +2109,7 @@
       "module": "05-patient",
       "path": "/search",
       "permission": "patient.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3603,7 +2125,7 @@
       "module": "11-orders",
       "path": "/standing-orders",
       "permission": "orders.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3619,7 +2141,7 @@
       "module": "35-subscription",
       "path": "/subscription",
       "permission": "subscription.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3627,7 +2149,7 @@
       "module": "35-subscription",
       "path": "/subscription/dunning",
       "permission": "subscription.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3635,7 +2157,7 @@
       "module": "35-subscription",
       "path": "/subscription/invoices",
       "permission": "invoice.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3643,7 +2165,7 @@
       "module": "35-subscription",
       "path": "/subscription/payment_methods",
       "permission": "payment_method.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3651,7 +2173,7 @@
       "module": "35-subscription",
       "path": "/subscription/plan",
       "permission": "subscription.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3659,7 +2181,7 @@
       "module": "35-subscription",
       "path": "/subscription/promos",
       "permission": "subscription.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3667,7 +2189,7 @@
       "module": "35-subscription",
       "path": "/subscription/usage",
       "permission": "usage.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3675,7 +2197,7 @@
       "module": "21-supplies",
       "path": "/supplies",
       "permission": "supplies.request.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3683,7 +2205,7 @@
       "module": "21-supplies",
       "path": "/supplies/comfort-kit-templates",
       "permission": "comfort_kit.template.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3691,7 +2213,7 @@
       "module": "21-supplies",
       "path": "/supplies/dispatches/new",
       "permission": "comfort_kit.dispatch.create",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3699,7 +2221,7 @@
       "module": "21-supplies",
       "path": "/supplies/items",
       "permission": "supplies.item.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3707,7 +2229,7 @@
       "module": "21-supplies",
       "path": "/supplies/par-stock",
       "permission": "par_stock.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3715,7 +2237,7 @@
       "module": "21-supplies",
       "path": "/supplies/vendor-routing",
       "permission": "vendor_routing.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3723,7 +2245,7 @@
       "module": "31-portal",
       "path": "/telehealth",
       "permission": "telehealth.read_list",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3731,7 +2253,7 @@
       "module": "38-terminology",
       "path": "/terminology",
       "permission": "terminology.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3739,7 +2261,7 @@
       "module": "19-oncall",
       "path": "/triage",
       "permission": "triage.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3747,7 +2269,7 @@
       "module": "19-oncall",
       "path": "/triage/escalations",
       "permission": "triage.read_escalations",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3755,7 +2277,7 @@
       "module": "19-oncall",
       "path": "/triage/intake",
       "permission": "triage.open",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3763,7 +2285,7 @@
       "module": "19-oncall",
       "path": "/triage/metrics",
       "permission": "triage.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3771,7 +2293,7 @@
       "module": "19-oncall",
       "path": "/triage/paper-reentry",
       "permission": "triage.paper_reentry",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3779,7 +2301,7 @@
       "module": "19-oncall",
       "path": "/triage/policy",
       "permission": "oncall.read_policy",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3787,7 +2309,7 @@
       "module": "19-oncall",
       "path": "/triage/protocols",
       "permission": "triage.read",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3795,7 +2317,7 @@
       "module": "19-oncall",
       "path": "/triage/shifts",
       "permission": "oncall.read_schedule",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3803,7 +2325,7 @@
       "module": "19-oncall",
       "path": "/triage/vendors",
       "permission": "oncall.read_policy",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3811,7 +2333,7 @@
       "module": "08-encounters",
       "path": "/work/cosignatures",
       "permission": "encounter.cosign",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     },
     {
@@ -3819,7 +2341,7 @@
       "module": "08-encounters",
       "path": "/work/drafts",
       "permission": "encounter.author",
-      "e2eReached": false,
+      "e2eReached": true,
       "axeReached": true
     }
   ]

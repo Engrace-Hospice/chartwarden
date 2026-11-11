@@ -163,7 +163,7 @@ describe("PlanContractPanel", () => {
   });
 
   it("shows the signed contract, and the plan it is on", async () => {
-    mount({
+    const { client } = mount({
       GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok({ contract: CONTRACT, statements: [] }) },
     });
     expect(await screen.findByText("Standard census bands")).toBeTruthy();
@@ -207,6 +207,32 @@ describe("PlanContractPanel", () => {
       fireEvent.change(screen.getByLabelText(label), { target: { value } });
       expect(screen.queryByText("$1,088.00")).toBeNull();
     }
+  });
+
+  it("every Preview click carries its own Idempotency-Key: a preview prices the plan as it is now, never a replay", async () => {
+    const { client } = mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
+    });
+    await screen.findByLabelText("Plan");
+    chooseService("none");
+    fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Average daily census"), { target: { value: "14" } });
+    fireEvent.change(screen.getByLabelText(/^Expected net collections/), {
+      target: { value: "50000" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    expect(await screen.findByText("$1,088.00")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+
+    const keyOf = (call: unknown[]): string | undefined =>
+      (call[1] as { headers?: Record<string, string> }).headers?.["Idempotency-Key"];
+    const [first, second] = client.POST.mock.calls as unknown as unknown[][];
+    expect(keyOf(first ?? [])).toBeTruthy();
+    expect(keyOf(second ?? [])).toBeTruthy();
+    expect(keyOf(second ?? [])).not.toBe(keyOf(first ?? []));
   });
 
   it("a blank staff count or census is not zero: it asks for them, and prices nothing", async () => {
@@ -468,7 +494,7 @@ describe("PlanContractPanel: the billing service is a choice", () => {
 
   it("a price that arrives after the inputs were edited is not shown as the price of the new inputs", async () => {
     let release: (reply: ReturnType<typeof ok>) => void = () => undefined;
-    mount({
+    const { client } = mount({
       GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
       POST: {
         [PREVIEW]: () =>
@@ -481,6 +507,7 @@ describe("PlanContractPanel: the billing service is a choice", () => {
     chooseService("none");
     fillInputs();
     fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
     fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "13" } });
     release(ok(PREVIEW_RESULT));
     await waitFor(() =>
@@ -491,6 +518,7 @@ describe("PlanContractPanel: the billing service is a choice", () => {
     expect(screen.queryByText("$1,088.00")).toBeNull();
     // asking again for the inputs as they are now shows that price
     fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
     release(ok(PREVIEW_RESULT));
     expect(await screen.findByText("$1,088.00")).toBeTruthy();
   });

@@ -19,6 +19,7 @@ interface CursorPage<T> {
   readonly nextCursor: string | null;
   readonly searchWindowLimited: boolean;
 }
+import { classifyProviderAdjustmentReason } from "../domain/adjustment-policy";
 import { projectEraFinancialReview } from "../domain/era-financial-review";
 import {
   checkEraPaymentBalance,
@@ -28,7 +29,11 @@ import {
 import { providerEntityScopeCondition } from "../routes/scope";
 import type { M25IngestService } from "./service";
 import { getM25TransactionPostingPort, m25ContentDigestOf } from "./service-drizzle";
-import type { M25Tx, M25ValidatedClaimAssociation } from "./service-drizzle";
+import type {
+  M25ClaimMdFinancialAssessment,
+  M25Tx,
+  M25ValidatedClaimAssociation,
+} from "./service-drizzle";
 
 const STAGE = schema.claimmdEraM25Stage;
 const PAGE_MAX = 100;
@@ -55,6 +60,8 @@ export interface ClaimMdEraReviewItem {
   readonly eraId: string;
   readonly fileIndex: number;
   readonly transactionSetControlNumber: string;
+  /** SHA-256 identity of the original immutable 835 source; not the raw remittance. */
+  readonly sourceDigest: string;
   readonly state: string;
   readonly holdReason: string | null;
   readonly possibleDuplicate: boolean;
@@ -75,6 +82,14 @@ export interface ClaimMdEraReviewItem {
     readonly reason: string | null;
     readonly reference: string | null;
     readonly amount: number | null;
+    readonly providerIdentifierMasked: string | null;
+    readonly fiscalPeriod: string | null;
+    readonly segmentPosition: number | null;
+    readonly occurrence: number | null;
+    readonly classification: ReturnType<typeof classifyProviderAdjustmentReason> | "unclassified";
+    readonly historicalReference: "not_verified";
+    readonly policyStatus: "not_configured";
+    readonly postingEligible: false;
   }[];
   readonly claimOutcomes: readonly ClaimMdEraClaimOutcome[];
   readonly reconciliationEligible: boolean;
@@ -121,6 +136,8 @@ export interface ClaimMdEraClaimOutcome {
   readonly module: string | null;
   readonly fileIndex: number | null;
   readonly transactionSetControlNumber: string | null;
+  /** Internal immutable send-evidence references. They are not included in the public response schema. */
+  readonly submissionEvidenceIds?: readonly string[];
 }
 
 export interface ClaimMdEraReviewSummary {
@@ -264,7 +281,7 @@ export interface HistoricalMatchCandidate {
   readonly lineage: "original" | "correction" | "replacement" | "void" | "unknown";
   readonly attemptState: string;
   readonly submittedAt: string;
-  readonly submittedLines: "unavailable";
+  readonly submittedLines: "available" | "unavailable";
   readonly supportingEvidence: readonly string[];
   readonly selectable: boolean;
 }
@@ -468,6 +485,9 @@ export function projectClaimMdEraReviewItem(
       module: str(outcome.billingModule) ?? str(outcome.module),
       fileIndex: num(outcome.fileIndex),
       transactionSetControlNumber: str(outcome.transactionSetControlNumber),
+      submissionEvidenceIds: array(outcome.submissionEvidenceIds).filter(
+        (value): value is string => typeof value === "string",
+      ),
     }));
   const date =
     row.createdAt instanceof Date
@@ -487,6 +507,7 @@ export function projectClaimMdEraReviewItem(
     eraId: row.eraId,
     fileIndex: row.fileIndex,
     transactionSetControlNumber: row.transactionSetControlNumber,
+    sourceDigest: row.original835Digest,
     state: row.state,
     holdReason: row.safeReasonCode,
     possibleDuplicate:
@@ -507,11 +528,27 @@ export function projectClaimMdEraReviewItem(
     claims,
     providerAdjustments: array(advice.providerAdjustments)
       .filter(record)
-      .map(({ reason, reference, amount }) => ({
-        reason: str(reason),
-        reference: str(reference),
-        amount: num(amount),
-      })),
+      .map((adjustment) => {
+        const providerIdentifier = str(adjustment.providerIdentifier);
+        return {
+          reason: str(adjustment.reason),
+          reference: str(adjustment.reference),
+          amount: num(adjustment.amount),
+          providerIdentifierMasked: providerIdentifier
+            ? `••••${providerIdentifier.slice(-4)}`
+            : null,
+          fiscalPeriod: str(adjustment.fiscalPeriod),
+          segmentPosition: num(adjustment.segmentPosition),
+          occurrence: num(adjustment.occurrence),
+          classification:
+            typeof adjustment.reason === "string"
+              ? classifyProviderAdjustmentReason(adjustment.reason)
+              : "unclassified",
+          historicalReference: "not_verified" as const,
+          policyStatus: "not_configured" as const,
+          postingEligible: false as const,
+        };
+      }),
     claimOutcomes: outcomes,
     reconciliationEligible: row.state === "staged" && details !== null,
   };
@@ -522,6 +559,7 @@ export interface ClaimMdEraReviewService {
     actor: M25ReadActor,
     filters: {
       providerEntityId?: string;
+      locationId?: string;
       state?: string;
       payer?: string;
       fromDate?: string;
@@ -584,6 +622,7 @@ export interface ClaimMdEraReviewService {
     outcome: "posted" | "already_posted";
     adviceId: string | null;
     remittanceLineId: string | null;
+    remittanceLineIds: readonly string[];
     paymentCents: number;
   }>;
   postingHistory(
@@ -603,6 +642,9 @@ export interface ClaimMdEraPostingPlan {
   readonly providerEntityId: string;
   readonly payer: string | null;
   readonly paymentCents: number | null;
+  readonly billedCents: number | null;
+  readonly unresolvedCents: number | null;
+  readonly claims: readonly ClaimMdEraPostingPlanClaim[];
   readonly claimId: string | null;
   readonly eligible: boolean;
   readonly status: "eligible" | "blocked" | "already_posted";
@@ -612,6 +654,28 @@ export interface ClaimMdEraPostingPlan {
   readonly createdAt: string;
 }
 
+export interface ClaimMdEraPostingPlanClaim {
+  readonly claimIndex: number;
+  readonly billingModule: "M23" | "M41" | null;
+  readonly patientControlNumber: string | null;
+  readonly payerIcn: string | null;
+  readonly claimId: string | null;
+  readonly payerId: string | null;
+  readonly submissionId: string | null;
+  readonly evidenceId: string | null;
+  readonly evidenceVersion: number;
+  readonly matching: "verified" | "human_confirmed_candidate" | "blocked";
+  readonly billedCents: number | null;
+  readonly paidCents: number | null;
+  readonly patientResponsibilityCents: number | null;
+  readonly adjustments: M25ClaimMdFinancialAssessment["adjustments"];
+  readonly unresolvedCents: number | null;
+  readonly financialStatus: "fully_paid" | "partial_paid" | "unsupported";
+  readonly duplicate: "none" | "potential";
+  readonly eligible: boolean;
+  readonly blockers: readonly string[];
+}
+
 export interface ClaimMdEraPostingHistoryEvent {
   readonly eventType: "approved" | "posted";
   readonly planId: string;
@@ -619,6 +683,7 @@ export interface ClaimMdEraPostingHistoryEvent {
   readonly reason: string;
   readonly adviceId: string | null;
   readonly remittanceLineId: string | null;
+  readonly remittanceLineIds: readonly string[];
 }
 
 export interface ClaimMdEraControlledPostingDeps {
@@ -634,6 +699,9 @@ export function buildDrizzleClaimMdEraReviewService(
   candidateReaders: readonly HistoricalMatchCandidateReader[] = [],
   controlledPosting?: ClaimMdEraControlledPostingDeps,
 ): ClaimMdEraReviewService {
+  const controlledPort = controlledPosting
+    ? getM25TransactionPostingPort(controlledPosting.ingestService)
+    : null;
   const loadHistoricalCandidates = async (
     tx: DbClient,
     actor: M25ReadActor,
@@ -707,9 +775,7 @@ export function buildDrizzleClaimMdEraReviewService(
       !stage.resolutionVersion
     )
       blockers.push("SOURCE_IDENTITY_INCOMPLETE");
-    if (detail.claims.length !== 1) blockers.push("UNSUPPORTED_CLAIM_COUNT");
-    const claim = detail.claims[0];
-    const sourceIdentity = detail.claimOutcomes[0];
+
     const claimMatchRows = await tx
       .select({
         id: schema.claimMdEraMatchDecision.id,
@@ -732,68 +798,14 @@ export function buildDrizzleClaimMdEraReviewService(
         desc(schema.claimMdEraMatchDecision.createdAt),
         desc(schema.claimMdEraMatchDecision.id),
       );
-    const identityOutcome =
-      claim && sourceIdentity
-        ? classifyEraClaimIdentity({
-            outcome: sourceIdentity.outcome,
-            claimId: sourceIdentity.claimId,
-            patientControlNumber: sourceIdentity.patientControlNumber,
-            expectedPatientControlNumber: claim.patientControlNumber,
-            transactionSetControlNumber: sourceIdentity.transactionSetControlNumber,
-            expectedTransactionSetControlNumber: detail.transactionSetControlNumber,
-          })
-        : "unsupported";
-    const identityDigest = claim
-      ? matchSourceDigest(
-          stage.original835Digest,
-          stage.resolutionVersion,
-          0,
-          claim,
-          sourceIdentity,
-        )
-      : "";
-    const latestIdentity = claimMatchRows.find(
-      (row) =>
-        row.claimIndex === 0 &&
-        row.transactionSetControlNumber === detail.transactionSetControlNumber,
-    );
-    const humanConfirmed =
-      !!latestIdentity &&
-      latestIdentity.sourceDigest === identityDigest &&
-      latestIdentity.outcome === "confirmed" &&
-      record(latestIdentity.evidence) &&
-      latestIdentity.evidence.humanSelected === true;
-    const claimId = humanConfirmed
-      ? (latestIdentity?.claimId ?? null)
-      : identityOutcome === "verified"
-        ? (sourceIdentity?.claimId ?? null)
-        : null;
-    if (!claimId || (identityOutcome !== "verified" && !humanConfirmed))
-      blockers.push(
-        identityOutcome === "conflict" ? "MATCH_IDENTITY_CONFLICT" : "MATCH_NOT_VERIFIED",
-      );
-    if (claim && (!claim.patientControlNumber || !claim.serviceFrom || !claim.serviceTo))
-      blockers.push("MATCH_REFERENCES_INCOMPLETE");
-
-    const candidates = claim?.patientControlNumber
-      ? await loadHistoricalCandidates(
-          tx as unknown as DbClient,
-          actor,
-          stage,
-          claim.patientControlNumber,
-          claim,
-        )
-      : [];
-    const candidate = candidates.find(
-      (item) => item.selectable && item.claimId === claimId && item.module === "M41",
-    );
-    if (
-      !candidate ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        candidate.payerId,
+    const latestIdentityByIndex = new Map<number, (typeof claimMatchRows)[number]>();
+    for (const row of claimMatchRows) {
+      if (
+        row.transactionSetControlNumber === detail.transactionSetControlNumber &&
+        !latestIdentityByIndex.has(row.claimIndex)
       )
-    )
-      blockers.push("PAYER_ROUTE_UNVERIFIED");
+        latestIdentityByIndex.set(row.claimIndex, row);
+    }
 
     const financialRows = await tx
       .select({
@@ -824,24 +836,19 @@ export function buildDrizzleClaimMdEraReviewService(
       if (!latestFinancial.has(key)) latestFinancial.set(key, row);
     }
     const matchRevision = matchDecisionRevisionDigest(claimMatchRows);
-    // BIL-3.3's explicit completion transition is ERA-scoped; claim notes remain audit context,
-    // and are still included in the source revision digest where present.
-    const requiredReviews = [latestFinancial.get("era:-1")];
+    const requiredReview = latestFinancial.get("era:-1");
     if (
-      requiredReviews.some(
-        (row) =>
-          !row ||
-          row.disposition !== "completed" ||
-          row.sourceDigest !==
-            financialReviewSourceDigest(
-              stage.original835Digest,
-              stage.resolutionVersion,
-              row.itemType,
-              row.itemIndex,
-              detail,
-              matchRevision,
-            ),
-      )
+      !requiredReview ||
+      requiredReview.disposition !== "completed" ||
+      requiredReview.sourceDigest !==
+        financialReviewSourceDigest(
+          stage.original835Digest,
+          stage.resolutionVersion,
+          requiredReview.itemType,
+          requiredReview.itemIndex,
+          detail,
+          matchRevision,
+        )
     )
       blockers.push("FINANCIAL_REVIEW_INCOMPLETE_OR_STALE");
 
@@ -870,7 +877,7 @@ export function buildDrizzleClaimMdEraReviewService(
     }
     if (
       !parsed ||
-      parsed.payerProgram !== "commercial" ||
+      !["commercial", "medicare"].includes(parsed.payerProgram) ||
       !parsed.payer ||
       !parsed.payee ||
       !parsed.interchangeControlNumber ||
@@ -880,73 +887,259 @@ export function buildDrizzleClaimMdEraReviewService(
       !Number.isFinite(Date.parse(parsed.productionDate))
     )
       blockers.push("UNSUPPORTED_OR_INCOMPLETE_835");
-    const parsedClaim = parsed?.claims?.[0];
+
+    if (!parsed || parsed.claims.length < 1 || parsed.claims.length !== detail.claims.length) {
+      blockers.push("UNSUPPORTED_CLAIM_COUNT_OR_PROJECTION");
+    }
+    const parsedClaims = parsed?.claims ?? [];
+    const parsedTrace = parsed?.checkOrEftTraceNumber ?? "";
+    const parsedTotalPayment = parsed?.totalPaymentAmount ?? 0;
     if (
-      !parsed ||
-      parsed.claims.length !== 1 ||
-      !parsedClaim ||
-      parsedClaim.statusCode !== 1 ||
-      parsedClaim.totalPayment <= 0 ||
-      decimalDollarsToCents(parsedClaim.totalCharge) !==
-        decimalDollarsToCents(parsedClaim.totalPayment) ||
-      parsedClaim.patientResponsibility !== 0 ||
-      parsedClaim.adjustments.length ||
-      parsedClaim.remarks.length ||
-      parsedClaim.serviceLines.length ||
-      (parsed.providerAdjustments?.length ?? 0) ||
-      (parsed.providerAdjustmentTotal ?? 0) !== 0 ||
-      (parsed.unknownSegments?.length ?? 0)
+      (parsed?.providerAdjustments?.length ?? 0) > 0 ||
+      (parsed?.providerAdjustmentTotal ?? 0) !== 0 ||
+      (parsed?.unknownSegments?.length ?? 0) > 0
     )
       blockers.push("UNSUPPORTED_FINANCIAL_FACTS");
-    if (
-      claim &&
-      parsedClaim &&
-      (claim.patientControlNumber !== parsedClaim.patientControlNumber ||
-        claim.payerIcn !== parsedClaim.payerIcn ||
-        decimalDollarsToCents(claim.totalCharge) !==
-          decimalDollarsToCents(parsedClaim.totalCharge) ||
-        decimalDollarsToCents(claim.totalPayment) !==
-          decimalDollarsToCents(parsedClaim.totalPayment))
-    )
-      blockers.push("PARSED_CLAIM_PROJECTION_MISMATCH");
-    if (
-      parsed &&
-      parsedClaim &&
-      decimalDollarsToCents(parsed.totalPaymentAmount) !==
-        decimalDollarsToCents(parsedClaim.totalPayment)
-    )
-      blockers.push("PAYMENT_BALANCE_UNSUPPORTED");
-    if (parsed && candidate) {
-      const prior = await tx
-        .select({ id: schema.remittanceAdvice.id })
-        .from(schema.remittanceAdvice)
-        .where(
-          and(
-            eq(schema.remittanceAdvice.organizationId, actor.organizationId),
-            eq(schema.remittanceAdvice.providerEntityId, stage.providerEntityId),
-            eq(schema.remittanceAdvice.payerId, candidate.payerId),
-            eq(schema.remittanceAdvice.checkOrEftTraceNumber, parsed.checkOrEftTraceNumber ?? ""),
-            eq(
-              schema.remittanceAdvice.totalPaymentAmount,
-              (parsed.totalPaymentAmount ?? 0).toFixed(2),
+    if ((parsed?.providerAdjustments?.length ?? 0) > 0)
+      blockers.push("PROVIDER_ADJUSTMENT_POLICY_UNAVAILABLE");
+
+    const claims: {
+      claimIndex: number;
+      billingModule: "M23" | "M41" | null;
+      patientControlNumber: string | null;
+      payerIcn: string | null;
+      claimId: string | null;
+      payerId: string | null;
+      submissionId: string | null;
+      evidenceId: string | null;
+      evidenceVersion: number;
+      matching: "verified" | "human_confirmed_candidate" | "blocked";
+      billedCents: number | null;
+      paidCents: number | null;
+      financial: M25ClaimMdFinancialAssessment;
+      duplicate: "none" | "potential";
+      eligible: boolean;
+      blockers: string[];
+    }[] = [];
+    const seenClaimIds = new Set<string>();
+    const payerIds = new Set<string>();
+    let aggregateClaimCents = 0n;
+    for (let claimIndex = 0; claimIndex < parsedClaims.length; claimIndex += 1) {
+      const parsedClaim = parsedClaims[claimIndex]!;
+      const claim = detail.claims[claimIndex];
+      const sourceIdentity = detail.claimOutcomes[claimIndex];
+      const claimBlockers: string[] = [];
+      const identityOutcome =
+        claim && sourceIdentity
+          ? classifyEraClaimIdentity({
+              outcome: sourceIdentity.outcome,
+              claimId: sourceIdentity.claimId,
+              patientControlNumber: sourceIdentity.patientControlNumber,
+              expectedPatientControlNumber: claim.patientControlNumber,
+              transactionSetControlNumber: sourceIdentity.transactionSetControlNumber,
+              expectedTransactionSetControlNumber: detail.transactionSetControlNumber,
+            })
+          : "unsupported";
+      const identityDigest = claim
+        ? matchSourceDigest(
+            stage.original835Digest,
+            stage.resolutionVersion,
+            claimIndex,
+            claim,
+            sourceIdentity,
+          )
+        : "";
+      const latestIdentity = latestIdentityByIndex.get(claimIndex);
+      const humanConfirmed =
+        !!latestIdentity &&
+        latestIdentity.sourceDigest === identityDigest &&
+        latestIdentity.outcome === "confirmed" &&
+        record(latestIdentity.evidence) &&
+        latestIdentity.evidence.humanSelected === true;
+      const claimId = humanConfirmed
+        ? (latestIdentity?.claimId ?? null)
+        : identityOutcome === "verified"
+          ? (sourceIdentity?.claimId ?? null)
+          : null;
+      if (
+        !claim ||
+        !sourceIdentity ||
+        !claim.patientControlNumber ||
+        !claim.serviceFrom ||
+        !claim.serviceTo
+      )
+        claimBlockers.push("MATCH_REFERENCES_INCOMPLETE");
+      if (!claimId || (identityOutcome !== "verified" && !humanConfirmed))
+        claimBlockers.push(
+          identityOutcome === "conflict" ? "MATCH_IDENTITY_CONFLICT" : "MATCH_NOT_VERIFIED",
+        );
+      if (identityOutcome === "conflict") claimBlockers.push("MATCH_IDENTITY_CONFLICT");
+      if (
+        !humanConfirmed &&
+        identityOutcome === "verified" &&
+        (sourceIdentity?.submissionEvidenceIds?.length ?? 0) !== 1
+      )
+        claimBlockers.push(
+          sourceIdentity?.submissionEvidenceIds?.length
+            ? "HISTORICAL_ATTEMPT_AMBIGUOUS"
+            : "HISTORICAL_ATTEMPT_EVIDENCE_MISSING",
+        );
+      if (
+        claim &&
+        (claim.patientControlNumber !== parsedClaim.patientControlNumber ||
+          claim.payerIcn !== parsedClaim.payerIcn ||
+          decimalDollarsToCents(claim.totalCharge) !==
+            decimalDollarsToCents(parsedClaim.totalCharge) ||
+          decimalDollarsToCents(claim.totalPayment) !==
+            decimalDollarsToCents(parsedClaim.totalPayment))
+      )
+        claimBlockers.push("PARSED_CLAIM_PROJECTION_MISMATCH");
+      const billedCents = decimalDollarsToCents(parsedClaim.totalCharge);
+      const paidCents = decimalDollarsToCents(parsedClaim.totalPayment);
+      const financial = controlledPort
+        ? await controlledPort.assessClaimMdFinancialFacts(parsedClaim)
+        : {
+            status: "unsupported" as const,
+            blocker: "UNSUPPORTED_FINANCIAL_FACTS" as const,
+            chargeCents: billedCents,
+            paidCents,
+            patientResponsibilityCents: decimalDollarsToCents(parsedClaim.patientResponsibility),
+            adjustments: [] as const,
+            unresolvedCents:
+              billedCents !== null && paidCents !== null ? billedCents - paidCents : null,
+          };
+      if (financial.status === "unsupported") claimBlockers.push(financial.blocker);
+      if (parsedClaims.length > 1 && financial.status === "partial_paid")
+        claimBlockers.push("PARTIAL_PAYMENT_MULTI_CLAIM_UNSUPPORTED");
+      if (paidCents !== null) aggregateClaimCents += BigInt(paidCents);
+      if (claimId && seenClaimIds.has(claimId)) claimBlockers.push("DUPLICATE_CLAIM_ASSOCIATION");
+      if (claimId) seenClaimIds.add(claimId);
+
+      const candidates = claim?.patientControlNumber
+        ? await loadHistoricalCandidates(
+            tx as unknown as DbClient,
+            actor,
+            stage,
+            claim.patientControlNumber,
+            claim,
+          )
+        : [];
+      const selectedEvidenceId =
+        humanConfirmed && record(latestIdentity?.evidence)
+          ? str(latestIdentity.evidence.evidenceId)
+          : null;
+      const ownerCandidate = candidates.find(
+        (item) =>
+          item.selectable &&
+          item.claimId === claimId &&
+          (humanConfirmed
+            ? item.evidenceId === selectedEvidenceId
+            : item.evidenceId === sourceIdentity?.submissionEvidenceIds?.[0]),
+      );
+      const humanSelectedModule =
+        humanConfirmed && record(latestIdentity?.evidence)
+          ? latestIdentity.evidence.billingModule
+          : null;
+      const billingModule =
+        ownerCandidate?.module ??
+        (sourceIdentity?.module === "M23" || sourceIdentity?.module === "M41"
+          ? sourceIdentity.module
+          : humanSelectedModule === "M23" || humanSelectedModule === "M41"
+            ? humanSelectedModule
+            : null);
+      const candidate = ownerCandidate?.module === "M41" ? ownerCandidate : undefined;
+      if (billingModule === "M23") claimBlockers.push("MEDICARE_POSTING_NOT_CERTIFIED");
+      const payerRouteMissing =
+        billingModule !== "M23" &&
+        (!candidate ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            candidate.payerId,
+          ));
+      if (payerRouteMissing) claimBlockers.push("PAYER_ROUTE_UNVERIFIED");
+      const matchedPayerId = candidate?.payerId ?? ownerCandidate?.payerId ?? null;
+      if (ownerCandidate && parsed?.payer?.id && parsed.payer.id !== ownerCandidate.payerId)
+        claimBlockers.push("PAYER_IDENTITY_CONFLICT");
+      if (matchedPayerId) payerIds.add(matchedPayerId);
+      if (ownerCandidate && claimId) {
+        const prior = await tx
+          .select({ id: schema.remittanceAdvice.id })
+          .from(schema.remittanceAdvice)
+          .where(
+            and(
+              eq(schema.remittanceAdvice.organizationId, actor.organizationId),
+              eq(schema.remittanceAdvice.providerEntityId, stage.providerEntityId),
+              eq(schema.remittanceAdvice.payerId, ownerCandidate.payerId),
+              eq(schema.remittanceAdvice.checkOrEftTraceNumber, parsedTrace),
+              eq(schema.remittanceAdvice.totalPaymentAmount, parsedTotalPayment.toFixed(2)),
             ),
-          ),
-        )
-        .limit(2);
-      if (prior.length) blockers.push("POTENTIAL_CROSS_SOURCE_DUPLICATE");
+          )
+          .limit(2);
+        if (prior.length) claimBlockers.push("POTENTIAL_CROSS_SOURCE_DUPLICATE");
+      }
+      if (claimBlockers.includes("POTENTIAL_CROSS_SOURCE_DUPLICATE"))
+        blockers.push("POTENTIAL_CROSS_SOURCE_DUPLICATE");
+      if (claimBlockers.includes("MATCH_IDENTITY_CONFLICT"))
+        blockers.push("MATCH_IDENTITY_CONFLICT");
+      if (claimBlockers.includes("DUPLICATE_CLAIM_ASSOCIATION"))
+        blockers.push("DUPLICATE_CLAIM_ASSOCIATION");
+      for (const policyBlocker of [
+        "CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE",
+        "PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE",
+        "PAYER_REDUCTION_POLICY_UNAVAILABLE",
+        "ADJUSTMENT_CLASSIFICATION_UNAVAILABLE",
+      ]) {
+        if (claimBlockers.includes(policyBlocker)) blockers.push(policyBlocker);
+      }
+      if (claimBlockers.some((code) => code !== "POTENTIAL_CROSS_SOURCE_DUPLICATE"))
+        blockers.push("CLAIM_NOT_ELIGIBLE");
+      claims.push({
+        claimIndex,
+        billingModule,
+        patientControlNumber: parsedClaim.patientControlNumber ?? null,
+        payerIcn: parsedClaim.payerIcn ?? null,
+        claimId,
+        payerId: ownerCandidate?.payerId ?? null,
+        submissionId: ownerCandidate?.submissionId ?? null,
+        evidenceId: ownerCandidate?.evidenceId ?? null,
+        evidenceVersion: humanConfirmed
+          ? (latestIdentity?.decisionVersion ?? 0)
+          : (stage.resolutionVersion ?? 0),
+        matching:
+          ownerCandidate && claimId
+            ? humanConfirmed
+              ? "human_confirmed_candidate"
+              : "verified"
+            : "blocked",
+        billedCents,
+        paidCents,
+        financial,
+        duplicate: claimBlockers.includes("POTENTIAL_CROSS_SOURCE_DUPLICATE")
+          ? "potential"
+          : "none",
+        eligible: claimBlockers.length === 0,
+        blockers: [...new Set(claimBlockers)],
+      });
     }
-    const evidence =
-      latestIdentity?.id && humanConfirmed ? latestIdentity.id : (stage.resolutionId ?? "");
-    const evidenceVersion = humanConfirmed
-      ? latestIdentity!.decisionVersion
-      : (stage.resolutionVersion ?? 0);
+    if (payerIds.size > 1) blockers.push("PAYER_IDENTITY_CONFLICT");
+    if (parsed && parsedClaims.length) {
+      const paymentCents = decimalDollarsToCents(parsed.totalPaymentAmount);
+      const aggregateSafe =
+        aggregateClaimCents <= BigInt(Number.MAX_SAFE_INTEGER) &&
+        aggregateClaimCents >= BigInt(Number.MIN_SAFE_INTEGER);
+      if (paymentCents === null || !aggregateSafe || Number(aggregateClaimCents) !== paymentCents)
+        blockers.push("PAYMENT_BALANCE_UNSUPPORTED");
+    }
     const paymentCents = parsed ? decimalDollarsToCents(parsed.totalPaymentAmount) : null;
+    const evidence = claims.map((claim) => claim.evidenceId);
+    const evidenceVersion = claims.map((claim) => claim.evidenceVersion);
     return {
       stage,
       detail,
       parsed,
-      claimId,
-      candidate,
+      claimId: claims[0]?.claimId ?? null,
+      claims,
+      payerId: [...payerIds][0] ?? null,
+      candidate: claims[0]?.payerId ? { payerId: claims[0].payerId } : null,
       evidence,
       evidenceVersion,
       paymentCents,
@@ -966,8 +1159,10 @@ export function buildDrizzleClaimMdEraReviewService(
           .digest("hex"),
         resolutionId: stage.resolutionId,
         resolutionVersion: stage.resolutionVersion,
-        matchDecisionId: latestIdentity?.id ?? null,
-        matchDecisionVersion: latestIdentity?.decisionVersion ?? 0,
+        matchDecisionId: claims.map((claim, index) => latestIdentityByIndex.get(index)?.id ?? null),
+        matchDecisionVersion: claims.map(
+          (claim, index) => latestIdentityByIndex.get(index)?.decisionVersion ?? 0,
+        ),
         financialReview: [...latestFinancial.entries()]
           .sort(([left], [right]) => left.localeCompare(right))
           .map(([item, row]) => ({
@@ -980,9 +1175,108 @@ export function buildDrizzleClaimMdEraReviewService(
       },
     };
   };
-  const controlledPort = controlledPosting
-    ? getM25TransactionPostingPort(controlledPosting.ingestService)
-    : null;
+  const postingPlanDocument = (
+    facts: Awaited<ReturnType<typeof derivePostingFacts>>,
+    stageId: string,
+    organizationId: string,
+    providerEntityId: string,
+  ) => ({
+    schema: "claimmd-controlled-posting-plan-v5-provider-adjustment-review",
+    stageId,
+    organizationId,
+    providerEntityId,
+    sourceRevisions: facts.sourceRevisions,
+    payerId: facts.payerId,
+    paymentCents: facts.paymentCents,
+    billedCents: facts.claims.reduce(
+      (sum, claim) =>
+        sum === null || claim.financial.chargeCents === null
+          ? null
+          : sum + claim.financial.chargeCents,
+      0 as number | null,
+    ),
+    unresolvedCents: facts.claims.reduce(
+      (sum, claim) =>
+        sum === null || claim.financial.unresolvedCents === null
+          ? null
+          : sum + claim.financial.unresolvedCents,
+      0 as number | null,
+    ),
+    providerAdjustments: facts.detail.providerAdjustments.map((adjustment) => ({
+      sourceDigest: facts.stage.original835Digest,
+      providerIdentifierMasked: adjustment.providerIdentifierMasked,
+      fiscalPeriod: adjustment.fiscalPeriod,
+      segmentPosition: adjustment.segmentPosition,
+      occurrence: adjustment.occurrence,
+      reason: adjustment.reason,
+      reference: adjustment.reference,
+      amountCents: adjustment.amount === null ? null : decimalDollarsToCents(adjustment.amount),
+      classification: adjustment.classification,
+      historicalReference: "not_verified",
+      policy: { status: "not_configured", version: null },
+      action: "none",
+    })),
+    claims: facts.claims.map((claim) => ({
+      claimIndex: claim.claimIndex,
+      billingModule: claim.billingModule,
+      patientControlNumber: claim.patientControlNumber,
+      payerIcn: claim.payerIcn,
+      claimId: claim.claimId,
+      payerId: claim.payerId,
+      submissionId: claim.submissionId,
+      evidenceId: claim.evidenceId,
+      evidenceVersion: claim.evidenceVersion,
+      matching: claim.matching,
+      billedCents: claim.billedCents,
+      paidCents: claim.paidCents,
+      patientResponsibilityCents: claim.financial.patientResponsibilityCents,
+      adjustments: claim.financial.adjustments,
+      unresolvedCents: claim.financial.unresolvedCents,
+      financialStatus: claim.financial.status,
+      duplicate: claim.duplicate,
+      eligible: claim.eligible,
+      blockers: claim.blockers,
+      effect:
+        claim.paidCents === null
+          ? null
+          : { kind: "claim_payment", amountCents: claim.paidCents, allocation: "claim_level" },
+    })),
+    blockers: facts.blockers,
+    accountingRule: "m25-claimmd-fully-paid-or-oa-review-partial-no-provider-adjustment-policy-v5",
+  });
+  const remittanceLinesInPlanOrder = async (
+    tx: M25Tx,
+    organizationId: string,
+    planId: string,
+    adviceId: string,
+  ): Promise<string[]> => {
+    const [storedPlan] = await tx
+      .select({ plan: schema.claimMdEraPostingPlan.plan })
+      .from(schema.claimMdEraPostingPlan)
+      .where(
+        and(
+          eq(schema.claimMdEraPostingPlan.id, planId),
+          eq(schema.claimMdEraPostingPlan.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    const lines = await tx
+      .select({ id: schema.remittanceLine.id, claimId: schema.remittanceLine.claimId })
+      .from(schema.remittanceLine)
+      .where(eq(schema.remittanceLine.remittanceAdviceId, adviceId));
+    const idsByClaim = new Map(lines.map((line) => [line.claimId, line.id]));
+    const document = storedPlan && record(storedPlan.plan) ? storedPlan.plan : null;
+    const batchClaims = document ? array(document.claims).filter(record) : [];
+    const claims = batchClaims.length
+      ? batchClaims.map((claim) => str(claim.claimId))
+      : document && str(document.claimId)
+        ? [str(document.claimId)]
+        : [];
+    const ordered = claims.map((claimId) => (claimId ? idsByClaim.get(claimId) : undefined));
+    return ordered.length === lines.length && ordered.every((lineId): lineId is string => !!lineId)
+      ? ordered
+      : lines.map((line) => line.id).sort();
+  };
   const service: ClaimMdEraReviewService = {
     async list(actor, filters, rawCursor, requestedLimit) {
       const decodedCursor = decodeKeysetCursor(actor.organizationId, rawCursor, "instant");
@@ -1017,6 +1311,7 @@ export function buildDrizzleClaimMdEraReviewService(
           actor.providerEntityScope,
           filters.providerEntityId,
         ),
+        filters.locationId ? eq(STAGE.locationId, filters.locationId) : undefined,
         filters.state ? eq(STAGE.state, filters.state) : undefined,
         from ? gte(STAGE.createdAt, from) : undefined,
         to ? lt(STAGE.createdAt, new Date(to.getTime() + 86_400_000)) : undefined,
@@ -1786,26 +2081,12 @@ export function buildDrizzleClaimMdEraReviewService(
           .limit(1);
         if (!stage) throw new NotFoundError("Claim.MD staged remittance", id);
         const facts = await derivePostingFacts(tx as unknown as M25Tx, actor, stage as StoredStage);
-        const planDocument = {
-          schema: "claimmd-controlled-posting-plan-v1",
-          stageId: id,
-          organizationId: actor.organizationId,
-          providerEntityId: stage.providerEntityId,
-          sourceRevisions: facts.sourceRevisions,
-          payerId: facts.candidate?.payerId ?? null,
-          claimId: facts.claimId,
-          paymentCents: facts.paymentCents,
-          effect:
-            facts.paymentCents === null
-              ? null
-              : {
-                  kind: "claim_payment",
-                  amountCents: facts.paymentCents,
-                  allocation: "claim_level",
-                },
-          blockers: facts.blockers,
-          accountingRule: "m25-claimmd-single-fully-paid-claim-v1",
-        };
+        const planDocument = postingPlanDocument(
+          facts,
+          id,
+          actor.organizationId,
+          stage.providerEntityId,
+        );
         const planDigest = createHash("sha256")
           .update(JSON.stringify(planDocument), "utf8")
           .digest("hex");
@@ -1856,6 +2137,30 @@ export function buildDrizzleClaimMdEraReviewService(
           providerEntityId: stage.providerEntityId,
           payer: facts.detail.payer.name,
           paymentCents: facts.paymentCents,
+          billedCents: planDocument.billedCents,
+          unresolvedCents: planDocument.unresolvedCents,
+          providerAdjustments: planDocument.providerAdjustments,
+          claims: facts.claims.map((claim) => ({
+            claimIndex: claim.claimIndex,
+            billingModule: claim.billingModule,
+            patientControlNumber: claim.patientControlNumber,
+            payerIcn: claim.payerIcn,
+            claimId: claim.claimId,
+            payerId: claim.payerId,
+            submissionId: claim.submissionId,
+            evidenceId: claim.evidenceId,
+            evidenceVersion: claim.evidenceVersion,
+            matching: claim.matching,
+            billedCents: claim.billedCents,
+            paidCents: claim.paidCents,
+            patientResponsibilityCents: claim.financial.patientResponsibilityCents,
+            adjustments: claim.financial.adjustments,
+            unresolvedCents: claim.financial.unresolvedCents,
+            financialStatus: claim.financial.status,
+            duplicate: claim.duplicate,
+            eligible: claim.eligible,
+            blockers: claim.blockers,
+          })),
           claimId: facts.claimId,
           eligible: facts.blockers.length === 0,
           status: posted
@@ -1911,26 +2216,9 @@ export function buildDrizzleClaimMdEraReviewService(
         const facts = await derivePostingFacts(tx as unknown as M25Tx, actor, stage as StoredStage);
         const digest = createHash("sha256")
           .update(
-            JSON.stringify({
-              schema: "claimmd-controlled-posting-plan-v1",
-              stageId: id,
-              organizationId: actor.organizationId,
-              providerEntityId: stage.providerEntityId,
-              sourceRevisions: facts.sourceRevisions,
-              payerId: facts.candidate?.payerId ?? null,
-              claimId: facts.claimId,
-              paymentCents: facts.paymentCents,
-              effect:
-                facts.paymentCents === null
-                  ? null
-                  : {
-                      kind: "claim_payment",
-                      amountCents: facts.paymentCents,
-                      allocation: "claim_level",
-                    },
-              blockers: facts.blockers,
-              accountingRule: "m25-claimmd-single-fully-paid-claim-v1",
-            }),
+            JSON.stringify(
+              postingPlanDocument(facts, id, actor.organizationId, stage.providerEntityId),
+            ),
             "utf8",
           )
           .digest("hex");
@@ -2077,14 +2365,26 @@ export function buildDrizzleClaimMdEraReviewService(
             "the stored posting plan is invalid",
             409,
           );
-        if (posted)
+        if (posted) {
+          const remittanceLineIds = posted.adviceId
+            ? await remittanceLinesInPlanOrder(
+                tx as unknown as M25Tx,
+                actor.organizationId,
+                plan.id,
+                posted.adviceId,
+              )
+            : posted.remittanceLineId
+              ? [posted.remittanceLineId]
+              : [];
           return {
             planId: plan.id,
             outcome: "already_posted" as const,
             adviceId: posted.adviceId,
-            remittanceLineId: posted.remittanceLineId,
+            remittanceLineId: remittanceLineIds.length === 1 ? remittanceLineIds[0]! : null,
+            remittanceLineIds,
             paymentCents,
           };
+        }
         const approval = events.find(
           (event) => event.eventType === "approved" && event.planDigest === plan.planDigest,
         );
@@ -2101,26 +2401,12 @@ export function buildDrizzleClaimMdEraReviewService(
             403,
           );
         const facts = await derivePostingFacts(tx as unknown as M25Tx, actor, stage as StoredStage);
-        const currentDocument = {
-          schema: "claimmd-controlled-posting-plan-v1",
-          stageId: id,
-          organizationId: actor.organizationId,
-          providerEntityId: stage.providerEntityId,
-          sourceRevisions: facts.sourceRevisions,
-          payerId: facts.candidate?.payerId ?? null,
-          claimId: facts.claimId,
-          paymentCents: facts.paymentCents,
-          effect:
-            facts.paymentCents === null
-              ? null
-              : {
-                  kind: "claim_payment",
-                  amountCents: facts.paymentCents,
-                  allocation: "claim_level",
-                },
-          blockers: facts.blockers,
-          accountingRule: "m25-claimmd-single-fully-paid-claim-v1",
-        };
+        const currentDocument = postingPlanDocument(
+          facts,
+          id,
+          actor.organizationId,
+          stage.providerEntityId,
+        );
         const currentDigest = createHash("sha256")
           .update(JSON.stringify(currentDocument), "utf8")
           .digest("hex");
@@ -2132,11 +2418,11 @@ export function buildDrizzleClaimMdEraReviewService(
           );
         if (
           !facts.parsed ||
-          !facts.candidate ||
-          !facts.claimId ||
+          !facts.payerId ||
           !facts.stage.sourceFileDigest ||
-          !facts.evidence ||
-          facts.evidenceVersion < 1
+          facts.claims.some(
+            (claim) => !claim.claimId || !claim.evidenceId || claim.evidenceVersion < 1,
+          )
         )
           throw new ChartWardenError(
             "POSTING_SOURCE_INVALID",
@@ -2162,7 +2448,7 @@ export function buildDrizzleClaimMdEraReviewService(
           .values({
             organizationId: actor.organizationId,
             providerEntityId: stage.providerEntityId,
-            payerId: facts.candidate.payerId,
+            payerId: facts.payerId,
             payerKind: "commercial",
             interchangeControlNumber: parsed.interchangeControlNumber,
             transactionSetControlNumber: parsed.transactionSetControlNumber,
@@ -2193,23 +2479,29 @@ export function buildDrizzleClaimMdEraReviewService(
             "the M25 source envelope could not be created",
             500,
           );
-        const postedResult = await controlledPort.postValidatedClaimInTransaction(
+        const postedResult = await controlledPort.postValidatedClaimsInTransaction(
           tx as unknown as M25Tx,
           { organizationId: actor.organizationId },
           {
             adviceId: advice.id,
             sourceFileSha256,
             parsed,
-            association: {
-              organizationId: actor.organizationId,
-              providerEntityId: stage.providerEntityId,
-              claimId: facts.claimId,
-              evidenceId: facts.evidence,
-              evidenceVersion: facts.evidenceVersion,
-            } satisfies M25ValidatedClaimAssociation,
+            associations: facts.claims.map(
+              (claim) =>
+                ({
+                  organizationId: actor.organizationId,
+                  providerEntityId: stage.providerEntityId,
+                  claimId: claim.claimId!,
+                  evidenceId: claim.evidenceId!,
+                  evidenceVersion: claim.evidenceVersion,
+                }) satisfies M25ValidatedClaimAssociation,
+            ),
           },
         );
-        if (postedResult.outcome !== "posted" || !postedResult.remittanceLineId)
+        if (
+          postedResult.outcome !== "posted" ||
+          postedResult.remittanceLineIds.length !== facts.claims.length
+        )
           throw new ChartWardenError(
             "M25_POSTING_NOT_COMMITTED",
             "the M25 posting core did not return a committed remittance line",
@@ -2229,14 +2521,17 @@ export function buildDrizzleClaimMdEraReviewService(
           actorMembershipId: actor.membershipId,
           idempotencyKeyHash: idemHash,
           adviceId: advice.id,
-          remittanceLineId: postedResult.remittanceLineId,
+          // Migration 1397 requires a representative line reference for a posted event. The advice
+          // identity owns the full batch; the API also returns every line id below.
+          remittanceLineId: postedResult.remittanceLineIds[0]!,
           reason,
         });
         return {
           planId: plan.id,
           outcome: "posted" as const,
           adviceId: advice.id,
-          remittanceLineId: postedResult.remittanceLineId,
+          remittanceLineId: postedResult.remittanceLineIds[0]!,
+          remittanceLineIds: postedResult.remittanceLineIds,
           paymentCents,
         };
       });
@@ -2263,14 +2558,29 @@ export function buildDrizzleClaimMdEraReviewService(
             ),
           )
           .orderBy(desc(schema.claimMdEraPostingEvent.createdAt));
-        return rows.map((row) => ({
-          eventType: row.eventType,
-          planId: row.planId,
-          occurredAt: row.createdAt.toISOString(),
-          reason: row.reason,
-          adviceId: row.adviceId,
-          remittanceLineId: row.remittanceLineId,
-        }));
+        return Promise.all(
+          rows.map(async (row) => {
+            const remittanceLineIds = row.adviceId
+              ? await remittanceLinesInPlanOrder(
+                  tx as unknown as M25Tx,
+                  actor.organizationId,
+                  row.planId,
+                  row.adviceId,
+                )
+              : row.remittanceLineId
+                ? [row.remittanceLineId]
+                : [];
+            return {
+              eventType: row.eventType,
+              planId: row.planId,
+              occurredAt: row.createdAt.toISOString(),
+              reason: row.reason,
+              adviceId: row.adviceId,
+              remittanceLineId: remittanceLineIds.length === 1 ? remittanceLineIds[0]! : null,
+              remittanceLineIds,
+            };
+          }),
+        );
       });
     },
   };

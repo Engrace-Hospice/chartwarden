@@ -62,6 +62,10 @@ export const M12_ERROR_STATUS = {
   COMPLETION_CRITERION_NOT_MET: 422,
   // §2.2 — a transition reserved to the system worker / webhook handler was attempted by a human actor.
   NOT_SYSTEM_ACTOR: 403,
+  // §2.2 — resolving a HELD order (an unconfirmed outcome) by hand is an organization administrator's decision.
+  NOT_ADMINISTRATOR: 403,
+  // §2.2 — an administrator who resolves a held order as SENT must name the DoseSpot prescription it became.
+  PRESCRIPTION_ID_REQUIRED: 422,
   // §2.2 / §4.10 (F-058) — `activate` was attempted from `signed` on an order that OWES a DoseSpot
   // transmission. The `signed → active` arm exists for orders whose `dosespot_send_state` is
   // `not_required` (nothing is being e-prescribed, so nothing is pending); an order that is queued,

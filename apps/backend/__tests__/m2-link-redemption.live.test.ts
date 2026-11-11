@@ -311,6 +311,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       publish: (tx, input) => m2Publisher.publish(tx, { ...input, callerModule: "m2" } as never),
     });
     const delivery = createLinkDelivery({
+      maxDeliveryDurationMs: 1_000,
       transport: {
         async send(message) {
           if (failNextSend) {
