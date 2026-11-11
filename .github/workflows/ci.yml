@@ -31,7 +31,7 @@ concurrency:
 jobs:
   build-and-verify:
     runs-on: [self-hosted, Linux, X64, ci]
-    # Build batches run as separate tsc processes with a 4 GiB heap ceiling; other Node tools
+    # Build batches run as separate tsc processes with a 6 GiB heap ceiling; other Node tools
     # retain their existing limit.
     env:
       NODE_OPTIONS: --max-old-space-size=6144
