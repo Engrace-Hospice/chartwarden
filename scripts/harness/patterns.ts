@@ -46,6 +46,14 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { isToolchainPath } from "./toolchain-paths";
+import {
+  RUNS_COMMAND_STRING,
+  WRAPPER_OPERANDS,
+  WRAPPER_VALUE_FLAG,
+  containerRun,
+  shellStrings,
+  sshHost,
+} from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 
 export interface SyntheticRegistry {
@@ -479,19 +487,13 @@ const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 // the list because `if x; then rm …; fi` splits into a `then rm …` segment.
 const NO_FLAG_VALUE = /^$/;
 const WRAPPER_FLAG_VALUE: ReadonlyMap<string, RegExp> = new Map([
-  ["sudo", /^-[ughpCDRTU]$/],
-  ["env", /^-[uCS]$/],
-  ["nice", /^-n$/],
-  ["ionice", /^-[cnp]$/],
-  ["xargs", /^-[InPLsdEa]$/],
+  ...WRAPPER_VALUE_FLAG,
   ...[
     "time",
     "command",
     "builtin",
-    "exec",
     "nohup",
     "setsid",
-    "stdbuf",
     "then",
     "do",
     "else",
@@ -534,7 +536,7 @@ function program(seg: string): {
   while (k < w.length) {
     const word = w[k] ?? "";
     const bare = unescapeWord(word);
-    if (bare.replace(/^.*\//, "") === "timeout") {
+    if (/^g?timeout$/.test(bare.replace(/^.*\//, ""))) {
       lastWrapper = "timeout";
       k++;
       while (k < w.length) {
@@ -560,10 +562,20 @@ function program(seg: string): {
     const takesValue = WRAPPER_FLAG_VALUE.get(bare);
     if (ASSIGNMENT.test(word)) k++;
     else if (takesValue && k + 1 < w.length) {
+      // `flock -c 'cmd' file`: the string is the command, so the wrapper stays the program and its string is read.
+      if (
+        RUNS_COMMAND_STRING.has(bare) &&
+        w.slice(k + 1).some((x) => /^-c$|^--command(?:=|$)/.test(x))
+      ) {
+        break;
+      }
       lastWrapper = bare;
       k++;
+      const operands = WRAPPER_OPERANDS.get(bare);
+      let supplied = false;
       while (k < w.length && /^-/.test(w[k] ?? "") && (w[k] ?? "") !== "--") {
         const flag = w[k] ?? "";
+        supplied ||= operands?.suppliedBy?.test(flag) ?? false;
         const attached = CHDIR_ATTACHED.get(bare)?.exec(flag);
         if (attached) chdir = attached[1] ?? attached[2] ?? "";
         else if (CHDIR_FLAG.get(bare)?.test(flag)) chdir = w[k + 1] ?? "";
@@ -572,6 +584,8 @@ function program(seg: string): {
       }
       // `sudo -- rm x`: `--` ends the wrapper's options, and the command follows it.
       if (w[k] === "--") k++;
+      // `flock lockfile cmd`, `chrt -f 1 cmd`, `taskset 0x1 cmd`: operands before the command.
+      if (operands && !supplied) k += operands.count;
     } else break;
   }
   // `env -u X` with no command prints the environment: it is still `env`.
@@ -1147,6 +1161,16 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     } else if (parsed.prog === "find") {
       for (const run of findExecCommands(parsed.args))
         verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
+    }
+    // A command line a wrapper hands to a shell (`watch 'x'`, `su -c 'x'`, `ssh h 'x'`, `rsync -e 'x'`), and a
+    // command run in a container that mounts the repo (its paths read as the host's).
+    for (const text of shellStrings(parsed.prog, parsed.args, isLocalHost)) {
+      if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
+    }
+    const container = containerRun(parsed.prog, parsed.args);
+    if (container) {
+      const inside = container.workdir === undefined ? here : runIn(here, container.workdir, ctx);
+      verdicts.push(judge(container.command, ctx, depth + 1, inside));
     }
     if (readsScriptFromStdin(parsed, index)) scriptTexts.push(...pipelineTexts(parts, index));
     // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a
@@ -1988,6 +2012,7 @@ function nestedAgentVerdict(
   prog: string,
   args: readonly string[],
   assigns: readonly string[],
+  here: readonly Cwd[],
 ): BashVerdict | null {
   const switchedOff = (what: string): BashVerdict =>
     ask(
@@ -2013,6 +2038,23 @@ function nestedAgentVerdict(
   }
   if (assigns.some((a) => /^(HOME|XDG_CONFIG_HOME)=/.test(a))) {
     return switchedOff("Re-pointing `HOME`");
+  }
+  // `claude --bare` skips hooks; `codex --disable codex_hooks` switches them off; `-C DIR` / `--cd DIR` starts it in
+  // another tree, and so does a `cd` before it: the repo's project hooks load only from the repo.
+  if (args.includes("--bare")) return switchedOff("`--bare`");
+  if (
+    args.some((a, k) => /^--disable(?:=|$)/.test(a) && /hook/i.test(`${a} ${args[k + 1] ?? ""}`))
+  ) {
+    return switchedOff("`--disable` of the hooks");
+  }
+  if (args.some((a) => a === "-C" || a === "--cd" || a.startsWith("--cd="))) {
+    return switchedOff("A different working directory (`-C`, `--cd`)");
+  }
+  const onlyHelp = args.every((a) => /^(-h|--help|-v|-V|--version|version|help)$/.test(a));
+  if (!onlyHelp && here.some((dir) => dir === null || dir.startsWith("/") || dir.startsWith("~"))) {
+    return switchedOff(
+      "A nested agent started outside the repo, where the repo's hooks do not load,",
+    );
   }
   return null;
 }
@@ -2319,7 +2361,7 @@ function classifySegment(
   }
 
   // --- Nested agents started with the guard off.
-  const nested = nestedAgentVerdict(prog, args, assigns);
+  const nested = nestedAgentVerdict(prog, args, assigns, here);
   if (nested) return nested;
 
   // --- Environment dumps and secret variables echoed into the transcript.
@@ -2447,7 +2489,10 @@ function classifySegment(
 
   // --- Remote shells: production access must be a human decision every time.
   if (/^(ssh|scp|sftp|rsync)$/.test(prog)) {
-    const target = fileArgs(args).find((a) => a.includes("@") || a.includes(":") || prog === "ssh");
+    const target =
+      prog === "ssh"
+        ? fileArgs(sshHost(args) === undefined ? [] : [sshHost(args) as string])[0]
+        : fileArgs(args).find((a) => a.includes("@") || a.includes(":"));
     // Drop `user:password@` first: the userinfo is not the host, and must not be echoed as one.
     const m =
       /(?:^|\s)(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9.-]+\.[A-Za-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9_-]+)(?::|\s|$)/.exec(
