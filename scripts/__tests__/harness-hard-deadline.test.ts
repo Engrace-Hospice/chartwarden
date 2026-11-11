@@ -6,7 +6,7 @@
  * dies. Each test spawns the real entry point, or the real pinned hook command, with a fault forced through the
  * test seam; a normal call next to each must be unchanged.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { type SpawnSyncReturns, spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -49,7 +49,7 @@ const baseEnv = (extra: Record<string, string>): Record<string, string> => ({
   ...extra,
 });
 
-const timed = (run: () => ReturnType<typeof spawnSync<string>>) => {
+const timed = (run: () => SpawnSyncReturns<string>) => {
   const started = performance.now();
   const r = run();
   return { r, ms: performance.now() - started };

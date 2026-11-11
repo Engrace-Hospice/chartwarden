@@ -10,7 +10,7 @@
 import { judgeHook } from "./guard-judge";
 import { parseHookInput } from "./io";
 
-declare const self: Worker;
+declare const self: Worker & { close(): void };
 
 /**
  * No code in this worker may end the process: on bun 1.3.5 a `process.exit(0)` called in a worker exits the WHOLE
