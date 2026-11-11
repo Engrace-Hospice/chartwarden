@@ -482,9 +482,9 @@ fi
 # A failure in 1-3 puts the old world back (MinIO on its host port, the stopped api/worker started unchanged) and
 # fails the deploy with no migration applied; the next deploy retries. MinIO's volume stays for an operator (README).
 deploy_step=object-store
-object_store_files="-f compose.yml"
+object_store_backup_enabled=0
 if [ -f compose.backup.yml ] && grep -q '^BACKUP_SOURCE_MINIO_ACCESS_KEY=.' .env.production; then
-  object_store_files="$object_store_files -f compose.backup.yml"
+  object_store_backup_enabled=1
 fi
 for f in object-store/audit.json object-store/fluent-bit.yaml; do
   [ -f "$f" ] || { echo "missing $deploy_dir/$f (deploy.yml uploads it); nothing was changed" >&2; restore_previous_release; exit 1; }
@@ -494,6 +494,13 @@ done
 # The app image is distroless (no sh, no coreutils), so the one-shot runs a bun snippet.
 object_store_one_shot() {
   docker compose --env-file .env.production -f compose.yml run --rm --no-deps --entrypoint bun object-store-provision -e "$1"
+}
+provision_object_store() {
+  if [ "$object_store_backup_enabled" -eq 1 ]; then
+    docker compose --env-file .env.production -f compose.yml -f compose.backup.yml run --rm object-store-provision
+  else
+    docker compose --env-file .env.production -f compose.yml run --rm object-store-provision
+  fi
 }
 legacy_minio=0
 if [ ! -f .object-store-cutover ]; then
@@ -516,7 +523,7 @@ if [ ! -f .object-store-cutover ]; then
     esac
   fi
 fi
-if ! provision_out=$(docker compose --env-file .env.production $object_store_files run --rm object-store-provision); then
+if ! provision_out=$(provision_object_store); then
   echo "object-store identity provisioning failed; no migrations were applied" >&2
   restore_previous_release
   exit 1

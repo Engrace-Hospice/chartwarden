@@ -48,6 +48,23 @@ export interface M35JobDeps {
   readonly listOrgs: () => Promise<readonly { readonly organizationId: string }[]>;
   readonly now?: () => Date;
   readonly log?: (message: string, detail: Record<string, unknown>) => void;
+  /**
+   * A paused subscription could not be resumed because ANOTHER subscription of its organization is live (it stays paused until an operator
+   * acts): raised by the pause-resume sweep (its lapsed pause) and by the org-lifecycle consumer (an organization reactivation). The
+   * composition root binds the ops alert sink here. Ids only, at most once per day per subscription.
+   */
+  readonly onPauseBlocked?: (event: PauseBlockedEvent) => void;
+}
+
+/** What made a resume attempt: the sweep (a pause whose end date passed) or an organization reactivation. */
+export type PauseBlockedTrigger = "lapsed_pause" | "organization_activated";
+
+/** What an operator needs to unblock a paused subscription: the one that cannot resume, and the live one in its way. */
+export interface PauseBlockedEvent {
+  readonly organizationId: string;
+  readonly subscriptionId: string;
+  readonly olderLiveSubscriptionId: string;
+  readonly trigger: PauseBlockedTrigger;
 }
 
 const nowOf = (deps: M35JobDeps): Date => (deps.now ?? (() => new Date()))();
@@ -67,10 +84,8 @@ export async function runM35Fanout(
       await fn(organizationId);
     } catch (err) {
       errors.push(err);
-      deps.log?.(`m35 ${label} failed for an org`, {
-        organizationId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      // under `err` (the logger's PHI-safe serializer), never `err.message`: a Drizzle error's message carries the bound values
+      deps.log?.(`m35 ${label} failed for an org`, { organizationId, err });
     }
   }
   if (errors.length > 0)

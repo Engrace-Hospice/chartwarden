@@ -133,6 +133,7 @@ export const claim = pgTable(
   (t) => ({
     orgPe: index("claim_org_pe_idx").on(t.organizationId, t.providerEntityId),
     patient: index("claim_patient_idx").on(t.organizationId, t.patientId, t.serviceFrom),
+    patientPayer: index("claim_org_patient_payer_ix").on(t.organizationId, t.patientPayerId),
     state: index("claim_state_idx").on(t.organizationId, t.state, t.serviceFrom),
     controlNumberUq: uniqueIndex("claim_control_number_uq").on(
       t.providerEntityId,

@@ -11,6 +11,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne } from "drizzle-orm";
 
 const LOC = schema.levelOfCarePeriods;
+const ADM = schema.admissions;
 
 /** Same empty-acting-user sentinel `level-of-care-period-reader.ts` uses for a system read. */
 const SYSTEM_USER_ID = "";
@@ -26,6 +27,19 @@ export interface AdmissionLocPeriod {
 
 export interface AdmissionLocPeriodsReader {
   periodsForAdmission(organizationId: string, admissionId: string): Promise<AdmissionLocPeriod[]>;
+  /**
+   * Lock the M6 admission row on the caller's transaction. M24 uses this as the serialization point for
+   * discharge state + original-claim cadence, so concurrent assemblers cannot both derive a first claim.
+   */
+  cadenceSnapshotInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{
+    patientId: string;
+    providerEntityId: string | null;
+    dischargedAt: Date | null;
+  } | null>;
 }
 
 /**
@@ -35,6 +49,19 @@ export interface AdmissionLocPeriodsReader {
  */
 export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPeriodsReader {
   return {
+    async cadenceSnapshotInTransaction(transaction, organizationId, admissionId) {
+      const rows = await (transaction as DbClient)
+        .select({
+          patientId: ADM.patientId,
+          providerEntityId: ADM.providerEntityId,
+          dischargedAt: ADM.dischargedAt,
+        })
+        .from(ADM)
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+        .limit(1)
+        .for("update");
+      return rows[0] ?? null;
+    },
     periodsForAdmission(organizationId, admissionId) {
       return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, (tx) =>
         (tx as unknown as DbClient)

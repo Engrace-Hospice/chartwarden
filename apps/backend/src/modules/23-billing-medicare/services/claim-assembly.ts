@@ -277,6 +277,22 @@ export function buildClaimAssemblyService(
 
       // ── 2. Server-authoritative TOB + the run inside the write transaction ─────────────────────────
       return inOrgCtx(actor, async (tx) => {
+        // #877 — resolve again through this transaction and hold M5's patient_payer rows FOR SHARE
+        // until the claim commits. A concurrent coverage replacement therefore cannot invalidate the
+        // patient_payer_id between this gate and the insert below.
+        const lockedPayer = await seams.patientPayer.medicarePrimaryForRangeInTransaction(
+          tx,
+          orgId,
+          patientId,
+          range,
+        );
+        if (!lockedPayer?.medicarePrimary || lockedPayer.patientPayerId !== payer.patientPayerId) {
+          throw new ChartWardenError(
+            "NON_MEDICARE_PRIMARY_PAYER",
+            "Medicare FFS coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+            409,
+          );
+        }
         const claimRepo = new repositories.ClaimRepository(tx);
 
         // Prior-claim continuity for this admission (drives the TOB cadence + the duplicate/overlap guard).

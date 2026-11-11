@@ -51,6 +51,13 @@ const PlanTierLit = Type.Union([
   Type.Literal("starter"),
   Type.Literal("professional"),
   Type.Literal("enterprise"),
+  Type.Literal("census_banded"),
+]);
+/** The flat tiers the legacy plan editor can still create; a census_banded plan is made by the pricing plan editor only. */
+const LegacyPlanTierLit = Type.Union([
+  Type.Literal("starter"),
+  Type.Literal("professional"),
+  Type.Literal("enterprise"),
 ]);
 const CadenceLit = Type.Union([Type.Literal("monthly"), Type.Literal("annual")]);
 const ProrationLit = Type.Union([
@@ -103,7 +110,7 @@ export const CreatePlanBodySchema = Type.Object({
   slug: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
   description: Type.Optional(Type.String()),
-  tier: PlanTierLit,
+  tier: LegacyPlanTierLit,
   cadence: CadenceLit,
   basePriceCents: Type.Integer({ minimum: 0 }),
   currencyCode: Type.String({ minLength: 3, maxLength: 3 }),

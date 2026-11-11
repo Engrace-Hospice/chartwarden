@@ -1,3 +1,4 @@
+import type { HopeRfaKind } from "@chartwarden/types";
 import type { HopeIsc } from "../hope-spec-registry";
 import type {
   HopeAnswerMap,
@@ -26,7 +27,7 @@ export interface HopeValidationItem {
 
 export interface HopeValidationAssessment {
   readonly id: string;
-  readonly rfaKind: string;
+  readonly rfaKind: HopeRfaKind;
   readonly status: string;
   readonly targetDate: string;
   readonly specVersionId: string;
@@ -38,6 +39,8 @@ export interface HopeValidationAssessment {
 export interface HopeValidationContext {
   readonly mode: HopeValidationMode;
   readonly assessment: HopeValidationAssessment;
+  /** Section presence projected from the stored assessment payload via `projectHopeSections`. */
+  readonly presentSections: readonly string[];
   readonly activeItems: readonly HopeValidationItem[];
   readonly answers: HopeAnswerMap;
   readonly applicability: HopeApplicabilityResult;

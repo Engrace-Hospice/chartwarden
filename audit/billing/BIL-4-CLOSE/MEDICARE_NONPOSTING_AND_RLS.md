@@ -1,0 +1,7 @@
+# Medicare nonposting and tenant isolation
+
+M23's `readM23HistoricalEraCandidates` is source-owned and scopes lookup by organization, provider entity, Claim.MD account, environment, PCN, M23 billing module and claim submission/attempt identity. The M25 plan uses the owner-returned M23 candidate and carries `MEDICARE_POSTING_NOT_CERTIFIED`. Approval recomputes the plan and refuses the blocker.
+
+The private integration fixture now also injects a synthetic approval row directly through its disposable admin connection, then calls the actual M25 execution service with the controlled posting gate enabled for that test. The execution service re-derives the plan, rejects it as blocked, and the test confirms no remittance advice, remittance line or claim-paid/partial-paid/advice-posted event exists. This tests a corrupted approval boundary; it is not an application authorization bypass available in production.
+
+The same suite runs as the restricted application role for normal reads/writes. Other-tenant/provider scope checks and RLS evidence are recorded in the M25 suite. The new execution-boundary case proves a synthetic approval cannot bypass Medicare's server-derived blocker, and confirms zero advice, remittance-line or posting-event effects. The case does not exhaustively test each wrong payer/account/environment and original/replacement/void evidence permutation; those remain focused negative-test gaps. No Medicare posting route or worker was enabled.

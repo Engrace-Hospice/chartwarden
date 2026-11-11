@@ -39,6 +39,7 @@ import {
   bereavementRiskNarrativeProviderDenyStub,
   bereavementRiskTierProviderDenyStub,
   billableEncounterReaderDenyStub,
+  billingServiceModeReaderDenyStub,
   billingStatusProviderDenyStub,
   capAccrualReaderDenyStub,
   capProjectionProviderDenyStub,
@@ -125,6 +126,7 @@ import {
   mileagePayrollReaderDenyStub,
   mswRiskFactorReaderDenyStub,
   narrativeEnhancementProviderDenyStub,
+  netCollectionsReaderDenyStub,
   nonCoveredDmeSuppliesReaderDenyStub,
   nonCoveredMedicationsReaderDenyStub,
   nppesProviderReaderDenyStub,
@@ -771,6 +773,21 @@ export const REQUIRED_SEAMS = [
     ownerModule: 23,
     phi: false,
     denyStub: tenantClearinghouseReaderDenyStub,
+  },
+  // Slice 2 (tenant pricing) — the subscription's billing service mode (owner M35). One enum value per org → phi:false.
+  {
+    key: "BillingServiceModeReader",
+    ownerModule: 35,
+    phi: false,
+    denyStub: billingServiceModeReaderDenyStub,
+  },
+  // Slice 2 — an org's NET COLLECTIONS for a period, the M35 billing-service meter (owner M25). One aggregate dollar total
+  // per call, no patient row, claim id or MBI crosses → phi:false.
+  {
+    key: "NetCollectionsReader",
+    ownerModule: 25,
+    phi: false,
+    denyStub: netCollectionsReaderDenyStub,
   },
   {
     key: "RevenueMetricsProvider",

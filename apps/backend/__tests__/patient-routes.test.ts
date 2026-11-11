@@ -33,7 +33,7 @@ function headerAuth(request: FastifyRequest): void {
 }
 
 const ORG = "org_a";
-const EXISTING = "pat-existing";
+const EXISTING = "00000000-0000-4000-8000-000000000005";
 
 // An existing patient with an MBI + SSN — the §7.1 hard-duplicate target (and the §3.3 masking case).
 const existing: PatientView & MatchCandidate = {
@@ -691,6 +691,90 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     });
     expect(res.statusCode).toBe(201);
     await app.close();
+  });
+
+  describe("#874 — an explicit, step-up payer-row void", () => {
+    async function addPayer(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
+      const added = await app.inject({
+        method: "POST",
+        url: `/api/v1/patients/${EXISTING}/payers`,
+        headers: PAYER,
+        payload: PAYER_BODY,
+      });
+      expect(added.statusCode).toBe(201);
+      return added.json().id as string;
+    }
+
+    const reason = { reason: "wrong_payer" } as const;
+
+    it("rejects a malformed payer-row UUID before the database service is called", async () => {
+      const { app } = makeServer();
+      const denied = await app.inject({
+        method: "POST",
+        url: `/api/v1/patients/${EXISTING}/payers/not-a-uuid/void`,
+        headers: { ...PAYER, "x-test-step-up": "true" },
+        payload: reason,
+      });
+      expect(denied.statusCode).toBe(422);
+      expect(denied.json().error.code).toBe("VALIDATION_FAILED");
+      await app.close();
+    });
+
+    it("requires a server-verified fresh step-up", async () => {
+      const { app } = makeServer();
+      const payerRowId = await addPayer(app);
+      const denied = await app.inject({
+        method: "POST",
+        url: `/api/v1/patients/${EXISTING}/payers/${payerRowId}/void`,
+        headers: PAYER,
+        payload: reason,
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json().error.code).toBe("STEP_UP_REQUIRED");
+      await app.close();
+    });
+
+    it("preserves the non-leaking caseload 404 even with step-up", async () => {
+      const { app } = makeServer();
+      const payerRowId = await addPayer(app);
+      const denied = await app.inject({
+        method: "POST",
+        url: `/api/v1/patients/${EXISTING}/payers/${payerRowId}/void`,
+        headers: { ...PAYER_OFF_CASELOAD, "x-test-step-up": "true" },
+        payload: reason,
+      });
+      expect(denied.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it("keeps the row id and represents a void as an empty window", async () => {
+      const { app, events } = makeServer();
+      const payerRowId = await addPayer(app);
+      const voided = await app.inject({
+        method: "POST",
+        url: `/api/v1/patients/${EXISTING}/payers/${payerRowId}/void`,
+        headers: { ...PAYER, "x-test-step-up": "true" },
+        payload: reason,
+      });
+      expect(voided.statusCode).toBe(200);
+      expect(voided.json()).toMatchObject({
+        id: payerRowId,
+        current: false,
+        effectiveFrom: "2026-06-01",
+        effectiveTo: "2026-05-31",
+      });
+      expect(events.filter((event) => event === "m5.patient.payer_changed")).toHaveLength(2);
+
+      const repeated = await app.inject({
+        method: "POST",
+        url: `/api/v1/patients/${EXISTING}/payers/${payerRowId}/void`,
+        headers: { ...PAYER, "x-test-step-up": "true" },
+        payload: reason,
+      });
+      expect(repeated.statusCode).toBe(409);
+      expect(repeated.json().error.code).toBe("PAYER_ALREADY_VOIDED");
+      await app.close();
+    });
   });
 
   it("F-092 the same actor is refused every per-chart TAB, not only the resolve route", async () => {

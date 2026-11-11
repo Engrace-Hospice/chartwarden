@@ -396,6 +396,78 @@ describe("dispatchStripeCall (§4.13)", () => {
   });
 });
 
+describe("dispatchStripeCall: a failure's text never carries a database error's bound values", () => {
+  // what a Drizzle error says: the statement and the values bound to it
+  const MARKER = "bound-value-7f3a9c";
+  const databaseError = Object.assign(
+    new Error(`Failed query: update "refund" set "x" = $1 params: ${MARKER}`),
+    { code: "23505" },
+  );
+  const okClient: StripeHttpPort = {
+    execute: async () => ({ statusCode: 200, body: { id: "re_1" } }),
+  };
+
+  async function failAfterTwoXx(extra: Partial<StripeDispatcherDeps> = {}) {
+    const recorded: string[] = [];
+    const { store } = fakeAuditStore({
+      recordFailure: async (f) => {
+        recorded.push(f.errorText);
+      },
+    });
+    // the 2xx came back and the MIRROR write (a database write) failed: the same `try` catches it
+    const mirror: StripeMirrorApplier = { apply: async () => Promise.reject(databaseError) };
+    const out = await dispatchStripeCall(
+      { client: okClient, auditStore: store, mirror, nowMs: () => 0, ...extra },
+      dispatchEvent,
+    );
+    return { recorded, out };
+  }
+
+  it("the audit row's error_text and the api_call_failed payload carry the error's class and code, not its message", async () => {
+    const { recorded, out } = await failAfterTwoXx();
+    expect(recorded).toEqual(["Error (23505)"]);
+    expect(out.kind).toBe("failed_permanent");
+    if (out.kind !== "failed_permanent") throw new Error("unreachable");
+    const payload = out.outbox[0]?.payload as { errorText: string };
+    expect(payload.errorText).toBe("Error (23505)");
+    expect(JSON.stringify([recorded, out])).not.toContain(MARKER);
+  });
+
+  it("a describer the composition injects decides the text of both", async () => {
+    const { recorded, out } = await failAfterTwoXx({
+      describeError: () => "redacted by the caller",
+    });
+    expect(recorded).toEqual(["redacted by the caller"]);
+    if (out.kind !== "failed_permanent") throw new Error("unreachable");
+    expect((out.outbox[0]?.payload as { errorText: string }).errorText).toBe(
+      "redacted by the caller",
+    );
+  });
+
+  it("a Stripe API error keeps its own message (Stripe's text, none of ours)", async () => {
+    const { store } = fakeAuditStore();
+    const failures: string[] = [];
+    store.recordFailure = async (f) => {
+      failures.push(f.errorText);
+    };
+    const apiError: StripeApiError = {
+      message: "card declined",
+      statusCode: 402,
+      retryable: false,
+    };
+    await dispatchStripeCall(
+      {
+        client: { execute: async () => Promise.reject(apiError) },
+        auditStore: store,
+        mirror: { apply: vi.fn() },
+        nowMs: () => 0,
+      },
+      dispatchEvent,
+    );
+    expect(failures).toEqual(["card declined"]);
+  });
+});
+
 // ── client fail-closed default ──────────────────────────────────────────────────────────────────────────
 describe("failClosedStripeHttpPort", () => {
   it("rejects every call until a live transport is wired", async () => {

@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 2032/2032 routes enriched (100%) · **1/1170 mutating routes read a body they publish none for** · 9/809 GETs carry no response schema
+**Totals:** 2047/2047 routes enriched (100%) · **1/1179 mutating routes read a body they publish none for** · 9/815 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
@@ -14,7 +14,7 @@
 | 02-identity | 57 | 57 (100%) | 0 | 35 | 0 | 18 | 0 |
 | 03-authorization | 17 | 17 (100%) | 0 | 9 | 0 | 6 | 0 |
 | 04-audit | 13 | 13 (100%) | 0 | 5 | 0 | 8 | 0 |
-| 05-patient | 48 | 48 (100%) | 0 | 27 | 0 | 21 | 4 |
+| 05-patient | 49 | 49 (100%) | 0 | 28 | 0 | 21 | 4 |
 | 06-admission | 98 | 98 (100%) | 0 | 72 | 0 | 26 | 0 |
 | 07-care-plan | 25 | 25 (100%) | 0 | 15 | 0 | 10 | 0 |
 | 08-encounters | 39 | 39 (100%) | 0 | 23 | 0 | 15 | 0 |
@@ -44,7 +44,7 @@
 | 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 0 |
 | 33-reporting | 43 | 43 (100%) | 0 | 22 | 0 | 21 | 0 |
 | 34-saas-tenant-platform | 94 | 94 (100%) | 0 | 62 | 0 | 31 | 0 |
-| 35-subscription | 58 | 58 (100%) | 0 | 32 | 1 | 25 | 0 |
+| 35-subscription | 72 | 72 (100%) | 0 | 40 | 1 | 31 | 0 |
 | 36-messaging | 212 | 212 (100%) | 0 | 105 | 0 | 89 | 1 |
 | 37-ipu | 52 | 52 (100%) | 0 | 34 | 0 | 16 | 0 |
 | 38-terminology | 19 | 19 (100%) | 0 | 6 | 0 | 12 | 0 |

@@ -219,6 +219,7 @@ async function main(): Promise<number> {
         image,
         "--version",
       ]).out.trim(),
+      mc: sh("docker", ["run", "--rm", "--entrypoint", "mc", image, "--version"]).out.trim(),
       objectStore: `${MINIO_IMAGE} (source, restore target and off-site stand-in)`,
       offsite:
         "second private MinIO over TLS (throwaway self-signed cert), object lock COMPLIANCE + versioning, three scoped keys from deploy/production/backup/offsite-policies (WAL-only in the postgres container, backup in the sidecar, read-only for the restore), secrets passed as files, SSE-C",

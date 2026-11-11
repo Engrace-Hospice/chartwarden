@@ -1,0 +1,18 @@
+{
+  "description": "ChartWarden PreToolUse guard for Codex: the same checks as .claude/settings.json. Codex cannot ask, so every ask is a deny. Trust it once with /hooks; a changed hook is skipped until re-trusted.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|write_stdin|apply_patch|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts\" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }",
+            "timeout": 10,
+            "statusMessage": "ChartWarden guard"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,7 +1,9 @@
 import { type DbClient, schema } from "@chartwarden/db";
+import { projectHopeSections } from "@chartwarden/hope";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { hopeAnswerMapByCode } from "./hope-answer-map";
 import type { HopeIsc } from "./hope-spec-registry";
 import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
 import type { HopeRuleFinding, HopeValidationMode } from "./spec/validation";
@@ -9,7 +11,6 @@ import { createHopeValidationEngine } from "./spec/validation-registry";
 
 type FindingRow = typeof schema.hopeValidationFindings.$inferSelect;
 type SpecItemRow = typeof schema.hopeSpecItems.$inferSelect;
-type AnswerRow = typeof schema.hopeAssessmentAnswers.$inferSelect;
 
 export interface HopeValidationFindingView {
   readonly ruleId: string;
@@ -52,19 +53,6 @@ export class HopeValidationFindingSitingError extends ConflictError {
 
 function asIso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
-}
-
-function answerMapByCode(input: {
-  readonly itemsById: ReadonlyMap<string, SpecItemRow>;
-  readonly answersByItem: ReadonlyMap<string, AnswerRow>;
-}): Map<string, { state: "answered" | "skipped"; value: unknown | null }> {
-  const out = new Map<string, { state: "answered" | "skipped"; value: unknown | null }>();
-  for (const [itemId, answer] of input.answersByItem) {
-    const item = input.itemsById.get(itemId);
-    if (item)
-      out.set(item.itemCode, { state: answer.state, value: answer.value as unknown | null });
-  }
-  return out;
 }
 
 function toFindingView(row: FindingRow): HopeValidationFindingView {
@@ -239,7 +227,7 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
                     ),
                   );
           const answersByItem = new Map(answers.map((answer) => [answer.specItemId, answer]));
-          const answerMap = answerMapByCode({ itemsById, answersByItem });
+          const answerMap = hopeAnswerMapByCode({ itemsById, answersByItem });
           const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
             isc,
             activeItemCodes: activeItems.map((item) => item.itemCode),
@@ -259,6 +247,7 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
               isc,
               correctsAssessmentId: assessment.correctsAssessmentId ?? null,
             },
+            presentSections: projectHopeSections(assessment.data).presentSections,
             activeItems: activeItems.map((item) => ({
               itemCode: item.itemCode,
               sectionLabel: item.sectionLabel,

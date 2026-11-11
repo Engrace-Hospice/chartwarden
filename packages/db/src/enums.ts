@@ -1470,6 +1470,15 @@ export const hopeAssessmentStatus = pgEnum("hope_assessment_status", [
   "superseded",
 ]);
 
+/** `hope_author_discipline` — frozen attribution on each HOPE assessment row. */
+export const hopeAuthorDiscipline = pgEnum("hope_author_discipline", [
+  "RN",
+  "NP",
+  "MD",
+  "LPN",
+  "LVN",
+]);
+
 /** `hope_schedule_status` — the §2.2.1 timepoint-window lifecycle (open → completed/expired/skipped). */
 export const hopeScheduleStatus = pgEnum("hope_schedule_status", [
   "open",
@@ -3610,7 +3619,13 @@ export const telehealthVendor = pgEnum("telehealth_vendor", [
 // emit the matching `CREATE TYPE`s; RLS/grants + the M4 write-audit triggers land in 0143.
 
 /** `plan_tier` — the pricing tier a plan belongs to (§2.1). */
-export const planTier = pgEnum("plan_tier", ["starter", "professional", "enterprise"]);
+export const planTier = pgEnum("plan_tier", [
+  "starter",
+  "professional",
+  "enterprise",
+  // Slice 2 pricing (migration 1410): the contracted census-banded model; the three above are retired.
+  "census_banded",
+]);
 
 /** `billing_cadence` — monthly vs annual billing period. */
 export const billingCadence = pgEnum("billing_cadence", ["monthly", "annual"]);

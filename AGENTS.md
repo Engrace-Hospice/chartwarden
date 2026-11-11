@@ -112,6 +112,8 @@ Synthetic SSN/MBI values only (`compliance/synthetic-identifiers.json`; skill `s
 that adds, weakens or removes a security control updates its row in `compliance/controls.yaml`
 (`arch:compliance` keeps every claim pointing at real evidence). Before a PR: skill `compliance-pr`.
 
+**Codex twin:** every change to `CLAUDE.md` or the shared `.claude/` pieces (rules, agents, skills; `settings.json` stays Claude-only) is made identically in `AGENTS.md` / `.agents/` in the same commit; `arch:compliance` fails on any drift. Codex is guarded through `.codex/hooks.json` (same `pre-tool-guard.ts`, run with `--codex`; trust it once with `/hooks`); it cannot ask, so what Claude Code would ask about is refused there.
+
 ## Using ECC
 
 [ECC](https://github.com/affaan-m/ECC) is an optional per-user Claude Code plugin (`ecc@ecc`); these notes

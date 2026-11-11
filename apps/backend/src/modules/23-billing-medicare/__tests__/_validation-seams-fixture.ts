@@ -12,6 +12,10 @@ export function fixedValidationSeams(
   return {
     patientPayer: {
       medicarePrimaryForRange: async () => ({ patientPayerId: "pp-1", medicarePrimary: true }),
+      medicarePrimaryForRangeInTransaction: async () => ({
+        patientPayerId: "pp-1",
+        medicarePrimary: true,
+      }),
     },
     admission: {
       resolveForRange: async () => ({

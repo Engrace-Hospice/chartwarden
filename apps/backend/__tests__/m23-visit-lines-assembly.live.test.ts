@@ -132,6 +132,7 @@ describe.skipIf(!DB_URL)(
 
     /** A happy-path seam bundle over fakes; every call opts into the scenario with `overrides`. */
     function seams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblySeams {
+      const patientPayerId = randomUUID();
       const registry = new BillingRuleRegistry();
       // The default rules that read claim lines: they must accept a claim that carries visit lines.
       for (const rule of [
@@ -145,7 +146,11 @@ describe.skipIf(!DB_URL)(
       return {
         patientPayer: {
           medicarePrimaryForRange: async () => ({
-            patientPayerId: randomUUID(),
+            patientPayerId,
+            medicarePrimary: true,
+          }),
+          medicarePrimaryForRangeInTransaction: async () => ({
+            patientPayerId,
             medicarePrimary: true,
           }),
         },

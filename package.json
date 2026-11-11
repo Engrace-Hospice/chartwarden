@@ -5,7 +5,7 @@
   "type": "module",
   "description": "ChartWarden - multi-tenant hospice EHR SaaS. Architecture-fitness kit, spec corpus, and staged implementation monorepo.",
   "engines": {
-    "bun": ">=1.3.0"
+    "bun": ">=1.3.3"
   },
   "workspaces": [
     "apps/*",
@@ -250,6 +250,7 @@
     "test:m34:onboarding-data:live": "vitest run apps/backend/__tests__/m34-onboarding-data.live.test.ts",
     "test:m23:tenant-clearinghouse:live": "vitest run apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
     "test:m35:claims-billing-census:live": "vitest run apps/backend/__tests__/m35-claims-billing-census.live.test.ts",
+    "test:m35:tenant-pricing:live": "vitest run apps/backend/__tests__/m35-tenant-pricing.live.test.ts",
     "test:claims-billing:worker-hold:live": "vitest run apps/backend/__tests__/claims-billing-worker-hold.live.test.ts",
     "test:m34:alert-resolvers:live": "vitest run apps/backend/__tests__/m34-alert-resolvers.live.test.ts",
     "test:m13:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m13-admission-discharged-cascade.live.test.ts",
@@ -478,6 +479,7 @@
     "arch:test-typecheck": "bun run scripts/check-test-typecheck-coverage.ts",
     "arch:request-header-auth": "bun run scripts/check-request-header-auth.ts",
     "arch:error-envelope": "bun run scripts/check-error-envelope.ts",
+    "arch:offset-cursors": "bun run scripts/check-offset-cursors.ts",
     "arch:pdf-templates": "bun run scripts/check-pdf-template-coverage.ts",
     "arch:compose-policy": "bun run scripts/check-compose-policy.ts",
     "test:golden:m22": "vitest run apps/backend/__tests__/m22-forms-golden.test.ts",
@@ -682,7 +684,7 @@
     "test:e2e:viewports": "playwright test --config=e2e/playwright.config.ts --project=viewport-320 --project=viewport-375 --project=viewport-768 --project=viewport-1024 --project=viewport-1440 --project=viewport-1920",
     "test:e2e:apps": "playwright test --config=e2e/playwright.config.ts --project=admin-console --project=portal",
     "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
-    "typecheck:tests": "NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.tests.json --pretty && NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.tests.dom.json --pretty"
+    "typecheck:tests": "NODE_OPTIONS=--max-old-space-size=6144 tsc -p tsconfig.tests.json --pretty && NODE_OPTIONS=--max-old-space-size=6144 tsc -p tsconfig.tests.dom.json --pretty"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

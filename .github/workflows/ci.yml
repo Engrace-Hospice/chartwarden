@@ -1423,6 +1423,13 @@ jobs:
           - { name: "M23 tenant clearinghouse", scripts: "test:m23:tenant-clearinghouse:live" }
           # ADR-0110 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
           - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
+          # Slice 2 (tenant pricing) - the plan editor (a published version is frozen by the database, and cannot be un-frozen by changing its
+          # tier), onboarding step 2 settling plan_contract through the wizard, the active-staff / daily-census / net-collections meters on seeded
+          # data, the greater-of statement billed from go-live by days live (a mid-month, first-of-month and last-day go-live), the minimum that
+          # floors the platform fee, late-posted money carried as a prior-period line, the effective-dated billing mode (a Nov-28 flip), cancel,
+          # suspend and re-sign months, a final month frozen, tenant isolation as the real chartwarden_app and the provisioned platform
+          # carrier's exact (column-level) grants.
+          - { name: "M35 tenant pricing", scripts: "test:m35:tenant-pricing:live" }
           # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.
           - { name: "M34 alert resolvers", scripts: "test:m34:alert-resolvers:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
@@ -1919,16 +1926,21 @@ jobs:
       # single spec ran. The browser download itself needs no root.
       - name: Install the Chromium build this Playwright version pins
         run: bunx playwright install chromium
-      # The system libraries Chromium links against are a one-time runner setup. Install them here only
-      # when passwordless sudo exists; otherwise say so and rely on what the runner already has (a launch
-      # failure in the specs then names the missing library, instead of the install step hiding it).
+      # The system libraries Chromium links against are a one-time runner setup. Probe the command
+      # Playwright actually needs, not an unrelated `sudo true`: a restricted sudoers policy may allow
+      # one while refusing `apt-get`. If it is allowed, install-deps remains fail-loud.
       - name: Install Chromium system libraries when sudo allows
         run: |
-          if sudo -n true 2>/dev/null; then
+          if sudo -n -- sh -c 'apt-get --version' >/dev/null 2>&1; then
             bunx playwright install-deps chromium
           else
-            echo "no passwordless sudo: relying on the runner's preinstalled Chromium libraries"
+            echo "no passwordless sudo permission for apt-get: relying on the runner's preinstalled Chromium libraries"
           fi
+      # `playwright test --list` never starts a browser. Launch before the expensive database/stack setup
+      # so a missing runner library reports the Chromium loader error here, not at the first product spec.
+      - name: Verify Chromium can launch
+        run: |
+          bun -e 'import { chromium } from "@playwright/test"; const browser = await chromium.launch({ headless: true }); await browser.close(); console.log("Chromium launch smoke passed");'
       - name: Migrate
         run: bun run db:migrate
       # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
