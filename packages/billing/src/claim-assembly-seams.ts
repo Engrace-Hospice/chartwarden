@@ -58,6 +58,12 @@ export interface PatientPayerReader {
     patientId: string,
     range: DateRange,
   ): Promise<MedicarePrimaryResolution | null>;
+  medicarePrimaryForRangeInTransaction(
+    transaction: unknown,
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<MedicarePrimaryResolution | null>;
 }
 
 /** M6 — the admission anchor facts the assembly + the HIPPS day-of-stay bucket + the TOB derivation need. */

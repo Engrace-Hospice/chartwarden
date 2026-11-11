@@ -20619,6 +20619,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/payers/{payerRowId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void an unclaimed mistaken payer row as an audited empty window (step-up required) */
+        post: operations["postApiV1PatientsByIdPayersByPayerRowIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/privacy": {
         parameters: {
             query?: never;
@@ -67748,6 +67765,7 @@ export interface operations {
                     ifVersion?: number;
                     /** Format: date-time */
                     targetDate: string;
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
                     authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     data: {
                         I?: {
@@ -67891,6 +67909,8 @@ export interface operations {
                 "application/json": {
                     reason: string;
                     ifVersion?: number;
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
+                    authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                 };
             };
         };
@@ -92712,6 +92732,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1PatientsByIdPayersByPayerRowIdVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                payerRowId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "wrong_payer" | "wrong_coverage_kind" | "wrong_subscriber_id" | "wrong_effective_date" | "duplicate_entry";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        rank: number;
+                        coverageKind: string;
+                        subscriberId: string;
+                        groupNumber: string | null;
+                        binPcn: string | null;
+                        current: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByIdPrivacy: {
         parameters: {
             query?: never;
@@ -105232,6 +105294,7 @@ export interface operations {
                         eraId: string;
                         fileIndex: number;
                         transactionSetControlNumber: string;
+                        sourceDigest: string;
                         state: string;
                         holdReason: string | null;
                         possibleDuplicate: boolean;
@@ -105297,6 +105360,17 @@ export interface operations {
                             reason: string | null;
                             reference: string | null;
                             amount: number | null;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            /** @constant */
+                            policyStatus: "not_configured";
+                            /** @constant */
+                            postingEligible: false;
                         }[];
                         claimOutcomes: {
                             claimId: string | null;
@@ -105564,8 +105638,7 @@ export interface operations {
                             submittedAt: string;
                             supportingEvidence: string[];
                             selectable: boolean;
-                            /** @constant */
-                            submittedLines: "unavailable";
+                            submittedLines: "available" | "unavailable";
                         }[];
                         /** @constant */
                         postingAuthorized: false;
@@ -105645,6 +105718,7 @@ export interface operations {
                         reason: string;
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                     }[];
                 };
             };
@@ -105679,6 +105753,60 @@ export interface operations {
                         providerEntityId: string;
                         payer: string | null;
                         paymentCents: number | null;
+                        billedCents: number | null;
+                        unresolvedCents: number | null;
+                        providerAdjustments: {
+                            sourceDigest: string;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            reason: string | null;
+                            reference: string | null;
+                            amountCents: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            policy: {
+                                /** @constant */
+                                status: "not_configured";
+                                version: null;
+                            };
+                            /** @constant */
+                            action: "none";
+                        }[];
+                        claims: {
+                            claimIndex: number;
+                            billingModule: "M23" | "M41" | null;
+                            patientControlNumber: string | null;
+                            payerIcn: string | null;
+                            claimId: string | null;
+                            payerId: string | null;
+                            submissionId: string | null;
+                            evidenceId: string | null;
+                            evidenceVersion: number;
+                            matching: "verified" | "human_confirmed_candidate" | "blocked";
+                            billedCents: number | null;
+                            paidCents: number | null;
+                            patientResponsibilityCents: number | null;
+                            adjustments: {
+                                /** @constant */
+                                scope: "claim";
+                                groupCode: "CO" | "PR" | "OA" | "PI" | "CR" | "unknown";
+                                reasonCode: string | null;
+                                amountCents: number | null;
+                                responsibility: "provider_reported" | "patient_reported" | "other_unallocated" | "payer_initiated_reported" | "correction_or_reversal_reported" | "unsupported";
+                                classification: "contractual_obligation_reported" | "patient_responsibility_reported" | "other_adjustment_unresolved" | "payer_initiated_reduction_reported" | "correction_or_reversal_reported" | "unsupported";
+                                accountingDisposition: "unresolved_review" | "policy_required";
+                                policyVersion: null;
+                                m25Action: "flagged_review" | "not_authorized";
+                            }[];
+                            unresolvedCents: number | null;
+                            financialStatus: "fully_paid" | "partial_paid" | "unsupported";
+                            duplicate: "none" | "potential";
+                            eligible: boolean;
+                            blockers: string[];
+                        }[];
                         claimId: string | null;
                         eligible: boolean;
                         status: "eligible" | "blocked" | "already_posted";
@@ -105761,6 +105889,7 @@ export interface operations {
                         outcome: "approved" | "already_approved" | "posted" | "already_posted";
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                         paymentCents: number;
                     };
                 };

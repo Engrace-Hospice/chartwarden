@@ -363,6 +363,31 @@ export function buildCommercialClaimAssemblyService(
       const admissionCodes = claimAdmissionCodes(admission);
 
       return withOrgContext(db, { organizationId: orgId, userId: actor.userId }, async (tx) => {
+        // #877 — resolve through this claim-write transaction and lock M5's patient_payer rows
+        // FOR SHARE until commit. A concurrent replacement cannot invalidate the stamped payer ids.
+        const lockedCoverage = await seams.coverage.coverageSnapshotForRangeInTransaction(tx, {
+          organizationId: orgId,
+          patientId,
+          ...range,
+        });
+        const lockedResolution = resolveCoverages(
+          lockedCoverage.coverages,
+          lockedCoverage.resolution,
+          range,
+        );
+        if (
+          lockedResolution.primary === null ||
+          lockedResolution.primary.coverageKind !== "commercial" ||
+          lockedResolution.primary.id !== primary.id
+        ) {
+          throw new ChartWardenError(
+            COMMERCIAL_ERROR_CODES.nonCommercialPrimary,
+            "Primary coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+            409,
+          );
+        }
+        const transactionPrimary = lockedResolution.primary;
+        const transactionSecondary = lockedResolution.secondary;
         let correctionParent: typeof schema.commercialClaims.$inferSelect | null = null;
         if (input.correction) {
           const [parent] = await tx
@@ -421,7 +446,7 @@ export function buildCommercialClaimAssemblyService(
           .where(
             and(
               eq(schema.commercialPayerPlan.organizationId, orgId),
-              eq(schema.commercialPayerPlan.payerId, primary.payerId),
+              eq(schema.commercialPayerPlan.payerId, transactionPrimary.payerId),
               lte(schema.commercialPayerPlan.effectiveFrom, serviceTo),
               or(
                 isNull(schema.commercialPayerPlan.effectiveTo),
@@ -564,7 +589,9 @@ export function buildCommercialClaimAssemblyService(
         // 7. Persist: claim, lines, history, first validation run, outbox event - one transaction.
         const claimId = randomUUID();
         const yymmdd = serviceFrom.slice(2, 4) + serviceFrom.slice(5, 7) + serviceFrom.slice(8, 10);
-        const secondaryKind = secondary ? (SECONDARY_KIND[secondary.coverageKind] ?? null) : null;
+        const secondaryKind = transactionSecondary
+          ? (SECONDARY_KIND[transactionSecondary.coverageKind] ?? null)
+          : null;
         const [claim] = await conflictOnUnique(
           "a commercial claim for this window already exists",
           async () =>
@@ -578,8 +605,8 @@ export function buildCommercialClaimAssemblyService(
                 patientId,
                 admissionId: admission.admissionId,
                 planId: plan.id,
-                primaryPatientPayerId: primary.id,
-                secondaryPatientPayerId: secondary?.id ?? null,
+                primaryPatientPayerId: transactionPrimary.id,
+                secondaryPatientPayerId: transactionSecondary?.id ?? null,
                 secondaryPayerKind: secondaryKind,
                 claimFilingIndicator: plan.claimFilingIndicator,
                 clearinghouseKey: route?.clearinghouseKey ?? null,

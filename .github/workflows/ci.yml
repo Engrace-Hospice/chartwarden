@@ -1915,16 +1915,21 @@ jobs:
       # single spec ran. The browser download itself needs no root.
       - name: Install the Chromium build this Playwright version pins
         run: bunx playwright install chromium
-      # The system libraries Chromium links against are a one-time runner setup. Install them here only
-      # when passwordless sudo exists; otherwise say so and rely on what the runner already has (a launch
-      # failure in the specs then names the missing library, instead of the install step hiding it).
+      # The system libraries Chromium links against are a one-time runner setup. Probe the command
+      # Playwright actually needs, not an unrelated `sudo true`: a restricted sudoers policy may allow
+      # one while refusing `apt-get`. If it is allowed, install-deps remains fail-loud.
       - name: Install Chromium system libraries when sudo allows
         run: |
-          if sudo -n true 2>/dev/null; then
+          if sudo -n -- sh -c 'apt-get --version' >/dev/null 2>&1; then
             bunx playwright install-deps chromium
           else
-            echo "no passwordless sudo: relying on the runner's preinstalled Chromium libraries"
+            echo "no passwordless sudo permission for apt-get: relying on the runner's preinstalled Chromium libraries"
           fi
+      # `playwright test --list` never starts a browser. Launch before the expensive database/stack setup
+      # so a missing runner library reports the Chromium loader error here, not at the first product spec.
+      - name: Verify Chromium can launch
+        run: |
+          bun -e 'import { chromium } from "@playwright/test"; const browser = await chromium.launch({ headless: true }); await browser.close(); console.log("Chromium launch smoke passed");'
       - name: Migrate
         run: bun run db:migrate
       # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.

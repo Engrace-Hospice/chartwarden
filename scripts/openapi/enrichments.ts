@@ -1134,6 +1134,8 @@ import {
   PatientPayersResponseSchema as M5EPatientPayersResponseSchema,
   PatientPrivacyFlagsResponseSchema as M5EPatientPrivacyFlagsResponseSchema,
   PatientSummarySchema as M5EPatientSummarySchema,
+  VoidPatientPayerBodySchema as M5EVoidPatientPayerBodySchema,
+  VoidPatientPayerResponseSchema as M5EVoidPatientPayerResponseSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import {
   PatientPrivacyViewSchema as M5EPatientPrivacyViewSchema,
@@ -7861,6 +7863,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M5EAddPatientPayerBodySchema,
     response: M5EAddPatientPayerResponseSchema,
     status: 201,
+  },
+  "POST /api/v1/patients/:id/payers/:payerRowId/void": {
+    summary: "Void an unclaimed mistaken payer row as an audited empty window (step-up required)",
+    body: M5EVoidPatientPayerBodySchema,
+    response: M5EVoidPatientPayerResponseSchema,
   },
   "POST /api/v1/patients/:id/merge": {
     summary:

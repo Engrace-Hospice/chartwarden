@@ -1,4 +1,6 @@
+import { HOPE_VALIDATION_RULES, missingRequiredSections } from "@chartwarden/hope";
 import { ssnCmsProblem } from "@chartwarden/types";
+import { isRequiredHopeItemForRfa } from "../../required-items";
 import {
   type HopeRuleFinding,
   type HopeValidationContext,
@@ -268,12 +270,35 @@ const OPTIONAL_ASSESSMENT_ITEMS = new Set([
   "A0700", // Patient Medicaid number
 ]);
 
+const requiredSectionsRule: HopeValidationRule = {
+  id: "hope-v1.00.1-final-required-sections",
+  evaluate(ctx) {
+    if (ctx.mode !== "final") return [];
+    return missingRequiredSections(ctx.assessment.rfaKind, ctx.presentSections).map((section) => ({
+      ruleId: HOPE_VALIDATION_RULES.REQUIRED_SECTION_MISSING,
+      severity: "error" as const,
+      findingKind: "missing_required" as const,
+      section,
+      message: `Required Section ${section} is missing for RFA ${ctx.assessment.rfaKind}.`,
+      fingerprint: fingerprint(HOPE_VALIDATION_RULES.REQUIRED_SECTION_MISSING, section),
+    }));
+  },
+};
+
 const requirednessRule: HopeValidationRule = {
   id: "hope-v1.00.1-final-requiredness",
   evaluate(ctx) {
     if (ctx.mode !== "final") return [];
 
     return activeAssessmentItems(ctx)
+      .filter((itemCode) =>
+        isRequiredHopeItemForRfa(ctx.assessment.rfaKind, {
+          itemCode,
+          sectionLabel:
+            ctx.activeItems.find((item) => item.itemCode === itemCode)?.sectionLabel ??
+            sectionOf(itemCode),
+        }),
+      )
       .filter(
         (itemCode) =>
           !WORKFLOW_COMPLETION_ITEMS.has(itemCode) &&
@@ -882,6 +907,7 @@ const recordConsistencyRule: HopeValidationRule = {
 };
 
 export const HOPE_V1_00_1_VALIDATION_RULES: readonly HopeValidationRule[] = [
+  requiredSectionsRule,
   requirednessRule,
   skipStateRule,
   sectionARule,

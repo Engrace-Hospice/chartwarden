@@ -45,6 +45,13 @@ describe("ERA nonposting financial review projection", () => {
     });
     expect(projection.claims[0]?.status).toBe("partial_payment");
     expect(projection.adjustments.map((item) => item.scope)).toEqual(["claim", "service_line"]);
+    expect(projection.exceptions).toContainEqual({
+      code: "PROVIDER_ADJUSTMENT_REQUIRES_POLICY_REVIEW",
+      severity: "follow_up",
+      blocksReviewCompletion: false,
+      blocksFuturePosting: true,
+    });
+    expect(projection.canCompleteNonpostingReview).toBe(true);
   });
 
   it("distinguishes denial, zero payment, reversal and incomplete source amounts", () => {

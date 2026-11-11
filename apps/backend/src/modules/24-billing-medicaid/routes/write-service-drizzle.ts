@@ -19,14 +19,15 @@ import {
   type PlaceOfServiceResidenceKind,
   buildHospiceLines,
   deriveMedicaidControlNumber,
+  deriveMedicaidTobFromAdmission,
   electronicSubmissionRefusal,
+  isMedicaidCadenceBearingClaim,
   medicaidClaimMachine,
   medicaidClaimRouteReadiness,
+  medicaidCoverageAllowedForClaim,
   parseMedicaidControlNumber,
   rbArrangementMachine,
-  replacementTob,
   runMedicaidRules,
-  voidTob,
 } from "@chartwarden/medicaid-adapters";
 import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -125,7 +126,16 @@ export interface CoverageResolverPort {
      * `onDate..throughDate` (M5's range-wide resolver), not merely in force on `onDate`; otherwise null.
      */
     throughDate?: string;
-  }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
+  }): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
+  activeMedicaidCoverageInTransaction(
+    transaction: unknown,
+    input: {
+      organizationId: string;
+      patientId: string;
+      onDate: string;
+      throughDate: string;
+    },
+  ): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
 }
 
 /**
@@ -134,7 +144,10 @@ export interface CoverageResolverPort {
  * Medicaid row on top on EVERY day of the window, else nothing; a single date (eligibility) stays a point read.
  */
 export function buildM24MedicaidCoverageResolver(
-  reader: () => Pick<PatientCoverageReader, "activeCoverageOfKind" | "coverageForRange">,
+  reader: () => Pick<
+    PatientCoverageReader,
+    "activeCoverageOfKind" | "coverageForRange" | "coverageSnapshotForRangeInTransaction"
+  >,
 ): CoverageResolverPort {
   return {
     async activeMedicaidCoverage(q) {
@@ -157,7 +170,30 @@ export function buildM24MedicaidCoverageResolver(
               })
               .then((res) => (res.status === "uniform" ? res.coverage : null));
       return found
-        ? { id: found.id, payerId: found.payerId, subscriberId: found.subscriberId }
+        ? {
+            id: found.id,
+            payerId: found.payerId,
+            subscriberId: found.subscriberId,
+            rank: found.rank,
+          }
+        : null;
+    },
+    async activeMedicaidCoverageInTransaction(transaction, q) {
+      const { resolution } = await reader().coverageSnapshotForRangeInTransaction(transaction, {
+        organizationId: q.organizationId,
+        patientId: q.patientId,
+        from: q.onDate,
+        to: q.throughDate,
+        coverageKind: "medicaid",
+      });
+      const found = resolution.status === "uniform" ? resolution.coverage : null;
+      return found
+        ? {
+            id: found.id,
+            payerId: found.payerId,
+            subscriberId: found.subscriberId,
+            rank: found.rank,
+          }
         : null;
     },
   };
@@ -171,6 +207,27 @@ export function buildM24MedicaidCoverageResolver(
  */
 export interface ProviderEntityCcnReader {
   ccnForProviderEntity(organizationId: string, providerEntityId: string): Promise<string | null>;
+}
+
+/** M6-owned transaction-bound snapshot and row lock used to serialize original-claim TOB cadence. */
+export interface AdmissionCadenceReaderPort {
+  cadenceSnapshotInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{
+    patientId: string;
+    providerEntityId: string | null;
+    dischargedAt: Date | null;
+  } | null>;
+}
+
+/** Resolve state-specific adjustment TOBs through the registered MedicaidAdapter. */
+export interface MedicaidAdjustmentAdapterResolverPort {
+  adapterForState(state: string): {
+    replacementTob(originalTob: string): string;
+    voidTob(originalTob: string): string;
+  } | null;
 }
 
 /** M6's `level_of_care_period` raw list (per-line assembly follow-up). `level_of_care_period` is M6-owned —
@@ -280,6 +337,8 @@ export function buildDrizzleM24WriteService(
   facilityNames?: FacilityNameResolverPort,
   /** S11: false when the state's gateway is not wired in this deployment (Oregon with no launch gateway). */
   isGatewayBound: (state: string) => boolean = () => true,
+  admissionCadenceReader?: AdmissionCadenceReaderPort,
+  adjustmentAdapters?: MedicaidAdjustmentAdapterResolverPort,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -535,7 +594,63 @@ export function buildDrizzleM24WriteService(
           "this patient holds no single Medicaid coverage in force on every day of the claim's service window (split the claim where the coverage changes)",
         );
       }
+      if (!medicaidCoverageAllowedForClaim(input.kind, resolved.rank)) {
+        throw new ConflictError(
+          "MEDICAID_PRIMARY_PAYER_REQUIRED",
+          input.kind === "rb_only"
+            ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
+            : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
+        );
+      }
+      if (!admissionCadenceReader) {
+        throw new DegradedError(
+          "MEDICAID_ADMISSION_CADENCE_READER_UNBOUND",
+          "claim assembly requires M6's admission status reader to derive the claim cadence (not bound in this environment)",
+        );
+      }
       return withOrgContext(db, actor, async (tx) => {
+        // #877 — re-resolve under a row lock in the claim-write transaction. Coverage replacement
+        // now waits until this claim commits, and a change already committed after the optimistic
+        // preflight is refused before anything is inserted.
+        const lockedCoverage = await coverage.activeMedicaidCoverageInTransaction(tx, {
+          organizationId: actor.organizationId,
+          patientId: input.patientId,
+          onDate: input.serviceFrom,
+          throughDate: input.serviceTo,
+        });
+        if (!lockedCoverage || lockedCoverage.id !== resolved.id) {
+          throw new ConflictError(
+            "MEDICAID_COVERAGE_CHANGED",
+            "Medicaid coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+          );
+        }
+        if (!medicaidCoverageAllowedForClaim(input.kind, lockedCoverage.rank)) {
+          throw new ConflictError(
+            "MEDICAID_PRIMARY_PAYER_REQUIRED",
+            input.kind === "rb_only"
+              ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
+              : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
+          );
+        }
+        // The M6 admission row is the per-admission serialization point. FOR UPDATE makes concurrent
+        // assemblers derive cadence sequentially and also serializes against discharge writers.
+        const admission = await admissionCadenceReader.cadenceSnapshotInTransaction(
+          tx,
+          actor.organizationId,
+          input.admissionId,
+        );
+        if (!admission) {
+          throw new NotFoundError("admission not found");
+        }
+        if (
+          admission.patientId !== input.patientId ||
+          admission.providerEntityId !== input.providerEntityId
+        ) {
+          throw new ConflictError(
+            "MEDICAID_ADMISSION_IDENTITY_MISMATCH",
+            "the admission does not belong to the selected patient and provider entity",
+          );
+        }
         const creds = await tx
           .select({ serviceState: TP.serviceState, activeTo: TP.activeTo })
           .from(TP)
@@ -598,6 +713,18 @@ export function buildDrizzleM24WriteService(
           claimId,
           attemptIndex: 0,
         });
+        const priorClaims = await tx
+          .select({ state: C.state, tob: C.tob })
+          .from(C)
+          .where(
+            and(eq(C.organizationId, actor.organizationId), eq(C.admissionId, input.admissionId)),
+          );
+        const hasPriorClaimForAdmission = priorClaims.some(isMedicaidCadenceBearingClaim);
+        const tob = deriveMedicaidTobFromAdmission({
+          hasPriorClaimForAdmission,
+          dischargedAt: dayN(admission.dischargedAt),
+          serviceTo: day(input.serviceTo),
+        });
         const inserted = await tx
           .insert(C)
           .values({
@@ -605,11 +732,11 @@ export function buildDrizzleM24WriteService(
             organizationId: actor.organizationId,
             providerEntityId: input.providerEntityId,
             patientId: input.patientId,
-            patientPayerId: resolved.id,
+            patientPayerId: lockedCoverage.id,
             admissionId: input.admissionId,
             serviceState,
             kind: input.kind,
-            tob: "811", // the original-claim TOB (D13 §2.5) — replace/void derive 817/818 from this
+            tob,
             serviceFrom: new Date(input.serviceFrom),
             serviceTo: new Date(input.serviceTo),
             statePlanCodeId: plan.id,
@@ -832,7 +959,7 @@ export function buildDrizzleM24WriteService(
             admissionId: input.admissionId,
             state: "DRAFT",
             kind: input.kind,
-            tob: "811",
+            tob,
             serviceFrom: new Date(input.serviceFrom).toISOString(),
             serviceTo: new Date(input.serviceTo).toISOString(),
           },
@@ -1664,15 +1791,28 @@ export function buildDrizzleM24WriteService(
       }
       const newId = randomUUID();
       const parsed = parseMedicaidControlNumber(original.medicaidClaimControlNumber);
-      const ccn = parsed?.ccn ?? "000000";
+      if (!parsed) {
+        throw new ConflictError(
+          "MEDICAID_CONTROL_NUMBER_INVALID",
+          "the original claim control number is malformed; replacement or void creation is blocked until it is corrected",
+        );
+      }
       const controlNumber = deriveMedicaidControlNumber({
-        ccn,
+        ccn: parsed.ccn,
         serviceState: original.serviceState,
         serviceFrom: day(original.serviceFrom),
         claimId: newId,
         attemptIndex: 0,
       });
-      const successorTob = tob === "817" ? replacementTob(original.tob) : voidTob(original.tob);
+      const adapter = adjustmentAdapters?.adapterForState(original.serviceState) ?? null;
+      if (!adapter) {
+        throw new DegradedError(
+          "MEDICAID_ADJUSTMENT_ADAPTER_UNAVAILABLE",
+          `no Medicaid adapter is available to derive the ${tob} adjustment TOB for ${original.serviceState}`,
+        );
+      }
+      const successorTob =
+        tob === "817" ? adapter.replacementTob(original.tob) : adapter.voidTob(original.tob);
       const inserted = await tx
         .insert(C)
         .values({

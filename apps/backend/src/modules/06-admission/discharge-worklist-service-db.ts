@@ -17,7 +17,11 @@
 //                    whose patient has no later admission: the readmission candidates (newest first).
 // The page's discharge/transfer facts are read with ONE extra query per table, bounded by the page size.
 import { type DbClient, schema } from "@chartwarden/db";
-import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
+import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  offsetCursorScope,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
@@ -100,10 +104,17 @@ function baseItem(a: AdmissionRow): DischargeWorklistItem {
   };
 }
 
-function page<T>(organizationId: string, rows: readonly T[], limit: number, offset: number) {
+function page<T>(
+  organizationId: string,
+  rows: readonly T[],
+  limit: number,
+  offset: number,
+  cursorScope: string,
+) {
   return {
     rows: rows.slice(0, limit),
-    nextCursor: rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
+    nextCursor:
+      rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit, cursorScope) : null,
   };
 }
 
@@ -190,7 +201,13 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(ADM.admissionAt), desc(ADM.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(organizationId, rows, limit, offset);
+    const p = page(
+      organizationId,
+      rows,
+      limit,
+      offset,
+      offsetCursorScope("m6.discharge-worklist", { bucket: "ready" }),
+    );
     return { items: p.rows.map(baseItem), nextCursor: p.nextCursor };
   }
 
@@ -222,7 +239,13 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(ADM.dischargedAt), desc(ADM.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(organizationId, rows, limit, offset);
+    const p = page(
+      organizationId,
+      rows,
+      limit,
+      offset,
+      offsetCursorScope("m6.discharge-worklist", { bucket: "needs_details" }),
+    );
     const ids = p.rows.map((r) => r.id);
     if (ids.length === 0) return { items: [], nextCursor: p.nextCursor };
 
@@ -295,7 +318,13 @@ export function createDbDischargeWorklistService(
       .orderBy(asc(DE.createdAt), asc(DE.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(organizationId, rows, limit, offset);
+    const p = page(
+      organizationId,
+      rows,
+      limit,
+      offset,
+      offsetCursorScope("m6.discharge-worklist", { bucket: "awaiting_cosign" }),
+    );
     return {
       items: p.rows.map((r) => ({
         ...baseItem(r),
@@ -336,7 +365,13 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(ADM.dischargedAt), desc(ADM.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(organizationId, rows, limit, offset);
+    const p = page(
+      organizationId,
+      rows,
+      limit,
+      offset,
+      offsetCursorScope("m6.discharge-worklist", { bucket: "recently_discharged" }),
+    );
     const ids = p.rows.map((r) => r.id);
     if (ids.length === 0) return { items: [], nextCursor: p.nextCursor };
     const revs = await tx
@@ -396,7 +431,13 @@ export function createDbDischargeWorklistService(
       .orderBy(sql`${nextDeadline} ASC NULLS FIRST`, asc(QR.qioNotifiedAt), asc(QR.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(organizationId, rows, limit, offset);
+    const p = page(
+      organizationId,
+      rows,
+      limit,
+      offset,
+      offsetCursorScope("m6.discharge-worklist", { bucket: "qio_review_open" }),
+    );
     return {
       items: p.rows.map((r) => ({
         ...baseItem(r),
@@ -428,7 +469,13 @@ export function createDbDischargeWorklistService(
       .orderBy(desc(NN.deliveredAt), asc(NN.id))
       .limit(limit + 1)
       .offset(offset);
-    const p = page(organizationId, rows, limit, offset);
+    const p = page(
+      organizationId,
+      rows,
+      limit,
+      offset,
+      offsetCursorScope("m6.discharge-worklist", { bucket: "nomnc_no_deadline" }),
+    );
     return {
       items: p.rows.map((r) => ({ ...baseItem(r), noticeDeliveredAt: iso(r.deliveredAt) })),
       nextCursor: p.nextCursor,
@@ -442,7 +489,8 @@ export function createDbDischargeWorklistService(
       scope: AdmissionReadScope,
     ): Promise<DischargeWorklistPage> {
       const limit = clampLimit(query.limit);
-      const offset = decodeOffsetCursor(organizationId, query.cursor);
+      const cursorScope = offsetCursorScope("m6.discharge-worklist", { bucket: query.bucket });
+      const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
       const scopeFilter = scopeFilterOf(scope);
       if (scopeFilter === "none") return { items: [], nextCursor: null };
       const page = await withOrgContext(db, { organizationId, userId: "" }, async (txRaw) => {

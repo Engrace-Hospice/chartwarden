@@ -1197,6 +1197,7 @@ import {
   createDrizzleDdeChangeStore,
   createM23HetsTransport,
   createM23LaunchGateway,
+  hasNonVoidMedicareClaimForPatientPayer,
   m23HetsConfigFromEnv,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
@@ -1264,6 +1265,7 @@ import {
   buildMedicaidOnboardingCredentialPort,
   buildStateChannelHealthProbe,
   createDrizzleMedicaidRedactStore,
+  hasNonVoidMedicaidClaimForPatientPayer,
   mountM24Routes,
   registerM24AbacPredicates,
   registerM24CronWorkers,
@@ -1983,6 +1985,7 @@ import {
   buildEnrollmentReportService,
   buildM41EnrollmentReportConsumer,
   buildM41RemittanceConsumer,
+  hasNonVoidCommercialClaimForPatientPayer,
   registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
@@ -2015,6 +2018,14 @@ import {
 import { M41_ROUTE_CLASSES } from "./modules/41-billing-commercial/routes/route-classes";
 import { applyCommercialClaimMdReceipt } from "./modules/41-billing-commercial/services/claimmd-ack-adapter";
 import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
+
+const PATIENT_PAYER_CLAIM_REFERENCES = {
+  async hasNonVoidClaim(tx: DbClient, organizationId: string, payerRowId: string) {
+    if (await hasNonVoidMedicareClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    if (await hasNonVoidMedicaidClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    return hasNonVoidCommercialClaimForPatientPayer(tx, organizationId, payerRowId);
+  },
+};
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -6213,6 +6224,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               identifierCipher: createPatientIdentifierCipher(
                 lazyIdentifierKeys(getTenantKeyProvider),
               ),
+              payerClaimReferences: PATIENT_PAYER_CLAIM_REFERENCES,
             },
           );
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
@@ -7478,6 +7490,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   getSeam("PatientCoverageReader").coveragesForPatient(q),
                 coverageForRange: (q: Parameters<PatientCoverageReader["coverageForRange"]>[0]) =>
                   getSeam("PatientCoverageReader").coverageForRange(q),
+                coverageSnapshotForRangeInTransaction: (
+                  tx: unknown,
+                  q: Parameters<PatientCoverageReader["coverageForRange"]>[0],
+                ) => getSeam("PatientCoverageReader").coverageSnapshotForRangeInTransaction(tx, q),
               },
               admission: m23Seams.admission,
               electionPeriods: m23Seams.electionPeriods,
@@ -7843,6 +7859,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   m24ResidenceReader,
                   m24FacilityNameResolver,
                   (state) => state !== "OR" || m24OregonGateway !== null,
+                  m24LocPeriodReader,
+                  m24AdapterRegistry,
                 ),
               }),
           );

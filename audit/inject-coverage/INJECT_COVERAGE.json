@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2004,
-    "coveredRoutes": 2004,
-    "directRoutesReferenced": 1824
+    "routes": 2005,
+    "coveredRoutes": 2005,
+    "directRoutesReferenced": 1825
   },
   "modules": [
     {
@@ -90,7 +90,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 48,
+      "routes": 49,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -117,7 +117,7 @@
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
-      "directRoutesReferenced": 48
+      "directRoutesReferenced": 49
     },
     {
       "module": "06-admission",

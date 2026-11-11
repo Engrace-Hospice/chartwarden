@@ -123,6 +123,14 @@ export interface ParsedRemittanceParty {
 }
 
 export interface ParsedProviderAdjustment {
+  /** PLB01 — payer-reported provider identifier. This is source evidence, not a verified M40 identity. */
+  readonly providerIdentifier?: string;
+  /** PLB02 — provider fiscal period (CCYYMMDD), normalized to an ISO calendar date. */
+  readonly fiscalPeriod?: string;
+  /** One-based segment position within the selected ST..SE transaction-set body. */
+  readonly segmentPosition?: number;
+  /** One-based reason/amount pair position within this PLB segment. */
+  readonly occurrence?: number;
   /** PLB03-1 reason code and PLB03-2 reference, preserved verbatim. */
   readonly reason: string;
   readonly reference?: string;

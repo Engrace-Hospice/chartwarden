@@ -107,7 +107,7 @@ async function listScopeOf(
  * role-derived disciplines, for every RFA kind and every claimed value (never the body's word). An
  * unresolvable id falls to the strict (non-SFV) floor.
  */
-async function assertCorrectionAttribution(
+async function assertAmendmentAttribution(
   service: HopeRouteService,
   request: FastifyRequest,
   organizationId: string,
@@ -332,6 +332,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const body = parse(RecordTimepointSchema, request.body);
       requireOverrideJustification(body);
+      assertAuthorBoundToActor(body.rfaKind, body.authorDiscipline, request.context?.roles ?? []);
       const res = await service.recordTimepoint(organizationId, userId, admissionId, {
         rfaKind: body.rfaKind,
         targetDate: body.targetDate,
@@ -406,13 +407,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(CorrectTimepointSchema, request.body);
-      await assertCorrectionAttribution(
-        service,
-        request,
-        organizationId,
-        id,
-        body.authorDiscipline,
-      );
+      await assertAmendmentAttribution(service, request, organizationId, id, body.authorDiscipline);
       const res = await service.correctTimepoint(organizationId, userId, id, {
         correctionReason: body.correctionReason,
         ifVersion: body.ifVersion,
@@ -431,6 +426,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(InactivateTimepointSchema, request.body);
+      await assertAmendmentAttribution(service, request, organizationId, id, body.authorDiscipline);
       const res = await service.inactivateTimepoint(organizationId, userId, id, body);
       return reply.code(201).send(res);
     },
@@ -517,7 +513,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // Z0350 out of the unrestricted public answer PATCH surface.
   app.patch(
     "/api/v1/hope/assessments/:id/huv/completion-date",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR_ON_ROW] },
     async (request) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);

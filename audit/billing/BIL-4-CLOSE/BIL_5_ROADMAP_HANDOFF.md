@@ -1,0 +1,7 @@
+# BIL-5 roadmap handoff
+
+The authoritative current roadmap is [`docs/billing/BIL-0/IMPLEMENTATION_ROADMAP.md`](../../../docs/billing/BIL-0/IMPLEMENTATION_ROADMAP.md). It names BIL-5 **Tenant UX and operations**. Its original objective includes per-entity/location selection; rejected, denied, in-doubt, paid and partial states; ERA/unmatched worklists; A/R; safe administrative portal actions; account budget/lag dashboards; and DR/cursor replay runbooks. Acceptance requires resolving quarantined/in-doubt work without cross-tenant raw access and phased rollout/reconciliation/rollback rehearsal.
+
+BIL-1–BIL-4 provide ERA capture and staging, source ownership, M25 review/matching, narrow M41 financial posting and M23 Medicare nonposting review. They do not complete the tenant-wide operational UX, admin actions, account budget/lag observability, or replay/DR runbook. BIL-5 also depends on external Claim.MD/MAC enrollment and route evidence for live activation, but its local UX, worklist, scoped operational controls and observability can be developed without enabling vendor traffic.
+
+Recommended first lot: **BIL-5.1 — Tenant-Scoped ERA Operations Worklist & Entity/Location UX**, limited to safe read/review navigation and operational visibility, with unmatched/quarantined/in-doubt explanations and no raw central inbox access. Keep replay controls read-only until audited operator authorization, lease/idempotency behavior and recovery ownership are established. Do not start this phase automatically.

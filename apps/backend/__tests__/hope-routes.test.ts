@@ -68,6 +68,7 @@ const PERMISSION_SEED = [
       "hope.admin.regenerate_schedules",
     ],
   },
+  { userId: "np_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   { userId: "chap_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   { userId: "lpn_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   { userId: "lvn_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
@@ -101,6 +102,8 @@ function makeServer(
     caseload?: readonly string[];
     /** GAP-182 — the caseload seam rejects (the worklist must fail CLOSED). */
     caseloadFails?: boolean;
+    /** #883 regression: model a pre-1452 row whose frozen attribution is absent. */
+    assessmentAuthorDisciplineOverride?: string | null;
   } = {},
 ) {
   const backend = createInMemoryHopeBackend({
@@ -136,6 +139,10 @@ function makeServer(
         status: "signed",
         signedAt: "2026-06-02T10:00:00.000Z",
         signedBy: "rn_1",
+        // Pre-1452 production rows may be NULL even though new in-memory records are typed non-null.
+        ...(options.assessmentAuthorDisciplineOverride !== undefined
+          ? { authorDiscipline: options.assessmentAuthorDisciplineOverride as unknown as string }
+          : {}),
       },
     ],
     submissions: [
@@ -187,8 +194,20 @@ function makeServer(
   // (unlike M9's `assessment.scope`, it never binds the shared `caseload_or_scope` by name), so no
   // cross-module predicate needs registering here.
   const registry = createPredicateRegistry();
+  const resolver =
+    options.assessmentAuthorDisciplineOverride === undefined
+      ? backend
+      : {
+          ...backend,
+          async loadAssessment(organizationId: string, assessmentId: string) {
+            const facts = await backend.loadAssessment(organizationId, assessmentId);
+            return facts
+              ? { ...facts, authorDiscipline: options.assessmentAuthorDisciplineOverride ?? null }
+              : null;
+          },
+        };
   const predicates = buildHopeAbacPredicates({
-    resolver: backend,
+    resolver,
     isInCaseload: options.isInCaseload ?? (async () => true),
     resolveAdmissionPatient:
       options.resolveAdmissionPatient ??
@@ -210,6 +229,11 @@ function makeServer(
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn", "x-test-pe": "pe_1" };
+const NP = { "x-test-user": "np_1", "x-test-org": ORG, "x-test-roles": "np", "x-test-pe": "pe_1" };
+const NP_CLINICAL_LEAD = {
+  ...NP,
+  "x-test-roles": "np,clinical_lead",
+};
 const ADMIN_OVERRIDER = {
   "x-test-user": "admin_1",
   "x-test-org": ORG,
@@ -559,6 +583,79 @@ describe("M10-T06 — §4.7 hope.authorDisciplineAllowed (RN/NP/MD only)", () =>
     expect(res.statusCode).toBe(403);
     await app.close();
   });
+
+  it("freezes the claimed discipline: RN cannot record as NP, and NP cannot edit or sign an RN draft", async () => {
+    const { app } = makeServer();
+    const falseClaim = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body({ authorDiscipline: "NP" }),
+    });
+    expect(falseClaim.statusCode).toBe(403);
+
+    const recorded = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(recorded.statusCode).toBe(201);
+    expect(recorded.json().authorDiscipline).toBe("RN");
+    const id = recorded.json().id as string;
+
+    const edited = await app.inject({
+      method: "PUT",
+      url: `/api/v1/hope/assessments/${id}`,
+      headers: NP,
+      payload: { data: huv1Body().data },
+    });
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${id}/sign`,
+      headers: NP,
+      payload: { ifVersion: recorded.json().version, attestationConfirmed: true },
+    });
+    expect(edited.statusCode).toBe(403);
+    expect(signed.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("guards HUV completion-date writes by the stored discipline and fails closed for a legacy NULL", async () => {
+    const { app } = makeServer();
+    const recorded = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(recorded.statusCode).toBe(201);
+    const denied = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/hope/assessments/${recorded.json().id}/huv/completion-date`,
+      headers: NP,
+      payload: { ifVersion: recorded.json().version, z0350: "2026-06-12" },
+    });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+
+    const { app: legacyApp } = makeServer({ assessmentAuthorDisciplineOverride: null });
+    const legacyDraft = await legacyApp.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(legacyDraft.statusCode).toBe(201);
+    const legacyDenied = await legacyApp.inject({
+      method: "PATCH",
+      url: `/api/v1/hope/assessments/${legacyDraft.json().id}/huv/completion-date`,
+      headers: RN,
+      payload: { ifVersion: legacyDraft.json().version, z0350: "2026-06-12" },
+    });
+    expect(legacyDenied.statusCode).toBe(403);
+    await legacyApp.close();
+  });
 });
 
 describe("M10-T06 — D4 J2051 trigger + SFV creation + §2.4 outbox", () => {
@@ -684,6 +781,54 @@ describe("M10-T06 — correction chain (§4.4)", () => {
       payload: { correctionReason: "again", targetDate: NOW, authorDiscipline: "RN", data: {} },
     });
     expect(dup.statusCode).toBe(409);
+    await app.close();
+  });
+});
+
+describe("M10-T06 — inactivation attribution", () => {
+  const inactivate = (
+    app: ReturnType<typeof makeServer>["app"],
+    headers: Record<string, string>,
+    authorDiscipline: string,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${SIGNED_A}/inactivations`,
+      headers,
+      payload: {
+        reason: "recorded against the wrong chart",
+        authorDiscipline,
+      },
+    });
+
+  it("binds same-discipline and cross-discipline clinical-lead drafts to the acting clinician", async () => {
+    const { app: sameDisciplineApp } = makeServer();
+    const sameDiscipline = await inactivate(sameDisciplineApp, RN, "RN");
+    expect(sameDiscipline.statusCode).toBe(201);
+    expect(sameDiscipline.json().authorDiscipline).toBe("RN");
+    await sameDisciplineApp.close();
+
+    const { app: clinicalLeadApp } = makeServer();
+    const clinicalLead = await inactivate(clinicalLeadApp, NP_CLINICAL_LEAD, "NP");
+    expect(clinicalLead.statusCode).toBe(201);
+    expect(clinicalLead.json().authorDiscipline).toBe("NP");
+    await clinicalLeadApp.close();
+  });
+
+  it("fails closed when a clinical lead claims an unheld discipline", async () => {
+    const { app } = makeServer();
+    const denied = await inactivate(app, NP_CLINICAL_LEAD, "RN");
+    expect(denied.statusCode).toBe(403);
+    expect(JSON.stringify(denied.json())).toContain("M10_DISCIPLINE_NOT_PERMITTED");
+    await app.close();
+  });
+
+  it("re-attributes a legacy NULL original to the acting clinical lead's validated discipline", async () => {
+    const { app, backend } = makeServer({ assessmentAuthorDisciplineOverride: null });
+    expect((await backend.loadAssessment(ORG, SIGNED_A))?.authorDiscipline).toBeNull();
+    const res = await inactivate(app, NP_CLINICAL_LEAD, "NP");
+    expect(res.statusCode).toBe(201);
+    expect(res.json().authorDiscipline).toBe("NP");
     await app.close();
   });
 });

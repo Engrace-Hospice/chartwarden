@@ -24,6 +24,7 @@ import { M23_CONTRIBUTED_PERMISSIONS, M23_PERMISSION_KEY_LIST } from "./permissi
 // §4.10 — the M23 outbox-event catalog (the dispatcher validates each `m23.*` publish against it). The
 // composition root merges this into the platform event catalog at boot (the M27/M30/M33/M34 precedent).
 export { M23_OUTBOX_EVENTS } from "./events-by-m23";
+export { hasNonVoidMedicareClaimForPatientPayer } from "./seams/patient-payer-claim-reference";
 /** Owner-exported read-only Claim.MD submission evidence for M25 ERA identity resolution. */
 export {
   readClaimMdEraSubmissionFacts,
