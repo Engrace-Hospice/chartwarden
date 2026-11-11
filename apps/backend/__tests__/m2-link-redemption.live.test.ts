@@ -48,7 +48,7 @@ import {
 import { createDbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { executedBaaGate } from "../src/bootstrap/death-notification-baa-gate";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/index";
@@ -423,6 +423,15 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     resetAbacRegistry();
     await handle?.close();
     await admin?.end();
+  });
+
+  beforeEach(async () => {
+    // Tests deliberately reuse the same decedent and funeral home. Keep each case
+    // isolated from the durable one-live-credential fence while leaving the
+    // dedicated fence test below to exercise the conflict within one test.
+    await admin.query(
+      "UPDATE collaborator_link SET revoked_at=COALESCE(revoked_at, now()) WHERE kind='funeral_home' AND revoked_at IS NULL AND use_count < max_uses",
+    );
   });
 
   it("harness bites: a bare chartwarden_app read of collaborator_link with no tenant returns nothing", async () => {
