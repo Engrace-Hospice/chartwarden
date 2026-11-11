@@ -21637,7 +21637,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list (the nav badge asks open,approved with limit 1) */
+        /** The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list and defaults to open,approved (the live requests; ask for resolved or cancelled by name; the nav badge asks open,approved with limit 1). A page is at most 50 rows */
         get: operations["getApiV1PlatformHelprequests"];
         put?: never;
         post?: never;
@@ -21656,7 +21656,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): closes the request's open support sessions (reason manual), revokes its consent grant and resolves the request. It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant */
+        /** End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): revokes its consent grant and closes the request's open support sessions with it (close reason grant_revoked), and resolves the request (an open request, which has no grant, is resolved with the note alone). It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant */
         post: operations["postApiV1PlatformHelprequestsByIdResolve"];
         delete?: never;
         options?: never;
