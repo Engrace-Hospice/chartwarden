@@ -143,10 +143,14 @@ describe.skipIf(!DB_URL)("M34 tenant slug provisioning — LIVE Postgres, real p
         emit: async () => ({ alertId: "none", resolvedRecipientCount: 0 }),
       } as AlertEmitter,
       supportSessionPorts: {
-        audit: { async emitCriticalAudit() {} },
-        outbox: { async publish() {} },
-        alerts: { async emitAlert() {} },
         now: () => new Date(),
+        // This suite never opens or closes a support session.
+        async emitAlert() {
+          throw new Error("support-session alerts are not bound in this suite");
+        },
+        bind() {
+          throw new Error("support-session ports are not bound in this suite");
+        },
       },
       platformJobId: PLATFORM_JOB_ID,
     };

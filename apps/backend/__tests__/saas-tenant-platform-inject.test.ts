@@ -182,8 +182,8 @@ const ORG_ADMIN_PERMISSIONS = [
  */
 function buildTestAbacResolver(): TenantPlatformAbacResolver {
   return {
-    async hasActiveConsentedSupportSession({ tenantAccountId }) {
-      return tenantAccountId === TENANT_ACME_ID;
+    async hasActiveConsentedSupportSession({ supportSessionId, actorMembershipId }) {
+      return supportSessionId.length > 0 && actorMembershipId === MEMBER_PLATFORM_OPS;
     },
     async loadConsentGrant(_organizationId, grantId) {
       if (grantId !== GRANT_ID) return null;
@@ -1144,7 +1144,7 @@ describe("M34-saas-tenant-platform-inject — tenant-consented support sessions 
     const start = await app.inject({
       method: "POST",
       url: "/api/v1/platform/support-sessions",
-      headers: PLATFORM_OPS_STEPUP,
+      headers: { ...PLATFORM_OPS_STEPUP, "idempotency-key": "support-session-start" },
       payload: { supportConsentGrantId: GRANT_ID },
     });
     expect(start.statusCode).toBe(201);
@@ -1153,7 +1153,7 @@ describe("M34-saas-tenant-platform-inject — tenant-consented support sessions 
     const elevate = await app.inject({
       method: "POST",
       url: `/api/v1/platform/support-sessions/${sessionId}/elevate?tenantAccountId=${TENANT_ACME_ID}`,
-      headers: PLATFORM_OPS_STEPUP,
+      headers: { ...PLATFORM_OPS_STEPUP, "idempotency-key": "support-session-elevate" },
       payload: {},
     });
     expect(elevate.statusCode).toBe(201);
@@ -1178,7 +1178,7 @@ describe("M34-saas-tenant-platform-inject — tenant-consented support sessions 
     const close = await app.inject({
       method: "POST",
       url: `/api/v1/platform/support-sessions/${sessionId}/close`,
-      headers: PLATFORM_OPS,
+      headers: { ...PLATFORM_OPS, "idempotency-key": "support-session-close" },
       payload: {},
     });
     expect(close.statusCode).toBe(200);

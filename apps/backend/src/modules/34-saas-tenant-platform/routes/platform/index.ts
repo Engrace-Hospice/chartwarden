@@ -15,6 +15,10 @@ export {
   type OnboardingTemplateRouteDeps,
 } from "./onboarding-templates";
 export { registerSupportSessionRoutes, type SupportSessionRouteDeps } from "./support-sessions";
+export {
+  type PlatformHelpRequestRouteDeps,
+  registerPlatformHelpRequestRoutes,
+} from "./help-requests";
 export { registerSignupIntentRoutes, type SignupIntentRouteDeps } from "./signup-intents";
 export { registerBaaRegisterRoutes, type BaaRegisterRouteDeps } from "./baa-register";
 export {
@@ -39,6 +43,7 @@ export {
   type KeyRingMetadataView,
   type M34QueueName,
   type OnboardingTemplateView,
+  type PlatformSupportConsentGrantView,
   type ProvisionTenantArgs,
   type StatusTransitionArgs,
   type TenantInvitationView,

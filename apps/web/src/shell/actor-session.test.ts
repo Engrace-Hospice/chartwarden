@@ -23,6 +23,7 @@ const ORG_BOUND: ActorContextResponse = {
   orgWidePatientScope: false,
   isAdmin: false,
   permissions: ["patient.read", "messaging.read"],
+  organizationStage: "live",
 };
 
 describe("FB-T15 toSession — maps the live actor context into the shell Session", () => {
@@ -52,11 +53,28 @@ describe("FB-T15 toSession — maps the live actor context into the shell Sessio
       orgWidePatientScope: false,
       isAdmin: false,
       permissions: [],
+      organizationStage: "live",
     });
     expect(s.organizationId).toBe("");
     expect(s.membershipId).toBeUndefined();
     expect(s.displayName).toBeUndefined();
     expect(s.roles).toEqual([]);
+  });
+});
+
+describe("toSession — organizationStage (slice 7A adds it to the auth context)", () => {
+  const withStage = (stage: unknown): ActorContextResponse =>
+    ({ ...ORG_BOUND, organizationStage: stage }) as ActorContextResponse;
+
+  it("carries onboarding and live through", () => {
+    expect(toSession(withStage("onboarding")).organizationStage).toBe("onboarding");
+    expect(toSession(withStage("live")).organizationStage).toBe("live");
+  });
+
+  it("leaves the stage undefined when the server sends none or something unknown (fail open to the normal shell)", () => {
+    expect(toSession(withStage(undefined)).organizationStage).toBeUndefined();
+    expect(toSession(withStage("suspended")).organizationStage).toBeUndefined();
+    expect(toSession(withStage(null)).organizationStage).toBeUndefined();
   });
 });
 
@@ -73,6 +91,7 @@ describe("needsOrgSelection — shell pre-org guard", () => {
       orgWidePatientScope: false,
       isAdmin: false,
       permissions: [],
+      organizationStage: "live",
     });
     expect(needsOrgSelection(preOrg)).toBe(true);
   });

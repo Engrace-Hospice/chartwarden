@@ -14,6 +14,8 @@ export type GlobalResponseSignal =
   | { kind: "session-expired" | "service-unavailable" }
   | { kind: "tenant-unavailable"; reason: TenantUnavailableReason }
   | { kind: "org-not-selected" }
+  /** A route outside onboarding was refused because the organization is not live yet: the wizard is where to go. */
+  | { kind: "organization-onboarding" }
   | null;
 
 type Listener = () => void;
@@ -69,12 +71,16 @@ export function mayCarryTenantRefusal(status: number, url?: string): boolean {
   return path?.startsWith("/api/") === true && !path.startsWith(PUBLIC_API_PREFIX);
 }
 
-/** The tenant-unavailable signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */
+/** The 403 a session on an organization that is not live yet gets from any route outside onboarding, go-live, account and sign-in. */
+const ORGANIZATION_ONBOARDING_CODE = "ORGANIZATION_ONBOARDING";
+
+/** The tenant-unavailable (or organization-onboarding) signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */
 export async function tenantSignalFromResponse(response: Response): Promise<GlobalResponseSignal> {
   try {
     if (!response.headers.get("content-type")?.includes("json")) return null;
     const body = (await response.clone().json()) as { error?: { code?: unknown } } | null;
     const code = body?.error?.code;
+    if (code === ORGANIZATION_ONBOARDING_CODE) return { kind: "organization-onboarding" };
     const reason = typeof code === "string" ? TENANT_ERROR_CODES[code] : undefined;
     return reason ? { kind: "tenant-unavailable", reason } : null;
   } catch {

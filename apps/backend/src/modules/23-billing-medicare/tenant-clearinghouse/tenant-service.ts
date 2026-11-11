@@ -8,11 +8,15 @@
 // `verify` is three steps in two transactions (service.ts): read and decrypt, then the vendor probe with NO transaction open,
 // then lock and compare-and-set. After a change COMMITS the optional `onChanged` hook runs (the composition root binds it to
 // the M34 onboarding advance pass, so choosing a vendor settles wizard step 7 at once); a failure there is logged and never
-// fails the change.
+// fails the change. The optional `onOnboardingDataChanging` guard is different: it runs INSIDE each write's transaction before
+// the mutation, then returns a finalizer for after an accepted write. The composition root uses that scope to hold M34's shared
+// go-live lock across the write and its attestation void, so approval cannot overtake the mutation. Refused writes and unchanged
+// choice/BAA writes void nothing; accepted verify/activate calls intentionally may void again.
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "../routes/actor";
+import type { OnboardingDataChangeGuard } from "../routes/onboarding-data-change";
 import {
   CLEARINGHOUSE_AUDIT_EVENTS,
   type ClearinghouseAuditEvent,
@@ -61,6 +65,12 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly service: TenantClearinghouseService;
   /** The field-level audit writer (required: a change is never silently un-audited). */
   readonly audit: ClearinghouseAuditPort;
+  /**
+   * Runs on the SAME transaction before each write and returns a post-write finalizer. It holds the shared go-live lock across the
+   * mutation; the finalizer revokes a pending attestation only after an accepted qualifying write. A throw rolls the write back.
+   * Unbound, a tenant could change its choice under a pending attestation (the composition root binds it).
+   */
+  readonly onOnboardingDataChanging?: OnboardingDataChangeGuard;
   /** Post-commit, best effort. */
   readonly onChanged?: (organizationId: string) => Promise<void>;
   /** `onChanged` failed after the change committed: the wizard step did not settle (the change itself stands). */
@@ -89,6 +99,20 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
   const then = async <T>(organizationId: string, result: T): Promise<T> => {
     await changed(organizationId);
     return result;
+  };
+
+  /** Enter the write's go-live ordering scope; call the result after an accepted qualifying write. */
+  const guardDataChange = async (
+    tx: DbClient,
+    actor: M23WriteActor,
+  ): Promise<() => Promise<void>> => {
+    return (
+      (await deps.onOnboardingDataChanging?.(tx, {
+        organizationId: actor.organizationId,
+        userId: actor.userId,
+        membershipId: actor.membershipId,
+      })) ?? (async () => undefined)
+    );
   };
 
   /** The audit row of one change, on the change's own transaction. The row exists after any successful write. */
@@ -164,6 +188,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
 
     async put(actor, body, expectedVersion) {
       const result = await inOrg(actor, async (tx) => {
+        const dataChanged = await guardDataChange(tx, actor);
         const done = await service.put(
           createDrizzleConfigStore(tx),
           asTenantLane(actor),
@@ -178,6 +203,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
             ...(done.lockExceptionUsed ? { revokedBaaLockException: true } : {}),
           });
         }
+        if (done.changedFields.length > 0) await dataChanged();
         return { created: done.created, view: done.view };
       }).catch(async (err: unknown) => {
         throw await refused(actor, err, body.vendor);
@@ -187,6 +213,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
 
     async recordBaa(actor, body) {
       const result = await inOrg(actor, async (tx) => {
+        const dataChanged = await guardDataChange(tx, actor);
         const done = await service.recordBaa(
           createDrizzleConfigStore(tx),
           asTenantLane(actor),
@@ -197,6 +224,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
             status: done.view.status ?? "none",
           });
         }
+        if (done.changedFields.length > 0) await dataChanged();
         return done.view;
       }).catch(async (err: unknown) => {
         throw await refused(actor, err);
@@ -211,6 +239,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
       );
       const outcome = await service.runProbe(plan);
       const result = await inOrg(actor, async (tx) => {
+        const dataChanged = await guardDataChange(tx, actor);
         const done = await service.completeVerify(
           createDrizzleConfigStore(tx),
           asTenantLane(actor),
@@ -221,6 +250,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           kind: plan.evidence === null ? "connection_test" : "attested",
           ...(done.test ? { outcome: done.test.outcome } : {}),
         });
+        await dataChanged();
         return done;
       }).catch(async (err: unknown) => {
         throw await refused(actor, err);
@@ -230,10 +260,12 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
 
     async activate(actor) {
       const view = await inOrg(actor, async (tx) => {
+        const dataChanged = await guardDataChange(tx, actor);
         const done = await service.activate(createDrizzleConfigStore(tx), asTenantLane(actor));
         await record(tx, actor, CLEARINGHOUSE_AUDIT_EVENTS.activated, [], {
           status: done.status ?? "none",
         });
+        await dataChanged();
         return done;
       }).catch(async (err: unknown) => {
         throw await refused(actor, err);

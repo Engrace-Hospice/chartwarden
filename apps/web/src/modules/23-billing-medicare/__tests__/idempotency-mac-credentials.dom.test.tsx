@@ -27,8 +27,16 @@ function getBody(path: string): unknown {
   return { items: [], nextCursor: null, hasMore: false };
 }
 
-function mount(script: Script): string[] {
-  const { keys, fetchStub } = scriptedFetch(script, getBody);
+function mount(script: Script, validationMessage?: string): string[] {
+  const { keys, fetchStub } = scriptedFetch(script, getBody, () => ({
+    error: {
+      code: "VALIDATION_FAILED",
+      message: "request validation failed",
+      ...(validationMessage
+        ? { details: [{ field: "baaRecordRef", message: validationMessage }] }
+        : {}),
+    },
+  }));
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: fetchStub })}>
       <SessionProvider session={SESSION}>
@@ -98,5 +106,13 @@ describe("MAC credential Idempotency-Key (#821)", () => {
     type("Submitter id", "SUB2");
     await sign(2, keys);
     expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("shows the server's first field detail for a 422", async () => {
+    const message = "BAA reference must not contain a patient identifier.";
+    const keys = mount([422], message);
+    await fillForm();
+    await sign(1, keys);
+    expect(await screen.findByText(message)).toBeTruthy();
   });
 });

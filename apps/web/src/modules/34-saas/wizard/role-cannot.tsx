@@ -1,0 +1,7 @@
+// apps/web/src/modules/34-saas/wizard — the one line shown where a control is hidden because the person's role does not allow it, so a
+// missing button is explained instead of silently absent.
+import type { JSX } from "react";
+
+export function RoleCannot({ what }: { what: string }): JSX.Element {
+  return <p className="wx-row-sub">Your role cannot {what}.</p>;
+}

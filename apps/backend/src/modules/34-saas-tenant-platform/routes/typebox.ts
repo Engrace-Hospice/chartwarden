@@ -56,7 +56,7 @@ export const SIGNUP_INTENT_SOURCE = [
   "platform_ops_manual",
   "partner_referral",
 ] as const;
-export const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped"] as const;
+export const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped", "assist"] as const;
 export const DSAR_REQUEST_SOURCE = [
   "patient",
   "caregiver",

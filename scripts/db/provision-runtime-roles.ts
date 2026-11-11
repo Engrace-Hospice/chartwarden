@@ -96,6 +96,8 @@ const PLATFORM_READ_TABLES = [
   "onboarding_task",
   "onboarding_task_template",
   "tenant_go_live_attestation",
+  // Slice 7 (migration 1482): the operators' help inbox reads every tenant's requests; UPDATE is by column only (below).
+  "tenant_help_request",
   "support_consent_grant",
   "support_session",
   "support_session_event",
@@ -226,8 +228,12 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   // M28 — the validator persists the signed CapabilityStatement once per release (INSERT only: a snapshot
   // is evidence and is never updated or deleted by the platform role).
   "fhir_capability_snapshot",
-  // GAP-163: the support-session close sweep appends the `session.close` ledger row.
+  // GAP-163: the support-session close sweep appends the `session.close` ledger row; slice 7 (7S): the operator's writes while a
+  // session is open append `ops.write` rows, and the carrier is the only role that may (migration 1480 pins the tenant role).
   "support_session_event",
+  // Slice 7 (7S, migration 1480): the platform route that starts a session inserts it (in the TENANT's organization). The carrier had
+  // SELECT and UPDATE here but no INSERT, so an HTTP start answered 42501 even with the ports bound.
+  "support_session",
   // GAP-164: `FeatureFlagAdmin.upsert` runs on the platform pool (a NULL-org global flag is unwritable from a tenant
   // connection by design); without these two grants every platform / tenant flag write was a 42501.
   "feature_flag",
@@ -244,9 +250,8 @@ const PLATFORM_PROVISION_UPDATE_TABLES = [
   "tenant_key_ring",
   "tenant_signup_intent",
   "tenant_invitation",
-  // GAP-164: the platform-ops onboarding skip. GAP-163: the support-session close sweep closes the session.
+  // GAP-164: the platform-ops onboarding skip.
   "onboarding_task",
-  "support_session",
   "feature_flag",
 ] as const;
 
@@ -305,9 +310,11 @@ const DESTRUCTION_CERTIFICATE_PLATFORM_UPDATE_COLUMNS = [
   "certificate_pdf_ref",
 ] as const;
 
-/** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods). */
+/** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods, and the help requests its grant method removes first). */
 const PLATFORM_ERASE_TABLES = [
   "onboarding_task",
+  // Slice 7: the organization's help requests go before its grants (the grant FK restricts).
+  "tenant_help_request",
   "support_consent_grant",
   "support_session",
   "platform_tenant_baa_record",
@@ -434,6 +441,15 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
       );
+      // tenant_help_request (migrations 1482, 1483): an operator's Resolve and the system sweep close a request, and the retention sweep
+      // replaces a closed request's message with a placeholder. COLUMN-level UPDATE on the close columns plus `message` and
+      // `message_purged_at` only, so the consent link, the approver and the requester can never be rewritten from the platform side
+      // (the guard trigger lets `message` change only that one way, 90 days after the request closed).
+      // REVOKE first so a re-provision takes back an older table-wide or column grant.
+      await run('REVOKE UPDATE ON "tenant_help_request" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("status", "closed_by_actor_kind", "closed_by_user_id", "closed_at", "close_note", "updated_at", "message", "message_purged_at") ON "tenant_help_request" TO chartwarden_platform;',
+      );
       // Approval re-checks the attester against the membership as it is NOW (still active, still holds compliance_officer).
       // Role grants are not a platform-wide read: COLUMN grants on exactly the columns that question needs (membership
       // itself is already in PLATFORM_READ_TABLES), never the role scope, grantor or permission rows.
@@ -467,6 +483,18 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
         await run(`GRANT UPDATE ON "${t}" TO chartwarden_platform;`);
       }
+      // Slice 7 (7S, migration 1480): the support tables are written by COLUMN. A session is closed (the sweep, a manual close, an
+      // operator's Resolve) by two columns, a grant is revoked (Resolve) by three; nothing else on either row is ever rewritten from
+      // the platform side, so a carrier that could (expires_at, actor_membership_id, scope) would hold unused authority over what a
+      // tenant consented to. REVOKE first so a re-provision takes back an older table-wide grant.
+      await run('REVOKE UPDATE ON "support_session" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("closed_at", "close_reason") ON "support_session" TO chartwarden_platform;',
+      );
+      await run('REVOKE UPDATE ON "support_consent_grant" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("revoked_at", "revoked_by_membership_id", "revocation_reason") ON "support_consent_grant" TO chartwarden_platform;',
+      );
       // destruction_certificate (M34 offboarding files/refuses certificates): COLUMN grant only. Migration 1159 keeps the spend columns
       // (reserved_count, destroyed_count) and data_class out of every login's reach; the definer functions write the spend.
       await run('REVOKE UPDATE ON "destruction_certificate" FROM chartwarden_platform;');

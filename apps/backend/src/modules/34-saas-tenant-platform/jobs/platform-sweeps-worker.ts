@@ -18,7 +18,6 @@ import {
   type ExpiredSessionCandidate,
   type OnboardingAdvanceReport,
   OnboardingRepository,
-  SupportRepository,
   type SupportSessionServiceDeps,
   type SupportSessionSweepResult,
   closeExpiredSupportSessions,
@@ -39,6 +38,7 @@ import {
   lockTenantOnboardingShared,
 } from "../routes/platform/tenant-onboarding-lock";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
+import { createSupportSessionPorts } from "./support-session-ports";
 
 /**
  * The M36 alert event the stuck-activation rule is keyed on (alert-rules.ts). Retained as the seeded rule's name only:
@@ -114,18 +114,19 @@ export async function runBaaExpiryCron(deps: BaaSweepDeps): Promise<BaaExpirySwe
 
 export interface SupportCloseDeps {
   readonly candidates: readonly ExpiredSessionCandidate[];
-  readonly serviceDeps: (orgBySession: ReadonlyMap<string, string>) => SupportSessionServiceDeps;
+  /** The service's ports for the sweep's transaction (the shared binding, `createSupportSessionPorts(...).bind(tx)`). */
+  readonly serviceDeps: () => SupportSessionServiceDeps;
 }
 
 /** Run one close sweep over a pre-loaded candidate set. */
 export async function runSupportSessionCloseCron(
   deps: SupportCloseDeps,
 ): Promise<SupportSessionSweepResult> {
-  const orgBySession = new Map(deps.candidates.map((c) => [c.sessionId, c.organizationId]));
-  return closeExpiredSupportSessions(deps.serviceDeps(orgBySession), deps.candidates);
+  return closeExpiredSupportSessions(deps.serviceDeps(), deps.candidates);
 }
 
-async function loadExpiredSessionCandidates(
+/** The open sessions past their expiry, on the grant's organization (exported for the live suite that proves the sweep end to end). */
+export async function loadExpiredSessionCandidates(
   tx: DbClient,
   now: Date,
 ): Promise<readonly ExpiredSessionCandidate[]> {
@@ -134,7 +135,8 @@ async function loadExpiredSessionCandidates(
   const rows = await tx
     .select({
       sessionId: S.id,
-      organizationId: S.organizationId,
+      // The GRANT's organization: the tenant's, whatever organization a session row might have been recorded under.
+      organizationId: G.organizationId,
       supportConsentGrantId: S.supportConsentGrantId,
       tenantAccountId: G.tenantAccountId,
       grantorMembershipId: G.grantorMembershipId,
@@ -384,66 +386,20 @@ export function registerM34BaaExpiryWorker(deps: PlatformSweepWorkerDeps): Worke
 /** Construct the `tenant.support_session_close_sweep` Worker. */
 export function registerM34SupportSessionCloseWorker(deps: PlatformSweepWorkerDeps): Worker {
   const now = deps.now ?? (() => new Date());
+  // The same ports a start, a manual close and a revoke use: one binding, not one per caller.
+  const ports = createSupportSessionPorts({
+    outbox: deps.outbox,
+    alerts: deps.alerts,
+    now,
+    ...(deps.warn ? { warn: deps.warn } : {}),
+  });
   return new Worker(
     M34_QUEUES.supportSessionCloseSweep,
     () =>
       platformTx(deps, "m34 support-session close sweep", async (tx) =>
         runSupportSessionCloseCron({
           candidates: await loadExpiredSessionCandidates(tx, now()),
-          serviceDeps: (orgBySession) => ({
-            repo: new SupportRepository(tx),
-            now,
-            audit: {
-              emitCriticalAudit: async (event) => {
-                await auditPlatformEvent(tx, {
-                  eventType: event.action,
-                  resourceKind: "support_session",
-                  resourceId: event.supportSessionId,
-                  outcome: "success",
-                  severity: "critical",
-                  correlationId: `m34-support-close-${event.supportSessionId}`,
-                  context: {
-                    organizationId: event.organizationId,
-                    actorMembershipId: event.actorMembershipId,
-                    actorKind: event.actorKind,
-                    ...(event.context ?? {}),
-                  },
-                });
-              },
-            },
-            outbox: {
-              publish: async (eventName, payload) => {
-                const sessionId = String(payload.sessionId);
-                const organizationId = orgBySession.get(sessionId);
-                if (!organizationId) throw new Error("support close: no organization for session");
-                await deps.outbox.publish(tx, {
-                  eventName,
-                  payload,
-                  organizationId,
-                  aggregateKind: "support_session",
-                  aggregateId: sessionId,
-                });
-              },
-            },
-            alerts: {
-              emitAlert: async (alert) => {
-                // The grantor alert must never undo the close itself: a failed emit is logged, not thrown.
-                try {
-                  await deps.alerts.emit(alert.organizationId, {
-                    eventType: alert.alertKey,
-                    payload: { tenantAccountId: alert.tenantAccountId, ...(alert.context ?? {}) },
-                    severity: "warn",
-                    correlationId: `m34-support-close-${String(alert.context?.sessionId)}`,
-                  });
-                } catch (error) {
-                  deps.warn?.("m34.support_session_close: grantor alert failed", {
-                    organizationId: alert.organizationId,
-                    err: error,
-                  });
-                }
-              },
-            },
-          }),
+          serviceDeps: () => ports.bind(tx),
         }),
       ),
     { connection: deps.connection, concurrency: 1 },

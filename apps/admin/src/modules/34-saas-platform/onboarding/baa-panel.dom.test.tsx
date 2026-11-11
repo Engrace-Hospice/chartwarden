@@ -545,7 +545,7 @@ describe("BaaPanel: uploading the signed agreement", () => {
       const dialog = await screen.findByRole("dialog");
       expect(
         await within(dialog).findByText(
-          "Too many attempts. Nothing was saved. Wait a minute, then try again.",
+          "Too many attempts. Nothing was saved. Wait before trying again; some limits take ten minutes to reset.",
         ),
       ).toBeTruthy();
       expect(within(dialog).queryByText(/quote the reference/i)).toBeNull();

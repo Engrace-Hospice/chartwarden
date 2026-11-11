@@ -15,14 +15,16 @@ import {
 import {
   type CompletionMode,
   type GoLiveAttestation,
+  type SkipActorKind,
   type StepOwner,
   type StepTask,
   type StepTemplate,
   type TaskStatus,
   type TenantRef,
   isSkippableStep,
+  isTenantSkippableStep,
 } from "./model";
-import { currentStepKey, lockedByStep, orderedTemplates } from "./sequence";
+import { currentStepKey, isSettled, lockedByStep, orderedTemplates } from "./sequence";
 
 export interface WizardStepView {
   /** The task id; null when the tenant has no task row for this template yet. */
@@ -57,6 +59,23 @@ export interface WizardStepView {
   readonly skippable: boolean;
   /** The skip was made by the system (the tenant bills outside ChartWarden), not typed by a person: read this, never the rationale text. */
   readonly systemSkipped: boolean;
+  /**
+   * Who settled the step by skipping it, as the skip recorded it: the `system` (billing outside ChartWarden), the `tenant`'s own org_admin
+   * or a `platform_ops` operator; null when the step is not skipped. Read this, never the rationale text. (`systemSkipped` stays for older clients.)
+   */
+  readonly skippedBy: SkipActorKind | null;
+  /**
+   * What the tenant surface shows in place of who skipped: the organization's own for its skip, "ChartWarden operations" for an
+   * operator's, never a person or a membership. Null on the platform surface and for a system skip.
+   */
+  readonly skippedByLabel: string | null;
+  /**
+   * The tenant's own org_admin may skip this step now: it is one of the three (MAC credentials, payer enrollment, DoseSpot kickoff), it
+   * is not settled yet, no earlier gating step still locks it (`locked` is false) and the viewer is an org_admin (the platform surface,
+   * which has no tenant viewer, reports the step alone); else the skip is refused (409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for another
+   * step, 409 ONBOARDING_STEP_OUT_OF_ORDER for a locked one).
+   */
+  readonly tenantSkippable: boolean;
   readonly createdAt: string | null;
   // The names the first onboarding screens already read (kept so they do not break).
   readonly templateKey: string;
@@ -109,6 +128,9 @@ export function toWizardStepView(
   task: StepTask | undefined,
   lockedBy: string | null,
 ): WizardStepView {
+  const status = task?.status ?? "pending";
+  // A skipped task whose store did not say who skipped it predates the actor kind: an operator's (a tenant could not skip yet).
+  const skippedBy = status === "skipped" ? (task?.skippedByActorKind ?? "platform_ops") : null;
   return {
     id: task?.id ?? null,
     key: template.key,
@@ -117,7 +139,7 @@ export function toWizardStepView(
     owner: template.owner,
     sequence: template.sequence,
     optional: template.optional,
-    status: task?.status ?? "pending",
+    status,
     locked: lockedBy !== null,
     lockedBy,
     completionMode: template.completionMode,
@@ -137,8 +159,11 @@ export function toWizardStepView(
     completedAt: iso(task?.completedAt ?? null),
     blockerReason: task?.blockerReason ?? null,
     skipRationale: task?.status === "skipped" ? (task.skipRationale ?? null) : null,
-    systemSkipped: task?.status === "skipped" && task.skippedBySystem === true,
+    systemSkipped: skippedBy === "system",
+    skippedBy,
+    skippedByLabel: null,
     skippable: isSkippableStep(template),
+    tenantSkippable: isTenantSkippableStep(template) && !isSettled(status) && lockedBy === null,
     createdAt: iso(task?.createdAt ?? null),
     templateKey: template.key,
     isCanonical: template.canonical,
@@ -215,11 +240,34 @@ export function buildWizardView(input: {
 /** What a tenant is shown in place of a ChartWarden operator: the organisation, never a person or a membership. */
 export const PLATFORM_OPERATOR_LABEL = "ChartWarden operations";
 
-/** A step as the tenant sees it: a platform operator's attestation names the organisation and the time, not the member. */
-export function redactStepForTenant(step: WizardStepView): WizardStepView {
-  if (!step.attestedBy || step.attestedBy.actorKind !== "platform_ops") return step;
-  return {
+/** What a tenant is shown for a skip of its own. */
+export const TENANT_OWN_LABEL = "Your organization";
+
+/** The tenant surface's own judgement of who the viewer is: the roles the session holds in the organization. */
+export interface TenantViewer {
+  readonly roles: readonly string[];
+}
+
+/**
+ * A step as the tenant sees it: a platform operator's attestation or skip names the organisation and the time, never the member, and
+ * the tenant's own skip is the organization's. `tenantSkippable` is the step's own flag narrowed to what THIS viewer may do (the
+ * org_admin, by the same rule `actorMayActOnStep` applies); a viewer the caller does not name may do nothing.
+ */
+export function redactStepForTenant(step: WizardStepView, viewer: TenantViewer): WizardStepView {
+  const skippedByLabel =
+    step.skippedBy === "platform_ops"
+      ? PLATFORM_OPERATOR_LABEL
+      : step.skippedBy === "tenant"
+        ? TENANT_OWN_LABEL
+        : null;
+  const redacted: WizardStepView = {
     ...step,
+    skippedByLabel,
+    tenantSkippable: step.tenantSkippable && viewer.roles.includes("org_admin"),
+  };
+  if (!step.attestedBy || step.attestedBy.actorKind !== "platform_ops") return redacted;
+  return {
+    ...redacted,
     attestedBy: { ...step.attestedBy, membershipId: null, label: PLATFORM_OPERATOR_LABEL },
   };
 }
@@ -231,12 +279,12 @@ export function redactStepForTenant(step: WizardStepView): WizardStepView {
  */
 export function redactViewForTenant<V extends WizardView>(
   view: V,
-  opts: { readonly revokedByTenantMember: boolean },
+  opts: { readonly revokedByTenantMember: boolean; readonly viewer: TenantViewer },
 ): V {
   const attestation = view.goLive.attestation;
   return {
     ...view,
-    steps: view.steps.map(redactStepForTenant),
+    steps: view.steps.map((step) => redactStepForTenant(step, opts.viewer)),
     goLive: {
       ...view.goLive,
       attestation: attestation && {

@@ -3154,6 +3154,8 @@ export interface RouteEnrichment {
   headers?: Record<string, { required?: boolean; description?: string }>;
   /** The route's actual success status code (`reply.code(...)`). Default 200 when omitted. */
   status?: 200 | 201 | 202 | 204;
+  /** Other success codes returning the same response schema (for routes whose create/update paths differ). */
+  additionalSuccessStatuses?: readonly (200 | 201 | 202 | 204)[];
   /** Human summary for the operation. */
   summary?: string;
 }
@@ -4014,12 +4016,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },
-  // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
-  "POST /api/v1/billing/mac-credentials": {
-    summary:
-      "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
-    body: UpsertMacCredentialBodySchema,
-  },
+  // ── MAC credentials (mac-credentials.routes.ts, §3.6): the POST upsert is enriched beside its view schema, near the GETs ──
   // ── EDI profile (edi-profile.routes.ts; migration 1268) ──
   "PUT /api/v1/billing/edi-profiles/:providerEntityId/:routeKey": {
     summary:
@@ -10852,12 +10849,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportConsentGrantListResponseSchema,
   },
   "POST /api/v1/tenant/support-consent-grants": {
-    summary: "Issue a support-access consent grant (≤72h; compliance-officer; step-up)",
+    summary:
+      "Issue a support-access consent grant (≤72h; step-up). Scopes: organization_scoped and patient_scoped (PHI-bearing) and assist (non-PHI, for help during onboarding: a session on it can never be elevated). 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED when the grantor may not issue the scope: assist needs the org_admin or compliance_officer role",
     body: M34TenantSupportConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
   },
   "POST /api/v1/tenant/support-consent-grants/:id/revoke": {
-    summary: "Revoke a grant (cascades to any open support_session)",
+    summary:
+      "Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more",
     body: M34RevokeConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
   },
@@ -10930,13 +10929,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportSessionEventListResponseSchema,
   },
   "POST /api/v1/platform/support-sessions": {
-    summary: "Start a session against a consent grant (distinct-actor + passkey-5min step-up)",
+    summary:
+      "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
     body: M34StartSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34StartSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/platform/support-sessions/:id/close": {
-    summary: "Close a session with reason='manual' (no step-up)",
+    summary:
+      "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
     body: M34CloseSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34CloseSessionAckSchema,
   },
 
@@ -13216,9 +13220,12 @@ import {
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/platform/support-sessions/:id/elevate": {
-    summary: "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403)",
+    summary:
+      "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write",
     body: M34ElevateSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34ElevateSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/tenant/dsar-export-jobs/:id/fulfill": {
     summary: "Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up)",
@@ -13782,6 +13789,13 @@ const M23RuleConfigListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 
+/**
+ * What `lastSandboxTestAt` and the test route's `ok` mean. The probe is the launch gateway's portal health check for the credential's
+ * jurisdiction: it sends neither the secret nor the client id, so it cannot say the credential works (the secret is first used by the
+ * first real submission). The names stay; the words must not promise more than the check does.
+ */
+const M23_MAC_PORTAL_CHECK_NOTE =
+  "It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used)";
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
@@ -13793,7 +13807,9 @@ const M23MacCredentialView = Type.Object({
   hasSecret: Type.Boolean(),
   baaRecordRef: Type.Union([Type.String(), Type.Null()]),
   credentialExpiresAt: Type.Union([Type.String(), Type.Null()]),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
   version: Type.Integer(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -13806,11 +13822,21 @@ const M23MacCredentialListResponse = Type.Object({
 const M23MacCredentialTestResponse = Type.Object({
   providerEntityId: Type.String(),
   macJurisdiction: Type.String(),
-  ok: Type.Boolean(),
-  method: Type.Literal("portal_health_probe"),
-  detail: Type.String(),
+  ok: Type.Boolean({
+    description: `True when the MAC portal for the credential's jurisdiction answered. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
+  method: Type.Literal("portal_health_probe", {
+    description:
+      "Always portal_health_probe: the check calls the jurisdiction's MAC portal health endpoint. It does not submit a test claim and does not use the stored credential.",
+  }),
+  detail: Type.String({
+    description:
+      "What the check saw (the portal answered or did not). It is never about the credential itself.",
+  }),
   checkedAt: Type.String(),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `The time the credential now records for this check: set when the portal answered, null when it did not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
 });
 const M23ValidationOverrideAuditPage = Type.Object({
   items: Type.Array(
@@ -13830,6 +13856,15 @@ const M23ValidationOverrideAuditPage = Type.Object({
   hasMore: Type.Boolean(),
 });
 const M23MacCredentialByProviderResponse = Type.Union([M23MacCredentialView, Type.Null()]);
+/** The upsert pins the version it changes: absent on a first save, required on a change (428 / 409). */
+const M23_MAC_CREDENTIAL_WRITE_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save.",
+  },
+};
 
 const M23ArAgingDto = Type.Object({
   bucket0to30Cents: Type.Integer(),
@@ -13916,8 +13951,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/billing/mac-credentials/:providerEntityId/test": {
     summary:
-      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+      "Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36)",
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M23MacCredentialTestResponse,
+  },
+  "POST /api/v1/billing/mac-credentials": {
+    summary:
+      "Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35)",
+    body: UpsertMacCredentialBodySchema,
+    headers: M23_MAC_CREDENTIAL_WRITE_HEADERS,
+    status: 201,
+    additionalSuccessStatuses: [200],
+    response: M23MacCredentialView,
   },
   "GET /api/v1/billing/validation-overrides": {
     summary:
@@ -16184,5 +16229,95 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",
     body: M25ClaimMdEraRecoveryBodySchema,
+  },
+});
+
+// ── Slice 7: the tenant's own onboarding (help requests, support-session reads, tenant skip) ────────────────────────
+import {
+  ApproveHelpRequestRequest as M34ApproveHelpRequestRequest,
+  FileHelpRequestRequest as M34FileHelpRequestRequest,
+  HelpRequestViewSchema as M34HelpRequestViewSchema,
+  PlatformHelpRequestListQuerySchema as M34PlatformHelpRequestListQuerySchema,
+  PlatformHelpRequestListResponseSchema as M34PlatformHelpRequestListResponseSchema,
+  PlatformHelpRequestViewSchema as M34PlatformHelpRequestViewSchema,
+  ResolveHelpRequestRequest as M34ResolveHelpRequestRequest,
+  TenantHelpRequestListQuerySchema as M34TenantHelpRequestListQuerySchema,
+  TenantHelpRequestListResponseSchema as M34TenantHelpRequestListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/help-request-typebox";
+import {
+  PlatformSupportConsentGrantListQuerySchema as M34PlatformSupportConsentGrantListQuerySchema,
+  PlatformSupportConsentGrantListResponseSchema as M34PlatformSupportConsentGrantListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
+import {
+  TenantSupportSessionEventListResponseSchema as M34TenantSupportSessionEventListResponseSchema,
+  TenantSupportSessionListQuerySchema as M34TenantSupportSessionListQuerySchema,
+  TenantSupportSessionListResponseSchema as M34TenantSupportSessionListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/help-requests": {
+    summary:
+      "The organization's help requests during onboarding: `current` is the one live request (open or approved) with its phase, the consent window and a summary of the ChartWarden support session (when it ran and what it did, never an operator's name; `closedBy` is a label such as ChartWarden operations), and `items` pages the ended ones. Any active member of the organization on a staff session; not audited, and meant to be polled every 60 seconds and on focus",
+    query: M34TenantHelpRequestListQuerySchema,
+    response: M34TenantHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/tenant/help-requests": {
+    summary:
+      "Ask ChartWarden for help during onboarding (any active member on a staff session; an AI actor, ChartWarden staff, an auditor and a family session are refused). The message is judged after trimming and screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). One live request per organization: 409 HELP_REQUEST_ALREADY_OPEN, whose details carry the live request's id as {field: \"helpRequestId\", message: <id>}. 3 requests an hour per member and 10 per organization (429; 503 when the limiter's store is unavailable). The request is a signal and authorizes nothing",
+    body: M34FileHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/approve": {
+    summary:
+      "Consent to the help: the org_admin or the compliance officer, under a fresh step-up (the grant-issue operation), creates the non-PHI `assist` consent grant for 1 to 24 hours (8 when omitted) so a ChartWarden operator may open a support session; open -> approved. 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED for any other role; refused (409) for a request that is not open. An AI actor is refused",
+    body: M34ApproveHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/close": {
+    summary:
+      "End help from the organization's side (no step-up, so ending is frictionless): the member who filed the request, an org_admin or the compliance officer. An open request is cancelled; an approved one is resolved, its consent grant revoked and every open support session on it closed (close reason grant_revoked). An AI actor is refused",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34HelpRequestViewSchema,
+  },
+  "GET /api/v1/tenant/support-sessions": {
+    summary:
+      "ChartWarden support sessions on the organization, newest first: when each started, when it expires or ended and why, and how many actions it took (never an operator's id, name or address). Requires the support-consent-grant list key; a list read, audited",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionListResponseSchema,
+  },
+  "GET /api/v1/tenant/support-sessions/:id/events": {
+    summary:
+      "A support session's ledger on the organization, newest first: its start, close and every write the operator made under it, as the route template, method and status (never a body, an id from it, or the operator's address). Requires the support-consent-grant list key; a list read, audited",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionEventListResponseSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/skip": {
+    summary:
+      "The organization's own \"this does not apply to us\" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Recorded as the tenant's (the step's `skippedBy` says tenant, with the rationale, which the go-live approver sees) and, like any onboarding-data change, voids a pending go-live attestation. Reversible by re-opening",
+    body: M34SkipOnboardingTaskRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34WizardStepViewSchema,
+  },
+  "GET /api/v1/platform/help-requests": {
+    summary:
+      "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list and defaults to open,approved (the live requests; ask for resolved or cancelled by name; the nav badge asks open,approved with limit 1). A page is at most 50 rows",
+    query: M34PlatformHelpRequestListQuerySchema,
+    response: M34PlatformHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/platform/help-requests/:id/resolve": {
+    summary:
+      "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): revokes its consent grant and closes the request's open support sessions with it (close reason grant_revoked), and resolves the request (an open request, which has no grant, is resolved with the note alone). It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
+    body: M34ResolveHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34PlatformHelpRequestViewSchema,
+  },
+  "GET /api/v1/platform/support-consent-grants": {
+    summary:
+      "The tenants' support consent grants (platform ops; audited list read): scope, window and state, filterable by tenant account and by `active` (unrevoked and unexpired), so an operator can pick the grant to start a session against. Never the grantor or the patients in scope",
+    query: M34PlatformSupportConsentGrantListQuerySchema,
+    response: M34PlatformSupportConsentGrantListResponseSchema,
   },
 });

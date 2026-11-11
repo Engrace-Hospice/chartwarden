@@ -119,6 +119,8 @@ function makeServer(
     /** §11 D19 — the organization status reader and the onboarding-tenant fact select-organization consults. */
     organizations?: IdentityRouteDeps["organizations"];
     onboardingTenants?: IdentityRouteDeps["onboardingTenants"];
+    /** 7A — the cached organization stage reader `GET /auth/context` reports `organizationStage` from. */
+    organizationStage?: IdentityRouteDeps["organizationStage"];
     /** Wave 5 — M1's site read; defaults to "every `loc_*` id belongs to the org". `null` binds none. */
     validateLocations?: IdentityRouteDeps["validateLocations"] | null;
   } = {},
@@ -191,6 +193,7 @@ function makeServer(
     ...(opts.mfaGate ? { mfaGate: opts.mfaGate } : {}),
     ...(opts.organizations ? { organizations: opts.organizations } : {}),
     ...(opts.onboardingTenants ? { onboardingTenants: opts.onboardingTenants } : {}),
+    ...(opts.organizationStage ? { organizationStage: opts.organizationStage } : {}),
     ...(opts.validateLocations === null
       ? {}
       : {
@@ -335,6 +338,75 @@ describe("M2-T06 identity route inventory", () => {
       expect(body.orgWidePatientScope).toBe(false);
       expect(body.permissions).toEqual([]);
       await app.close();
+    });
+
+    describe("7A organizationStage on GET /auth/context", () => {
+      const contextOf = async (opts: Parameters<typeof makeServer>[0]) => {
+        const { app } = makeServer({
+          seed: [membership({ membershipId: "adm_1", userId: "admin_1", isAdmin: true })],
+          ...opts,
+        });
+        const res = await app.inject({
+          method: "GET",
+          url: "/api/v1/auth/context",
+          headers: ADMIN,
+        });
+        await app.close();
+        return res;
+      };
+
+      it("says `onboarding` while the organization is confined to the onboarding allowlist", async () => {
+        const asked: string[] = [];
+        const res = await contextOf({
+          organizationStage: {
+            isConfined: async (organizationId) => {
+              asked.push(organizationId);
+              return true;
+            },
+          },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().organizationStage).toBe("onboarding");
+        expect(asked).toEqual(["org_a"]); // the caller's own bound organization, nothing else
+      });
+
+      it("says `live` once the organization is not confined", async () => {
+        const res = await contextOf({ organizationStage: { isConfined: async () => false } });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().organizationStage).toBe("live");
+      });
+
+      it("says `live` when no stage reader is bound (a slice boot has no gate to be confined by)", async () => {
+        const res = await contextOf({});
+        expect(res.statusCode).toBe(200);
+        expect(res.json().organizationStage).toBe("live");
+      });
+
+      it("a pre-org session has no organization to be confined: `live`, and the reader is never asked", async () => {
+        const isConfined = vi.fn(async () => true);
+        const { app } = makeServer({ seed, organizationStage: { isConfined } });
+        const res = await app.inject({
+          method: "GET",
+          url: "/api/v1/auth/context",
+          headers: { "x-test-user": "user_rn" },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().organizationStage).toBe("live");
+        expect(isConfined).not.toHaveBeenCalled();
+        await app.close();
+      });
+
+      it("fails closed when the stage cannot be read: a typed error, never a guessed `live`", async () => {
+        const res = await contextOf({
+          organizationStage: {
+            isConfined: async () => {
+              throw new Error("status read failed");
+            },
+          },
+        });
+        expect(res.statusCode).toBeGreaterThanOrEqual(500);
+        expect(res.json().error.code).toBeDefined();
+      });
     });
 
     it("FB-T15 GET /auth/context unauthenticated → 401 envelope", async () => {

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/index.ts — M34 tenant-route barrel.
 //
-// Aggregates the five TENANT-scoped route groups (§4.1 "Tenant-scoped routes", `withOrgContext` — the
+// Aggregates the seven TENANT-scoped route groups (§4.1 "Tenant-scoped routes", `withOrgContext` — the
 // tenant's own org, M2 `staff` session class) into one `registerTenantTenantRoutes` Fastify plugin the
 // composition root mounts (the M22 `registerDocumentRoutes` precedent — one register call per surface).
 // Each group composes over the SAME injected TenantRouteService (in-memory slice in tests; Drizzle-backed
@@ -10,30 +10,45 @@ import type { FastifyInstance } from "fastify";
 import type { OnboardingWizard } from "../../onboarding/wizard-service";
 import { registerTenantBaaRoutes } from "./baa";
 import { registerDsarExportRoutes } from "./dsar-export-jobs";
+import { type TenantHelpRequestRouteDeps, registerTenantHelpRequestRoutes } from "./help-requests";
 import { registerOnboardingRoutes } from "./onboarding-tasks";
 import type { TenantRouteService } from "./service";
 import { registerSupportConsentGrantRoutes } from "./support-consent-grants";
+import { registerTenantSupportSessionRoutes } from "./support-sessions";
 import { registerTenantExportRoutes } from "./tenant-export-jobs";
 
 export interface TenantRoutesDeps {
   service: TenantRouteService;
   /** The onboarding wizard (tenant surface). */
   wizard: OnboardingWizard;
+  /** The help-request service (slice 7) and the cap on filing; the stand-in answers 501 until piece 7B binds the real one. */
+  help: TenantHelpRequestRouteDeps;
 }
 
-/** Mount all five tenant-scoped M34 route groups behind the REAL Authorization Contract (§4.1 / §6). */
+/** Mount all seven tenant-scoped M34 route groups behind the REAL Authorization Contract (§4.1 / §6). */
 export function registerTenantTenantRoutes(app: FastifyInstance, deps: TenantRoutesDeps): void {
   registerSupportConsentGrantRoutes(app, deps);
+  registerTenantSupportSessionRoutes(app, deps);
   registerDsarExportRoutes(app, deps);
   registerTenantExportRoutes(app, deps);
   registerOnboardingRoutes(app, deps);
   registerTenantBaaRoutes(app, deps);
+  registerTenantHelpRequestRoutes(app, deps.help);
 }
 
 export {
   type SupportConsentGrantRouteDeps,
   registerSupportConsentGrantRoutes,
 } from "./support-consent-grants";
+export {
+  type SupportSessionReadRouteDeps,
+  registerTenantSupportSessionRoutes,
+} from "./support-sessions";
+export {
+  type HelpRequestRateLimit,
+  type TenantHelpRequestRouteDeps,
+  registerTenantHelpRequestRoutes,
+} from "./help-requests";
 export { type DsarExportRouteDeps, registerDsarExportRoutes } from "./dsar-export-jobs";
 export { type TenantExportRouteDeps, registerTenantExportRoutes } from "./tenant-export-jobs";
 export { type OnboardingRouteDeps, registerOnboardingRoutes } from "./onboarding-tasks";

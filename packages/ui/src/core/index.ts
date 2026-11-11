@@ -66,13 +66,18 @@ export {
 // Platform-ops writes (2026-11 tenant onboarding): the reason an operator gives, what a refusal means, one Idempotency-Key per attempt
 export { REASON_RULES, checkReason, normalizeReason } from "./ops-write/reason";
 export type { ReasonRule } from "./ops-write/reason";
-export { describeOpsError } from "./ops-write/ops-error";
+export { describeOpsError, isAboutAnInput } from "./ops-write/ops-error";
 export type {
+  ErrorResponse,
   OpsErrorCopy,
   OpsErrorDetail,
   OpsFailure,
   OpsFailureKind,
 } from "./ops-write/ops-error";
+// What several lanes say for the codes every versioned or screened write can answer with (one code, one sentence)
+export { COMMON_OPS_ERROR_COPY } from "./ops-write/common-error-copy";
+// An Idempotency-Key fingerprint for a body that holds a write-once secret: a digest, never the body
+export { bodyFingerprint, sha256HexOfText } from "./ops-write/body-fingerprint";
 export { createIdempotencyKeeper, useIdempotencyKeeper } from "./ops-write/idempotency";
 export {
   NO_ANSWER,

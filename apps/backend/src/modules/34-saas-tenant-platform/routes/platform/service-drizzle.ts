@@ -41,18 +41,15 @@ import {
   type LifecycleActorKind,
   type LifecycleEvent,
   type LifecycleSideEffect,
-  type NowPort,
-  type SupportSessionAlertPort,
-  type SupportSessionAuditPort,
-  type SupportSessionOutboxPort,
   type SupportSessionServiceDeps,
+  closeSupportSession,
   elevateSupportSession,
   startSupportSession,
   transitionTenant,
 } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, not, sql } from "drizzle-orm";
 import type { OnboardingBaaDocumentPort } from "../../../../bootstrap/onboarding-baa-document-port";
 import { isTenantSlugTaken } from "../../../../bootstrap/tenant-slug-registry";
 import {
@@ -62,6 +59,7 @@ import {
   mintInvitationToken,
 } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
+import type { SupportSessionPorts } from "../../jobs/support-session-ports";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
@@ -98,6 +96,7 @@ import type {
   FeatureFlagView,
   KeyRingMetadataView,
   OnboardingTemplateView,
+  PlatformSupportConsentGrantView,
   ProvisionTenantArgs,
   SetKillSwitchArgs,
   SignupIntentView,
@@ -112,6 +111,7 @@ import type {
   UpdateBaaRecordArgs,
   UpsertFeatureFlagArgs,
 } from "./service";
+import { lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 import {
   ONBOARDING_WRITABLE_STATUSES,
   lockTenantOnboardingExclusive,
@@ -183,13 +183,11 @@ export interface DrizzleTenantPlatformDeps {
   readonly featureFlags: FeatureFlagAdminPort;
   /** M36's `AlertEmitter` seam (§2.5 `alert` side effects — suspend/offboard/at-risk transitions). */
   readonly lifecycleAlerts: AlertEmitter;
-  /** Support-session side-effect ports (audit/alert/outbox/now) — the per-tx repo is bound here. */
-  readonly supportSessionPorts: {
-    readonly audit: SupportSessionAuditPort;
-    readonly outbox: SupportSessionOutboxPort;
-    readonly alerts: SupportSessionAlertPort;
-    readonly now: NowPort;
-  };
+  /**
+   * Support-session ports (audit / outbox / alerts / members / clock), bound once at the composition root and bound again per
+   * transaction here (`bind(tx)`), the same binding the sweep and the tenant routes use (jobs/support-session-ports.ts).
+   */
+  readonly supportSessionPorts: SupportSessionPorts;
   /** The registered platform-job id used as the `withPlatformContext` caller (allowlisted at boot). */
   readonly platformJobId: string;
   /**
@@ -551,14 +549,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     }
   }
 
-  /** Build the per-tx `SupportSessionServiceDeps` (tx-bound repo + the injected side-effect ports). */
-  const supportDeps = (tx: PlatformTx): SupportSessionServiceDeps => ({
-    repo: new SupportRepository(tx),
-    audit: deps.supportSessionPorts.audit,
-    outbox: deps.supportSessionPorts.outbox,
-    alerts: deps.supportSessionPorts.alerts,
-    now: deps.supportSessionPorts.now,
-  });
+  /** The per-tx `SupportSessionServiceDeps` (tx-bound repo + the shared audit / outbox / alert / member ports). */
+  const supportDeps = (tx: PlatformTx): SupportSessionServiceDeps =>
+    deps.supportSessionPorts.bind(tx);
 
   const service: TenantPlatformRouteService = {
     // ── tenants (live cross-tenant reads under withPlatformContext) ──
@@ -1160,48 +1153,96 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       });
     },
 
-    async startSession(args: StartSupportSessionArgs) {
-      return inPlatformCtx("platform-ops start support session", async (tx) => {
-        // The pure §7.4 service enforces the active-grant + D16 distinct-actor invariants and writes the
-        // session + opening ledger event + critical audit + outbox + grantor alert through the tx-bound ports.
-        const res = await startSupportSession(supportDeps(tx), {
-          organizationId: args.organizationId,
-          supportConsentGrantId: args.supportConsentGrantId,
-          actorMembershipId: args.actorMembershipId,
-          actorIp: args.actorIp,
-        });
-        return { sessionId: res.sessionId, expiresAt: isoReq(res.expiresAt) };
+    // Slice 7: the grants an operator may start a session against (the Start picker; a help request's grant). Filtered in SQL; a
+    // tenant holds few grants, so the page is cut in memory like the session list's (ponytail: move the keyset into SQL when one
+    // tenant's grants outgrow a page of work for the operators' console).
+    async listConsentGrants(
+      filter,
+      cursor,
+      limit,
+    ): Promise<CursorPage<PlatformSupportConsentGrantView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
+      return inPlatformCtx("platform-ops list support consent grants", async (tx) => {
+        const now = deps.supportSessionPorts.now();
+        const active = sql`(${SCG.revokedAt} IS NULL AND ${SCG.expiresAt} > ${now.toISOString()}::timestamptz)`;
+        const rows = await tx
+          .select()
+          .from(SCG)
+          .where(
+            and(
+              filter.tenantAccountId ? eq(SCG.tenantAccountId, filter.tenantAccountId) : undefined,
+              filter.active === undefined ? undefined : filter.active ? active : not(active),
+            ),
+          )
+          .orderBy(desc(SCG.issuedAt), desc(SCG.id));
+        // Never the grantor and never the patients in scope: an operator needs the window, the scope and the state.
+        const views = rows.map((g) => ({
+          id: g.id,
+          tenantAccountId: g.tenantAccountId,
+          scope: g.scope,
+          issuedAt: isoReq(g.issuedAt),
+          expiresAt: isoReq(g.expiresAt),
+          revokedAt: iso(g.revokedAt),
+          active: g.revokedAt === null && g.expiresAt.getTime() > now.getTime(),
+          createdAt: isoReq(g.issuedAt),
+        }));
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
+        return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
 
+    async startSession(args: StartSupportSessionArgs) {
+      const result = await inPlatformCtx("platform-ops start support session", async (tx) => {
+        // The pure §7.4 service enforces the active-grant + D16 distinct-actor invariants and writes the session (in the GRANT's
+        // organization: the tenant's, never the operator's) + opening ledger event + critical audit + outbox + grantor alert
+        // through the tx-bound ports.
+        const res = await startSupportSession(supportDeps(tx), {
+          supportConsentGrantId: args.supportConsentGrantId,
+          actorMembershipId: args.actorMembershipId,
+          actorUserId: args.actorUserId,
+          actorIp: args.actorIp,
+        });
+        return {
+          view: { sessionId: res.sessionId, expiresAt: isoReq(res.expiresAt) },
+          alert: res.pendingAlert,
+        };
+      });
+      await deps.supportSessionPorts.emitAlert(result.alert);
+      return result.view;
+    },
+
     async elevateSession(args: ElevateSupportSessionArgs) {
-      return inPlatformCtx("platform-ops elevate support session", async (tx) => {
+      const result = await inPlatformCtx("platform-ops elevate support session", async (tx) => {
         const res = await elevateSupportSession(supportDeps(tx), {
-          organizationId: args.organizationId,
           supportSessionId: args.supportSessionId,
           actorMembershipId: args.actorMembershipId,
           actorIp: args.actorIp,
         });
-        return { elevationExpiresAt: isoReq(res.elevationExpiresAt) };
+        return {
+          view: { elevationExpiresAt: isoReq(res.elevationExpiresAt) },
+          alert: res.pendingAlert,
+        };
       });
+      await deps.supportSessionPorts.emitAlert(result.alert);
+      return result.view;
     },
 
     async closeSession(args: CloseSupportSessionArgs) {
-      return inPlatformCtx("platform-ops close support session", async (tx) => {
-        const repo = new SupportRepository(tx);
-        const session = await repo.findSessionById(args.supportSessionId);
-        if (!session) throw new NotFoundError("support session");
-        const now = deps.supportSessionPorts.now();
-        await repo.closeSession(session.id, { closedAt: now, closeReason: "manual" });
-        await repo.appendSessionEvent({
-          organizationId: args.organizationId,
-          supportSessionId: session.id,
-          eventKind: "session.close",
-          occurredAt: now,
+      const result = await inPlatformCtx("platform-ops close support session", async (tx) => {
+        // The real manual close: stamp, `session.close` ledger row, critical audit, outbox and the grantor alert.
+        const res = await closeSupportSession(supportDeps(tx), {
+          supportSessionId: args.supportSessionId,
+          actorMembershipId: args.actorMembershipId,
           actorIp: args.actorIp,
         });
-        return { sessionId: session.id, closeReason: "manual" };
+        return {
+          view: { sessionId: res.sessionId, closeReason: res.closeReason },
+          alert: res.pendingAlert,
+        };
       });
+      if (result.alert) await deps.supportSessionPorts.emitAlert(result.alert);
+      return result.view;
     },
 
     // ── signup intents (§4.1; F02 / ADR-0010 — org-less, withPlatformContext) ──
@@ -1345,6 +1386,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       const view = await inPlatformCtx("platform-ops create BAA record", async (tx) => {
         await actingAs(tx, actorUserId);
         const repo = new BaaRegisterRepository(tx);
+        // Resolve the tenant first, then serialize this readiness-changing write with go-live approval.
+        const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
+        if (!account) throw new NotFoundError("tenant account");
+        await lockTenantOnboardingShared(tx, account.organizationId);
         const existing = await repo.listByTenantAccountId(args.tenantAccountId);
         if (existing.some((b) => b.addendumVersion === args.addendumVersion)) {
           throw new ChartWardenError(
@@ -1353,9 +1398,6 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             409,
           );
         }
-        // organizationId is resolved from the tenant_account spine.
-        const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
-        if (!account) throw new NotFoundError("tenant account");
         await assertBaaDocumentFiled(boundTo(tx), {
           organizationId: account.organizationId,
           documentId: args.documentId,
@@ -1391,6 +1433,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.findById(baaId);
         if (!existing) throw new NotFoundError("platform-tenant BAA record");
+        await lockTenantOnboardingShared(tx, existing.organizationId);
         // Judged only when the link changes or the record becomes executed (see baaLinkNeedsJudging), on the row as it will be.
         if (baaLinkNeedsJudging(existing, args)) {
           const documentId = args.documentId ?? existing.documentId;

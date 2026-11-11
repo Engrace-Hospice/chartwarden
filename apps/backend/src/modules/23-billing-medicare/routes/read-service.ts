@@ -555,6 +555,7 @@ export interface MacCredentialView {
   readonly hasSecret: boolean;
   readonly baaRecordRef: string | null;
   readonly credentialExpiresAt: string | null;
+  /** When the MAC portal for the jurisdiction last answered the portal check. NOT a credential-validity time (nothing of the credential is sent). */
   readonly lastSandboxTestAt: string | null;
   readonly version: number;
   readonly createdAt: string;

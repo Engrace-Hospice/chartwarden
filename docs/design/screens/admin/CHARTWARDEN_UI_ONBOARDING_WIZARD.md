@@ -184,6 +184,58 @@ revoke; an expired attestation can only be revoked), live (approved by, why), cl
 
 ---
 
+## Tenant surface (`apps/web`, `/admin/onboarding[/:stepKey]`)
+
+The tenant sees the same rail and step frame in its own words: the owner reads "ChartWarden", "Your administrator", "Your
+compliance officer" or "Your administrator or ChartWarden", and an operator is never named ("ChartWarden operations").
+The page head says "Onboarding" and "n of m steps done" and holds one reserved slot for Get help (slice 7D). A step is a
+deep link; the bare route resumes at the first step that is not settled; a change of step moves focus to the step heading.
+
+`GET /api/v1/tenant/onboarding` writes an audit row per call, so the wizard reads it once, again after each write, and again
+on window focus no more often than every 30 seconds. It is never polled. A failed quiet reload keeps what is on screen and
+says it may be out of date. A locked step reads but offers nothing. Once the organization is live the wizard is read-only,
+and a tab opened before approval says "Reload to open all of ChartWarden".
+
+While the organization is onboarding the server refuses every route outside onboarding, go-live, account and sign-in
+(403 `ORGANIZATION_ONBOARDING`), so the shell sends the landing page to the wizard and says "Available after go-live" on
+the other screens; only the wizard, Account, Agency setup and the passkey screen (the step-up ceremony sends a person with no enrolled factor there) work, and the shell's alert inbox and feature-flag reads are not made while confined. A 403 `ORGANIZATION_ONBOARDING` from a session whose stage is unknown sends the
+person to the wizard (never from a screen that works while onboarding). The stage comes from the session (`organizationStage`); when it is
+absent the shell stays normal and the server stays the authority.
+
+| # | Step | The tenant sees | The tenant can |
+|---|------|-----------------|----------------|
+| 1 | Organisation | display name and time zone, with the facts that settle the step | edit them (administrator, `onboarding.manage_own`); ChartWarden confirms the step |
+| 2 | Plan and contract | the plan, terms, census bands and latest statement, read only | nothing; "To change your plan or contract, ask ChartWarden" |
+| 3 | BAA | the recorded agreement and its facts (executed, attested, more than 90 days left) | the compliance officer attests it (fresh step-up) |
+| 4 | Provisioning | what ChartWarden is doing | nothing; ChartWarden settles it |
+| 5 | Provider entity and NPI | the entities (CCN, NPI, status) | the administrator adds one (`org.manage`); CCN, NPI, EIN and fiscal year end cannot be changed, so "ask ChartWarden" |
+| 6 | Locations | the service locations | the administrator adds one (`org.manage`) |
+| 7 | Billing: clearinghouse | the clearinghouse choice and its state | the administrator chooses and verifies it (slice 7C-b) |
+| 8 | MAC credentials | the credential state | enter and test it (slice 7C-b), or **skip** |
+| 9 | Payer enrollment | the step and its evidence | mark done with evidence, or **skip** |
+| 10 | DoseSpot kickoff | the step and its evidence | mark done with evidence (slice 7C-b), or **skip** |
+| 11 | First admin | the invitation state | nothing; ChartWarden settles it |
+| 12 | Compliance officer | the current officer, and the staff who already hold the compliance officer role | the administrator picks one of them (fresh step-up). ChartWarden alone assigns the role (separation of duties), so when no one holds it the panel says "ChartWarden assigns the compliance officer role. Ask ChartWarden to give it to the person you want, then choose them here."; a colleague can be invited |
+| 13 | Sample data (optional) | the step | nothing; never skippable by the tenant |
+| 14 | Go live | not ready (each open step a link), awaiting the officer, awaiting ChartWarden's approval (days left), live | the assigned compliance officer attests readiness with an optional note (fresh step-up) |
+
+Every step also offers, where the person's role allows it: Start, Mark done with evidence (what was checked and by whom,
+an optional reference; refused if it looks like a patient identifier) and Re-open with a reason (refused while a go-live
+attestation is pending). A step ChartWarden or the system settled shows how: "Skipped by your organization", "Skipped by
+ChartWarden operations", or "Skipped automatically because your organization bills outside ChartWarden".
+
+### Skip (steps 8, 9 and 10 only)
+
+"This does not apply to us". Offered only to the organization's administrator (the `org_admin` role and
+`onboarding.manage_own`) and only where the step view says `tenantSkippable`, which the server derives for exactly these
+three steps. It is never offered on sample data (step 13), the go-live step or a step an operator added. The prompt asks
+for a written reason of 8 to 2000 characters (counted after whitespace is collapsed), screened by the server for patient
+identifiers, and the write needs a fresh step-up (a refused step-up offers Re-verify and keeps the typed reason in this
+tab's memory only) and one Idempotency-Key per intent (kept across a retry that got no answer, renewed by any answer).
+The go-live approver sees who skipped and why; a skip is undone by Re-open with a reason.
+
+---
+
 ## Writes by the operator
 
 Every write needs a fresh step-up and is refused for an AI principal. A refused step-up offers Re-verify and carries
@@ -191,6 +243,68 @@ the typed form through it (never a credential or a write-only value). Each write
 1000 characters, counted after whitespace is collapsed) that is recorded in the audit trail the tenant can read. A
 data write carries one Idempotency-Key per attempt, renewed by any answer (the server caches a refusal under the key).
 A credential update is pinned to the version the operator read (If-Match); a stale pin reloads the record.
+
+---
+
+## Tenant surface: billing and e-prescribing panels (steps 7, 8 and 10)
+
+The tenant's own wizard (`apps/web`, `/admin/onboarding/:stepKey`) draws these panels inside the same step frame as every
+other step: the frame owns the heading, the owner, why a step is read-only, how it was settled, and Start / Mark done with
+evidence / Re-open / **Skip this step** (steps 8, 9 and 10 only; the organization administrator, with a rationale and
+a fresh step-up). A panel owns only what its step edits, and reads the step view, the held permission keys and the role keys the
+shell hands it. Nothing here is operator wording: "your organization", "ChartWarden".
+
+**Skip is the frame's button.** A panel renders no skip button of its own, so there is never a second entry point: it shows one
+short hint ("If this does not apply to your organization, use Skip this step below.") while the frame says the member may skip.
+A step the system skipped (an organization that bills outside ChartWarden) is routed to the system-skipped panel before any
+step panel, so none of these panels renders for it.
+
+| Step | Panel | Tenant calls | Keys | Voids a pending go-live attestation | Settles |
+|------|-------|--------------|------|-------------------------------------|---------|
+| 7 Billing: clearinghouse | choose, BAA, connection, activation | `GET` / `PUT /api/v1/tenant/clearinghouse`, `POST` `.../baa`, `.../verify`, `.../activate` | `billing.clearinghouse.read` / `.admin` | every write | the server, when the clearinghouse is active (or the choice is billing outside ChartWarden); the frame offers no Mark done |
+| 8 Billing: MAC credentials | list, add, replace, check the portal | `GET` / `POST /api/v1/billing/mac-credentials`, `POST` `.../{providerEntityId}/test`, `GET /api/v1/provider-entities` | `billing.mac_credential.read` / `.admin` | the save; not the portal check | the member marks it done with evidence, or skips it |
+| 10 e-Prescribing (DoseSpot) | what the kickoff is, an empty registration seam | none | none | writes nothing | the member marks it done with evidence, or skips it |
+
+Every form that writes says so BEFORE anything is saved: while go-live is waiting for approval the form shows "Your compliance
+officer has attested that you are ready to go live. Saving a change here voids that attestation, and they will need to attest
+again." The provider-entity list read has no permission check; the MAC writes and the portal check are scoped to a provider
+entity, so a member whose role does not cover one is told so plainly when the server refuses (the panel cannot know the scope).
+
+Step 7. The first choice carries no `If-Match`; a change carries the `version` the member read, and a 412 or 428 closes the
+form, reloads the record AND the wizard (another tab may have chosen outside, which skips steps 8 and 9) and says so. So does a
+refusal whose sentence says the settings were reloaded (the connection or BAA verification moved under the member: an operator
+voided the BAA, a colleague changed the choice). Billing outside takes no mode and no credential, and says "ChartWarden will
+not send claims; steps 8 and 9 are skipped." An organization that already bills outside is not offered the vendor form: leaving
+outside while a contract exists also sets the billing service mode, which only ChartWarden can do, so the panel says to ask
+ChartWarden. The vendor credential is write-only: never stashed, cleared the moment the vendor or the mode it was typed for
+changes (a Claim.MD key never reaches Stedi), and cleared on Cancel and on send. The choice, its mode and its pinned version are
+stashed through a Re-verify in the shell's owner-scoped, in-memory draft store (`org|user|action|step`), so sign-out, the idle
+lock and an expired session wipe them. The BAA is recorded by the organization (where it is kept and its effective date), then
+the panel says it is **waiting for ChartWarden to verify** it, and the activation button appears only once the connection and
+the BAA are both verified. Claim.MD runs a no-patient connection test; Stedi has none, so the member attests what was checked
+and confirms the note names no patient. The cards hold still while one has an editor open or a write running, so a sibling write
+never bumps the version under an open form.
+
+Step 8. A provider entity holds one credential: Add offers the entities that have none, Replace the one that has, and a
+replacement keeps its provider entity and its jurisdiction (the server refuses a changed jurisdiction: a different one is a new
+credential). The client secret is write-only, entered again on every save, never stashed, and gone from the page before the
+reloads that follow a save. A replacement is pinned to the version the member read (`If-Match`; a stale pin is a 409
+`STALE_VERSION` that reloads the list and the wizard). **Check the MAC portal** probes the portal for the credential's
+jurisdiction and says whether it ANSWERED; it does not read or validate the client secret, so the panel never says a credential
+"passed" anything. Its result names the provider entity, is shown on the status line, and is cleared when the credential is edited
+or saved. Until the provider entities load a row reads "A provider entity", never a raw id; only the first 100 of each list are
+read, and the panel says so when there are more.
+
+Step 10. In this tree step 10 is an ordinary step: the panel is DoseSpot copy plus one named seam, `DoseSpotRegistrationSlot` (its
+own file), that renders nothing. It calls no API and checks no DoseSpot permission key, and it never assumes how the step settles,
+so the DoseSpot branch (clinic registration, prescriber enrolment, a fact that settles the step by itself) fills the seam later
+without rework here.
+
+Every write on these panels needs a fresh step-up (Re-verify keeps what was typed, never a credential), is refused for an AI
+principal, and carries one Idempotency-Key per intent, kept across a request that got no answer and renewed by any answer. A
+write's result lands on a status line that outlives the card that raised it (a verified connection removes its own card), and
+focus moves to that line when the control that had it is gone. The onboarding view is audited per read, so a panel reloads it once
+per finished write, never on a timer.
 
 ---
 

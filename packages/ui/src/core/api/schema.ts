@@ -7309,7 +7309,7 @@ export interface paths {
         /** List per-ProviderEntity MAC credentials - secrets masked, cursor-paginated (§4.1 #34) */
         get: operations["getApiV1BillingMaccredentials"];
         put?: never;
-        /** Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35) */
+        /** Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35) */
         post: operations["postApiV1BillingMaccredentials"];
         delete?: never;
         options?: never;
@@ -7343,7 +7343,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36) */
+        /** Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36) */
         post: operations["postApiV1BillingMaccredentialsByProviderEntityIdTest"];
         delete?: never;
         options?: never;
@@ -21630,6 +21630,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/help-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list and defaults to open,approved (the live requests; ask for resolved or cancelled by name; the nav badge asks open,approved with limit 1). A page is at most 50 rows */
+        get: operations["getApiV1PlatformHelprequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/help-requests/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): revokes its consent grant and closes the request's open support sessions with it (close reason grant_revoked), and resolves the request (an open request, which has no grant, is resolved with the note alone). It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant */
+        post: operations["postApiV1PlatformHelprequestsByIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/onboarding-templates": {
         parameters: {
             query?: never;
@@ -21750,6 +21784,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/support-consent-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenants' support consent grants (platform ops; audited list read): scope, window and state, filterable by tenant account and by `active` (unrevoked and unexpired), so an operator can pick the grant to start a session against. Never the grantor or the patients in scope */
+        get: operations["getApiV1PlatformSupportconsentgrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/support-sessions": {
         parameters: {
             query?: never;
@@ -21760,7 +21811,7 @@ export interface paths {
         /** Active + recent support sessions across tenants (cursor-paginated) */
         get: operations["getApiV1PlatformSupportsessions"];
         put?: never;
-        /** Start a session against a consent grant (distinct-actor + passkey-5min step-up) */
+        /** Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired */
         post: operations["postApiV1PlatformSupportsessions"];
         delete?: never;
         options?: never;
@@ -21777,7 +21828,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Close a session with reason='manual' (no step-up) */
+        /** Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more */
         post: operations["postApiV1PlatformSupportsessionsByIdClose"];
         delete?: never;
         options?: never;
@@ -21794,7 +21845,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403) */
+        /** Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write */
         post: operations["postApiV1PlatformSupportsessionsByIdElevate"];
         delete?: never;
         options?: never;
@@ -28492,6 +28543,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/help-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's help requests during onboarding: `current` is the one live request (open or approved) with its phase, the consent window and a summary of the ChartWarden support session (when it ran and what it did, never an operator's name; `closedBy` is a label such as ChartWarden operations), and `items` pages the ended ones. Any active member of the organization on a staff session; not audited, and meant to be polled every 60 seconds and on focus */
+        get: operations["getApiV1TenantHelprequests"];
+        put?: never;
+        /** Ask ChartWarden for help during onboarding (any active member on a staff session; an AI actor, ChartWarden staff, an auditor and a family session are refused). The message is judged after trimming and screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). One live request per organization: 409 HELP_REQUEST_ALREADY_OPEN, whose details carry the live request's id as {field: "helpRequestId", message: <id>}. 3 requests an hour per member and 10 per organization (429; 503 when the limiter's store is unavailable). The request is a signal and authorizes nothing */
+        post: operations["postApiV1TenantHelprequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/help-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Consent to the help: the org_admin or the compliance officer, under a fresh step-up (the grant-issue operation), creates the non-PHI `assist` consent grant for 1 to 24 hours (8 when omitted) so a ChartWarden operator may open a support session; open -> approved. 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED for any other role; refused (409) for a request that is not open. An AI actor is refused */
+        post: operations["postApiV1TenantHelprequestsByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/help-requests/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End help from the organization's side (no step-up, so ending is frictionless): the member who filed the request, an org_admin or the compliance officer. An open request is cancelled; an approved one is resolved, its consent grant revoked and every open support session on it closed (close reason grant_revoked). An AI actor is refused */
+        post: operations["postApiV1TenantHelprequestsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/onboarding": {
         parameters: {
             query?: never;
@@ -28577,6 +28680,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/onboarding/{taskId}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The organization's own "this does not apply to us" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Recorded as the tenant's (the step's `skippedBy` says tenant, with the rationale, which the go-live approver sees) and, like any onboarding-data change, voids a pending go-live attestation. Reversible by re-opening */
+        post: operations["postApiV1TenantOnboardingByTaskIdSkip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/onboarding/{taskId}/start": {
         parameters: {
             query?: never;
@@ -28621,7 +28741,7 @@ export interface paths {
         /** Tenant's support-access consent grants (cursor-paginated) */
         get: operations["getApiV1TenantSupportconsentgrants"];
         put?: never;
-        /** Issue a support-access consent grant (≤72h; compliance-officer; step-up) */
+        /** Issue a support-access consent grant (≤72h; step-up). Scopes: organization_scoped and patient_scoped (PHI-bearing) and assist (non-PHI, for help during onboarding: a session on it can never be elevated). 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED when the grantor may not issue the scope: assist needs the org_admin or compliance_officer role */
         post: operations["postApiV1TenantSupportconsentgrants"];
         delete?: never;
         options?: never;
@@ -28638,8 +28758,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a grant (cascades to any open support_session) */
+        /** Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more */
         post: operations["postApiV1TenantSupportconsentgrantsByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/support-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ChartWarden support sessions on the organization, newest first: when each started, when it expires or ended and why, and how many actions it took (never an operator's id, name or address). Requires the support-consent-grant list key; a list read, audited */
+        get: operations["getApiV1TenantSupportsessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/support-sessions/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A support session's ledger on the organization, newest first: its start, close and every write the operator made under it, as the route template, method and status (never a body, an id from it, or the operator's address). Requires the support-consent-grant list key; a list read, audited */
+        get: operations["getApiV1TenantSupportsessionsByIdEvents"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -44037,6 +44191,7 @@ export interface operations {
                         orgWidePatientScope: boolean;
                         isAdmin: boolean;
                         permissions: string[];
+                        organizationStage: "onboarding" | "live";
                     };
                 };
             };
@@ -52683,6 +52838,7 @@ export interface operations {
                             hasSecret: boolean;
                             baaRecordRef: string | null;
                             credentialExpiresAt: string | null;
+                            /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                             lastSandboxTestAt: string | null;
                             version: number;
                             createdAt: string;
@@ -52700,7 +52856,12 @@ export interface operations {
     postApiV1BillingMaccredentials: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save. */
+                "If-Match"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -52710,10 +52871,14 @@ export interface operations {
                     /** Format: uuid */
                     providerEntityId: string;
                     macJurisdiction: "ngs_j6" | "ngs_jk" | "cgs_j15" | "palmetto_jj" | "palmetto_jm" | "noridian_jf" | "noridian_je";
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     submitterId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     tradingPartnerId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     clientId: string;
                     clientSecret: string;
+                    /** @description Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error. */
                     baaRecordRef?: string;
                     /** Format: date-time */
                     credentialExpiresAt?: string;
@@ -52726,7 +52891,50 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -52760,6 +52968,7 @@ export interface operations {
                         hasSecret: boolean;
                         baaRecordRef: string | null;
                         credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         lastSandboxTestAt: string | null;
                         version: number;
                         createdAt: string;
@@ -52774,7 +52983,10 @@ export interface operations {
     postApiV1BillingMaccredentialsByProviderEntityIdTest: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path: {
                 providerEntityId: string;
             };
@@ -52791,11 +53003,17 @@ export interface operations {
                     "application/json": {
                         providerEntityId: string;
                         macJurisdiction: string;
+                        /** @description True when the MAC portal for the credential's jurisdiction answered. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         ok: boolean;
-                        /** @constant */
+                        /**
+                         * @description Always portal_health_probe: the check calls the jurisdiction's MAC portal health endpoint. It does not submit a test claim and does not use the stored credential.
+                         * @constant
+                         */
                         method: "portal_health_probe";
+                        /** @description What the check saw (the portal answered or did not). It is never about the credential itself. */
                         detail: string;
                         checkedAt: string;
+                        /** @description The time the credential now records for this check: set when the portal answered, null when it did not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         lastSandboxTestAt: string | null;
                     };
                 };
@@ -95999,6 +96217,138 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformHelprequests: {
+        parameters: {
+            query?: {
+                status?: string;
+                tenantAccountId?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tenantAccountId: string;
+                            orgSlug: string;
+                            legalBusinessName: string;
+                            stepKey: string | null;
+                            message: string;
+                            status: "open" | "approved" | "resolved" | "cancelled";
+                            phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            requestedByMembershipId: string;
+                            approvedAt: string | null;
+                            supportConsentGrantId: string | null;
+                            grant: {
+                                /** Format: date-time */
+                                expiresAt: string;
+                                status: "active" | "expired" | "revoked";
+                            } | null;
+                            session: {
+                                sessionId: string;
+                                state: "open" | "expired" | "closed";
+                                /** Format: date-time */
+                                startedAt: string;
+                                /** Format: date-time */
+                                expiresAt: string;
+                                closedAt: string | null;
+                                closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                                actionCount: number;
+                                lastActionAt: string | null;
+                            } | null;
+                            closedAt: string | null;
+                            closedByActorKind: ("tenant" | "platform_ops" | "system") | null;
+                            closeNote: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformHelprequestsByIdResolve: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        legalBusinessName: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        requestedByMembershipId: string;
+                        approvedAt: string | null;
+                        supportConsentGrantId: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            sessionId: string;
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedByActorKind: ("tenant" | "platform_ops" | "system") | null;
+                        closeNote: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformOnboardingtemplates: {
         parameters: {
             query?: {
@@ -96351,6 +96701,47 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformSupportconsentgrants: {
+        parameters: {
+            query?: {
+                tenantAccountId?: string;
+                active?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tenantAccountId: string;
+                            scope: "organization_scoped" | "patient_scoped" | "assist";
+                            /** Format: date-time */
+                            issuedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            revokedAt: string | null;
+                            active: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformSupportsessions: {
         parameters: {
             query?: {
@@ -96398,7 +96789,10 @@ export interface operations {
     postApiV1PlatformSupportsessions: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -96412,7 +96806,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -96431,7 +96825,10 @@ export interface operations {
     postApiV1PlatformSupportsessionsByIdClose: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -96464,7 +96861,10 @@ export interface operations {
     postApiV1PlatformSupportsessionsByIdElevate: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -96477,7 +96877,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -97605,8 +98005,14 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -97700,8 +98106,14 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -97969,6 +98381,7 @@ export interface operations {
                             hasSecret: boolean;
                             baaRecordRef: string | null;
                             credentialExpiresAt: string | null;
+                            /** @description When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                             lastSandboxTestAt: string | null;
                             version: number;
                             /** Format: date-time */
@@ -98004,11 +98417,15 @@ export interface operations {
                     providerEntityId: string;
                     /** @description The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422. */
                     macJurisdiction: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     submitterId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     tradingPartnerId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     clientId: string;
                     /** @description Write-only: sealed under the tenant's own key and never returned. */
                     clientSecret: string;
+                    /** @description Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error. */
                     baaRecordRef?: string;
                     /** Format: date-time */
                     credentialExpiresAt?: string;
@@ -98036,6 +98453,7 @@ export interface operations {
                         hasSecret: boolean;
                         baaRecordRef: string | null;
                         credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
                         lastSandboxTestAt: string | null;
                         version: number;
                         /** Format: date-time */
@@ -98308,8 +98726,14 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -98373,8 +98797,14 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -98444,8 +98874,14 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -98512,8 +98948,14 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -98580,8 +99022,14 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -116810,8 +117258,14 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -116839,6 +117293,269 @@ export interface operations {
                             failedGuards: string[];
                             complianceOfficerMembershipId: string | null;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantHelprequests: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        current: {
+                            id: string;
+                            stepKey: string | null;
+                            message: string;
+                            status: "open" | "approved" | "resolved" | "cancelled";
+                            phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            approvedAt: string | null;
+                            grant: {
+                                /** Format: date-time */
+                                expiresAt: string;
+                                status: "active" | "expired" | "revoked";
+                            } | null;
+                            session: {
+                                state: "open" | "expired" | "closed";
+                                /** Format: date-time */
+                                startedAt: string;
+                                /** Format: date-time */
+                                expiresAt: string;
+                                closedAt: string | null;
+                                closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                                actionCount: number;
+                                lastActionAt: string | null;
+                            } | null;
+                            closedAt: string | null;
+                            closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                            closeNote: string | null;
+                        } | null;
+                        items: {
+                            id: string;
+                            stepKey: string | null;
+                            message: string;
+                            status: "open" | "approved" | "resolved" | "cancelled";
+                            phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            approvedAt: string | null;
+                            grant: {
+                                /** Format: date-time */
+                                expiresAt: string;
+                                status: "active" | "expired" | "revoked";
+                            } | null;
+                            session: {
+                                state: "open" | "expired" | "closed";
+                                /** Format: date-time */
+                                startedAt: string;
+                                /** Format: date-time */
+                                expiresAt: string;
+                                closedAt: string | null;
+                                closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                                actionCount: number;
+                                lastActionAt: string | null;
+                            } | null;
+                            closedAt: string | null;
+                            closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                            closeNote: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantHelprequests: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    stepKey?: string;
+                    message: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedAt: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                        closeNote: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantHelprequestsByIdApprove: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Whole hours the consent lasts (1 to 24); 8 when omitted. */
+                    hours?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedAt: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                        closeNote: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantHelprequestsByIdClose: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedAt: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                        closeNote: string | null;
                     };
                 };
             };
@@ -116900,8 +117617,14 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -116964,8 +117687,14 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                            skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                            /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                            skippedByLabel: string | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -117035,8 +117764,14 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -117102,8 +117837,14 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -117173,8 +117914,14 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -117240,8 +117987,90 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantOnboardingByTaskIdSkip: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    skipRationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -117305,8 +118134,14 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients. */
+                        skippedBy: ("tenant" | "platform_ops" | "system") | null;
+                        /** @description The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped. */
+                        skippedByLabel: string | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -117372,7 +118207,7 @@ export interface operations {
                         items: {
                             id: string;
                             tenantAccountId: string;
-                            scope: "organization_scoped" | "patient_scoped";
+                            scope: "organization_scoped" | "patient_scoped" | "assist";
                             grantReason: string;
                             /** Format: date-time */
                             issuedAt: string;
@@ -117402,7 +118237,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    scope: "organization_scoped" | "patient_scoped";
+                    scope: "organization_scoped" | "patient_scoped" | "assist";
                     patientIdsInScope?: string[];
                     grantReason: string;
                     expiresAtIsoOffsetHours: number;
@@ -117419,7 +118254,7 @@ export interface operations {
                     "application/json": {
                         id: string;
                         tenantAccountId: string;
-                        scope: "organization_scoped" | "patient_scoped";
+                        scope: "organization_scoped" | "patient_scoped" | "assist";
                         grantReason: string;
                         /** Format: date-time */
                         issuedAt: string;
@@ -117462,7 +118297,7 @@ export interface operations {
                     "application/json": {
                         id: string;
                         tenantAccountId: string;
-                        scope: "organization_scoped" | "patient_scoped";
+                        scope: "organization_scoped" | "patient_scoped" | "assist";
                         grantReason: string;
                         /** Format: date-time */
                         issuedAt: string;
@@ -117472,6 +118307,89 @@ export interface operations {
                         active: boolean;
                         /** Format: date-time */
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantSupportsessions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            supportConsentGrantId: string;
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantSupportsessionsByIdEvents: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            supportSessionId: string;
+                            eventKind: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            detail: {
+                                route: string;
+                                method: string;
+                                status: number;
+                            } | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
                     };
                 };
             };

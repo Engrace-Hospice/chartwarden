@@ -4,7 +4,7 @@
 import type { PlatformActor, TenantActor } from "./model";
 import type { OrgProfile, OrgProfilePort } from "./org-profile";
 import type { WizardRunner } from "./wizard-store";
-import type { WizardStepView, WizardView } from "./wizard-view";
+import type { TenantViewer, WizardStepView, WizardView } from "./wizard-view";
 
 /**
  * Binds the `compliance_officer` role to one ACTIVE member of a tenant. The production binder commits the grant on the TENANT
@@ -116,7 +116,11 @@ export interface OnboardingWizard {
    */
   syncClearinghouseSteps(organizationId: string): Promise<void>;
   // ── tenant surface (the actor's own org) ───────────────────────────────────────────────────────────────────
-  getTenant(organizationId: string): Promise<WizardViewWithProfile>;
+  /**
+   * The wizard as the tenant sees it. `viewer` is the caller's own roles: `tenantSkippable` is true only for an org_admin, and a
+   * caller that names no viewer gets false everywhere (fail closed).
+   */
+  getTenant(organizationId: string, viewer?: TenantViewer): Promise<WizardViewWithProfile>;
   startTask(actor: TenantActor, organizationId: string, taskId: string): Promise<WizardStepView>;
   blockTask(
     actor: TenantActor,
@@ -135,6 +139,18 @@ export interface OnboardingWizard {
     organizationId: string,
     taskId: string,
     reason: string | undefined,
+  ): Promise<WizardStepView>;
+  /**
+   * The tenant's own skip of a step that does not apply to it: only the canonical steps `TENANT_SKIPPABLE_STEP_KEYS` names (MAC
+   * credentials, payer enrollment, DoseSpot kickoff), refused 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE otherwise; the rationale is
+   * PHI-screened (422 EVIDENCE_LOOKS_LIKE_PHI). The sequence, owner and already-settled rules are the operator skip's; the skip is
+   * recorded with the actor kind `tenant` and voids a pending go-live attestation, in the one tenant transaction.
+   */
+  tenantSkip(
+    actor: TenantActor,
+    organizationId: string,
+    taskId: string,
+    rationale: string,
   ): Promise<WizardStepView>;
   setOrgProfile(
     actor: TenantActor,

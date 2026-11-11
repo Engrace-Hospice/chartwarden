@@ -20,6 +20,7 @@ import type {
   FeatureFlagView as ServiceFeatureFlagView,
   KeyRingMetadataView as ServiceKeyRingMetadataView,
   OnboardingTemplateView as ServiceOnboardingTemplateView,
+  PlatformSupportConsentGrantView as ServicePlatformSupportConsentGrantView,
   SignupIntentView as ServiceSignupIntentView,
   SupportSessionEventView as ServiceSupportSessionEventView,
   SupportSessionView as ServiceSupportSessionView,
@@ -51,6 +52,8 @@ const EXPORT_PURPOSE = ["baa_termination", "migration"] as const;
 // §3.6/§3.8/§3.9 + M1 feature_flag vocab mirrors (the canonical enums live in @chartwarden/db; M34 never
 // imports the M1 flag schema — these literal unions are local mirrors so no flag-schema edge is created).
 const SUPPORT_SESSION_STATUS = ["open", "expired", "closed"] as const;
+// `assist` is the non-PHI scope a help request's approval creates (slice 7; the DB enum gains it in migration 1481, piece 7S).
+const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped", "assist"] as const;
 const SIGNUP_INTENT_STATUS = ["new", "qualified", "provisioned", "abandoned", "rejected"] as const;
 const SIGNUP_INTENT_SOURCE = [
   "self_serve_form",
@@ -261,6 +264,17 @@ export const SupportSessionListQuerySchema = Type.Object({
 });
 export const SessionEventListQuerySchema = Type.Object(PageQuery);
 
+// Slice 7 — GET /platform/support-consent-grants (an operator picks the grant to start a session against; filter tenant + active).
+export const PlatformSupportConsentGrantListQuerySchema = Type.Object({
+  tenantAccountId: Type.Optional(Type.String({ format: "uuid" })),
+  active: Type.Optional(
+    Type.Boolean({
+      description: "true: only grants that are unrevoked and unexpired; false: only the others.",
+    }),
+  ),
+  ...PageQuery,
+});
+
 // §4.1 — GET /platform/signup-intents (the triage queue; filter status + source).
 export const SignupIntentListQuerySchema = Type.Object({
   status: Type.Optional(lit(SIGNUP_INTENT_STATUS)),
@@ -367,6 +381,20 @@ const SupportSessionViewSchema = Type.Object({
   status: lit(SUPPORT_SESSION_STATUS),
 });
 export const SupportSessionListResponseSchema = CursorPageOf(SupportSessionViewSchema);
+
+/** A tenant's consent grant as an operator sees it: scope, window and state; never the grantor or the patients in scope. */
+export const PlatformSupportConsentGrantViewSchema = Type.Object({
+  id: Type.String(),
+  tenantAccountId: Type.String(),
+  scope: lit(SUPPORT_GRANT_SCOPE),
+  issuedAt: Type.String({ format: "date-time" }),
+  expiresAt: Type.String({ format: "date-time" }),
+  revokedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  active: Type.Boolean(),
+});
+export const PlatformSupportConsentGrantListResponseSchema = CursorPageOf(
+  PlatformSupportConsentGrantViewSchema,
+);
 
 const SupportSessionEventViewSchema = Type.Object({
   id: Type.String(),
@@ -603,6 +631,10 @@ type _Template = Conforms<
   ServiceOnboardingTemplateView
 >;
 type _Session = Conforms<Static<typeof SupportSessionViewSchema>, ServiceSupportSessionView>;
+type _PlatformGrant = Conforms<
+  Static<typeof PlatformSupportConsentGrantViewSchema>,
+  ServicePlatformSupportConsentGrantView
+>;
 type _SessionEvent = Conforms<
   Static<typeof SupportSessionEventViewSchema>,
   ServiceSupportSessionEventView
