@@ -47,6 +47,18 @@ export type FuneralRefusalReason =
   /** The actor is not on the decedent's caseload (the route's ABAC refused before any send). */
   | "caseload_denied";
 
+/** Adapter failure classification: only a confirmed revocation makes the notification safely retryable. */
+export class FuneralLinkIssueError extends Error {
+  constructor(
+    message: string,
+    readonly revocationConfirmed: boolean,
+    readonly reason: "no_baa" | "other" = "other",
+  ) {
+    super(message);
+    this.name = "FuneralLinkIssueError";
+  }
+}
+
 export interface FuneralLinkPort {
   /**
    * Mint and deliver the M2 funeral-home link (72 h, fixed PHI-free email), recording the same M2 audit event and `m2.funeral.invited` as
@@ -58,7 +70,10 @@ export interface FuneralLinkPort {
     actorUserId: string;
     recipientEmail: string;
     funeralHomeEntityId: string;
+    disclosureAttemptId: string;
     correlationId?: string | undefined;
+    /** Pin/renew the credential fence before delivery. False means reconciliation owns the row. */
+    pinLink(linkId: string): Promise<boolean>;
   }): Promise<{ linkId: string }>;
   /** Audit a refused or blocked disclosure (nothing left the perimeter). Ids only. */
   refused(a: {
@@ -70,15 +85,13 @@ export interface FuneralLinkPort {
     correlationId?: string | undefined;
   }): Promise<void>;
   /**
-   * Stale-`sending` reconcile: revoke every still-live funeral link minted for (org, patient, funeral home) at or after `since` (plus `linkId`
-   * when the row recorded it), so a delivered-but-unrecorded send leaves no live credential. Returns how many were revoked. Throws on failure.
+   * Stale-send reconcile: revoke only the link minted for this disclosure attempt (plus its pinned id), so a delivered-but-unrecorded send leaves
+   * no live credential without touching a separate direct invite. Returns how many were revoked. Throws on failure.
    */
   revokeOrphans(a: {
     orgId: string;
-    patientId: string;
-    funeralHomeEntityId: string;
+    disclosureAttemptId: string;
     linkId: string | null;
-    since: Date;
   }): Promise<number>;
 }
 
@@ -401,7 +414,8 @@ export function createDeathNotificationService(
         }),
       );
       // idempotent: never a second disclosure. A `sending` row is in flight (or delivered-but-unrecorded; the stall tick frees it).
-      if (row.state === "sending") return { notification: toDto(row, false), outcome: "in_flight" };
+      if (["sending", "reconciling"].includes(row.state))
+        return { notification: toDto(row, false), outcome: "in_flight" };
       if (row.state === "sent" || row.state === "acked") {
         if (row.recipientEmailHash && row.recipientEmailHash !== recipientHash) {
           // Already notified at ANOTHER address: say so instead of answering as if this address were notified; the attempt is audited.
@@ -441,34 +455,69 @@ export function createDeathNotificationService(
         const lost = current ?? row;
         return {
           notification: toDto(lost, false),
-          ...(lost.state === "sending" ? { outcome: "in_flight" as const } : {}),
+          ...(["sending", "reconciling"].includes(lost.state)
+            ? { outcome: "in_flight" as const }
+            : {}),
         };
       }
       let linkId: string;
+      const attemptId = claimed.sendAttemptId;
+      if (!attemptId) throw new Error("claimed death notification has no send attempt id");
       try {
-        ({ linkId } = await links.issue({ ...disclosure, recipientEmail: input.recipientEmail }));
-      } catch {
+        ({ linkId } = await links.issue({
+          ...disclosure,
+          disclosureAttemptId: attemptId,
+          recipientEmail: input.recipientEmail,
+          pinLink: (candidateLinkId) =>
+            asUser(actor, (tx) =>
+              store.recordLink(tx, {
+                orgId: actor.orgId,
+                id: row.id,
+                attemptId,
+                linkId: candidateLinkId,
+              }),
+            ).then((pinned) => pinned !== null),
+        }));
+      } catch (err) {
         // A failed settle must not mask the typed refusal: the row then stays `sending` and the stall tick reconciles it.
-        await asUser(actor, (tx) =>
-          store.settle(tx, { orgId: actor.orgId, id: row.id, to: "failed" }),
-        ).catch((settleErr: unknown) => {
-          deps.warn?.(
-            "death notification: a failed send could not be settled; the stall tick will reconcile it",
-            {
-              org_id: actor.orgId,
-              board_id: boardId,
-              notification_id: row.id,
-              error: settleErr instanceof Error ? settleErr.name : "unknown",
-            },
-          );
-        });
-        throw linkFailed();
+        if (err instanceof FuneralLinkIssueError && err.revocationConfirmed) {
+          const settled = await asUser(actor, async (tx) => {
+            const moved = await store.settle(tx, {
+              orgId: actor.orgId,
+              id: row.id,
+              attemptId,
+              to: err.reason === "no_baa" ? "blocked_no_baa" : "failed",
+            });
+            if (moved && err.reason === "no_baa")
+              await publish(tx, DEATH_NOTIFICATION_EVENTS.blocked, moved);
+            return moved;
+          }).catch((settleErr: unknown) => {
+            deps.warn?.(
+              "death notification: a failed send could not be settled; the stall tick will reconcile it",
+              {
+                org_id: actor.orgId,
+                board_id: boardId,
+                notification_id: row.id,
+                error: settleErr instanceof Error ? settleErr.name : "unknown",
+              },
+            );
+            return null;
+          });
+          if (err.reason === "no_baa" && settled) {
+            await emitBlockedNoBaaAlert(deps.alerts, actor.orgId, boardId).catch(() => 0);
+            return { notification: toDto(settled, false) };
+          }
+        }
+        throw err instanceof FuneralLinkIssueError && !err.revocationConfirmed
+          ? sendUnconfirmed()
+          : linkFailed();
       }
       try {
         const sent = await asUser(actor, async (tx) => {
           const moved = await store.settle(tx, {
             orgId: actor.orgId,
             id: row.id,
+            attemptId,
             to: "sent",
             linkId,
             recipientEmailHash: recipientHash,
@@ -482,7 +531,12 @@ export function createDeathNotificationService(
         // The link is minted and delivered. The row stays `sending` (never re-claimable), so a retry cannot mint a second link. Pin the link id
         // on the row (best effort) so the disclosure stays joinable; the stall tick later revokes the link and frees the row for a re-send.
         await asUser(actor, (tx) =>
-          store.recordLink(tx, { orgId: actor.orgId, id: row.id, linkId }),
+          store.recordLink(tx, {
+            orgId: actor.orgId,
+            id: row.id,
+            attemptId,
+            linkId,
+          }),
         ).catch(() => null);
         deps.warn?.(
           "death notification: a funeral-home link was delivered but its sent state was not recorded",
@@ -526,16 +580,29 @@ export function createDeathNotificationService(
       const failures: unknown[] = [];
       for (const row of stale) {
         try {
-          // Revoke FIRST: only a row whose live credential is gone may be freed for a re-send. A revoke failure leaves it `sending` for the next tick.
+          const claimed = await asSystem(orgId, (tx) =>
+            store.claimReconciliation(tx, {
+              orgId,
+              id: row.id,
+              olderThanMinutes: DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES,
+            }),
+          );
+          if (!claimed) continue;
+          const attemptId = claimed.sendAttemptId;
+          if (!attemptId) throw new Error("reconciling death notification has no send attempt id");
+          // Revoke FIRST: only a row whose live credential is gone may be freed for a re-send. A revoke failure leaves it fenced for the next tick.
           await links.revokeOrphans({
             orgId,
-            patientId: row.patientId,
-            funeralHomeEntityId: row.funeralHomeEntityId ?? row.recipientRef,
-            linkId: row.linkId,
-            since: row.createdAt,
+            disclosureAttemptId: attemptId,
+            linkId: claimed.linkId,
           });
           const failed = await asSystem(orgId, (tx) =>
-            store.settle(tx, { orgId, id: row.id, to: "failed" }),
+            store.settle(tx, {
+              orgId,
+              id: row.id,
+              attemptId,
+              to: "failed",
+            }),
           );
           if (!failed) continue; // settled meanwhile
           reconciled += 1;

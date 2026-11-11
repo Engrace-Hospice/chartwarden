@@ -112,12 +112,17 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
   const linkRevokes: string[] = [];
   let failNextDeliver = false;
   let providerEntityId = "";
-  /** A REAL collaborator_link row (the 1307 trigger requires a sent notice to name one for the same org / patient / funeral home). */
-  const insertLink = async (orgId: string, patientId: string, entity: string | null) => {
+  /** A REAL collaborator_link row (the 1456 trigger requires a sent notice to name one for the same org / patient / funeral home). */
+  const insertLink = async (
+    orgId: string,
+    patientId: string,
+    entity: string | null,
+    disclosureAttemptId?: string,
+  ) => {
     const id = randomUUID();
     await kit.admin.query(
-      `INSERT INTO collaborator_link (id, organization_id, provider_entity_id, patient_id, kind, invited_by_membership_id, token_hash, expires_at, session_ttl_sec, funeral_home_entity_id)
-       VALUES ($1,$2,$3,$4,'funeral_home',$5,$6,now() + interval '3 days',100,$7)`,
+      `INSERT INTO collaborator_link (id, organization_id, provider_entity_id, patient_id, kind, invited_by_membership_id, token_hash, expires_at, session_ttl_sec, funeral_home_entity_id, disclosure_attempt_id)
+       VALUES ($1,$2,$3,$4,'funeral_home',$5,$6,now() + interval '3 days',100,$7,$8)`,
       [
         id,
         orgId,
@@ -126,6 +131,7 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
         randomUUID(),
         createHash("sha256").update(id).digest("hex"),
         entity,
+        disclosureAttemptId ?? null,
       ],
     );
     return id;
@@ -288,7 +294,12 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
           collaborators: {
             create: async (i) => {
               linkCreates.push(i);
-              const linkId = await insertLink(i.organizationId, i.patientId, i.funeralHomeEntityId);
+              const linkId = await insertLink(
+                i.organizationId,
+                i.patientId,
+                i.funeralHomeEntityId,
+                i.disclosureAttemptId,
+              );
               return {
                 linkId,
                 token: "tok-secret",
@@ -313,6 +324,7 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
             },
           },
           isDeceased: async () => true,
+          isBaaActive: executedBaaGate(() => createDbBaaStore(kit.handle.db)),
           sessionTtlSec: 100,
           activeMembershipId: async () => randomUUID(),
           recorder: createFuneralDisclosureRecorder(kit.handle.db, {
@@ -826,11 +838,12 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
          VALUES ($1,$2,$3,'funeral_home',$4::text,$4::uuid,'pending')`,
         [ORG_A, boardId, patientId, entity],
       );
+      const attemptId = randomUUID();
       await kit.admin.query(
-        "UPDATE death_notification SET state='sending' WHERE board_id=$1 AND recipient_kind='funeral_home'",
-        [boardId],
+        "UPDATE death_notification SET state='sending', send_attempt_id=$2 WHERE board_id=$1 AND recipient_kind='funeral_home'",
+        [boardId, attemptId],
       );
-      const orphan = await insertLink(ORG_A, patientId, entity); // minted after the claim, never recorded on the row
+      const orphan = await insertLink(ORG_A, patientId, entity, attemptId); // minted after the claim, never recorded on the row
       const inFlight = await send(supervisor, boardId, entity);
       expect(inFlight.statusCode).toBe(200);
       expect(inFlight.json().outcome).toBe("in_flight");
@@ -1086,7 +1099,8 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
       await deliverOpened(opened);
       const internal = (await noticeRows(boardId))[0];
       const ref = randomUUID();
-      const goodLink = await insertLink(ORG_A, patientId, ref);
+      const attemptId = randomUUID();
+      const goodLink = await insertLink(ORG_A, patientId, ref, attemptId);
       await asUser(supervisor, async () => {
         await kit.appConn.query(insertHomeSql, [ORG_A, boardId, patientId, ref]);
         expect(
@@ -1099,9 +1113,10 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
           ),
         ).toBe("23514");
         expect(
-          await attempt("UPDATE death_notification SET state='sending' WHERE recipient_ref=$1", [
-            ref,
-          ]),
+          await attempt(
+            "UPDATE death_notification SET state='sending', send_attempt_id=$2 WHERE recipient_ref=$1",
+            [ref, attemptId],
+          ),
         ).toBe("ok");
         // claimed but no link / recipient hash recorded: still refused
         expect(
@@ -1133,14 +1148,15 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
       const otherPatientLink = await insertLink(ORG_A, randomUUID(), ref);
       const otherHomeLink = await insertLink(ORG_A, patientId, randomUUID());
       const unboundLink = await insertLink(ORG_A, patientId, null);
-      const good = await insertLink(ORG_A, patientId, ref);
+      const attemptId = randomUUID();
+      const good = await insertLink(ORG_A, patientId, ref, attemptId);
       const sentSql =
         "UPDATE death_notification SET state='sent', link_id=$2, recipient_email_hash=$3 WHERE recipient_ref=$1";
       await asUser(supervisor, async () => {
         await kit.appConn.query(insertHomeSql, [ORG_A, boardId, patientId, ref]);
         await kit.appConn.query(
-          "UPDATE death_notification SET state='sending' WHERE recipient_ref=$1",
-          [ref],
+          "UPDATE death_notification SET state='sending', send_attempt_id=$2 WHERE recipient_ref=$1",
+          [ref, attemptId],
         );
         for (const bad of [randomUUID(), otherPatientLink, otherHomeLink, unboundLink]) {
           expect(await attempt(sentSql, [ref, bad, "a".repeat(64)])).toBe("23514");

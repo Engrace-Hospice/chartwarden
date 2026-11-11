@@ -47,6 +47,7 @@ function makeServer(
     deceasedReader?: boolean;
     onCaseload?: boolean;
     baaReader?: "ok" | "unbound" | "throws";
+    baaLapsesAtDelivery?: boolean;
   } = {},
 ) {
   registerEffectivePermissionResolver(
@@ -67,6 +68,7 @@ function makeServer(
   const collaborators = createInMemoryCollaboratorLinkStore();
   const auditSink = createInMemoryAuditExecutor();
   const published: string[] = [];
+  let baaReads = 0;
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   const deps: IdentityRouteDeps = {
     actors: createContextActorResolver(),
@@ -86,6 +88,8 @@ function makeServer(
       : {
           funeralHomeBaaActive: async (_org: string, funeralHomeId: string) => {
             if (opts.baaReader === "throws") throw new Error("mdm down");
+            baaReads += 1;
+            if (opts.baaLapsesAtDelivery && baaReads > 1) return false;
             return funeralHomeId === FH;
           },
         }),
@@ -199,7 +203,7 @@ describe("POST /api/v1/funeral/invite", () => {
     await offCaseload.app.close();
   });
 
-  it("refuses 409 FUNERAL_HOME_BAA_REQUIRED without an executed BAA for that funeral home, and writes no link, audit or event", async () => {
+  it("refuses 409 FUNERAL_HOME_BAA_REQUIRED without an executed BAA, writes no link or event, and audits the refusal", async () => {
     const { app, collaborators, auditSink, published } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -210,7 +214,7 @@ describe("POST /api/v1/funeral/invite", () => {
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("FUNERAL_HOME_BAA_REQUIRED");
     expect(collaborators.tokenFor(DECEASED)).toBeUndefined();
-    expect(auditSink.rows).toHaveLength(0);
+    expect(auditSink.rows.some((r) => r.eventType === "m2.funeral.invite_refused")).toBe(true);
     expect(published).toEqual([]);
     await app.close();
   });
@@ -240,6 +244,27 @@ describe("POST /api/v1/funeral/invite", () => {
     expect(b.json().error.code).toBe("FUNERAL_HOME_BAA_REQUIRED");
     expect(throws.collaborators.tokenFor(DECEASED)).toBeUndefined();
     await throws.app.close();
+  });
+
+  it("rechecks the BAA immediately before delivery, revokes the link, and audits no_baa when it lapses", async () => {
+    const { app, collaborators, auditSink } = makeServer({ baaLapsesAtDelivery: true });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/funeral/invite",
+      headers: NURSE,
+      payload: { patientId: DECEASED, funeralHomeId: FH },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("FUNERAL_HOME_BAA_REQUIRED");
+    expect(collaborators.tokenFor(DECEASED)).toBeUndefined();
+    expect(
+      auditSink.rows.some(
+        (row) =>
+          row.eventType === "m2.funeral.invite_refused" &&
+          (row.context as { reason?: string } | undefined)?.reason === "no_baa",
+      ),
+    ).toBe(true);
+    await app.close();
   });
 
   it("a missing or malformed funeralHomeId is 422", async () => {

@@ -164,6 +164,7 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
         ? {
             linkDelivery: createLinkDelivery({
               transport: binding.linkEmailTransport,
+              maxDeliveryDurationMs: binding.linkDeliveryMaxDurationMs,
               baseUrl: "https://portal.chartwarden.test",
             }),
           }

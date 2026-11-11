@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/death-notification/death-notification-store.ts - the death_notification rows (migration 1305). Writes take
+// apps/backend/src/modules/36-messaging/death-notification/death-notification-store.ts - the death_notification rows (migration 1454). Writes take
 // the caller's `tx`; every statement names the organization on top of RLS. chartwarden_app has no DELETE. acked_at comes from the guard trigger.
 import { schema } from "@chartwarden/db";
 import type { DeathNotificationKind, DeathNotificationState } from "@chartwarden/types";
@@ -24,13 +24,14 @@ export interface DeathNotificationStore {
   ): Promise<{ created: boolean; row: DeathNotificationRow }>;
   /** Compare-and-set pending|failed|blocked_no_baa -> `sending`. Exactly one concurrent caller gets the row; every other gets null. */
   claim(tx: Tx, a: { orgId: string; id: string }): Promise<DeathNotificationRow | null>;
-  /** `sending` -> sent|failed, recording the minted link and the recipient hash on `sent`. Null when the row is not `sending`. */
+  /** Attempt-fenced `sending` -> sent|failed|blocked_no_baa (or `reconciling` -> failed). */
   settle(
     tx: Tx,
     a: {
       orgId: string;
       id: string;
-      to: "sent" | "failed";
+      attemptId: string;
+      to: "sent" | "failed" | "blocked_no_baa";
       linkId?: string | undefined;
       recipientEmailHash?: string | undefined;
     },
@@ -38,7 +39,7 @@ export interface DeathNotificationStore {
   /** While `sending`: pin the minted link id on the row so a delivered-but-unrecorded send stays joinable. Null when the row is not `sending`. */
   recordLink(
     tx: Tx,
-    a: { orgId: string; id: string; linkId: string },
+    a: { orgId: string; id: string; attemptId: string; linkId: string },
   ): Promise<DeathNotificationRow | null>;
   /** Funeral-home rows still `sending` after `olderThanMinutes` (the claim's updated_at), oldest first. */
   staleSending(
@@ -47,6 +48,11 @@ export interface DeathNotificationStore {
     olderThanMinutes: number,
     limit: number,
   ): Promise<DeathNotificationRow[]>;
+  /** Atomically fence a stale sender before revocation. `sending|reconciling` -> `reconciling`; null when fresh or settled. */
+  claimReconciliation(
+    tx: Tx,
+    a: { orgId: string; id: string; olderThanMinutes: number },
+  ): Promise<DeathNotificationRow | null>;
   get(tx: Tx, orgId: string, id: string): Promise<DeathNotificationRow | null>;
   listForBoard(tx: Tx, orgId: string, boardId: string): Promise<DeathNotificationRow[]>;
   /** pending|failed|blocked_no_baa -> `state`. Never touches an acked row. Returns the row, or null when nothing changed. */
@@ -135,7 +141,7 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
     async claim(tx, a) {
       const [row] = await tx
         .update(N)
-        .set({ state: "sending" })
+        .set({ state: "sending", sendAttemptId: sql`gen_random_uuid()` })
         .where(
           and(
             eq(N.organizationId, a.orgId),
@@ -148,6 +154,7 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
     },
 
     async settle(tx, a) {
+      const allowedFrom = a.to === "failed" ? ["sending", "reconciling"] : ["sending"];
       const [row] = await tx
         .update(N)
         .set({
@@ -156,7 +163,14 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
           ...(a.linkId ? { linkId: a.linkId } : {}),
           ...(a.recipientEmailHash ? { recipientEmailHash: a.recipientEmailHash } : {}),
         })
-        .where(and(eq(N.organizationId, a.orgId), eq(N.id, a.id), eq(N.state, "sending")))
+        .where(
+          and(
+            eq(N.organizationId, a.orgId),
+            eq(N.id, a.id),
+            eq(N.sendAttemptId, a.attemptId),
+            inArray(N.state, allowedFrom),
+          ),
+        )
         .returning();
       return row ?? null;
     },
@@ -165,7 +179,14 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
       const [row] = await tx
         .update(N)
         .set({ linkId: a.linkId })
-        .where(and(eq(N.organizationId, a.orgId), eq(N.id, a.id), eq(N.state, "sending")))
+        .where(
+          and(
+            eq(N.organizationId, a.orgId),
+            eq(N.id, a.id),
+            eq(N.sendAttemptId, a.attemptId),
+            eq(N.state, "sending"),
+          ),
+        )
         .returning();
       return row ?? null;
     },
@@ -177,13 +198,29 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
         .where(
           and(
             eq(N.organizationId, orgId),
-            eq(N.state, "sending"),
+            inArray(N.state, ["sending", "reconciling"]),
             eq(N.recipientKind, "funeral_home"),
             lt(N.updatedAt, sql`now() - make_interval(mins => ${olderThanMinutes})`),
           ),
         )
         .orderBy(asc(N.updatedAt), asc(N.id))
         .limit(limit);
+    },
+
+    async claimReconciliation(tx, a) {
+      const [row] = await tx
+        .update(N)
+        .set({ state: "reconciling" })
+        .where(
+          and(
+            eq(N.organizationId, a.orgId),
+            eq(N.id, a.id),
+            inArray(N.state, ["sending", "reconciling"]),
+            lt(N.updatedAt, sql`now() - make_interval(mins => ${a.olderThanMinutes})`),
+          ),
+        )
+        .returning();
+      return row ?? null;
     },
 
     async transition(tx, a) {

@@ -1,8 +1,8 @@
 -- compat: contract
--- M36 death-notification disclosure integrity (builds on 1306; ADR-0098 amendment A10). `contract` because it TIGHTENS what the guard triggers
+-- M36 death-notification disclosure integrity (builds on 1455; ADR-0098 amendment A10). `contract` because it TIGHTENS what the guard triggers
 -- accept on existing columns (no column, constraint or grant changes), so a previous release could be refused a write it used to make; none of its
 -- normal paths is (it writes link_id and the hash together with the `sent` settle, after minting the link), but the heuristic cannot see that.
--- CORRECTION to the 1306 header ("this is the backstop"): that wording covers LEGAL TRANSITIONS only. WHAT THE TRIGGERS ARE AND ARE NOT: they enforce the shape and the finality of the disclosure RECORD (legal transitions, a sent funeral-home notice
+-- CORRECTION to the 1455 header ("this is the backstop"): that wording covers LEGAL TRANSITIONS only. WHAT THE TRIGGERS ARE AND ARE NOT: they enforce the shape and the finality of the disclosure RECORD (legal transitions, a sent funeral-home notice
 -- names a real link of the same org / patient / funeral home, the recipient digest and link id are final once sent, acked_by / acked_at belong to
 -- `acked` only). They are NOT a BAA gate: whether a BAA is in force is decided by the service (M40 register) before the claim, re-checked when the
 -- link is redeemed and on every funeral-home session read. A write that bypasses the service is still stopped from forging a "sent" row, but
@@ -20,6 +20,9 @@ BEGIN
   END IF;
   IF NEW.link_id IS NOT NULL OR NEW.recipient_email_hash IS NOT NULL THEN
     RAISE EXCEPTION 'death_notification_insert_disclosure: a notification is created before anything is sent' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.send_attempt_id IS NOT NULL THEN
+    RAISE EXCEPTION 'death_notification_insert_attempt: a notification has no send attempt before claim' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.acked_by IS NOT NULL OR NEW.acked_at IS NOT NULL THEN
     RAISE EXCEPTION 'death_notification_insert_ack: a notification is never created acknowledged' USING ERRCODE = 'check_violation';
@@ -54,7 +57,8 @@ BEGIN
       WHEN 'pending'        THEN NEW.state IN ('sending', 'sent', 'acked', 'failed', 'blocked_no_baa', 'not_applicable')
       WHEN 'failed'         THEN NEW.state IN ('sending', 'blocked_no_baa')
       WHEN 'blocked_no_baa' THEN NEW.state IN ('sending', 'failed')
-      WHEN 'sending'        THEN NEW.state IN ('sent', 'failed')
+      WHEN 'sending'        THEN NEW.state IN ('sent', 'failed', 'blocked_no_baa', 'reconciling')
+      WHEN 'reconciling'    THEN NEW.state = 'failed'
       WHEN 'sent'           THEN NEW.state = 'acked'
       ELSE false END;
     IF NOT v_legal THEN
@@ -79,6 +83,7 @@ BEGIN
            AND l.kind = 'funeral_home'
            AND l.funeral_home_entity_id IS NOT NULL
            AND l.funeral_home_entity_id = NEW.funeral_home_entity_id
+           AND l.disclosure_attempt_id = NEW.send_attempt_id
       ) THEN
         RAISE EXCEPTION 'death_notification_disclosure_link: the recorded link is not a funeral link for this organization, patient and funeral home' USING ERRCODE = 'check_violation';
       END IF;
@@ -86,6 +91,15 @@ BEGIN
     IF NEW.state = 'acked' AND v_external THEN
       RAISE EXCEPTION 'death_notification_transition: an external notice cannot be acknowledged' USING ERRCODE = 'check_violation';
     END IF;
+  END IF;
+  IF NEW.send_attempt_id IS DISTINCT FROM OLD.send_attempt_id
+     AND NOT (NEW.state = 'sending' AND OLD.state IN ('pending', 'failed', 'blocked_no_baa')) THEN
+    RAISE EXCEPTION 'death_notification_attempt_final: send_attempt_id changes only on a new claim' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.recipient_kind = 'funeral_home'
+     AND NEW.state IN ('sending', 'reconciling', 'sent')
+     AND NEW.send_attempt_id IS NULL THEN
+    RAISE EXCEPTION 'death_notification_attempt_required: funeral-home sends require an attempt id' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.state = 'acked' THEN
     NEW.acked_at := now();

@@ -322,6 +322,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       publish: (tx, input) => m2Publisher.publish(tx, { ...input, callerModule: "m2" } as never),
     });
     const delivery = createLinkDelivery({
+      maxDeliveryDurationMs: 40_000,
       transport: {
         async send(message) {
           if (failNextSend) {
@@ -773,6 +774,46 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       );
     }
     expect((await read()).statusCode).toBe(200); // BAA back in force: the same session reads again
+    const row = await linkRow(token);
+    await admin.query("UPDATE collaborator_link SET revoked_at=now() WHERE id=$1", [row.id]);
+    expect((await read()).statusCode).toBe(410); // an already-minted session cannot outlive explicit link revocation
+  });
+
+  it("legacy funeral links without an immutable funeral-home binding fail closed at redemption", async () => {
+    const store = createDbCollaboratorLinkStore(handle.db, {
+      site: { siteForPatient: (o, p) => patientSiteForOrg(handle.db, o, p) },
+    });
+    const created = await store.create({
+      organizationId: ORG_A,
+      patientId: deceasedA.id,
+      invitedByMembershipId: staffA.membershipId,
+      kind: "funeral_home",
+    });
+    expect((await redeem(created.token as string)).statusCode).toBe(410);
+  });
+
+  it("permits only one unspent live funeral credential per patient and home", async () => {
+    const patient = await seedPatient(ORG_A, "deceased", "One live credential");
+    const store = createDbCollaboratorLinkStore(handle.db, {
+      site: { siteForPatient: (o, p) => patientSiteForOrg(handle.db, o, p) },
+    });
+    const input = {
+      organizationId: ORG_A,
+      patientId: patient,
+      invitedByMembershipId: staffA.membershipId,
+      kind: "funeral_home" as const,
+      funeralHomeEntityId: FH,
+    };
+    const first = await store.create(input);
+    await expect(store.create(input)).rejects.toMatchObject({
+      code: "FUNERAL_LINK_ALREADY_ACTIVE",
+      statusCode: 409,
+    });
+    await admin.query(
+      "UPDATE collaborator_link SET expires_at=now() - interval '1 minute' WHERE id=$1",
+      [first.linkId],
+    );
+    await expect(store.create(input)).resolves.toMatchObject({ linkId: expect.any(String) });
   });
 
   it("a failed session mint hands the use back: the link is NOT burned and a retry succeeds", async () => {
@@ -798,6 +839,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       patientId: deceasedA.id,
       invitedByMembershipId: staffA.membershipId,
       kind: "funeral_home",
+      funeralHomeEntityId: FH,
       maxUses: 2,
     });
     const token = created.token as string;

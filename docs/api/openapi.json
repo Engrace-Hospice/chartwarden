@@ -209477,6 +209477,10 @@
                               "type": "string"
                             },
                             {
+                              "const": "reconciling",
+                              "type": "string"
+                            },
+                            {
                               "const": "failed",
                               "type": "string"
                             },
@@ -209680,6 +209684,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "reconciling",
+                                "type": "string"
+                              },
+                              {
                                 "const": "failed",
                                 "type": "string"
                               },
@@ -209844,6 +209852,10 @@
                             },
                             {
                               "const": "sending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "reconciling",
                               "type": "string"
                             },
                             {

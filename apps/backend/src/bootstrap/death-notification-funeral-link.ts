@@ -6,7 +6,8 @@
 // `POST /funeral/invite` are recorded BEFORE delivery (an unrecorded disclosure is revoked, not sent); refused/blocked disclosures are audited too.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq, gte, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
+import { FuneralLinkIssueError } from "../modules/36-messaging/death-notification/death-notification-service";
 
 type FuneralLinkCreated = { linkId: string; token?: string | undefined; expiresAt: string };
 
@@ -18,6 +19,7 @@ export interface FuneralLinkStorePort {
     kind: "funeral_home";
     sessionTtlSec: number;
     funeralHomeEntityId: string;
+    disclosureAttemptId: string;
   }): Promise<FuneralLinkCreated> | FuneralLinkCreated;
   revoke(scope: { organizationId: string; linkId: string }): Promise<void>;
 }
@@ -67,6 +69,12 @@ export interface FuneralLinkPortInput {
   readonly collaborators: FuneralLinkStorePort;
   readonly delivery: FuneralLinkDeliveryPort | undefined;
   readonly isDeceased: (organizationId: string, patientId: string) => Promise<boolean>;
+  readonly isBaaActive: (
+    organizationId: string,
+    kind: "funeral_home",
+    entityId: string,
+    asOf: Date,
+  ) => Promise<boolean>;
   readonly sessionTtlSec: number;
   readonly recorder: FuneralDisclosureRecorderPort;
   /** Test override; production reads the active membership from the database. */
@@ -97,15 +105,13 @@ async function activeMembershipId(
 
 const LINKS = schema.collaboratorLinks;
 
-/** Revoke the still-live funeral links of (org, patient, funeral home) minted at or after `since`, plus `linkId` when known. */
+/** Revoke only the still-live funeral link minted by this M36 disclosure attempt, plus its pinned id when known. */
 async function revokeOrphanLinks(
   input: FuneralLinkPortInput,
   a: {
     orgId: string;
-    patientId: string;
-    funeralHomeEntityId: string;
+    disclosureAttemptId: string;
     linkId: string | null;
-    since: Date;
   },
 ): Promise<number> {
   const rows = await withOrgContext(
@@ -118,11 +124,8 @@ async function revokeOrphanLinks(
         .where(
           and(
             eq(LINKS.organizationId, a.orgId),
-            eq(LINKS.patientId, a.patientId),
-            eq(LINKS.kind, "funeral_home"),
-            eq(LINKS.funeralHomeEntityId, a.funeralHomeEntityId),
+            eq(LINKS.disclosureAttemptId, a.disclosureAttemptId),
             isNull(LINKS.revokedAt),
-            gte(LINKS.createdAt, a.since),
           ),
         ),
   );
@@ -146,7 +149,9 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
       actorUserId: string;
       recipientEmail: string;
       funeralHomeEntityId: string;
+      disclosureAttemptId: string;
       correlationId?: string | undefined;
+      pinLink(linkId: string): Promise<boolean>;
     }): Promise<{ linkId: string }> {
       if (!(await input.isDeceased(a.orgId, a.patientId))) {
         throw new Error("funeral link refused: the patient is not deceased");
@@ -162,9 +167,41 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
         kind: "funeral_home",
         sessionTtlSec: input.sessionTtlSec,
         funeralHomeEntityId: a.funeralHomeEntityId,
+        disclosureAttemptId: a.disclosureAttemptId,
       });
-      if (!link.token) throw new Error("funeral link refused: the store returned no token");
+      const revokeAfterFailure = async (
+        message: string,
+        reason: "no_baa" | "other" = "other",
+      ): Promise<never> => {
+        try {
+          await input.collaborators.revoke({ organizationId: a.orgId, linkId: link.linkId });
+        } catch {
+          throw new FuneralLinkIssueError(message, false, reason);
+        }
+        await (reason === "no_baa"
+          ? input.recorder.refused({
+              orgId: a.orgId,
+              actorUserId: a.actorUserId,
+              patientId: a.patientId,
+              funeralHomeEntityId: a.funeralHomeEntityId,
+              reason: "no_baa",
+              correlationId: a.correlationId,
+            })
+          : input.recorder.inviteRevoked({
+              orgId: a.orgId,
+              actorUserId: a.actorUserId,
+              patientId: a.patientId,
+              linkId: link.linkId,
+              correlationId: a.correlationId,
+            })
+        ).catch(() => undefined);
+        throw new FuneralLinkIssueError(message, true, reason);
+      };
+      if (!link.token)
+        return revokeAfterFailure("funeral link refused: the store returned no token");
       try {
+        if (!(await a.pinLink(link.linkId)))
+          return revokeAfterFailure("funeral link refused: the send fence was lost");
         await input.recorder.invited({
           orgId: a.orgId,
           actorUserId: a.actorUserId,
@@ -172,6 +209,16 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
           linkId: link.linkId,
           correlationId: a.correlationId,
         });
+        const baaInForce = await input
+          .isBaaActive(a.orgId, "funeral_home", a.funeralHomeEntityId, new Date())
+          .catch(() => false);
+        if (!baaInForce)
+          return revokeAfterFailure(
+            "funeral link refused: the BAA is no longer in force",
+            "no_baa",
+          );
+        if (!(await a.pinLink(link.linkId)))
+          return revokeAfterFailure("funeral link refused: reconciliation owns the send");
         await delivery.deliver({
           kind: "funeral_home",
           organizationId: a.orgId,
@@ -180,18 +227,10 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
           expiresAt: new Date(link.expiresAt),
         });
       } catch (err) {
-        await input.collaborators.revoke({ organizationId: a.orgId, linkId: link.linkId });
-        // The trail must not show an undelivered invite as completed: record that the minted link was revoked (best effort; the send already failed).
-        await input.recorder
-          .inviteRevoked({
-            orgId: a.orgId,
-            actorUserId: a.actorUserId,
-            patientId: a.patientId,
-            linkId: link.linkId,
-            correlationId: a.correlationId,
-          })
-          .catch(() => undefined);
-        throw err;
+        if (err instanceof FuneralLinkIssueError) throw err;
+        return revokeAfterFailure(
+          err instanceof Error ? err.message : "funeral link delivery failed",
+        );
       }
       return { linkId: link.linkId };
     },

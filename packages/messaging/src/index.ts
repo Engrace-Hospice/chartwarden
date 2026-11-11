@@ -277,6 +277,7 @@ export {
 } from "./notification";
 export type { OutboundEmail, TransactionalEmailTransport } from "./notification";
 export {
+  POSTMARK_LINK_DELIVERY_MAX_DURATION_MS,
   createPostmarkTransactionalEmailTransport,
   resolvePostmarkConfig,
   postmarkConfigAttempted,

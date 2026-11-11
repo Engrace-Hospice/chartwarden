@@ -27,7 +27,11 @@ import {
 import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditCollaboratorInvited, auditCollaboratorSessionStarted } from "../audit/identity-audit";
-import { auditFuneralInvited } from "../audit/org-admin-audit";
+import {
+  auditFuneralInviteRefused,
+  auditFuneralInviteRevoked,
+  auditFuneralInvited,
+} from "../audit/org-admin-audit";
 import { auditLinkRedeemed, auditLinkRedemptionRefused } from "../audit/session-link-audit";
 import { FUNERAL_LINK_TTL_SEC, type IdentityRouteDeps, LinkError } from "../identity-ports";
 import {
@@ -45,6 +49,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type LinkKind = "external_collaborator" | "funeral_home";
+class FuneralBaaLapsedBeforeDelivery extends Error {}
 
 /** An optional, well-formed recipient address (never echoed into an audit payload or a response). */
 function readRecipientEmail(body: unknown): string | null {
@@ -108,6 +113,11 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       membershipId: string;
       patientId: string;
       funeralHomeEntityId?: string;
+      beforeDelivery?: (link: { linkId: string; expiresAt: string }) => Promise<void>;
+      afterRevoked?: (
+        link: { linkId: string; expiresAt: string },
+        reason: "no_baa" | "delivery_failed",
+      ) => Promise<void>;
     },
   ): Promise<{ linkId: string; expiresAt: string }> {
     const recipient = readRecipientEmail(request.body);
@@ -131,8 +141,10 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       sessionTtlSec: input.kind === "funeral_home" ? FUNERAL_LINK_TTL_SEC : collabSessionTtlSec,
       ...(input.funeralHomeEntityId ? { funeralHomeEntityId: input.funeralHomeEntityId } : {}),
     });
-    if (recipient !== null && deps.linkDelivery && link.token) {
-      try {
+    try {
+      await input.beforeDelivery?.(link);
+      if (recipient !== null && deps.linkDelivery) {
+        if (!link.token) throw new Error("link token unavailable");
         await deps.linkDelivery.deliver({
           kind: input.kind,
           organizationId: input.organizationId,
@@ -140,17 +152,33 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
           token: link.token,
           expiresAt: new Date(link.expiresAt),
         });
-      } catch {
-        // The link exists but nobody received it: kill it rather than leave an unreachable live credential.
+      }
+    } catch (err) {
+      // The link was not safely delivered: kill it rather than leave a live credential with an incomplete record.
+      try {
         await deps.collaborators.revoke({
           organizationId: input.organizationId,
           linkId: link.linkId,
         });
+      } catch {
         throw unavailable(
-          "LINK_DELIVERY_FAILED",
-          "the link could not be delivered; it was revoked. Try again",
+          "LINK_DELIVERY_UNCONFIRMED",
+          "the link outcome could not be confirmed; an operator must reconcile it before retrying",
         );
       }
+      const reason = err instanceof FuneralBaaLapsedBeforeDelivery ? "no_baa" : "delivery_failed";
+      await input.afterRevoked?.(link, reason).catch(() => undefined);
+      if (reason === "no_baa") {
+        throw new ChartWardenError(
+          "FUNERAL_HOME_BAA_REQUIRED",
+          "the funeral-home BAA is no longer in force; the link was revoked and not delivered",
+          409,
+        );
+      }
+      throw unavailable(
+        "LINK_DELIVERY_FAILED",
+        "the link could not be delivered; it was revoked. Try again",
+      );
     }
     return { linkId: link.linkId, expiresAt: link.expiresAt };
   }
@@ -236,6 +264,16 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       .funeralHomeBaaActive(actor.organizationId, funeralHomeId, new Date())
       .catch(() => false); // a throw reads as no BAA (fail closed)
     if (!baaInForce) {
+      await auditFuneralInviteRefused(
+        deps.audit,
+        auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
+        {
+          organizationId: actor.organizationId,
+          patientId,
+          funeralHomeId,
+          reason: "no_baa",
+        },
+      ).catch(() => undefined);
       throw new ChartWardenError(
         "FUNERAL_HOME_BAA_REQUIRED",
         "no executed Business Associate Agreement is on file for this funeral home; no link was issued",
@@ -248,18 +286,53 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       membershipId: actor.membershipId,
       patientId,
       funeralHomeEntityId: funeralHomeId,
-    });
-    await auditFuneralInvited(
-      deps.audit,
-      auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
-      { linkId: link.linkId, organizationId: actor.organizationId, patientId },
-    );
-    await publishM2(deps, {
-      eventName: "m2.funeral.invited",
-      payload: { linkId: link.linkId, organizationId: actor.organizationId, patientId },
-      organizationId: actor.organizationId,
-      aggregateKind: "funeral_link",
-      aggregateId: link.linkId,
+      beforeDelivery: async (created) => {
+        await auditFuneralInvited(
+          deps.audit,
+          auditContextFor(request, { organizationId: actor.organizationId!, userId: actor.userId }),
+          { linkId: created.linkId, organizationId: actor.organizationId!, patientId },
+        );
+        await publishM2(deps, {
+          eventName: "m2.funeral.invited",
+          payload: {
+            linkId: created.linkId,
+            organizationId: actor.organizationId!,
+            patientId,
+          },
+          organizationId: actor.organizationId!,
+          aggregateKind: "funeral_link",
+          aggregateId: created.linkId,
+        });
+        const deliveryBaaInForce = await deps.funeralHomeBaaActive!(
+          actor.organizationId!,
+          funeralHomeId,
+          new Date(),
+        ).catch(() => false);
+        if (!deliveryBaaInForce) throw new FuneralBaaLapsedBeforeDelivery();
+      },
+      afterRevoked: (created, reason) =>
+        reason === "no_baa"
+          ? auditFuneralInviteRefused(
+              deps.audit,
+              auditContextFor(request, {
+                organizationId: actor.organizationId!,
+                userId: actor.userId,
+              }),
+              {
+                organizationId: actor.organizationId!,
+                patientId,
+                funeralHomeId,
+                reason: "no_baa",
+              },
+            )
+          : auditFuneralInviteRevoked(
+              deps.audit,
+              auditContextFor(request, {
+                organizationId: actor.organizationId!,
+                userId: actor.userId,
+              }),
+              { linkId: created.linkId, organizationId: actor.organizationId!, patientId },
+            ),
     });
     // Token delivered out-of-band — never in the body (same as the collaborator link).
     return reply.code(201).send(link);
@@ -318,15 +391,14 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       const stillDeceased = deps.deceasedPatients
         ? await deps.deceasedPatients.isDeceased(scope.organizationId, scope.patientId)
         : false;
-      // ...and so is the BAA of the funeral home the link was minted for (a link bound to a funeral home, i.e. minted from migration 1306 on).
-      // A lapsed or unreadable BAA reads as not eligible (fail closed); an older, unbound link has nothing to re-check.
-      const baaStillInForce =
-        !scope.funeralHomeEntityId ||
-        (deps.funeralHomeBaaActive
-          ? await deps
-              .funeralHomeBaaActive(scope.organizationId, scope.funeralHomeEntityId, new Date())
-              .catch(() => false)
-          : false);
+      // ...and so is the BAA of the funeral home the link was minted for. Legacy unbound links fail closed.
+      const baaStillInForce = Boolean(
+        scope.funeralHomeEntityId &&
+          deps.funeralHomeBaaActive &&
+          (await deps
+            .funeralHomeBaaActive(scope.organizationId, scope.funeralHomeEntityId, new Date())
+            .catch(() => false)),
+      );
       if (!stillDeceased || !baaStillInForce) {
         await giveBack();
         await deps.linkRedeemThrottle?.record({ username: null, ip, outcome: "failure" });
@@ -423,34 +495,29 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
 
   /**
    * A funeral-home session must not outlive the BAA of the home its link was minted for (a 72 h session vs a BAA that can lapse). Fails CLOSED:
-   * a link that carries a funeral home id needs the BAA reader bound AND answering true; a lookup that throws reads as lapsed. A refusal is the
-   * redemption's own 410 and is audited. A link minted before migration 1306 (no entity id) has nothing to re-check.
+   * an active, entity-bound funeral link and the BAA reader are both required; a missing binding, revoked link or lookup failure reads as lapsed.
    */
   async function requireFuneralBaaInForce(
     request: FastifyRequest,
     organizationId: string,
   ): Promise<void> {
     const principal = request.context.userId;
-    if (
-      !deps.collaborators.funeralLinkForPrincipal ||
-      typeof principal !== "string" ||
-      principal.length === 0
-    )
-      return;
+    if (typeof principal !== "string" || principal.length === 0) {
+      throw new ChartWardenError("LINK_EXPIRED", "link invalid or expired", 410);
+    }
     let inForce = false;
     let linkId: string | undefined;
     try {
-      const link = await deps.collaborators.funeralLinkForPrincipal({
+      const link = await deps.collaborators.funeralLinkForPrincipal?.({
         organizationId,
         principalUserId: principal,
       });
       linkId = link?.linkId;
-      inForce =
-        !link ||
-        !link.funeralHomeEntityId ||
-        (deps.funeralHomeBaaActive
-          ? await deps.funeralHomeBaaActive(organizationId, link.funeralHomeEntityId, new Date())
-          : false);
+      inForce = Boolean(
+        link?.funeralHomeEntityId &&
+          deps.funeralHomeBaaActive &&
+          (await deps.funeralHomeBaaActive(organizationId, link.funeralHomeEntityId, new Date())),
+      );
     } catch {
       inForce = false;
     }

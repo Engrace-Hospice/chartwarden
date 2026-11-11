@@ -433,7 +433,7 @@ export interface CollaboratorScope {
   readonly sessionTtlSec?: number;
   /** Redemptions spent including this one (durable store only). */
   readonly useCount?: number;
-  /** The funeral_home entity a funeral link was minted for (durable store; absent on links minted before migration 1306). */
+  /** The funeral_home entity a funeral link was minted for (durable store; absent only on revoked legacy links before migration 1455). */
   readonly funeralHomeEntityId?: string;
 }
 
@@ -461,6 +461,8 @@ export interface CollaboratorLinkStore {
     maxUses?: number;
     /** Funeral links: the MDM funeral_home entity whose BAA was checked; re-checked at redemption. Durable store only. */
     funeralHomeEntityId?: string;
+    /** Optional M36 send-attempt id, used to reconcile only the credential minted by that attempt. */
+    disclosureAttemptId?: string;
   }): Promise<CreatedLink> | CreatedLink;
   /** Atomically consume a token → its scope. Throws on expired/used (route maps to 410/409). */
   consume(token: string): Promise<CollaboratorScope> | CollaboratorScope;
@@ -473,7 +475,7 @@ export interface CollaboratorLinkStore {
   revoke(scope: { organizationId: string; linkId: string }): Promise<void>;
   /**
    * The funeral link a redeemed session belongs to (durable store only): its id and the funeral home whose BAA was checked at mint (null on a
-   * link minted before migration 1306). Null when no such link. Lets a funeral-home session read re-check the BAA.
+   * revoked legacy link minted before migration 1455). Null when no such active link. Lets a funeral-home session read re-check the BAA.
    */
   funeralLinkForPrincipal?(scope: {
     organizationId: string;

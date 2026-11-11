@@ -5324,7 +5324,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     (linkLandingBaseUrl || (parseTenantBaseDomain() && portalOriginFor)) &&
     emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({
-          transport: emailTransport,
+          transport: linkEmailTransport,
+          maxDeliveryDurationMs: emailBinding.linkDeliveryMaxDurationMs,
           ...(linkLandingBaseUrl ? { baseUrl: linkLandingBaseUrl } : {}),
           ...(portalOriginFor ? { baseUrlFor: portalOriginFor } : {}),
         })
@@ -5547,6 +5548,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             delivery: linkDelivery,
             isDeceased: (organizationId, patientId) =>
               patientIsDeceasedForOrg(dbHandle.db, organizationId, patientId),
+            isBaaActive: executedBaaGate(() => createDbBaaStore(dbHandle.db)),
             sessionTtlSec: FUNERAL_LINK_TTL_SEC,
           }),
           warn: (message, context) => console.warn(message, context),

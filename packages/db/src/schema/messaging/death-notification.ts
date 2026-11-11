@@ -1,4 +1,4 @@
-// M36 death-notification cascade (migration 1305): one row per (board, recipient_kind, recipient_ref). Ids, enums and instants only.
+// M36 death-notification cascade (migration 1454): one row per (board, recipient_kind, recipient_ref). Ids, enums and instants only.
 // Names match the migration. acked_at / updated_at are set by the database guard trigger, whatever the client sends.
 import { sql } from "drizzle-orm";
 import {
@@ -31,9 +31,10 @@ export const deathNotifications = pgTable(
     ackedAt: timestamp("acked_at", { withTimezone: true }),
     ackedBy: uuid("acked_by"),
     sentOutboxEventId: uuid("sent_outbox_event_id"),
-    /** External funeral-home notices (migration 1306): the MDM entity, the minted M2 link and a salted hash of the recipient address (never the address). */
+    /** External funeral-home notices (migration 1455): the MDM entity, the minted M2 link and a keyed digest of the recipient address (never the address). */
     funeralHomeEntityId: uuid("funeral_home_entity_id"),
     linkId: uuid("link_id"),
+    sendAttemptId: uuid("send_attempt_id"),
     recipientEmailHash: text("recipient_email_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -59,7 +60,7 @@ export const deathNotifications = pgTable(
     ),
     stateShape: check(
       "death_notification_state_shape",
-      sql`${t.state} IN ('pending', 'sending', 'sent', 'acked', 'failed', 'blocked_no_baa', 'not_applicable')`,
+      sql`${t.state} IN ('pending', 'sending', 'reconciling', 'sent', 'acked', 'failed', 'blocked_no_baa', 'not_applicable')`,
     ),
     refShape: check(
       "death_notification_ref_shape",

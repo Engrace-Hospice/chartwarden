@@ -17,7 +17,7 @@
       "mutatingNoBody": 0
     },
     "05-patient": {
-      "routes": 48,
+      "routes": 49,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -72,7 +72,7 @@
       "mutatingNoBody": 0
     },
     "16-bereavement": {
-      "routes": 53,
+      "routes": 82,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -107,7 +107,7 @@
       "mutatingNoBody": 0
     },
     "23-billing-medicare": {
-      "routes": 96,
+      "routes": 97,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -117,7 +117,7 @@
       "mutatingNoBody": 0
     },
     "25-remittance": {
-      "routes": 158,
+      "routes": 168,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -147,7 +147,7 @@
       "mutatingNoBody": 0
     },
     "31-portal": {
-      "routes": 68,
+      "routes": 72,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -197,12 +197,12 @@
       "mutatingNoBody": 0
     },
     "41-billing-commercial": {
-      "routes": 26,
+      "routes": 27,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "bootstrap": {
-      "routes": 11,
+      "routes": 12,
       "deficit": 0,
       "mutatingNoBody": 0
     }

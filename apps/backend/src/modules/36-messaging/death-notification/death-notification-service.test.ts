@@ -13,7 +13,10 @@ import {
   DEATH_NOTIFICATION_ROLE_KEYS,
   DEATH_NOTIFICATION_TEXT,
 } from "./death-notification-alerts";
-import { createDeathNotificationService } from "./death-notification-service";
+import {
+  FuneralLinkIssueError,
+  createDeathNotificationService,
+} from "./death-notification-service";
 import { createMemoryDeathNotificationStore } from "./death-notification-store-memory";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -36,6 +39,7 @@ interface Opts {
   baaThrows?: boolean;
   noLinks?: boolean;
   linkThrows?: boolean;
+  linkNoBaa?: boolean;
   resolved?: number;
   roles?: string[];
   flag?: boolean;
@@ -66,10 +70,18 @@ function build(o: Opts = {}) {
   }
   const emit = vi.fn().mockResolvedValue({ alertId: "a", resolvedRecipientCount: o.resolved ?? 1 });
   const publish = vi.fn().mockResolvedValue(undefined);
-  const issue = vi.fn(async (_a: { funeralHomeEntityId: string; recipientEmail: string }) => {
-    if (o.linkThrows) throw new Error("mail down");
-    return { linkId: LINK };
-  });
+  const issue = vi.fn(
+    async (a: {
+      funeralHomeEntityId: string;
+      recipientEmail: string;
+      pinLink(linkId: string): Promise<boolean>;
+    }) => {
+      await a.pinLink(LINK);
+      if (o.linkNoBaa) throw new FuneralLinkIssueError("baa lapsed", true, "no_baa");
+      if (o.linkThrows) throw new FuneralLinkIssueError("mail down", true);
+      return { linkId: LINK };
+    },
+  );
   const refused = vi.fn().mockResolvedValue(undefined);
   const revokeOrphans = vi.fn(async () => {
     if (o.revokeThrows) throw new Error("db down");
@@ -384,6 +396,17 @@ describe("sendFuneralHome", () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain("mail down");
   });
 
+  it("moves a final-boundary BAA lapse back to blocked_no_baa and alerts without reporting delivery failure", async () => {
+    const { service, store, emit } = build({ baa: true, linkNoBaa: true });
+    const result = await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    expect(result.notification.state).toBe("blocked_no_baa");
+    expect([...store.rows.values()][0]?.state).toBe("blocked_no_baa");
+    expect(emit).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ eventType: "m36.death_notification.blocked_no_baa" }),
+    );
+  });
+
   it("an UPPERCASE funeral-home id is stored and sent lower-cased", async () => {
     const { service, store, issue } = build({ baa: true });
     await service.sendFuneralHome(actor(SUP, true), BOARD, {
@@ -521,10 +544,8 @@ describe("reconcileStrandedSendsForOrg", () => {
     expect(revokeOrphans).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: ORG,
-        patientId: PATIENT,
-        funeralHomeEntityId: FH,
+        disclosureAttemptId: real.sendAttemptId,
         linkId: LINK,
-        since: real.createdAt,
       }),
     );
     expect(emit.mock.calls[0]![1].eventType).toBe("m36.death_notification.send_stranded");
@@ -538,7 +559,7 @@ describe("reconcileStrandedSendsForOrg", () => {
     await expect(service.reconcileStrandedSendsForOrg(ORG)).rejects.toThrow(
       /could not be reconciled/,
     );
-    expect([...store.rows.values()][0]?.state).toBe("sending");
+    expect([...store.rows.values()][0]?.state).toBe("reconciling");
   });
 
   it("a freed row can be sent again", async () => {
@@ -558,5 +579,51 @@ describe("reconcileStrandedSendsForOrg", () => {
     expect(
       (await ctx.service.sendFuneralHome(actor(SUP, true), BOARD, input)).notification.state,
     ).toBe("sent");
+  });
+
+  it("fences a delayed attempt after reconciliation and a retry claim", async () => {
+    const ctx = build({ baa: true });
+    const { row } = await ctx.store.ensure({} as never, {
+      orgId: ORG,
+      boardId: BOARD,
+      patientId: PATIENT,
+      kind: "funeral_home",
+      ref: FH,
+      funeralHomeEntityId: FH,
+    });
+    const first = await ctx.store.claim({} as never, { orgId: ORG, id: row.id });
+    expect(first?.sendAttemptId).toBeTruthy();
+    ctx.advance((DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES + 1) * 60_000);
+    const reconciling = await ctx.store.claimReconciliation({} as never, {
+      orgId: ORG,
+      id: row.id,
+      olderThanMinutes: DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES,
+    });
+    await ctx.store.settle({} as never, {
+      orgId: ORG,
+      id: row.id,
+      attemptId: reconciling!.sendAttemptId!,
+      to: "failed",
+    });
+    const second = await ctx.store.claim({} as never, { orgId: ORG, id: row.id });
+    expect(second?.sendAttemptId).not.toBe(first?.sendAttemptId);
+    expect(
+      await ctx.store.recordLink({} as never, {
+        orgId: ORG,
+        id: row.id,
+        attemptId: first!.sendAttemptId!,
+        linkId: LINK,
+      }),
+    ).toBeNull();
+    expect(
+      await ctx.store.settle({} as never, {
+        orgId: ORG,
+        id: row.id,
+        attemptId: first!.sendAttemptId!,
+        to: "sent",
+        linkId: LINK,
+        recipientEmailHash: "a".repeat(64),
+      }),
+    ).toBeNull();
   });
 });

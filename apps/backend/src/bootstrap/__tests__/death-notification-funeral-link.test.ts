@@ -1,5 +1,6 @@
 import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
+import type { FuneralLinkIssueError } from "../../modules/36-messaging/death-notification/death-notification-service";
 import { buildFuneralLinkPort } from "../death-notification-funeral-link";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -13,17 +14,29 @@ const ARGS = {
   actorUserId: USER,
   recipientEmail: "d@funeral.example",
   funeralHomeEntityId: FH,
+  disclosureAttemptId: "00000000-0000-4000-8000-00000000d001",
+  pinLink: async () => true,
 };
 
-function build(o: { deliverThrows?: boolean; recordThrows?: boolean; deceased?: boolean } = {}) {
+function build(
+  o: {
+    deliverThrows?: boolean;
+    recordThrows?: boolean;
+    revokeThrows?: boolean;
+    tokenMissing?: boolean;
+    deceased?: boolean;
+    baa?: boolean;
+  } = {},
+) {
   const order: string[] = [];
   const create = vi.fn(async (_i: Record<string, unknown>) => ({
     linkId: LINK,
-    token: "tok",
+    token: o.tokenMissing ? undefined : "tok",
     expiresAt: "2026-11-02T00:00:00.000Z",
   }));
   const revoke = vi.fn(async () => {
     order.push("revoke");
+    if (o.revokeThrows) throw new Error("revoke down");
   });
   const deliver = vi.fn(async () => {
     order.push("deliver");
@@ -42,6 +55,7 @@ function build(o: { deliverThrows?: boolean; recordThrows?: boolean; deceased?: 
     collaborators: { create, revoke },
     delivery: { deliver },
     isDeceased: async () => o.deceased ?? true,
+    isBaaActive: async () => o.baa ?? true,
     sessionTtlSec: 100,
     activeMembershipId: async () => "membership-1",
     recorder: { invited, refused, inviteRevoked },
@@ -70,7 +84,7 @@ describe("buildFuneralLinkPort", () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  it("revokes the link and audits the revocation when delivery fails (the trail never shows an undelivered invite as completed)", async () => {
+  it("revokes the link and records a best-effort revocation event when delivery fails", async () => {
     const { port, revoke, inviteRevoked, order } = build({ deliverThrows: true });
     await expect(port.issue(ARGS)).rejects.toThrow("mail down");
     expect(revoke).toHaveBeenCalledTimes(1);
@@ -84,6 +98,31 @@ describe("buildFuneralLinkPort", () => {
     const { port, create } = build({ deceased: false });
     await expect(port.issue(ARGS)).rejects.toThrow();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("revokes before delivery when the BAA lapses at the delivery boundary", async () => {
+    const { port, revoke, deliver, refused, inviteRevoked } = build({ baa: false });
+    await expect(port.issue(ARGS)).rejects.toMatchObject({
+      revocationConfirmed: true,
+      reason: "no_baa",
+    });
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(deliver).not.toHaveBeenCalled();
+    expect(refused).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_baa" }));
+    expect(inviteRevoked).not.toHaveBeenCalled();
+  });
+
+  it("revokes a tokenless minted link and reports whether revocation was confirmed", async () => {
+    const confirmed = build({ tokenMissing: true });
+    await expect(confirmed.port.issue(ARGS)).rejects.toMatchObject({
+      revocationConfirmed: true,
+    });
+    expect(confirmed.revoke).toHaveBeenCalledTimes(1);
+
+    const uncertain = build({ tokenMissing: true, revokeThrows: true });
+    await expect(uncertain.port.issue(ARGS)).rejects.toEqual(
+      expect.objectContaining<Partial<FuneralLinkIssueError>>({ revocationConfirmed: false }),
+    );
   });
 
   it("passes a refusal through to the recorder", async () => {

@@ -48,6 +48,7 @@ export function createMemoryDeathNotificationStore(now: () => Date): MemoryDeath
         sentOutboxEventId: null,
         funeralHomeEntityId: a.funeralHomeEntityId ?? null,
         linkId: null,
+        sendAttemptId: null,
         recipientEmailHash: null,
         createdAt: now(),
         updatedAt: now(),
@@ -66,11 +67,17 @@ export function createMemoryDeathNotificationStore(now: () => Date): MemoryDeath
       const r = rows.get(a.id);
       if (!r || r.organizationId !== a.orgId) return null;
       if (!["pending", "failed", "blocked_no_baa"].includes(r.state)) return null;
-      return patch(r, { state: "sending" });
+      return patch(r, { state: "sending", sendAttemptId: randomUUID() });
     },
     async settle(_tx, a) {
       const r = rows.get(a.id);
-      if (!r || r.organizationId !== a.orgId || r.state !== "sending") return null;
+      if (
+        !r ||
+        r.organizationId !== a.orgId ||
+        r.sendAttemptId !== a.attemptId ||
+        (a.to === "failed" ? !["sending", "reconciling"].includes(r.state) : r.state !== "sending")
+      )
+        return null;
       return patch(r, {
         state: a.to,
         ...(a.to === "sent" ? { sentAt: now() } : {}),
@@ -80,7 +87,13 @@ export function createMemoryDeathNotificationStore(now: () => Date): MemoryDeath
     },
     async recordLink(_tx, a) {
       const r = rows.get(a.id);
-      if (!r || r.organizationId !== a.orgId || r.state !== "sending") return null;
+      if (
+        !r ||
+        r.organizationId !== a.orgId ||
+        r.sendAttemptId !== a.attemptId ||
+        r.state !== "sending"
+      )
+        return null;
       return patch(r, { linkId: a.linkId });
     },
     async staleSending(_tx, orgId, olderThanMinutes, limit) {
@@ -89,11 +102,23 @@ export function createMemoryDeathNotificationStore(now: () => Date): MemoryDeath
         .filter(
           (r) =>
             r.organizationId === orgId &&
-            r.state === "sending" &&
+            ["sending", "reconciling"].includes(r.state) &&
             r.recipientKind === "funeral_home" &&
             r.updatedAt.getTime() < cutoff,
         )
         .slice(0, limit);
+    },
+    async claimReconciliation(_tx, a) {
+      const r = rows.get(a.id);
+      const cutoff = now().getTime() - a.olderThanMinutes * 60_000;
+      if (
+        !r ||
+        r.organizationId !== a.orgId ||
+        !["sending", "reconciling"].includes(r.state) ||
+        r.updatedAt.getTime() >= cutoff
+      )
+        return null;
+      return patch(r, { state: "reconciling" });
     },
     async transition(_tx, a) {
       const r = rows.get(a.id);

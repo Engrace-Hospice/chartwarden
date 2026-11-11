@@ -31,6 +31,7 @@ export {
 
 // Postmark HTTP adapter for the port above + env-driven bind decision (credentials only from env).
 export {
+  POSTMARK_LINK_DELIVERY_MAX_DURATION_MS,
   createPostmarkTransactionalEmailTransport,
   resolvePostmarkConfig,
   postmarkConfigAttempted,

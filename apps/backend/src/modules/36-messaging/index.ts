@@ -139,6 +139,7 @@ export {
   resolvePostmarkConfig,
   postmarkConfigAttempted,
   EmailDeliveryError,
+  POSTMARK_LINK_DELIVERY_MAX_DURATION_MS,
   type OutboundEmail,
   type TransactionalEmailTransport,
 } from "@chartwarden/messaging";
