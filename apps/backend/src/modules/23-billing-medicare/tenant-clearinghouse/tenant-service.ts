@@ -9,9 +9,9 @@
 // then lock and compare-and-set. After a change COMMITS the optional `onChanged` hook runs (the composition root binds it to
 // the M34 onboarding advance pass, so choosing a vendor settles wizard step 7 at once); a failure there is logged and never
 // fails the change. The optional `onOnboardingDataChanging` guard is different: it runs INSIDE each write's transaction before
-// the mutation, then returns a finalizer for after a material write. The composition root uses that scope to hold M34's shared
-// go-live lock across the write and its attestation void, so approval cannot overtake the mutation and a refused/no-op write
-// voids nothing.
+// the mutation, then returns a finalizer for after an accepted write. The composition root uses that scope to hold M34's shared
+// go-live lock across the write and its attestation void, so approval cannot overtake the mutation. Refused writes and unchanged
+// choice/BAA writes void nothing; accepted verify/activate calls intentionally may void again.
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
@@ -58,7 +58,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly audit: ClearinghouseAuditPort;
   /**
    * Runs on the SAME transaction before each write and returns a post-write finalizer. It holds the shared go-live lock across the
-   * mutation; the finalizer revokes a pending attestation only after a successful material change. A throw rolls the write back.
+   * mutation; the finalizer revokes a pending attestation only after an accepted qualifying write. A throw rolls the write back.
    * Unbound, a tenant could change its choice under a pending attestation (the composition root binds it).
    */
   readonly onOnboardingDataChanging?: OnboardingDataChangeGuard;
@@ -92,7 +92,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
     return result;
   };
 
-  /** Enter the write's go-live ordering scope; call the result only after a material change. */
+  /** Enter the write's go-live ordering scope; call the result after an accepted qualifying write. */
   const guardDataChange = async (
     tx: DbClient,
     actor: M23WriteActor,

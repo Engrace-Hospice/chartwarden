@@ -3198,8 +3198,8 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
  * A tenant-lane billing write (the clearinghouse choice, its BAA record, verify and activate; the MAC credential) is onboarding
  * data: a pending go-live attestation said that data was ready, so the write revokes it IN THE WRITE'S OWN TRANSACTION (M23 may
  * not import M34, so it takes this as `onOnboardingDataChanging`). The guard acquires the shared lock and decides whether the
- * organization is still onboarding before the mutation. Its returned finalizer voids only after a successful material write,
- * so approval cannot overtake an in-flight change and no-op/refused writes revoke nothing.
+ * organization is still onboarding before the mutation. Its returned finalizer runs only after an accepted write, so approval
+ * cannot overtake it; refused writes and unchanged choice/BAA writes revoke nothing, while accepted verify/activate may revoke again.
  */
 export const guardGoLiveOnBillingWrite: OnboardingDataChangeGuard = async (tx, change) => {
   await lockTenantOnboardingShared(tx, change.organizationId);
