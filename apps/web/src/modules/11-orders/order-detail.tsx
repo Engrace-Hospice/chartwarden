@@ -6,7 +6,9 @@ import {
   PageHeader,
   StatusPill,
   nowLocalInput,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
 } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — order detail (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
@@ -142,25 +144,39 @@ export function OrderDetail(): JSX.Element {
     void load();
   }, [load]);
 
-  const mutate = async (path: string, body: Record<string, unknown> = {}): Promise<void> => {
+  // One keeper for the page: a retry after a lost reply replays instead of acting on the order twice. A body field that carries a
+  // click-time clock value (signedAtClient, receivedAt, effectiveAt) is built from the intent's FIRST-attempt time (`stampedAt`) and
+  // left out of the fingerprint, so a retry repeats the same bytes the server already saw under the key.
+  const keeper = useIdempotencyKeeper();
+  const mutate = async (
+    path: string,
+    body: Record<string, unknown> | ((stampedAt: string) => Record<string, unknown>) = {},
+  ): Promise<void> => {
     if (!id) return;
     setBusy(true);
     setActionError(null);
     const post = client.POST as unknown as (
       route: string,
       init: unknown,
-    ) => Promise<{ data?: unknown; error?: unknown }>;
-    let result: { data?: unknown; error?: unknown };
-    try {
-      result = await post(path, { params: { path: { id } }, body });
-    } catch {
+    ) => Promise<{ data?: unknown; error?: unknown; response?: { status: number } }>;
+    const bodyAt = typeof body === "function" ? body : () => body;
+    const sent = await sendWrite(
+      keeper,
+      `${id}|${path}|${JSON.stringify(bodyAt(""))}`,
+      (key, stampedAt) =>
+        post(path, {
+          params: { path: { id } },
+          body: bodyAt(stampedAt),
+          headers: { "Idempotency-Key": key },
+        }),
+    );
+    setBusy(false);
+    if (sent.status === "unreachable") {
       setActionError("The order could not be updated. Please try again.");
-      setBusy(false);
       return;
     }
-    setBusy(false);
-    if (result.error) {
-      setActionError(domainMessage(result.error));
+    if (sent.status === "refused") {
+      setActionError(domainMessage(sent.res.error));
       await load();
       return;
     }
@@ -362,10 +378,10 @@ export function OrderDetail(): JSX.Element {
                   {row.allowedActions.sign ? (
                     <Button
                       onClick={() =>
-                        void mutate("/api/v1/orders/{id}/sign", {
+                        void mutate("/api/v1/orders/{id}/sign", (stampedAt) => ({
                           signerDiscipline: discipline,
-                          signedAtClient: new Date().toISOString(),
-                        })
+                          signedAtClient: stampedAt,
+                        }))
                       }
                       disabled={busy}
                     >
@@ -468,7 +484,7 @@ export function OrderDetail(): JSX.Element {
                   <Button
                     tone="secondary"
                     onClick={() =>
-                      void mutate("/api/v1/orders/{id}/verbal", {
+                      void mutate("/api/v1/orders/{id}/verbal", (stampedAt) => ({
                         recorderDiscipline: discipline,
 
                         verbalAttestation: verbalAttestation.trim(),
@@ -477,10 +493,10 @@ export function OrderDetail(): JSX.Element {
 
                         effectiveAt: new Date(verbalEffectiveAt).toISOString(),
 
-                        receivedAt: new Date().toISOString(),
+                        receivedAt: stampedAt,
 
                         orderingPhysicianMdmId: row.orderingPhysicianMdmId,
-                      })
+                      }))
                     }
                     disabled={
                       busy ||
@@ -577,10 +593,10 @@ export function OrderDetail(): JSX.Element {
                     <div style={actions}>
                       <Button
                         onClick={() =>
-                          void mutate("/api/v1/orders/{id}/discontinue", {
+                          void mutate("/api/v1/orders/{id}/discontinue", (stampedAt) => ({
                             reason: "clinical_judgement",
-                            effectiveAt: new Date().toISOString(),
-                          })
+                            effectiveAt: stampedAt,
+                          }))
                         }
                         disabled={busy}
                       >

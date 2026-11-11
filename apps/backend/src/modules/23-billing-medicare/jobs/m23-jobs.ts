@@ -15,6 +15,7 @@ import {
   reduce as reduceClaim,
   repositories,
 } from "@chartwarden/billing";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
@@ -67,6 +68,7 @@ import { isPlatformClaimMdAccount, shouldRunLegacyClaimMdAckPoll } from "../clai
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import { reviewedClaimSourceIsStale } from "../services/claim-preview-integrity";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import { reportRevokedResponsesPending } from "../tenant-clearinghouse/revoked-responses-alert";
 import { isVoidM23Claim } from "../void-claim";
 import { CLAIMMD_M23_PAYER_ROUTES_ENV, CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
 import {
@@ -597,6 +599,11 @@ export interface M23WorkerDeps {
   readonly ddeWatchdog?: DdeWatchdogPort;
   /** Structured logger for failures that must not abort the cron (ids only, never PHI). */
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
+  /**
+   * What the acknowledgment pull does for an organization whose vendor BAA a platform operator revoked (it is skipped): tell the
+   * tenant when responses may still be owed. Absent = the stock reporter over `db` and `alerts` (revoked-responses-alert.ts).
+   */
+  readonly reportRevokedResponses?: (organizationId: string) => Promise<void>;
 }
 
 // ── the bound port bundles (bind what we can; lazy throw-on-call for the genuinely-missing infra) ───────────
@@ -2623,7 +2630,7 @@ async function applyAcks(
  * transport's control number back to our submission row, and hand the result to the same router as the legacy path.
  * An acknowledgment for a control number we have no submission for is skipped (nothing to record it against).
  */
-async function runTransportAckPull(
+export async function runTransportAckPull(
   deps: M23WorkerDeps,
   kind: "ack_999" | "ack_277ca",
 ): Promise<void> {
@@ -2648,7 +2655,29 @@ async function runTransportAckPull(
       );
       continue;
     }
-    if (!orgTransport || orgTransport.binding.vendor === null) continue;
+    if (!orgTransport || orgTransport.binding.vendor === null) {
+      // A revoked BAA is not a silent skip: acknowledgments for claims already sent may sit at the vendor (once-a-day alert per org).
+      if (orgTransport?.binding.unboundReason === "baa_revoked") {
+        try {
+          await (
+            deps.reportRevokedResponses ??
+            ((org: string) =>
+              reportRevokedResponsesPending(
+                {
+                  db: deps.db as unknown as DbClient,
+                  alerts: deps.alerts,
+                  log: (e) =>
+                    deps.logger?.error({ ...e }, "clearinghouse revoked responses pending"),
+                },
+                { organizationId: org },
+              ))
+          )(organizationId);
+        } catch {
+          // best effort: the report never fails the tick (the other tenants' pulls must still run)
+        }
+      }
+      continue;
+    }
     // The platform's Claim.MD account: its /services/response/ feed is account-wide and normalized, not literal 999/277CA.
     // BIL-1.1 captures it centrally and only the gated BIL-1.3 dispatcher interprets it. A tenant's OWN Claim.MD account is
     // not in that capture and keeps this poll, capture on or off (owner decision 2026-11-08).

@@ -375,11 +375,13 @@ import {
   AI_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
+  CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
   HELP_REQUEST_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+  MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
@@ -1125,6 +1127,7 @@ import {
   buildClaimMdReceiptStore,
 } from "./modules/23-billing-medicare/claimmd-webhook/receipt-store";
 import { registerClaimMdWebhookRoutes } from "./modules/23-billing-medicare/claimmd-webhook/routes";
+import { createRecentFailedAlerter } from "./modules/23-billing-medicare/claimmd-webhook/sweep";
 import {
   registerClaimMdWebhookSweepWorker,
   scheduleClaimMdWebhookSweep,
@@ -1180,6 +1183,7 @@ import {
   buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildHetsEligibilityPort,
+  buildM23BaaRevokedConsumer,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
@@ -1236,6 +1240,7 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
+import type { OnboardingDataChangedHook } from "./modules/23-billing-medicare/routes/onboarding-data-change";
 import { m23RouteClasses } from "./modules/23-billing-medicare/routes/route-classes";
 import {
   buildClaim837iPersistencePort,
@@ -1254,9 +1259,13 @@ import {
   checkHeldCredentials,
 } from "./modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { createFingerprintKeyGate } from "./modules/23-billing-medicare/tenant-clearinghouse/fingerprint-key-check";
-import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
+import {
+  type ClearinghouseOutboxPort,
+  buildTenantClearinghouseOnboardingPort,
+} from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "./modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "./modules/23-billing-medicare/tenant-clearinghouse/resolver";
+import { reportRevokedResponsesPending } from "./modules/23-billing-medicare/tenant-clearinghouse/revoked-responses-alert";
 import { buildOrgRouteKeyReader } from "./modules/23-billing-medicare/tenant-clearinghouse/route-key";
 import {
   buildClearinghouseSecretCipherFromEnv,
@@ -1696,13 +1705,15 @@ import {
   createDrizzleM34AlertResolverPorts,
   createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
+  createDrizzleSupportLedgerRecorder,
   createDrizzleTenantAccountFlagsService,
   createDrizzleWizardRunner,
   createM34ProvisionGateway,
   createOnboardingAdvancer,
   createOnboardingTenantReader,
   createOnboardingWizard,
-  createUnboundSupportGrantOperations,
+  createSupportGrantOperationsOver,
+  createSupportSessionPorts,
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
@@ -1737,6 +1748,7 @@ import {
   readTenantGoLive,
 } from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
 import { createSettleOnboardingForOrg } from "./modules/34-saas-tenant-platform/onboarding/settle-for-org";
+import { lockTenantOnboardingShared } from "./modules/34-saas-tenant-platform/routes/platform/tenant-onboarding-lock";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -1786,7 +1798,11 @@ import {
   runLegacyBodyBootCheck,
 } from "./modules/36-messaging/body-legacy-key-check";
 import { buildCareTeamReviewRouter } from "./modules/36-messaging/care-team-sync/binding";
-import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import {
+  type CronAlertEmitter,
+  cronAlertCorrelationId,
+  emitCronAlert,
+} from "./modules/36-messaging/cron-alert-correlation";
 import { sweepEmergenciesForOrg } from "./modules/36-messaging/emergency/emergency-sweep";
 import {
   registerM36EmergencySweepWorker,
@@ -3196,6 +3212,20 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
 };
 
 /**
+ * A tenant-lane billing write (the clearinghouse choice, its BAA record, verify and activate; the MAC credential) is onboarding
+ * data: a pending go-live attestation said that data was ready, so the write revokes it IN THE WRITE'S OWN TRANSACTION (M23 may
+ * not import M34, so it takes this as `onOnboardingDataChanged`). The write and the void commit or roll back together; with
+ * nothing pending it is a no-op. The operator's lane voids on its own transaction (`onboarding-data-service.ts`).
+ */
+export const voidGoLiveOnBillingWrite: OnboardingDataChangedHook = async (tx, change) => {
+  await voidPendingGoLiveForDataChange(tx, {
+    organizationId: change.organizationId,
+    revokedByUserId: change.userId,
+    revokedByMembershipId: change.membershipId,
+  });
+};
+
+/**
  * Fail-closed slice `TenantKeyProvider` (D5) so `validateModule34Seams()` passes at boot before the real
  * KMS-backed key provider lands. Every method THROWS — the platform has no live PHI ciphertext to key in the
  * slice/local boot, so a resolve is a programming error, not a silent fail-open. This satisfies the mandatory
@@ -4206,10 +4236,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       "M23_CLAIMMD_NOTICE_UPLOAD_ENABLED is not true: this organization's own Claim.MD account cannot send its NOE / NOTR (the upload is refused NOT_WIRED and the notice is not filed); set the flag before its CMS deadlines matter",
     );
   };
+  // A tenant may activate its clearinghouse during onboarding, before go-live approval; the send path itself refuses an organization
+  // that is not live (7A security review L1), so activation alone is never what lets a claim go out. Its own cached reader, not the
+  // authenticate hook's: workers resolve bindings too, and an activation shows here within the 5 s cache TTL (a hold, never a send).
+  const clearinghouseOrganizationStage = dbHandle
+    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
+    : undefined;
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
         cipher: clearinghouseSecretCipher,
+        ...(clearinghouseOrganizationStage
+          ? {
+              isOrganizationLive: async (organizationId: string) =>
+                !(await clearinghouseOrganizationStage.isConfined(organizationId)),
+            }
+          : {}),
         attempts: createDrizzleAttemptStore(dbHandle.db),
         platformBinding: platformClearinghouseBinding,
         fallbackOrgIds: clearinghouseFallback.orgIds,
@@ -6166,6 +6208,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(mfaGate ? { mfaGate } : {}),
             // `select-organization` admits a `created` organization whose tenant is still onboarding (its first admin).
             onboardingTenants: createOnboardingTenantReader(dbHandle.db),
+            // `GET /auth/context` tells the shell whether the organization is still being onboarded: the authenticate hook's own
+            // cached stage reader, so the signal and the gate cannot disagree.
+            ...(organizationStage ? { organizationStage } : {}),
             funeralCases: {
               read: (organizationId, patientId) =>
                 funeralCaseForOrg(dbHandle.db, organizationId, patientId),
@@ -6188,13 +6233,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             taxIdCipher,
             // A provider-entity, location or organization-name write also voids a pending go-live attestation in the SAME
             // transaction (the attestation said the data was ready; this write makes that stale). M34's helper, M2's routes.
-            orgWriteScope: createOrgDataWriteScope(dbHandle.db, async (tx, scope) => {
-              await voidPendingGoLiveForDataChange(tx, {
-                organizationId: scope.organizationId,
-                revokedByUserId: scope.userId,
-                revokedByMembershipId: scope.membershipId,
-              });
-            }),
+            orgWriteScope: createOrgDataWriteScope(
+              dbHandle.db,
+              async (tx, scope) => {
+                await voidPendingGoLiveForDataChange(tx, {
+                  organizationId: scope.organizationId,
+                  revokedByUserId: scope.userId,
+                  revokedByMembershipId: scope.membershipId,
+                });
+              },
+              async (tx, scope) => {
+                await lockTenantOnboardingShared(tx, scope.organizationId);
+              },
+            ),
           });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
@@ -6954,7 +7005,33 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // The cause of an unreadable contract goes to the (redacting) log; the caller is told only the typed 503.
             warn: (message, context) => app.log.warn(context, message),
           });
+          // Slice 7 (7S): the support-session ports (audit, outbox, alerts, member lookup), bound ONCE here and shared by the platform
+          // service (start / elevate / manual close), the tenant service (consent grant issue and the revoke cascade) and, through the
+          // same factory, the close sweep. The platform service used to be built with deny-stubs, so no session could start in prod.
+          // The M36 emitter resolves lazily (the seam registers after this is built), like the lifecycle alerts above.
+          const m34SupportSessionPorts = createSupportSessionPorts({
+            outbox: m34OutboxPublisher,
+            alerts: {
+              emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
+            },
+            now: () => new Date(),
+            partTwoHeightened: async ({ organizationId, patientIds }) => {
+              const ids = [...new Set(patientIds)];
+              if (ids.length === 0) return true;
+              const facts = await getSeam("PatientPrivacyFlagReader").roomingFactsFor({
+                organizationId,
+                patientIds: ids,
+              });
+              if (facts.length !== ids.length) return true;
+              return facts.some(
+                (fact) => fact.privacyFlagsStale === true || fact.privacyFlags.includes("sud"),
+              );
+            },
+            warn: (message, context) => app.log.warn(context, message),
+          });
+          const m34SupportOps = createSupportGrantOperationsOver(m34SupportSessionPorts);
           const m34PlatformBackend = buildDrizzlePlatformService({
+            supportSessionPorts: m34SupportSessionPorts,
             // The BAA register links only a signed BAA filed for the record's own tenant (M22's check, on the write's transaction).
             baaDocuments: { isFiled: isTenantBaaDocumentFiled },
             advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
@@ -7094,7 +7171,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
+              // The consent grant's issue and its revoke cascade (sessions closed, ledger, outbox, alerts) run through these.
+              supportOps: m34SupportOps,
             }),
+            // Slice 7 (7S): every successful non-GET operator write on /platform/tenants/:orgSlug/* is appended to the ledger of the
+            // operator's open consented session on that tenant (route template, method, status; best effort, after the response).
+            supportLedger: {
+              recorder: createDrizzleSupportLedgerRecorder({
+                platformDb: platformDbHandle?.db ?? dbHandle.db,
+                auditBypass: m34PlatformBypassAuditor,
+                platformJobId: M34_PLATFORM_JOB_ID,
+                now: () => new Date(),
+              }),
+              warn: (message, context) => app.log.warn(context, message),
+            },
             // GAP-164 - the cross-tenant DSAR list + onboarding read/skip (audited platform credential) and the
             // tenant account + feature-flag routes (tenant pool; flags through the same M1 admin seam).
             ...(platformDbHandle
@@ -7115,9 +7205,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               }),
             },
             // Slice 7: help requests. The real service over the tenant pool (a member's own RLS) and the audited platform credential
-            // (the operators' inbox and Resolve); the consent grant operations are piece 7S's bundle, and until the integration binds
-            // them here approving and ending consent answer 501 NOT_IMPLEMENTED (nothing is ever granted). The filing cap is per member and
-            // per organization, fail-closed.
+            // (the operators' inbox and Resolve) shares 7S's consent-grant operation bundle, so approve, End help and Resolve update the
+            // request, grant and sessions through the same transaction. The filing cap is per member and per organization, fail-closed.
             help: {
               service: buildDrizzleHelpRequestService({
                 db: dbHandle.db,
@@ -7125,7 +7214,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 auditBypass: m34PlatformBypassAuditor,
                 platformJobId: M34_PLATFORM_JOB_ID,
                 outbox: m34OutboxPublisher,
-                grants: createUnboundSupportGrantOperations(),
+                grants: m34SupportOps,
                 // Resolve lazily: M36 registers the seam during boot, after this module's imports are evaluated.
                 alerts: {
                   emit: (organizationId, input) =>
@@ -7167,6 +7256,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 keyPrefix: "m34-clearinghouse-put",
                 scopeOf: targetTenantScopeOf,
               }),
+              // The BAA revoke is a kill switch: counted per OPERATOR across every tenant (no scopeOf: the bucket is the operator in
+              // the platform org), so one session cannot sweep the tenants. Fail-open (see CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT).
+              clearinghouseRevokeBaaRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-clearinghouse-baa-revoke",
+              }),
               service: buildDrizzleOnboardingDataService({
                 db: dbHandle.db,
                 // After a write commits the advance sweep settles the step the data satisfies (best effort).
@@ -7188,6 +7284,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 clearinghouse: buildTenantClearinghouseOnboardingPort({
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
+                  // a BAA revoke publishes `m23.tenant_clearinghouse.baa_revoked` in its own transaction (the tenant is told)
+                  outbox: m23OutboxPublisher as unknown as ClearinghouseOutboxPort,
                 }),
                 // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).
                 notices: buildExternalNoticeOnboardingPort(),
@@ -7631,6 +7729,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // writes, so one allowlisted, audited withPlatformContext per call; no platform pool => 503, never a
                 // tenant-pool read.
                 npiVerificationService: buildDrizzleNpiVerificationService({
+                  beforeVerificationChanged: async (tx, organizationId) => {
+                    await lockTenantOnboardingShared(tx, organizationId);
+                  },
                   // A verify or revoke is the `ccn_registered` step's data: it also voids a pending go-live attestation, in the
                   // SAME platform transaction (M34's helper; M23 does not import M34).
                   onVerificationChanged: async (tx, change) => {
@@ -7673,10 +7774,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   limit: CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
                   keyPrefix: "m23-clearinghouse-put",
                 }),
+                // The MAC portal check is a gateway call per request and a created organization can reach it: capped, and closed.
+                macCredentialTestRateLimit: createRouteRateLimit({
+                  store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                  limit: MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
+                  keyPrefix: "m23-mac-credential-test",
+                }),
                 tenantClearinghouseService: buildDrizzleTenantClearinghouseRouteService({
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
                   audit: buildClearinghouseAuditPort(),
+                  // Each write voids a pending go-live attestation in its own transaction (step 7's data changed).
+                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
                   onChanged: settleOnboardingForOrg,
                   logError: (cause, context) =>
                     app.log.error(
@@ -7715,6 +7824,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 writeService: buildDrizzleM23WriteService(dbHandle.db, {
                   outbox: m23OutboxPublisher,
+                  // The tenant's own MAC credential save voids a pending go-live attestation in the same transaction (step 8's data).
+                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
                   // Owner decision D4: an org that bills outside ChartWarden files its NOE / NOTR itself, so submit parks the
                   // notice and the tenant records the date. Read lazily per call (the reader seam registers after this is built);
                   // a throw fails closed with a typed 503, never a transmission.
@@ -7747,7 +7858,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
                   // §4.5 validation override: one prominent audit_event per override, in the override's own transaction.
                   audit: buildM23OverrideAuditPort(),
-                  // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
+                  // GAP-144 — the MAC portal check (portal health) when the launch gateway is configured. It takes the jurisdiction only:
+                  // the credential's secret, client id and submitter id are never sent, so an answer proves the portal is up and says nothing
+                  // about the credential (the first real submission is its first use). The `detail` is what a person is told.
                   ...(m23LaunchGateway
                     ? {
                         macSandbox: {
@@ -7756,7 +7869,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                               await m23LaunchGateway.macPortal.probeHealth(macJurisdiction);
                             return {
                               ok: up,
-                              detail: up ? "MAC portal reachable" : "MAC portal unavailable",
+                              detail: up
+                                ? "The MAC portal for this jurisdiction answered. This does not validate the credential."
+                                : "The MAC portal for this jurisdiction did not answer.",
                             };
                           },
                         },
@@ -10000,6 +10115,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       });
       const m35Log = (message: string, detail: Record<string, unknown>) =>
         app.log.warn(detail, message);
+      const m35PauseBlockedNotice = buildPlatformOpsNoticeSink({
+        webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+        log: (message) => app.log.error(message),
+      });
       const m35Workers = registerM35Workers({
         connection: queueConnection,
         jobs: {
@@ -10008,6 +10127,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           outbox: m35OutboxPublisher,
           listOrgs: () => m35Orgs.listActiveOrgs(),
           log: m35Log,
+          // A paused subscription blocked by another live one stays paused until an operator acts. This is an ops notice, not a dead-letter
+          // promotion: it gets its own kind, summary and correlation id. The shared sink logs it and optionally posts the webhook. Ids only.
+          onPauseBlocked: (blocked) =>
+            m35PauseBlockedNotice({
+              kind: "m35.pause-resume-blocked",
+              summary: "a paused subscription cannot resume while another subscription is live",
+              details: {
+                organizationId: blocked.organizationId,
+                subscriptionId: blocked.subscriptionId,
+                otherLiveSubscriptionId: blocked.olderLiveSubscriptionId,
+                trigger: blocked.trigger,
+              },
+              correlationId: `m35-pause-blocked-${blocked.subscriptionId}`,
+            }),
         },
         ...(m35Stripe.cipher ? { cipher: m35Stripe.cipher } : {}),
         ...(m35Stripe.client
@@ -10076,7 +10209,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         })
         .catch((err) => app.log.error(err, "M35 job schedule registration failed"));
       app.log.info(
-        `M35 workers constructed: dunning, usage, payment-method expiry, revenue snapshot, reconciler${m35Stripe.cipher ? ", webhook handler" : ""}${m35Stripe.client ? ", refund executor" : ""}`,
+        `M35 workers constructed: dunning, usage, payment-method expiry, revenue snapshot, reconciler, pause-resume${m35Stripe.cipher ? ", webhook handler" : ""}${m35Stripe.client ? ", refund executor" : ""}`,
       );
     } else {
       app.log.warn("M35 workers disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required");
@@ -10097,6 +10230,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         },
         outbox: m23OutboxPublisher,
         log: (event, detail) => app.log.info({ claimmd: detail }, event),
+        // Counts and timestamps only: receipts still waiting under a key id other than this process's (a rotation with
+        // unsettled rows), visible every sweep before the key-fault grace runs out.
+        warn: (event, detail) => app.log.warn({ claimmd: detail }, event),
         // A receipt that went terminal `failed` is lost (Claim.MD already got 200): the ops alert sink, error level.
         onFailed: ({ usage, eventId, attempts, errorClass }) =>
           dlqPromotionSink({
@@ -10106,6 +10242,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             error: errorClass,
             occurredAt: new Date().toISOString(),
           }),
+        // The backstop for an `onFailed` alert lost to a crash between the commit and the alert: ONE summary through the same sink the
+        // first sweep that sees terminal `failed` receipts from the last 24 hours (a restarted process included), and again only after
+        // the count has returned to zero. The sink has no throttle, so the latch lives in the alerter, not in a per-minute call. The
+        // `claimmd.webhook.recent_failed_receipts` warn line above keeps logging every sweep. Counts and a time only, no ids.
+        onRecentFailedCount: createRecentFailedAlerter(
+          ({ count, oldestProcessedAt, windowHours }) =>
+            dlqPromotionSink({
+              source: "m23:claimmd-webhook-recent-failed",
+              error: `${count} Claim.MD receipt(s) went terminal failed in the last ${windowHours} h (oldest at ${oldestProcessedAt}); a per-receipt alert may have been lost, check claimmd_webhook_event`,
+              occurredAt: new Date().toISOString(),
+            }),
+        ),
         // A payload key fault leaves every receipt pending (no attempt spent): one alert per sweep, same sink.
         onUndecryptable: ({ count, errorClass }) =>
           dlqPromotionSink({
@@ -10838,12 +10986,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ? (await m23ActiveOrgs.listActiveOrgs()).map((o) => o.organizationId)
             : [organizationId];
         for (const orgId of targetOrgs) {
-          await m23AlertEmitter.emit(orgId, {
-            eventType: alertCode,
-            payload,
-            severity,
-            correlationId: cronAlertCorrelationId("m23-cron", alertCode, payload),
-          });
+          // the held-work alert is keyed on its severity, queue, reason and six-hour window, and refused when it addressed nobody
+          // (cron-alert-correlation.ts); every other M23 alert keeps its per-day key
+          await emitCronAlert(m23AlertEmitter, "m23-cron", orgId, { alertCode, severity, payload });
         }
       },
     };
@@ -11397,6 +11542,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               ...clearinghouseUsageFor,
             }),
             payers: buildSeamMedicarePayerPort(),
+            // a revoked tenant is skipped by this pull: say so when responses may still be owed (once per org per day)
+            onRevokedSkipped: (organizationId: string) =>
+              reportRevokedResponsesPending(
+                {
+                  db: dbHandle.db,
+                  alerts: m25Alerts,
+                  log: (e) => app.log.warn({ event: e.event, code: e.code }, "revoked responses"),
+                },
+                { organizationId },
+              ),
             cursors: buildDrizzleRemittanceCursorStore(dbHandle.db),
             ingest: buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(),
@@ -11461,24 +11616,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         organizationId: string;
         payload: Record<string, unknown>;
       }) => {
-        await (
-          getSeam("AlertEmitter") as {
-            emit(
-              orgId: string,
-              input: {
-                eventType: string;
-                payload: Record<string, unknown>;
-                severity: string;
-                correlationId: string;
-              },
-            ): Promise<unknown>;
-          }
-        ).emit(organizationId, {
-          eventType: alertCode,
-          payload,
-          severity,
-          correlationId: cronAlertCorrelationId("m41-cron", alertCode, payload),
-        });
+        // keyed on queue, reason/code and a six-hour window, so the drain and the ack pull alert apart, and refused when it addressed
+        // nobody (cron-alert-correlation.ts)
+        await emitCronAlert(
+          getSeam("AlertEmitter") as CronAlertEmitter,
+          "m41-cron",
+          organizationId,
+          { alertCode, severity, payload },
+        );
       },
     };
     const m41SubmissionWorker = registerM41SubmissionWorker(queueConnection, {
@@ -15838,6 +15983,35 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   payload,
                   severity,
                   correlationId: cronAlertCorrelationId("m23-notice-late", alertCode, payload),
+                });
+              },
+            },
+            opsNotice: buildPlatformOpsNoticeSink({
+              webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+              log: (m) => app.log.warn(m),
+            }),
+          }),
+          // An operator's BAA revoke (ADR-0053 amendment, "build it"): the M36 alert to the tenant (rule
+          // m23.tenant_clearinghouse.baa_revoked) plus an org-less platform-ops notice on EVERY revoke. Ids, a closed code and counts only.
+          buildM23BaaRevokedConsumer({
+            alerts: {
+              dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+                const emitter = getSeam("AlertEmitter") as {
+                  emit(
+                    orgId: string,
+                    input: {
+                      eventType: string;
+                      payload: Record<string, unknown>;
+                      severity: string;
+                      correlationId: string;
+                    },
+                  ): Promise<unknown>;
+                };
+                await emitter.emit(organizationId, {
+                  eventType: alertCode,
+                  payload,
+                  severity,
+                  correlationId: cronAlertCorrelationId("m23-baa-revoked", alertCode, payload),
                 });
               },
             },

@@ -9,6 +9,8 @@
 import type { BillingServiceMode } from "@chartwarden/types";
 
 export interface ModeHistoryRow {
+  /** Stable final tie-breaker when two changes share a database timestamp. */
+  readonly id: string;
   readonly billingServiceMode: BillingServiceMode;
   /** `YYYY-MM-DD` (UTC). */
   readonly effectiveFrom: string;
@@ -17,7 +19,9 @@ export interface ModeHistoryRow {
 
 const byEffectiveThenCreated = (a: ModeHistoryRow, b: ModeHistoryRow): number =>
   a.effectiveFrom === b.effectiveFrom
-    ? a.createdAt.getTime() - b.createdAt.getTime()
+    ? a.createdAt.getTime() === b.createdAt.getTime()
+      ? a.id.localeCompare(b.id)
+      : a.createdAt.getTime() - b.createdAt.getTime()
     : a.effectiveFrom < b.effectiveFrom
       ? -1
       : 1;
@@ -34,6 +38,19 @@ export function modeInForceOn(
 export interface PendingMode {
   readonly billingServiceMode: BillingServiceMode;
   readonly effectiveOn: string;
+}
+
+/**
+ * Timestamp an append strictly after every row observed under the tenant's serialization lock.
+ * PostgreSQL `now()` is the transaction start, so leaving the default in place can make a later
+ * lock winner sort before the decision it supersedes.
+ */
+export function nextModeCreatedAt(at: Date, history: readonly ModeHistoryRow[]): Date {
+  const latest = history.reduce(
+    (max, row) => Math.max(max, row.createdAt.getTime()),
+    Number.NEGATIVE_INFINITY,
+  );
+  return Number.isFinite(latest) && at.getTime() <= latest ? new Date(latest + 1) : at;
 }
 
 /**

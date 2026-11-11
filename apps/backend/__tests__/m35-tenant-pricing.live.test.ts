@@ -33,7 +33,9 @@ import {
   buildPricingOnboardingPort,
   readTenantGoLive,
 } from "../src/modules/34-saas-tenant-platform/onboarding/pricing-port";
+import { runPauseResumeForOrg } from "../src/modules/35-subscription/billing-runtime/pause-resume";
 import { M35_OUTBOX_EVENTS } from "../src/modules/35-subscription/events-by-m35";
+import { buildM35OrgLifecycleConsumer } from "../src/modules/35-subscription/outbox-consumers/m2-organization-lifecycle";
 import { buildM35SessionCreatedConsumer } from "../src/modules/35-subscription/outbox-consumers/m2-session-created";
 import { recordDailyCensusForOrg } from "../src/modules/35-subscription/pricing/census-daily";
 import {
@@ -42,7 +44,9 @@ import {
 } from "../src/modules/35-subscription/pricing/contract-select";
 import {
   type ContractService,
+  type PlatformContractView,
   buildContractService,
+  readBillingServiceMode,
 } from "../src/modules/35-subscription/pricing/contract-service";
 import {
   type CreatePricingPlanInput,
@@ -84,6 +88,10 @@ const ORG_N = "ae000000-0000-4000-8000-0000000000ae"; // re-signed: two contract
 const ORG_O = "af000000-0000-4000-8000-0000000000af"; // slice 5: onboarding, signed on billing software, then it bills outside
 const ORG_P = "b0000000-0000-4000-8000-0000000000b0"; // slice 5: live (went live after signing), then it bills outside
 const ORG_Q = "b1000000-0000-4000-8000-0000000000b1"; // slice 5: no contract at all
+const PAUSE_ORG_O = "d8100000-0000-4000-8000-000000000081"; // an operator's dated pause that the hourly sweep resumes: the statement must not move
+const PAUSE_ORG_P = "d8200000-0000-4000-8000-000000000082"; // an operator's dated pause still running when the platform suspends the org
+const PAUSE_ORG_Q = "d8300000-0000-4000-8000-000000000083"; // an older live subscription beside the newest, paused one: the operator's resume is refused
+const PAUSE_ORG_R = "d8400000-0000-4000-8000-000000000084"; // two paused subscriptions: the superseded older one cannot be resurrected
 const OPERATOR_USER = "0a000000-0000-4000-8000-000000000001";
 const OPERATOR_MEMBERSHIP = "0b000000-0000-4000-8000-000000000001";
 const KEY = {
@@ -174,6 +182,22 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       return await fn(carrier);
     } finally {
       await carrier.end();
+    }
+  }
+
+  /** Poll until `count` platform sessions are queued on M35's transaction advisory lock. */
+  async function waitForPricingLockWaiters(count: number, timeoutMs = 15_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const rows = await q<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND pid <> pg_backend_pid()
+            AND wait_event_type = 'Lock' AND query ILIKE '%pg_advisory_xact_lock%'`,
+      );
+      if ((rows[0]?.n ?? 0) >= count) return;
+      if (Date.now() > deadline)
+        throw new Error(`no ${count} sessions waiting on the pricing lock`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
   }
 
@@ -395,6 +419,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       [ORG_O, "pricing-o"],
       [ORG_P, "pricing-p"],
       [ORG_Q, "pricing-q"],
+      [PAUSE_ORG_O, "pause-o"],
+      [PAUSE_ORG_P, "pause-p"],
     ] as const) {
       await seedOrg(org, slug, "onboarding");
     }
@@ -419,6 +445,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ["pricing-o", ORG_O],
       ["pricing-p", ORG_P],
       ["pricing-q", ORG_Q],
+      ["pause-o", PAUSE_ORG_O],
+      ["pause-p", PAUSE_ORG_P],
     ]);
     const stepStatus = new Map<string, "pending" | "done">();
     const wizard = {
@@ -1307,6 +1335,64 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       );
     });
 
+    it("serializes two platform-carrier mode changes: the second lock winner reloads the first commit and remains the final decision", async () => {
+      await asCarrier(async (holder) => {
+        const queued: Promise<PlatformContractView>[] = [];
+        await holder.query("BEGIN");
+        try {
+          await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 35))", [ORG_A]);
+          const first = contractsAt("2026-10-22T10:00:00Z").setBillingServiceMode(
+            operator,
+            "pricing-a",
+            "managed_billing",
+            "first queued operator decision",
+          );
+          queued.push(first);
+          await waitForPricingLockWaiters(1);
+          const second = contractsAt("2026-10-22T09:00:00Z").setBillingServiceMode(
+            operator,
+            "pricing-a",
+            "none",
+            "second queued operator decision",
+          );
+          queued.push(second);
+          await waitForPricingLockWaiters(2);
+          await holder.query("COMMIT");
+
+          const [firstView, secondView] = await Promise.all([first, second]);
+          expect(firstView.billingServiceMode).toBe("managed_billing");
+          expect(secondView.billingServiceMode).toBe("none");
+          expect(
+            await readBillingServiceMode(app.db, ORG_A, new Date("2026-10-22T12:00:00Z")),
+          ).toBe("none");
+
+          const rows = await q<{ billing_service_mode: string; created_at: Date }>(
+            `SELECT billing_service_mode, created_at FROM subscription_contract_mode
+              WHERE organization_id=$1 AND effective_from='2026-10-22'
+              ORDER BY created_at, id`,
+            [ORG_A],
+          );
+          expect(rows.map((row) => row.billing_service_mode)).toEqual(["managed_billing", "none"]);
+          expect(rows[1]?.created_at.getTime()).toBeGreaterThan(rows[0]?.created_at.getTime() ?? 0);
+        } finally {
+          await holder.query("ROLLBACK");
+          await Promise.allSettled(queued);
+        }
+      });
+      await contractsAt("2026-10-22T11:00:00Z").setBillingServiceMode(
+        operator,
+        "pricing-a",
+        "billing_software",
+        "restore the fixture's billing mode",
+      );
+    });
+
+    it("exposes the mode to another module: the BillingServiceModeReader body reads the tenant's own contract", async () => {
+      const onNov5 = new Date("2026-11-05T12:00:00Z");
+      expect(await readBillingServiceMode(app.db, ORG_A, onNov5)).toBe("billing_software");
+      expect(await readBillingServiceMode(app.db, ORG_B, onNov5)).toBe("none");
+      expect(await readBillingServiceMode(app.db, ORG_C, onNov5)).toBeNull(); // no contract: never read as `none`
+    });
     it("a tenant that is still onboarding with NO statement yet changes mode immediately (D6): nothing was billed, so there is no month to protect", async () => {
       const day = "2026-10-21T09:00:00Z";
       const changed = await contractsAt(day).setBillingServiceMode(
@@ -1939,6 +2025,47 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           [ORG_A],
         ),
       ).rejects.toThrow(/final statement cannot change/);
+    });
+
+    it("migration 1466: the platform carrier cannot restamp a statement across the subscription's organization/plan ownership boundary", async () => {
+      await asCarrier(async (carrier) => {
+        await expect(
+          carrier.query(
+            "UPDATE subscription_statement SET organization_id=$1 WHERE organization_id=$2 AND status='draft'",
+            [ORG_B, ORG_A],
+          ),
+        ).rejects.toMatchObject({
+          code: "23514",
+          constraint: "subscription_statement_ownership_guard",
+        });
+      });
+    });
+
+    it("migration 1466: the composite ownership FK blocks changing a subscription plan underneath its statement", async () => {
+      const tenantClient = new Client({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      await tenantClient.connect();
+      try {
+        await tenant(tenantClient, ORG_A, async () => {
+          await expect(
+            tenantClient.query("UPDATE subscription SET plan_id=$1 WHERE organization_id=$2", [
+              planV1,
+              ORG_A,
+            ]),
+          ).rejects.toMatchObject({
+            code: "23503",
+            constraint: "subscription_statement_ownership_fk",
+          });
+        });
+        const rows = await q<{ plan_id: string }>(
+          "SELECT plan_id FROM subscription WHERE organization_id=$1",
+          [ORG_A],
+        );
+        expect(rows[0]?.plan_id).toBe(planV2Id);
+      } finally {
+        await tenantClient.end();
+      }
     });
 
     it("F-6 (migration 1464): a final statement's Stripe push record is written ONCE: from NULL it may be set, but never cleared or rewritten, so a posted statement cannot go back into the unposted set", async () => {
@@ -2814,7 +2941,36 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       });
     });
 
-    it("PRC-1: a pause with an end date is over at that date though nothing resumed it (statement days, the live contract scope), and a later resume does not move it", async () => {
+    it("a promo redemption cannot be spent on a contracted subscription, by a tenant (403) or an operator (409): the code's count stays 0 and no application is written", async () => {
+      await admin.query(
+        `INSERT INTO promo_code (stripe_coupon_id, stripe_promotion_code_id, code, kind, percent_off, duration, max_redemptions)
+         VALUES ('coupon_prc4', 'promo_prc4', 'PRC4', 'percent_off', 10, 'once', 5)`,
+      );
+      const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
+      const route = buildDrizzleM35RouteService(app.db, { platformRunner, outbox, audit });
+      // ORG_L's contracted subscription is not canceled or paused here: the refusal is about the PLAN, not about the status
+      const [sub] = await q<{ id: string; status: string }>(
+        "SELECT id, status FROM subscription WHERE organization_id=$1 ORDER BY started_at DESC LIMIT 1",
+        [ORG_L],
+      );
+      const actor = await tenantActor(ORG_L, "tenant-l-promo");
+      await expect(route.applyPromoTenant(actor, "PRC4")).rejects.toMatchObject({
+        code: "PLAN_ASSIGNED_BY_OPERATIONS",
+        statusCode: 403,
+      });
+      await expect(route.adminApplyPromo(operator, sub?.id ?? "", "PRC4")).rejects.toMatchObject({
+        code: "PROMO_NOT_APPLICABLE_TO_CONTRACTED_PLAN",
+        statusCode: 409,
+      });
+      expect(
+        await q<{ redemption_count: number }>(
+          "SELECT redemption_count FROM promo_code WHERE code='PRC4'",
+        ),
+      ).toEqual([{ redemption_count: 0 }]);
+      expect(await q("SELECT 1 FROM promo_code_application")).toHaveLength(0);
+    });
+
+    it("PRC-1: a pause with an end date is over at that date before the hourly sweep has resumed the row (statement days, the live contract scope), and a later resume does not move it", async () => {
       const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
       const route = (iso: string) =>
         buildDrizzleM35RouteService(app.db, { platformRunner, outbox, audit, now: at(iso) });
@@ -2857,7 +3013,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       await runStatementsForOrg(deps("2026-11-27T12:00:00Z"), ORG_J);
       expect(await statementOf(ORG_J, "2026-11")).toMatchObject({ days_live: 26 });
 
-      // the date passed and NOBODY resumed it: live again, and the 28th through the 30th bill (the 27th is the one fully paused day)
+      // the date passed and the sweep has not run (no sweep here): the row is still `paused` but billing counts it live again, and the 28th through the 30th bill (the 27th is the one fully paused day)
       expect(await live("2026-11-29T12:00:00Z")).toBe(true);
       await runStatementsForOrg(deps("2026-11-29T12:00:00Z"), ORG_J);
       expect(await statementOf(ORG_J, "2026-11")).toMatchObject({ days_live: 29 });
@@ -2866,6 +3022,241 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       await route("2026-11-29T12:00:00Z").adminResumeSubscription(operator, sub?.id ?? "");
       await runStatementsForOrg(deps("2026-11-29T13:00:00Z"), ORG_J);
       expect(await statementOf(ORG_J, "2026-11")).toMatchObject({ days_live: 29 });
+    });
+
+    /** A contracted org that went live Nov 1 with a census for Nov 1..19 (what a November draft needs). */
+    const contractedOrg = async (org: string, slug: string): Promise<string> => {
+      await contractsAt(SIGNED_AT).createForTenant(operator, slug, {
+        planSlug: planV2Slug,
+        billingServiceMode: "none",
+        reason: "order form signed by the customer's administrator",
+      });
+      await goLive(org, "2026-11-01T00:00:00Z");
+      await censusDays(org, 1, 19, 5);
+      return (
+        await q<{ id: string }>("SELECT id FROM subscription WHERE organization_id=$1", [org])
+      )[0]?.id as string;
+    };
+    const statementRows = (org: string) =>
+      q<Record<string, string>>(
+        "SELECT * FROM subscription_statement WHERE organization_id=$1 ORDER BY period_year_month",
+        [org],
+      );
+    const operatorRoute = (iso: string) =>
+      buildDrizzleM35RouteService(app.db, {
+        platformRunner,
+        outbox,
+        audit: buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row)),
+        now: at(iso),
+      });
+
+    it("PRC-3: the hourly sweep resumes a lapsed pause and the statement is BYTE-IDENTICAL before and after: the ledger is dated at the pause's own end date, not at the sweep's instant", async () => {
+      const subId = await contractedOrg(PAUSE_ORG_O, "pause-o");
+      // paused Nov 12 06:00 until Nov 14 00:00: Nov 13 is the one fully paused day
+      await operatorRoute("2026-11-12T06:00:00Z").adminPauseSubscription(
+        operator,
+        subId,
+        "2026-11-14T00:00:00Z",
+      );
+      // the date has long passed and the sweep has not run: billing counts the pause as over at its date
+      await runStatementsForOrg(deps("2026-11-20T12:00:00Z"), PAUSE_ORG_O);
+      const before = await statementRows(PAUSE_ORG_O);
+      expect(before).toHaveLength(1);
+      expect(before[0]).toMatchObject({ period_year_month: "2026-11", days_live: 29 });
+      expect(
+        (await q<{ status: string }>("SELECT status FROM subscription WHERE id=$1", [subId]))[0],
+      ).toEqual({ status: "paused" });
+
+      // the sweep (the tenant pool, as chartwarden_app, 1h05 after the statement run) resumes the row
+      expect(
+        await runPauseResumeForOrg(
+          {
+            db: app.db,
+            platformRunner,
+            outbox,
+            listOrgs: async () => [{ organizationId: PAUSE_ORG_O }],
+            now: at("2026-11-20T13:05:00Z"),
+          },
+          PAUSE_ORG_O,
+        ),
+      ).toBe(1);
+      expect(
+        (
+          await q<Record<string, unknown>>(
+            "SELECT status, paused_at, paused_until FROM subscription WHERE id=$1",
+            [subId],
+          )
+        )[0],
+      ).toEqual({ status: "active", paused_at: null, paused_until: null });
+      const ledger = await q<{
+        from_status: string;
+        to_status: string;
+        reason_code: string;
+        at: string;
+      }>(
+        `SELECT from_status, to_status, reason_code, transitioned_at::text AS at
+           FROM subscription_state_history WHERE subscription_id=$1 ORDER BY transitioned_at, id`,
+        [subId],
+      );
+      expect(ledger.map((r) => [r.from_status, r.to_status, r.reason_code, r.at])).toEqual([
+        [null, "active", "platform_onboarding_contract", "2026-10-20 12:00:00+00"],
+        ["active", "paused", "platform_ops_pause", "2026-11-12 06:00:00+00"],
+        ["paused", "active", "platform_ops_pause_lapsed", "2026-11-14 00:00:00+00"], // the date, not Nov 20 13:05
+      ]);
+      expect(
+        await q(
+          "SELECT payload FROM outbox_event WHERE organization_id=$1 AND event_type='m35.subscription.resumed'",
+          [PAUSE_ORG_O],
+        ),
+      ).toHaveLength(1);
+
+      // the statement, re-run after the sweep: the SAME rows (a rerun that changes nothing writes nothing, so even updated_at is unmoved)
+      await runStatementsForOrg(deps("2026-11-20T14:00:00Z"), PAUSE_ORG_O);
+      expect(await statementRows(PAUSE_ORG_O)).toEqual(before);
+      // ... and the live scope never wavered: the contract is billable before and after
+      const live = async () =>
+        (await platformRunner((tx) =>
+          selectNewestContract(tx, "live", new Date("2026-11-20T14:00:00Z"), PAUSE_ORG_O),
+        )) !== null;
+      expect(await live()).toBe(true);
+    });
+
+    it("PRC-4: a suspension while an operator's DATED pause is still running makes it open-ended, and the statement does not move at the conversion; past the old date the suspended org stays unbilled", async () => {
+      const subId = await contractedOrg(PAUSE_ORG_P, "pause-p");
+      // paused Nov 12 06:00 until Nov 25 00:00: still running on Nov 20
+      await operatorRoute("2026-11-12T06:00:00Z").adminPauseSubscription(
+        operator,
+        subId,
+        "2026-11-25T00:00:00Z",
+      );
+      await runStatementsForOrg(deps("2026-11-20T12:00:00Z"), PAUSE_ORG_P);
+      const before = await statementRows(PAUSE_ORG_P);
+      expect(before).toHaveLength(1);
+
+      // the platform suspends the org (M2) at Nov 20 13:00: the consumer converts the running pause
+      await buildM35OrgLifecycleConsumer({
+        db: app.db,
+        outbox,
+        now: at("2026-11-20T13:00:00Z"),
+      }).handle({
+        eventType: "m2.organization.suspended",
+        organizationId: PAUSE_ORG_P,
+        payload: { organizationId: PAUSE_ORG_P, reason: "compliance_hold" },
+      });
+      expect(
+        (
+          await q<Record<string, unknown>>(
+            "SELECT status, paused_until FROM subscription WHERE id=$1",
+            [subId],
+          )
+        )[0],
+      ).toEqual({ status: "paused", paused_until: null });
+
+      // before the old date: the statement is the same row
+      await runStatementsForOrg(deps("2026-11-20T14:00:00Z"), PAUSE_ORG_P);
+      expect(await statementRows(PAUSE_ORG_P)).toEqual(before);
+      // after the old date (Nov 25): a legacy dated pause would count as over and bill Nov 25..30; the converted one does not
+      await runStatementsForOrg(deps("2026-11-28T12:00:00Z"), PAUSE_ORG_P);
+      expect(await statementRows(PAUSE_ORG_P)).toEqual(before);
+      const live = await platformRunner((tx) =>
+        selectNewestContract(tx, "live", new Date("2026-11-28T12:00:00Z"), PAUSE_ORG_P),
+      );
+      expect(live).toBeNull(); // not billable: the suspended org stays exempt
+    });
+
+    it("PRC-5: the operator's resume of a paused subscription while an OLDER subscription of the organization is live is a typed 409 (not the unique index's raw failure); after the operator cancels the older one the sweep resumes it", async () => {
+      await seedOrg(PAUSE_ORG_Q, "pause-q", "onboarding");
+      const older = "c1000000-0000-4000-8000-000000000001";
+      const newest = "c1000000-0000-4000-8000-000000000002";
+      await admin.query(
+        `INSERT INTO subscription (id, organization_id, plan_id, status, started_at)
+         VALUES ($1,$2,$3,'active','2026-09-01T00:00:00Z')`,
+        [older, PAUSE_ORG_Q, planV2Id],
+      );
+      await admin.query(
+        `INSERT INTO subscription (id, organization_id, plan_id, status, started_at, paused_at, paused_until)
+         VALUES ($1,$2,$3,'paused','2026-11-01T00:00:00Z','2026-11-10T00:00:00Z','2026-12-15T00:00:00Z')`,
+        [newest, PAUSE_ORG_Q, planV2Id],
+      );
+      // what the refusal replaces: the database itself refuses a second live subscription, with a raw failure
+      await expect(
+        admin.query("UPDATE subscription SET status='active' WHERE id=$1", [newest]),
+      ).rejects.toMatchObject({ code: "23505", constraint: "subscription_org_active_uq" });
+
+      const route = operatorRoute("2026-12-20T00:00:00Z");
+      await expect(route.adminResumeSubscription(operator, newest)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_OTHER_LIVE_EXISTS",
+        statusCode: 409,
+      });
+      // nothing written, audited or announced for the refusal
+      expect(
+        (await q<{ status: string }>("SELECT status FROM subscription WHERE id=$1", [newest]))[0],
+      ).toEqual({ status: "paused" });
+      expect(
+        await q("SELECT 1 FROM subscription_state_history WHERE subscription_id=$1", [newest]),
+      ).toHaveLength(0);
+      expect(
+        await q(
+          "SELECT 1 FROM audit_event WHERE event_type='m35.subscription.platform_resumed' AND resource_id=$1",
+          [newest],
+        ),
+      ).toHaveLength(0);
+      expect(
+        await q(
+          "SELECT 1 FROM outbox_event WHERE organization_id=$1 AND event_type='m35.subscription.resumed'",
+          [PAUSE_ORG_Q],
+        ),
+      ).toHaveLength(0);
+
+      // the operator cancels the older one by id; the next hourly tick resumes the newest
+      await route.adminCancelSubscription(operator, older);
+      const sweepDeps = {
+        db: app.db,
+        platformRunner,
+        outbox,
+        listOrgs: async () => [{ organizationId: PAUSE_ORG_Q }],
+        now: at("2026-12-20T03:05:00Z"),
+      };
+      expect(await runPauseResumeForOrg(sweepDeps, PAUSE_ORG_Q)).toBe(1);
+      expect(
+        (await q<{ status: string }>("SELECT status FROM subscription WHERE id=$1", [newest]))[0],
+      ).toEqual({ status: "active" });
+    });
+
+    it("PRC-5: the operator cannot resume a superseded older paused subscription while the newest subscription is paused", async () => {
+      await seedOrg(PAUSE_ORG_R, "pause-r", "onboarding");
+      const older = "c2000000-0000-4000-8000-000000000001";
+      const newest = "c2000000-0000-4000-8000-000000000002";
+      await admin.query(
+        `INSERT INTO subscription (id, organization_id, plan_id, status, started_at, paused_at)
+         VALUES ($1,$2,$3,'paused','2026-09-01T00:00:00Z','2026-09-10T00:00:00Z'),
+                ($4,$2,$3,'paused','2026-11-01T00:00:00Z','2026-11-10T00:00:00Z')`,
+        [older, PAUSE_ORG_R, planV2Id, newest],
+      );
+      const route = operatorRoute("2026-12-20T00:00:00Z");
+
+      await expect(route.adminResumeSubscription(operator, older)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_SUPERSEDED",
+        statusCode: 409,
+      });
+      expect(
+        await q<{ id: string; status: string }>(
+          "SELECT id, status FROM subscription WHERE organization_id=$1 ORDER BY started_at, id",
+          [PAUSE_ORG_R],
+        ),
+      ).toEqual([
+        { id: older, status: "paused" },
+        { id: newest, status: "paused" },
+      ]);
+      expect(
+        await q("SELECT 1 FROM subscription_state_history WHERE subscription_id=$1", [older]),
+      ).toHaveLength(0);
+      expect(
+        await q(
+          "SELECT 1 FROM audit_event WHERE event_type='m35.subscription.platform_resumed' AND resource_id=$1",
+          [older],
+        ),
+      ).toHaveLength(0);
     });
 
     it("MEDIUM: a platform operator's pause, resume and cancel name the operator in the PLATFORM audit row and NOT in the tenant-readable history or its audit copy", async () => {
@@ -2956,7 +3347,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       );
       const before = await subscriptionFootprint(canceledId);
       await expect(route.adminResumeSubscription(operator, canceledId)).rejects.toMatchObject({
-        code: "SUBSCRIPTION_NOT_PAUSED",
+        code: "SUBSCRIPTION_CANCELED",
         statusCode: 409,
       });
       await expect(route.adminPauseSubscription(operator, canceledId, null)).rejects.toMatchObject({

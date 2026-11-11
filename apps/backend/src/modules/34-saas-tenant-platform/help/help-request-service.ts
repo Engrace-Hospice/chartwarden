@@ -297,6 +297,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         reason: `help request ${row.id}`,
         helpRequestId: row.id,
       });
+      if (grant.afterCommit) store.afterCommit(grant.afterCommit);
       const approvedAt = now();
       const approved = await store.markApproved(row.id, {
         grantId: grant.grantId,
@@ -357,7 +358,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
     if (!row.supportConsentGrantId) {
       throw new HelpRequestError("HELP_REQUEST_NOT_OPEN", "an approved help request has no grant");
     }
-    await grants.revokeGrantAndCloseSessions(
+    const revoked = await grants.revokeGrantAndCloseSessions(
       {
         ...grants.depsFor(store.tx),
         linkedHelpRequests: store.linkedRequests(ending.defaults),
@@ -370,6 +371,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         source: ending.source,
       },
     );
+    if (revoked.afterCommit) store.afterCommit(revoked.afterCommit);
     const after = await store.findForUpdate(row.id);
     if (after?.status === "approved") {
       await store.markClosed(row.id, { ...ending.closing, from: "approved", to: "resolved" });
@@ -411,9 +413,9 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
     async file(actor, input: FileHelpRequestInput) {
       assertMemberSession(actor);
       const message = normalizeHelpText(input.message, {
+        field: "message",
         min: HELP_MESSAGE_MIN,
         max: HELP_MESSAGE_MAX,
-        field: "message",
       });
       const stepKey = input.stepKey === undefined ? null : input.stepKey.trim();
       if (stepKey === "") {
@@ -537,9 +539,9 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         throw new ForbiddenError("AI principals cannot resolve help requests");
       }
       const note = normalizeHelpText(input.note, {
+        field: "note",
         min: HELP_NOTE_MIN,
         max: HELP_NOTE_MAX,
-        field: "note",
       });
       return runner.asPlatform(
         { userId: actor.userId, reason: "m34 help request resolve" },

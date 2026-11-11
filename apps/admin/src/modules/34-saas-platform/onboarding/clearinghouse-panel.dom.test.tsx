@@ -22,6 +22,7 @@ import {
 const CH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
 const VERIFY = `${CH}/verify`;
 const BAA_VERIFY = `${CH}/baa/verify`;
+const BAA_REVOKE = `${CH}/baa/revoke`;
 const SUBSCRIPTION = "/api/v1/platform/tenants/{orgSlug}/subscription";
 const TYPED_VALUE = "vendor-credential-for-test-only";
 const RECORDED_AT = "2026-11-02T10:00:00.123Z";
@@ -60,6 +61,9 @@ const BAA = {
   documentRef: "Claim.MD BAA, contract folder 7",
   recordedAt: RECORDED_AT,
   verified: null,
+  revoked: false,
+  revokedAt: null,
+  revokedReasonCode: null,
 };
 const VERIFIED_BAA = { ...BAA, verified: { at: "2026-11-03T09:00:00.000Z" } };
 
@@ -724,6 +728,50 @@ describe("ClearinghousePanel: verifying the vendor BAA (pinned to the record rea
     await screen.findByText(/Secret on file/);
     expect(screen.queryByRole("button", { name: "Verify the vendor BAA" })).toBeNull();
     expect(screen.getByText(/The tenant records this itself/)).toBeTruthy();
+  });
+
+  it("requires an explicit acknowledgement before verifying the same document after a previous revocation", async () => {
+    const previous = {
+      ...BAA,
+      previousRevocation: { at: "2026-11-01T08:00:00.000Z", sameDocument: true },
+    };
+    const { client } = mount(
+      { ...CLAIMMD, baa: previous },
+      { POST: { [BAA_VERIFY]: () => ok(CLAIMMD) } },
+    );
+    await openBaa();
+    confirm("Reviewed the earlier revocation under ticket SEC-42", "Verify BAA");
+    expect(await screen.findByText(/acknowledgement is required/i)).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Verify BAA" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.POST.mock.calls)[1].body).toEqual({
+      reason: "Reviewed the earlier revocation under ticket SEC-42",
+      acknowledgePreviousRevocation: true,
+    });
+  });
+
+  it("revokes with a closed reason and ticket reference, pinned to the record read", async () => {
+    const { client } = mount(
+      { ...CLAIMMD, status: "active", baa: VERIFIED_BAA },
+      { POST: { [BAA_REVOKE]: () => ok({ ...CLAIMMD, status: "verified" }) } },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke vendor BAA" }));
+    fireEvent.change(screen.getByLabelText("Closed reason"), {
+      target: { value: "account_closed" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /Operator ticket/ }), {
+      target: { value: "sec-42" },
+    });
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Revoke BAA" }),
+    );
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const [path, init] = lastCall(client.POST.mock.calls);
+    expect(path).toBe(BAA_REVOKE);
+    expect(init.params.header["If-Match"]).toBe(RECORDED_AT);
+    expect(init.body).toEqual({ reasonCode: "account_closed", ticketRef: "SEC-42" });
   });
 });
 

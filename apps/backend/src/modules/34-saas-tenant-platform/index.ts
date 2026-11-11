@@ -156,6 +156,22 @@ export {
   scheduleM34PlatformSweepJobs,
 } from "./jobs/platform-sweeps-worker";
 
+export type {
+  SupportLedgerRecorder,
+  SupportLedgerWrite,
+} from "./routes/platform/support-ledger-hook";
+export { createDrizzleSupportLedgerRecorder } from "./routes/platform/support-ledger-drizzle";
+// Slice 7 (7S) - the support-session ports bound once at the composition root and shared by the platform service, the tenant service
+// and the close sweep; the support-grant operations bundle piece 7B is handed; the ledger hook for an operator's writes on a tenant.
+export {
+  type SupportPortAlerts,
+  type SupportPortOutbox,
+  type SupportSessionPortDeps,
+  type SupportSessionPorts,
+  createSupportGrantOperationsOver,
+  createSupportSessionPorts,
+} from "./jobs/support-session-ports";
+
 export {
   buildM34ProvisionQueue,
   buildM34ProvisionStartedConsumer,
@@ -305,6 +321,10 @@ import {
   type PlatformOpsService,
   createInMemoryPlatformOpsService,
 } from "./routes/platform/ops-service";
+import {
+  type SupportLedgerHookDeps,
+  registerSupportLedgerHook,
+} from "./routes/platform/support-ledger-hook";
 import { registerTenantAccountFlagsRoutes } from "./routes/tenant/account-flags-routes";
 import {
   type TenantAccountFlagsService,
@@ -329,6 +349,11 @@ export function mountTenantPlatformRoutes(
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     /**
+     * Slice 7 (7S) - appends one `ops.write` ledger row per successful non-GET operator request on `/platform/tenants/:orgSlug/*`
+     * while the operator holds an open consented support session on that tenant. Absent => the hook is not registered (tests, no-db boot).
+     */
+    supportLedger?: SupportLedgerHookDeps;
+    /**
      * Slice 7 - help requests, both surfaces. `service` absent => a fail-closed 501 binding; route tests that need behavior inject the
      * exported in-memory service explicitly. `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped).
      */
@@ -342,6 +367,8 @@ export function mountTenantPlatformRoutes(
       baaUploadRateLimit?: (request: never, reply: never) => Promise<void>;
       /** Per-target-tenant cap on the clearinghouse `PUT` (its 409 is an account-in-use oracle); fail-closed in production. */
       clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-operator (across tenants) cap on the BAA revoke, a kill switch; fail-open in production (the audit row and alerts still fire). */
+      clearinghouseRevokeBaaRateLimit?: (request: never, reply: never) => Promise<void>;
     };
     public?: {
       service?: _SignupIntentRouteService;
@@ -352,6 +379,9 @@ export function mountTenantPlatformRoutes(
   },
 ): void {
   void db; // the Drizzle services already hold the platform/org-pooled handles (services.* below).
+
+  // The support-session ledger hook goes first so it is in scope for every platform route mounted below.
+  if (services?.supportLedger) registerSupportLedgerHook(app, services.supportLedger);
 
   // ── platform-ops surface (withPlatformContext; F03/F09 audited cross-tenant reads) ──
   // Drizzle-backed when the composition root injects it; the in-memory slice otherwise (tests / no-db).
@@ -408,6 +438,12 @@ export function mountTenantPlatformRoutes(
         : {}),
       ...(services.onboardingData.clearinghousePutRateLimit
         ? { clearinghousePutRateLimit: services.onboardingData.clearinghousePutRateLimit as never }
+        : {}),
+      ...(services.onboardingData.clearinghouseRevokeBaaRateLimit
+        ? {
+            clearinghouseRevokeBaaRateLimit: services.onboardingData
+              .clearinghouseRevokeBaaRateLimit as never,
+          }
         : {}),
     });
   }

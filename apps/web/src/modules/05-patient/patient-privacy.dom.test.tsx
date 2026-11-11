@@ -62,14 +62,19 @@ const VIEW: PatientPrivacyView = {
   drift: [],
 };
 
-let calls: { method: string; path: string; search: string }[] = [];
+let calls: { method: string; path: string; search: string; key: string | null }[] = [];
 let resyncChanged = false;
 let viewStatus = 200;
 
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const req = input instanceof Request ? input : new Request(String(input), init);
   const url = new URL(req.url, "http://localhost");
-  calls.push({ method: req.method, path: url.pathname, search: url.search });
+  calls.push({
+    method: req.method,
+    path: url.pathname,
+    search: url.search,
+    key: req.headers.get("Idempotency-Key"),
+  });
   let body: unknown = {};
   let status = 200;
   if (url.pathname === `/api/v1/patients/${PATIENT}/privacy`) {
@@ -154,6 +159,28 @@ describe("Privacy Officer — patient view", () => {
         /Only a licensed reviewer/,
       ),
     ).toBeTruthy();
+  });
+
+  it("every re-sync click carries its own Idempotency-Key: a replay would answer with an earlier read of the flags", async () => {
+    mount(`/patients/${PATIENT}/privacy`);
+    const resync = async (nth: number): Promise<void> => {
+      fireEvent.click(await screen.findByRole("button", { name: "Re-sync from consents" }));
+      await waitFor(() =>
+        expect(
+          calls.filter((c) => c.method === "POST" && c.path.endsWith("/privacy-flags/resync")),
+        ).toHaveLength(nth),
+      );
+    };
+
+    await resync(1);
+    await resync(2);
+
+    const keys = calls
+      .filter((c) => c.method === "POST" && c.path.endsWith("/privacy-flags/resync"))
+      .map((c) => c.key);
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBeTruthy();
+    expect(keys[1]).not.toBe(keys[0]);
   });
 
   it("re-syncs from consents and reports the change", async () => {

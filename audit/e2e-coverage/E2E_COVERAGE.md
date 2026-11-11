@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 217 statically-routable `web` screen(s) — 26/217 E2E-reached, 205/217 axe-reached.
+**Coverage:** 218 statically-routable `web` screen(s) — 26/218 E2E-reached, 205/218 axe-reached.
 
 ## Zero E2E coverage
 
@@ -13,6 +13,7 @@
 | `billing.surveyor-audit` | 23-billing-medicare | `/admin/billing-audit` | billing.claim.read |
 | `evv.metrics` | 18-evv | `/admin/evv-metrics` | evv.read_metrics |
 | `documents.template-library` | 22-documents | `/admin/forms/templates` | documents.read_templates |
+| `saas.help` | 34-saas | `/admin/help` | (none) |
 | `saas.onboarding` | 34-saas | `/admin/onboarding` | onboarding.read_own |
 | `portal.admin` | 31-portal | `/admin/portal` | portal.account.read_list |
 | `prescribing.prescriber-roster` | 12-dosespot | `/admin/prescribers` | prescribing.admin.roster |
@@ -204,6 +205,7 @@
 
 | Screen id | Module | Path | Permission |
 |---|---|---|---|
+| `saas.help` | 34-saas | `/admin/help` | (none) |
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
@@ -219,11 +221,12 @@
 
 ## Dynamic web screens (#852)
 
-28/118 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
+28/119 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
 | `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | medicaid.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `saas.onboarding-step` | `/admin/onboarding/:stepKey` | onboarding.read_own | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `hope.admission-overview` | `/admissions/:admissionId/hope` | hope.timepoint.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `hope.sfv-capture` | `/admissions/:admissionId/hope/sfv/:sfvId` | hope.timepoint.write | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `hope.timepoint-capture` | `/admissions/:admissionId/hope/timepoints/:kind` | hope.timepoint.write | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |

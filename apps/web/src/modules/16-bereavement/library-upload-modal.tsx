@@ -2,7 +2,7 @@
 // The file goes through M22 first (hash, reserve, PUT to storage, complete: a reservation that fails later is aborted), then the returned
 // document is registered as a DRAFT library item under one Idempotency-Key per attempt. A draft is not shown to families until published.
 // While the file is sent, "Cancel upload" aborts the PUT and releases the reservation; closing the dialog does the same.
-import { useApiClient } from "@chartwarden/ui";
+import { useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage } from "./bereavement-api";
@@ -15,7 +15,6 @@ import {
   ghostButtonStyle,
   mutedStyle,
   primaryButtonStyle,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
 import {
@@ -36,7 +35,7 @@ export function LibraryUploadModal({
   onRegistered: (item: LibraryItem) => void;
 }): JSX.Element {
   const client = useApiClient();
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const fileId = useId();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -89,7 +88,7 @@ export function LibraryUploadModal({
       sortOrder: order,
     };
     const res = await registerLibraryItem(client, body, keys.keyFor(JSON.stringify(body)));
-    keys.settle(res.status);
+    keys.settle(res.status, res.error);
     setBusy(false);
     if (res.error || !res.data) {
       setError(

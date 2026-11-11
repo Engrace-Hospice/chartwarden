@@ -15,6 +15,9 @@ const BAA = {
   documentRef: "Claim.MD BAA, contract folder 7",
   recordedAt: "2026-11-02T10:00:00.000Z",
   verified: null,
+  revoked: false,
+  revokedAt: null,
+  revokedReasonCode: null,
 };
 
 const view = (over: Partial<ClearinghouseView> = {}): ClearinghouseView => ({
@@ -155,6 +158,7 @@ describe("clearinghouseFacts", () => {
 describe("clearinghouseActions", () => {
   const none = {
     canVerifyBaa: false,
+    canRevokeBaa: false,
     canVerifyConnection: false,
     tenantActivationNote: null,
   };
@@ -204,11 +208,25 @@ describe("clearinghouseActions", () => {
     expect(clearinghouseActions(view()).tenantActivationNote).toBeNull();
   });
 
-  it("offers nothing more on an active clearinghouse", () => {
-    expect(
-      clearinghouseActions(
-        view({ status: "active", baa: { ...BAA, verified: { at: "2026-11-03T10:00:00.000Z" } } }),
-      ),
-    ).toEqual(none);
+  it("offers BAA revocation for an active vendor and removes it after revocation", () => {
+    const active = clearinghouseActions(
+      view({ status: "active", baa: { ...BAA, verified: { at: "2026-11-03T10:00:00.000Z" } } }),
+    );
+    expect(active.canRevokeBaa).toBe(true);
+    expect(active.canVerifyBaa).toBe(false);
+
+    const revoked = clearinghouseActions(
+      view({
+        status: "verified",
+        baa: {
+          ...BAA,
+          revoked: true,
+          revokedAt: "2026-11-04T10:00:00.000Z",
+          revokedReasonCode: "vendor_terminated",
+        },
+      }),
+    );
+    expect(revoked.canRevokeBaa).toBe(false);
+    expect(revoked.canVerifyBaa).toBe(false);
   });
 });

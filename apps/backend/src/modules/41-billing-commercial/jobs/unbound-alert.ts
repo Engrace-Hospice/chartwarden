@@ -6,11 +6,15 @@
 // job. It used to fail the whole tick, so BullMQ retried the job into the DLQ for every tenant, forever. It is now reported PER ORG as one
 // alert (and a log line) and the tick carries on: the other orgs drain, and the waiting rows stay queued until the tenant finishes setup.
 // ponytail: the once-per-window alert memory is per process; a durable one only if several workers must share it.
-import { ChartWardenError } from "@chartwarden/types";
+import {
+  CLEARINGHOUSE_HOLD_ALERT_CODES,
+  CLEARINGHOUSE_HOLD_ALERT_WINDOW_MS,
+  ChartWardenError,
+} from "@chartwarden/types";
 
-export const M41_UNBOUND_WITH_WORK_ALERT = "m41.clearinghouse.unbound_with_work";
+export const M41_UNBOUND_WITH_WORK_ALERT = CLEARINGHOUSE_HOLD_ALERT_CODES.m41;
 /** One alert per (org, queue) per window: the cron ticks every few minutes and must not page every time. */
-const ALERT_QUIET_MS = 6 * 60 * 60_000;
+const ALERT_QUIET_MS = CLEARINGHOUSE_HOLD_ALERT_WINDOW_MS;
 
 export interface UnboundAlertPort {
   dispatch(input: {
@@ -61,8 +65,9 @@ export async function reportUnboundWithWork(
         ...(input.code ? { code: input.code } : {}),
       },
     });
-    // Only a dispatch that went out starts the quiet window: this alert is the one signal that the org's work is held, so a router
-    // that threw must be tried again on the next tick, not silenced for six hours.
+    // Only a dispatch that went out (persisted with a resolved recipient; M36's emitter persists, it does not guarantee delivery)
+    // starts the quiet window: this alert is the one signal that the org's work is held, so a router that threw must be tried again
+    // on the next tick, not silenced for six hours. The correlation id the composition root sends carries the queue, code and window.
     lastAlertAt.set(key, at);
   } catch (err) {
     // an alert router that is down must not turn one tenant's setup into a failed tick for all of them

@@ -6,6 +6,7 @@ import type {
   MessagingAiOutcome,
   MessagingAiSummaryDto,
 } from "@chartwarden/types";
+import { freshIdempotencyKeyHeaders } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 
@@ -31,7 +32,11 @@ interface AiClient {
   GET(path: string): Promise<{ data?: { enabled?: boolean } }>;
   POST(
     path: string,
-    init: { params: { path: { id: string } }; body?: Record<string, unknown> },
+    init: {
+      params: { path: { id: string } };
+      body?: Record<string, unknown>;
+      headers?: Record<string, string>;
+    },
   ): Promise<{ data?: unknown; error?: unknown; response?: { status: number } }>;
 }
 
@@ -148,6 +153,8 @@ export function useAiAssist(channelId: string, draft: string) {
           kind === "summary" ? SUMMARY_PATH : DRAFT_PATH,
           {
             params: { path: { id: channelId } },
+            // Each click asks for a summary or draft of the thread as it is now: never replay an earlier (lost-reply) answer.
+            headers: freshIdempotencyKeyHeaders(),
           },
         );
         if (mine !== generation.current) return;

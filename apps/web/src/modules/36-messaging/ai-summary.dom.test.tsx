@@ -243,6 +243,28 @@ describe("AI summary panel", () => {
     expect(screen.queryByRole("complementary")).toBeNull();
   });
 
+  it("every request for a summary or a draft carries its own Idempotency-Key: a replay would hand back an answer about an earlier thread", async () => {
+    const { POST } = mount();
+    fireEvent.click(await screen.findByRole("button", { name: "AI summary" }));
+    await screen.findByText("Pain reported since morning");
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
+    await waitFor(() => expect(POST.mock.calls.filter((c) => c[0] === SUMMARY)).toHaveLength(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Draft a reply" }));
+    await waitFor(() => expect(POST.mock.calls.filter((c) => c[0] === DRAFT)).toHaveLength(1));
+
+    const keys = POST.mock.calls
+      .filter((c) => c[0] === SUMMARY || c[0] === DRAFT)
+      .map(
+        (c) =>
+          ((c as unknown[])[1] as { headers?: Record<string, string> }).headers?.[
+            "Idempotency-Key"
+          ],
+      );
+    expect(keys).toHaveLength(3);
+    expect(keys.every((key) => typeof key === "string" && key.length > 0)).toBe(true);
+    expect(new Set(keys).size).toBe(3);
+  });
+
   it("a draft reply goes to the composer only on Copy to draft; the panel sends nothing", async () => {
     const { POST } = mount();
     fireEvent.click(await screen.findByRole("button", { name: "AI summary" }));

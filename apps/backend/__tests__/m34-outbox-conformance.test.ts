@@ -32,3 +32,58 @@ describe("M34 lifecycle outbox conformance (#107)", () => {
     expect(Value.Check(schemaFor("m34.tenant.offboarding_initiated"), GENERIC_PAYLOAD)).toBe(false);
   });
 });
+
+describe("slice 7 support consent events (7S)", () => {
+  const ID = "33333333-3333-4333-8333-333333333333";
+  const AT = "2026-11-09T10:00:00.000Z";
+  const entry = (eventName: string) => {
+    const e = M34_OUTBOX_EVENTS.find((x) => x.eventName === eventName);
+    if (!e) throw new Error(`event ${eventName} not in M34_OUTBOX_EVENTS`);
+    return e;
+  };
+
+  it("declares issued and revoked as outbox-only events consumed by the M36 seam", () => {
+    for (const name of ["m34.support_consent_grant.issued", "m34.support_consent_grant.revoked"]) {
+      expect(entry(name)).toMatchObject({
+        moduleOwner: "m34",
+        declaredConsumers: [],
+        seamConsumers: ["m36"],
+        isOutboxOnly: true,
+      });
+    }
+  });
+
+  it("issued carries the grant, scope, expiry and a nullable help request; revoked the closed-session count", () => {
+    const issued = schemaFor("m34.support_consent_grant.issued");
+    const body = { grantId: ID, tenantAccountId: ID, scope: "assist", expiresAt: AT };
+    expect(Value.Check(issued, { ...body, helpRequestId: null })).toBe(true);
+    expect(Value.Check(issued, { ...body, helpRequestId: ID })).toBe(true);
+    expect(Value.Check(issued, body)).toBe(false);
+    const revoked = schemaFor("m34.support_consent_grant.revoked");
+    expect(
+      Value.Check(revoked, {
+        grantId: ID,
+        tenantAccountId: ID,
+        revokedAt: AT,
+        closedSessionCount: 0,
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(revoked, {
+        grantId: ID,
+        tenantAccountId: ID,
+        revokedAt: AT,
+        closedSessionCount: -1,
+      }),
+    ).toBe(false);
+  });
+
+  it("the session-expired event names every way a session ends, manual as manual_close", () => {
+    const expired = schemaFor("m34.support_session.expired");
+    const body = { sessionId: ID, grantId: ID, tenantAccountId: ID, closedAt: AT };
+    for (const closeReason of ["expired", "grant_revoked", "manual_close", "forced_terminated"]) {
+      expect(Value.Check(expired, { ...body, closeReason })).toBe(true);
+    }
+    expect(Value.Check(expired, { ...body, closeReason: "manual" })).toBe(false);
+  });
+});

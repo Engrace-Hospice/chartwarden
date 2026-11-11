@@ -1,3 +1,4 @@
+import { describeOpsError } from "@chartwarden/ui";
 import { describe, expect, it } from "vitest";
 import {
   GUARD_COPY,
@@ -75,5 +76,35 @@ describe("guardLabel", () => {
         { field: "templateKey", code: "locations_seeded", message: "Locations is pending" },
       ]),
     ).toEqual([GUARD_COPY.baaExecuted, "Locations is pending"]);
+  });
+});
+
+describe("a rate-limited write (nginx's per-address limit or the API's own)", () => {
+  it("tells the operator nothing was saved and to wait, whether or not the API's envelope came with it", () => {
+    const bare = describeOpsError(
+      "<html>429 Too Many Requests</html>",
+      { status: 429 },
+      WIZARD_ERROR_COPY,
+    );
+    const enveloped = describeOpsError(
+      { error: { code: "RATE_LIMITED", message: "rate limit exceeded", correlationId: "c-1" } },
+      { status: 429 },
+      WIZARD_ERROR_COPY,
+    );
+    for (const failure of [bare, enveloped]) {
+      expect(failure.kind).toBe("rate-limited");
+      expect(failure.message).toBe(
+        "Too many attempts. Nothing was saved. Wait before trying again; some limits take ten minutes to reset.",
+      );
+    }
+  });
+
+  it("a Retry-After the response names is said in words", () => {
+    const failure = describeOpsError(
+      "",
+      { status: 429, headers: { get: () => "45" } },
+      WIZARD_ERROR_COPY,
+    );
+    expect(failure.message).toBe("Too many attempts. Wait 45 seconds, then try again.");
   });
 });

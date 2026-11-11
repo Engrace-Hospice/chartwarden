@@ -1,8 +1,8 @@
 // @chartwarden/saas-tenant-platform · services — the support-session CONTRACT slice 7 builds against (types only).
 //
 // Frozen by the wave-0 contract builder so two pieces can be built in parallel without reading each other's code:
-//   * 7S (support-session repair) IMPLEMENTS these in this package (`support-session-service.ts` and its repository) and
-//     binds them in the backend composition root;
+//   * 7S (support-session repair) IMPLEMENTS these in this package (`support-grant-service.ts`, over `support-session-service.ts`
+//     and the support repository) and binds them in the backend composition root (`createSupportGrantOperationsOver`);
 //   * 7B (help requests, `apps/backend/.../34-saas-tenant-platform/help/`) CALLS them through the
 //     {@link SupportGrantOperations} bundle it is handed, so its unit tests inject fakes and never import 7S's bodies.
 // It lives HERE, not in the backend module, because the backend imports this package and never the other way round (M34's
@@ -89,6 +89,8 @@ export interface RevokeGrantAndCloseSessionsInput {
 export interface RevokeGrantAndCloseSessionsResult {
   /** Every session the revoke closed (`close_reason = grant_revoked`), in close order. Empty when none was open. */
   readonly closedSessionIds: readonly string[];
+  /** Best-effort grantor notifications to run only after the caller's transaction commits. */
+  readonly afterCommit?: () => Promise<void>;
 }
 
 /**

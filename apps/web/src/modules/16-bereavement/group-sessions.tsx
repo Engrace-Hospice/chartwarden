@@ -3,7 +3,7 @@
 // The schedule, oldest first. `bereavement.group.manage` adds a session and cancels a scheduled one (the cancel carries that session's
 // version in `If-Match`); `bereavement.group.run` records who came, and only once a session has started (the server refuses earlier). Every
 // write carries one `Idempotency-Key` per attempt; a refused stale write closes its dialog, reloads the sessions and says why.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
@@ -24,7 +24,6 @@ import {
   tdNum,
   th,
   thNum,
-  useIdempotencyKey,
   visuallyHidden,
 } from "./bereavement-ui";
 import { type Loaded, useLoaded } from "./mailing-load";
@@ -225,7 +224,7 @@ function useDialogWrite<A extends unknown[], T>(
   call: (key: string, ...args: A) => Promise<Result<T>>,
   fallback: string,
 ) {
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (
@@ -236,7 +235,7 @@ function useDialogWrite<A extends unknown[], T>(
     setBusy(true);
     setError(null);
     const res = await call(keys.keyFor(fingerprint), ...args);
-    keys.settle(res.status);
+    keys.settle(res.status, res.error);
     setBusy(false);
     if (res.error || res.data === null) {
       if (isStaleWrite(res.status)) {

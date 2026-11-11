@@ -20,7 +20,7 @@ export interface SavedReplyFormProps {
   readonly submitLabel: string;
   readonly initial?: ReplyDraft;
   /** Resolves to null on success, or the text to show. */
-  readonly onSubmit: (draft: ReplyDraft, idempotencyKey: string) => Promise<string | null>;
+  readonly onSubmit: (draft: ReplyDraft) => Promise<string | null>;
   readonly onCancel?: () => void;
 }
 
@@ -37,12 +37,9 @@ export function SavedReplyForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
-  // One Idempotency-Key per attempt: a retry of the same content after a lost reply carries the key again (the server
-  // dedupes it); it is dropped when the content changes or the server has answered, so a new reply gets a new key.
-  const attemptKey = useRef<string | null>(null);
-
+  // The Idempotency-Key is the writer's (the screen holds it with the shared useAttemptKey): a retry of the same content after a lost reply
+  // carries the key again (the server dedupes it); it is dropped when the content changes or the app has answered.
   function change(next: ReplyDraft): void {
-    attemptKey.current = null;
     setDraft(next);
   }
 
@@ -52,14 +49,12 @@ export function SavedReplyForm({
     inFlight.current = true;
     setPending(true);
     setError(null);
-    attemptKey.current ??= crypto.randomUUID();
     try {
-      const failure = await onSubmit(draft, attemptKey.current);
-      attemptKey.current = null;
+      const failure = await onSubmit(draft);
       if (failure) setError(failure);
       else if (initial === EMPTY) setDraft(EMPTY);
     } catch {
-      // No answer at all: keep the key so a retry of this same content dedupes.
+      // No answer at all: the writer keeps the key, so a retry of this same content dedupes.
       setError("This could not be saved. Check your connection and try again.");
     } finally {
       inFlight.current = false;

@@ -38,6 +38,25 @@ export interface StripeDispatcherDeps {
   readonly mirror: StripeMirrorApplier;
   /** Injected clock (Unix ms) for latency measurement — deterministic in tests. */
   readonly nowMs: () => number;
+  /**
+   * How a caught failure is written down: the audit row's `error_text` and the `m35.stripe.api_call_failed` payload. The `try` below also
+   * covers `recordSuccess` and `mirror.apply`, which are database writes, so the error can be a database error whose message carries its
+   * bound values. Defaults to {@link describeDispatchError}; the composition passes a redacting describer that keeps more diagnostics.
+   */
+  readonly describeError?: (err: unknown) => string;
+}
+
+/**
+ * The default failure text: a Stripe API error's own message (Stripe's text, no value of ours), and for anything else only the error's
+ * class name and short code, never its message (a Drizzle error's message is `Failed query: ... params: ...`).
+ */
+export function describeDispatchError(err: unknown): string {
+  if (isStripeApiError(err)) return err.message;
+  if (!(err instanceof Error)) return "non-error failure";
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Za-z0-9_]{1,40}$/.test(code)
+    ? `${err.name} (${code})`
+    : err.name;
 }
 
 /** The terminal outcome of a single dispatch (a retryable transient failure THROWS instead — see below). */
@@ -93,7 +112,7 @@ export async function dispatchStripeCall(
   } catch (err) {
     const latencyMs = deps.nowMs() - startedAt;
     const statusCode = isStripeApiError(err) ? err.statusCode : 0;
-    const errorText = err instanceof Error ? err.message : String(err);
+    const errorText = (deps.describeError ?? describeDispatchError)(err);
     const retryable = isStripeApiError(err) ? err.retryable : false;
 
     // (5b) failure — always record before deciding retry-vs-DLQ.

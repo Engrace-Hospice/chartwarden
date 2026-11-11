@@ -65,6 +65,18 @@ export const CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
 };
 
 /**
+ * M23 `POST /billing/mac-credentials/:providerEntityId/test` (an outbound call to the platform's MAC gateway per request, reachable by a
+ * not-yet-live organization): 6/min/user and 30/min/org, like the clearinghouse verify. Fail-CLOSED (7A security review L3): with the
+ * limiter's store down the route answers a typed 503 (DEGRADED) rather than become an unmetered gateway call.
+ */
+export const MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 6,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "closed",
+};
+
+/**
  * M23 `PUT /tenant/clearinghouse`: 10/min/user and 30/min/org. Its 409 CLEARINGHOUSE_ACCOUNT_IN_USE tells a caller that a key is held
  * elsewhere, so the cap bounds that as an oracle (security review of migration 1434, LOW-2). Fail-CLOSED (security review of cfd943e82,
  * L5): with the limiter's store down the oracle would be unbounded, so the PUT answers a typed 503 (DEGRADED) instead.
@@ -87,6 +99,20 @@ export const HELP_REQUEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perOrg: 10,
   windowMs: 3_600_000,
   failMode: "closed",
+};
+
+/**
+ * M34 `POST /platform/tenants/:orgSlug/clearinghouse/baa/revoke`: a kill switch that takes one tenant's claims, notices and response pulls
+ * out of service. Counted per OPERATOR ACROSS tenants (the route names no `scopeOf`, so the bucket is the operator in the platform org:
+ * one session or one compromised operator cannot revoke every tenant) and per platform in total. 10 per operator and 20 in all per ten
+ * minutes: enough for a vendor ending many agreements at once, not for a sweep. Fail-OPEN: a stop that cannot fire while the limiter's
+ * store is down is the worse failure, and every revoke still writes its audit row and raises the tenant's alert and the ops notice.
+ */
+export const CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 20,
+  windowMs: 10 * 60_000,
+  failMode: "open",
 };
 
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */

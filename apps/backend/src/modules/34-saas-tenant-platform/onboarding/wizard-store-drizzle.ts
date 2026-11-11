@@ -22,7 +22,7 @@ import {
   lockTenantOnboardingShared,
 } from "../routes/platform/tenant-onboarding-lock";
 import { voidPendingGoLiveForDataChange as voidPendingGoLive } from "./go-live-void";
-import { SYSTEM_MEMBERSHIP_ID } from "./model";
+import { skipActorKindOf } from "./model";
 import type {
   CompletionMode,
   GoLiveAttestation,
@@ -69,31 +69,38 @@ export const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => 
   canonical: row.isCanonical,
 });
 
-export const toTask = (row: schema.OnboardingTask): StepTask => ({
-  id: row.id,
-  templateKey: row.templateKey,
-  status: row.status as TaskStatus,
-  assignedToMembershipId: row.assignedToMembershipId,
-  createdAt: row.createdAt,
-  dueAt: row.dueAt,
-  startedAt: row.startedAt,
-  completedAt: row.completedAt,
-  blockerReason: row.blockerReason,
-  evidenceNote: row.evidenceNote,
-  evidenceRef: row.evidenceRef,
-  attestedByMembershipId: row.attestedByMembershipId,
-  attestedByActorKind: row.attestedByActorKind as StepTask["attestedByActorKind"],
-  attestedAt: row.attestedAt,
-  skipRationale:
+export const toTask = (row: schema.OnboardingTask): StepTask => {
+  const skip =
     row.status === "skipped"
-      ? ((row.completionEvidence as { skip?: { rationale?: string } } | null)?.skip?.rationale ??
-        null)
-      : null,
-  skippedBySystem:
-    row.status === "skipped" &&
-    (row.completionEvidence as { skip?: { skippedByMembershipId?: string } } | null)?.skip
-      ?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID,
-});
+      ? (
+          row.completionEvidence as {
+            skip?: {
+              rationale?: string;
+              skippedByMembershipId?: string;
+              skippedByActorKind?: string;
+            };
+          } | null
+        )?.skip
+      : undefined;
+  return {
+    id: row.id,
+    templateKey: row.templateKey,
+    status: row.status as TaskStatus,
+    assignedToMembershipId: row.assignedToMembershipId,
+    createdAt: row.createdAt,
+    dueAt: row.dueAt,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    blockerReason: row.blockerReason,
+    evidenceNote: row.evidenceNote,
+    evidenceRef: row.evidenceRef,
+    attestedByMembershipId: row.attestedByMembershipId,
+    attestedByActorKind: row.attestedByActorKind as StepTask["attestedByActorKind"],
+    attestedAt: row.attestedAt,
+    skipRationale: row.status === "skipped" ? (skip?.rationale ?? null) : null,
+    skippedByActorKind: row.status === "skipped" ? skipActorKindOf(skip) : null,
+  };
+};
 
 export const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
   id: row.id,
@@ -248,18 +255,30 @@ export function createDrizzleWizardStore(
       const documentFiled = await governingBaaDocumentFiled(baa, (ref) =>
         baaDocumentFiled(tx, ref),
       );
+      const documentUploadedByMembershipId =
+        documentFiled && baa.documentId !== null
+          ? await baaDocumentUploader(tx, {
+              organizationId: baa.organizationId,
+              documentId: baa.documentId,
+            })
+          : null;
+      // The user behind the uploader's membership, by id whatever its status (a revoked row still names its user). The platform carrier
+      // reads `membership` (table-wide SELECT); on a tenant connection the operator's home-org row is not visible and this is null.
+      const [uploader] =
+        documentUploadedByMembershipId === null
+          ? []
+          : await tx
+              .select({ userId: schema.memberships.userId })
+              .from(schema.memberships)
+              .where(eq(schema.memberships.id, documentUploadedByMembershipId))
+              .limit(1);
       return {
         baaStatus: baa.baaStatus,
         expiresOn: dateOnly(baa.expiresOn),
         documentId: baa.documentId,
         documentFiled,
-        documentUploadedByMembershipId:
-          documentFiled && baa.documentId !== null
-            ? await baaDocumentUploader(tx, {
-                organizationId: baa.organizationId,
-                documentId: baa.documentId,
-              })
-            : null,
+        documentUploadedByMembershipId,
+        documentUploadedByUserId: uploader?.userId ?? null,
         recordedByUserId: baa.recordedByUserId,
         updatedByUserId: baa.updatedByUserId,
       };

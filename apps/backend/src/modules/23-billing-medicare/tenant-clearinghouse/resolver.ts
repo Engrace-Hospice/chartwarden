@@ -5,6 +5,10 @@
 //   a row, `active`, stedi | claimmd   the vendor's transport over the tenant's own credential and mode;
 //   a row, `outside`                   UNBOUND (`unboundReason: outside`: the tenant bills elsewhere, nothing is ever sent);
 //   a row, draft / verified            UNBOUND (`not_active`: not live yet; workers HOLD until the tenant finishes setup);
+//   an organization that is NOT LIVE   UNBOUND (`not_active`), whatever its row says: a tenant may activate its clearinghouse during
+//                                      onboarding (before go-live approval), and activation alone must never be what lets a claim go
+//                                      out, so the send path asks `isOrganizationLive` itself rather than relying on no claim existing;
+//   a row whose BAA was revoked        UNBOUND (`baa_revoked`: held the same way; its ack / 835 pulls skip WITH an alert);
 //   no row, named in the env fallback  the platform's own env binding (the demo tenant), exactly as before;
 //   no row otherwise                   UNBOUND (`not_chosen`: workers HOLD until the tenant chooses).
 // The top-level `vendor` / `transport` are UNBOUND on purpose: they say nothing about any organization, so a consumer that
@@ -24,6 +28,7 @@ import {
   NOT_WIRED_TRANSPORT,
   type StediAnomaly,
   type SubmissionAttemptStore,
+  UNBOUND_BAA_REVOKED,
   UNBOUND_NOT_ACTIVE,
   UNBOUND_NOT_CHOSEN,
   UNBOUND_OUTSIDE,
@@ -69,6 +74,13 @@ export interface TenantBindingDeps {
     readonly vendor: "stedi" | "claimmd";
     readonly mode: TenantClearinghouseMode;
   }) => void;
+  /**
+   * Is the organization LIVE (its status `active`, past go-live approval)? Asked on every resolution; the composition root binds it to a
+   * cached organization-status reader. Not live (created, suspended, closed): the binding is `UNBOUND_NOT_ACTIVE`, the platform env
+   * fallback included, and a cached transport is dropped. A read that throws propagates: the job fails and retries, never sends.
+   * Absent (slice boots, unit tests): every organization is treated as live, exactly as before.
+   */
+  readonly isOrganizationLive?: (organizationId: string) => Promise<boolean>;
   /** Test seam: replaces the RLS-scoped Drizzle read of the org's row. */
   readonly readRow?: (organizationId: string) => Promise<ConfigRow | null>;
 }
@@ -162,7 +174,15 @@ export function createTenantClearinghouseRuntime(
     };
   }
 
+  /** True unless a bound reader says the organization is not live. */
+  const organizationIsLive = async (organizationId: string): Promise<boolean> =>
+    deps.isOrganizationLive ? deps.isOrganizationLive(organizationId) : true;
+
   async function forOrg(organizationId: string): Promise<ClearinghouseBinding> {
+    if (!(await organizationIsLive(organizationId))) {
+      built.delete(organizationId);
+      return UNBOUND_NOT_ACTIVE;
+    }
     const row = await readRow(organizationId);
     if (!row) {
       built.delete(organizationId);
@@ -172,7 +192,8 @@ export function createTenantClearinghouseRuntime(
     }
     if (row.status !== "active") {
       built.delete(organizationId);
-      return UNBOUND_NOT_ACTIVE;
+      // a revoked BAA is held like any not-live config, but its pulls say responses may still be owed (revoked-pull-alert.ts)
+      return row.baaRevokedAt ? UNBOUND_BAA_REVOKED : UNBOUND_NOT_ACTIVE;
     }
     const cached = built.get(organizationId);
     if (cached && cached.version === row.version) return cached.binding;
@@ -195,6 +216,7 @@ export function createTenantClearinghouseRuntime(
     // The top level is deliberately unbound: only `forOrg` names an organization's transport.
     binding: { vendor: null, transport: NOT_WIRED_TRANSPORT, forOrg },
     async usageFor(organizationId) {
+      if (!(await organizationIsLive(organizationId))) return null;
       return liveModeOf(await readRow(organizationId));
     },
   };

@@ -1,5 +1,10 @@
 import { ACK_REQUESTS_FLAG_KEY } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
+import {
+  type ApiClient,
+  ApiClientProvider,
+  FeatureFlagProvider,
+  sharedAttemptKeys,
+} from "@chartwarden/ui";
 // M36 G2: the composer's "Needs a response" control. Offered only with the ack flag + both permissions + a patient care-team
 // channel; checked it needs one chosen colleague (Send stays disabled, the sender refuses a bypass), sends the message and then
 // asks that colleague; off by default and never remembered; it is not a dialog, so nothing can submit the composer's form.
@@ -19,6 +24,7 @@ import {
   NEEDS_RESPONSE_NOTICE,
   REQUEST_FAILED_TEXT,
   REQUEST_INDETERMINATE_TEXT,
+  requestResponse,
   requestedText,
 } from "./needs-response";
 import { NeedsResponseControl, needsRecipient, useNeedsResponse } from "./needs-response-control";
@@ -213,6 +219,28 @@ describe("Needs a response: the recipient is required", () => {
 });
 
 describe("Needs a response: sending", () => {
+  it("replays an unanswered colleague request under the same Idempotency-Key", async () => {
+    sharedAttemptKeys.clear();
+    const keys: string[] = [];
+    const POST = vi
+      .fn()
+      .mockImplementationOnce(async (_path, init) => {
+        keys.push(init.params.header["Idempotency-Key"]);
+        throw new TypeError("Failed to fetch");
+      })
+      .mockImplementationOnce(async (_path, init) => {
+        keys.push(init.params.header["Idempotency-Key"]);
+        return { data: { created: true }, response: { status: 201 } };
+      });
+    const client = { POST } as unknown as ApiClient;
+
+    expect(await requestResponse(client, "m1", RN.user_id)).toBe("indeterminate");
+    expect(await requestResponse(client, "m1", RN.user_id)).toBe("ok");
+
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+  });
+
   it("sends the message, then asks exactly the chosen colleague, and forgets the choice", async () => {
     const { POST } = mount();
     await userEvent.click(await box());

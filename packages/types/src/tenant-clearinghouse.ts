@@ -34,6 +34,11 @@ export interface TenantClearinghouseChoice {
   readonly status: TenantClearinghouseStatus | null;
   readonly mode: TenantClearinghouseMode | null;
   readonly source: "tenant" | "platform_env" | "none";
+  /**
+   * True when a platform operator revoked the vendor BAA this configuration rests on (a revoked config is never active): the
+   * claims-billing gate then says so (`clearinghouse_baa_revoked`) instead of "not active yet". Absent = false.
+   */
+  readonly baaRevoked?: boolean;
 }
 
 /** The "nothing chosen" answer. */
@@ -64,3 +69,17 @@ export interface TenantClearinghouseReader {
  * server refuses with 409 CLEARINGHOUSE_RESPONSES_PENDING; the console says the same number.
  */
 export const CLEARINGHOUSE_RELEASE_QUIET_DAYS = 90;
+
+/**
+ * The held-work alerts of an organization whose clearinghouse is not live: M23's per-queue hold and M41's shared crons. Each is
+ * raised at most once per window (below) per its own key; M36's dedupe key for them (`cronAlertCorrelationId`) carries the window,
+ * severity and queue, so a repeat inside a window is absorbed and a re-alert after it is not. Literals here because M23, M41 and M36
+ * cannot import each other.
+ */
+export const CLEARINGHOUSE_HOLD_ALERT_CODES = {
+  m23: "m23.clearinghouse.unbound_hold",
+  m41: "m41.clearinghouse.unbound_with_work",
+} as const;
+
+/** One held-work alert per key per window: the work is re-tried every few minutes and must not page every time. */
+export const CLEARINGHOUSE_HOLD_ALERT_WINDOW_MS = 6 * 60 * 60_000;

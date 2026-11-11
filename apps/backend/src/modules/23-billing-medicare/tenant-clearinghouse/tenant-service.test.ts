@@ -83,3 +83,122 @@ describe("buildDrizzleTenantClearinghouseRouteService hooks", () => {
     expect(auditFailures).toEqual([]);
   });
 });
+
+/** A fake database whose config row exists (the audit row names it) and whose one transaction is exposed for identity checks. */
+const rowDb = (): { db: DbClient; tx: object } => {
+  const tx = {
+    execute: async () => [],
+    select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: "cfg-1" }] }) }) }),
+  };
+  return {
+    tx,
+    db: { transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) } as unknown as DbClient,
+  };
+};
+
+const writesService = {
+  put: async () => ({ created: false, view: { status: "draft" }, changedFields: ["vendor"] }),
+  recordBaa: async () => ({ view: { status: "draft" }, changedFields: ["baa"] }),
+  prepareVerify: async () => ({
+    version: 1,
+    vendor: "claimmd",
+    mode: "test",
+    evidence: null,
+    secret: "s",
+  }),
+  runProbe: async () => "ok",
+  completeVerify: async () => ({ view: { status: "verified" }, test: { outcome: "ok" } }),
+  activate: async () => ({ status: "active" }),
+} as unknown as TenantClearinghouseService;
+
+describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (a write voids a pending go-live attestation)", () => {
+  const writes: [
+    string,
+    (r: ReturnType<typeof buildDrizzleTenantClearinghouseRouteService>) => Promise<unknown>,
+  ][] = [
+    ["put", (r) => r.put(ACTOR, BODY, undefined)],
+    [
+      "recordBaa",
+      (r) =>
+        r.recordBaa(ACTOR, {
+          heldBy: "tenant",
+          effectiveDate: "2026-01-02",
+          documentRef: "BAA folder",
+        }),
+    ],
+    ["verify", (r) => r.verify(ACTOR, {})],
+    ["activate", (r) => r.activate(ACTOR)],
+  ];
+
+  it.each(writes)(
+    "%s runs it once, on the write's own transaction, naming the actor and the organization",
+    async (_name, write) => {
+      const { db, tx } = rowDb();
+      const calls: { tx: unknown; change: unknown }[] = [];
+      const route = buildDrizzleTenantClearinghouseRouteService({
+        db,
+        service: writesService,
+        audit: { record: async () => undefined },
+        onOnboardingDataChanged: async (t, change) => void calls.push({ tx: t, change }),
+      });
+
+      await write(route);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.tx).toBe(tx);
+      expect(calls[0]?.change).toEqual({
+        organizationId: ORG,
+        userId: ACTOR.userId,
+        membershipId: ACTOR.membershipId,
+      });
+    },
+  );
+
+  it.each(writes)(
+    "%s: a hook that throws fails the write and the post-commit settle never runs",
+    async (_name, write) => {
+      const settled: string[] = [];
+      const route = buildDrizzleTenantClearinghouseRouteService({
+        db: rowDb().db,
+        service: writesService,
+        audit: { record: async () => undefined },
+        onOnboardingDataChanged: async () => {
+          throw new Error("void failed");
+        },
+        onChanged: async (organizationId) => void settled.push(organizationId),
+      });
+
+      await expect(write(route)).rejects.toThrow("void failed");
+
+      expect(settled).toEqual([]);
+    },
+  );
+
+  it("a refused write (the service throws) never reaches the hook", async () => {
+    const calls: unknown[] = [];
+    const route = buildDrizzleTenantClearinghouseRouteService({
+      db: rowDb().db,
+      service: {
+        activate: async () => {
+          throw new Error("CLEARINGHOUSE_NOT_VERIFIED");
+        },
+      } as unknown as TenantClearinghouseService,
+      audit: { record: async () => undefined },
+      onOnboardingDataChanged: async (_t, change) => void calls.push(change),
+    });
+
+    await expect(route.activate(ACTOR)).rejects.toThrow("CLEARINGHOUSE_NOT_VERIFIED");
+
+    expect(calls).toEqual([]);
+  });
+
+  it("is optional: a service built without it writes exactly as before", async () => {
+    const route = buildDrizzleTenantClearinghouseRouteService({
+      db: rowDb().db,
+      service: writesService,
+      audit: { record: async () => undefined },
+    });
+
+    await expect(route.activate(ACTOR)).resolves.toMatchObject({ status: "active" });
+  });
+});

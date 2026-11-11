@@ -13,7 +13,6 @@
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
-import { notBuilt } from "../../not-built";
 import type { OnboardingProgress } from "../../onboarding/progress";
 import { type CursorPage, PLATFORM_CURSOR_SCOPE, paginate } from "../keyset-page";
 import {
@@ -135,7 +134,6 @@ export interface PlatformSupportConsentGrantView {
   readonly id: string;
   readonly tenantAccountId: string;
   readonly scope: "organization_scoped" | "patient_scoped" | "assist";
-  readonly grantReason: string;
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly revokedAt: string | null;
@@ -151,20 +149,21 @@ export interface SupportSessionEventView {
   readonly occurredAt: string;
   readonly actorIp: string | null;
 }
+// None of the three carries an organization: the session is recorded in the organization of its consent GRANT (the tenant's),
+// never in the operator's own (slice 7; the operator's session organization is the platform's, which the tenant cannot read).
 export interface StartSupportSessionArgs {
-  readonly organizationId: string;
   readonly supportConsentGrantId: string;
   readonly actorMembershipId: string;
+  /** The operator's user, for the person-level distinct-actor check (D16). */
+  readonly actorUserId: string;
   readonly actorIp: string | null;
 }
 export interface ElevateSupportSessionArgs {
-  readonly organizationId: string;
   readonly supportSessionId: string;
   readonly actorMembershipId: string;
   readonly actorIp: string | null;
 }
 export interface CloseSupportSessionArgs {
-  readonly organizationId: string;
   readonly supportSessionId: string;
   readonly actorMembershipId: string;
   readonly actorIp: string | null;
@@ -510,13 +509,17 @@ export interface TenantPlatformRouteSeed {
     Partial<BaaRecordView> & { id: string; tenantAccountId: string; addendumVersion: string }
   >;
   readonly featureFlags?: ReadonlyArray<Partial<FeatureFlagView> & { flagKey: string }>;
-  /** Active consent grants the start route may open a session against (grantorMembershipId for D16). */
+  /** Consent grants the start route may open a session against (grantorMembershipId for D16). */
   readonly consentGrants?: ReadonlyArray<{
     id: string;
     organizationId: string;
     tenantAccountId: string;
     grantorMembershipId: string;
     expiresAt: string;
+    scope?: "organization_scoped" | "patient_scoped" | "assist";
+    grantReason?: string;
+    issuedAt?: string;
+    revokedAt?: string | null;
   }>;
   /** Tenant-export jobs the approve-oversized route may act on (§3.7 SEC-052; GAP-097). A job seeded
    *  with `held: true` mirrors GAP-094's `holdForOversizedApproval` outcome (status stays `generating`,
@@ -610,16 +613,7 @@ export function createInMemoryTenantPlatformBackend(
       heldAt: string | null;
     }
   >(); // keyed by job id
-  const grants = new Map<
-    string,
-    {
-      id: string;
-      organizationId: string;
-      tenantAccountId: string;
-      grantorMembershipId: string;
-      expiresAt: string;
-    }
-  >(); // keyed by grant id
+  const grants = new Map<string, NonNullable<TenantPlatformRouteSeed["consentGrants"]>[number]>(); // keyed by grant id
   const enqueued: Array<{ queue: M34QueueName; jobKey: string }> = [];
   let created = 0;
   let sub = 0;
@@ -991,8 +985,26 @@ export function createInMemoryTenantPlatformBackend(
       const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...e }) => e) };
     },
-    async listConsentGrants() {
-      throw notBuilt("the platform support-consent-grant list");
+    async listConsentGrants(filter, cursor, limit) {
+      const at = now();
+      const rows = [...grants.values()]
+        .map((g) => ({
+          id: g.id,
+          tenantAccountId: g.tenantAccountId,
+          scope: g.scope ?? "organization_scoped",
+          grantReason: g.grantReason ?? "support",
+          issuedAt: g.issuedAt ?? at,
+          expiresAt: g.expiresAt,
+          revokedAt: g.revokedAt ?? null,
+          active: (g.revokedAt ?? null) === null && g.expiresAt > at,
+        }))
+        .filter((g) =>
+          filter.tenantAccountId ? g.tenantAccountId === filter.tenantAccountId : true,
+        )
+        .filter((g) => (filter.active === undefined ? true : g.active === filter.active))
+        .map((g) => ({ ...g, createdAt: g.issuedAt }));
+      const page = paginate(PLATFORM_CURSOR_SCOPE, desc(rows), cursor, limit);
+      return { ...page, items: page.items.map(({ createdAt: _c, ...g }) => g) };
     },
     async startSession(args) {
       const grant = grants.get(args.supportConsentGrantId);
@@ -1003,7 +1015,7 @@ export function createInMemoryTenantPlatformBackend(
           "support_consent_grant not found",
           404,
         );
-      if (grant.expiresAt <= now()) {
+      if (grant.expiresAt <= now() || (grant.revokedAt ?? null) !== null) {
         throw new ChartWardenError(
           "SUPPORT_GRANT_INACTIVE",
           "the consent grant is revoked or expired",
@@ -1022,7 +1034,8 @@ export function createInMemoryTenantPlatformBackend(
       const id = subId();
       const session: SupportSessionRecord = {
         id,
-        organizationId: args.organizationId,
+        // The GRANT's organization, as the Drizzle service records it.
+        organizationId: grant.organizationId,
         supportConsentGrantId: grant.id,
         tenantAccountId: grant.tenantAccountId,
         actorMembershipId: args.actorMembershipId,
@@ -1048,6 +1061,14 @@ export function createInMemoryTenantPlatformBackend(
     },
     async elevateSession(args) {
       const s = sessions.get(args.supportSessionId);
+      // Slice 7: a session on an assist (non-PHI) grant can never be elevated, open or not.
+      if (s && grants.get(s.supportConsentGrantId)?.scope === "assist") {
+        throw new ChartWardenError(
+          "SUPPORT_SESSION_NON_PHI",
+          "a session on an assist (non-PHI) grant cannot be elevated",
+          403,
+        );
+      }
       if (!s || s.closedAt !== null || s.status !== "open") {
         throw new ChartWardenError(
           "SUPPORT_SESSION_NOT_OPEN",

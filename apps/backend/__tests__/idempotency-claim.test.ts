@@ -54,7 +54,7 @@ describe("in-memory IdempotencyStore claim semantics", () => {
     now += DAY_MS + 1;
     expect(await store.load(ORG, "k")).toBeNull();
     expect(await store.putPending(ORG, "k", "new")).toBe(true);
-    expect(await store.load(ORG, "k")).toEqual({ state: "pending", requestHash: "new" });
+    expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "new" });
   });
 
   it("does not let an unexpired record be re-claimed", async () => {

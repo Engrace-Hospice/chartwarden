@@ -20,6 +20,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -90,7 +91,6 @@ import {
   td,
   th,
   useActionStatus,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { ContactMemorialInvitationsCard } from "./contact-memorial-invitations-card";
 import { ContactSupportGroupsCard } from "./contact-support-groups-card";
@@ -139,8 +139,8 @@ function ContactForPlan({
   // Bumped when a write adds a timeline entry (a logged direct contact), so the Program activity card reads again.
   const [timelineTick, setTimelineTick] = useState(0);
   const { announce, region } = useActionStatus();
-  const keepTryingKey = useIdempotencyKey();
-  const resumeKey = useIdempotencyKey();
+  const keepTryingKey = useAttemptKey();
+  const resumeKey = useAttemptKey();
   const latestRequest = useRef(0);
   const hasPlan = useRef(false);
 
@@ -214,7 +214,7 @@ function ContactForPlan({
       contact.version,
       keepTryingKey.keyFor(String(contact.version)),
     );
-    keepTryingKey.settle(status);
+    keepTryingKey.settle(status, err);
     setKeepTryingBusy(false);
     if (err) {
       if (isStaleWrite(status)) void load();
@@ -242,7 +242,7 @@ function ContactForPlan({
       {},
       resumeKey.keyFor(String(contact.version)),
     );
-    resumeKey.settle(status);
+    resumeKey.settle(status, err);
     setResumeBusy(false);
     if (err) {
       if (isStaleWrite(status)) void load();
@@ -501,7 +501,7 @@ function CarePlanGoals({
   const [seeded, setSeeded] = useState({ version: contact.version, goals: recorded ?? [] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const idempotency = useIdempotencyKey();
+  const idempotency = useAttemptKey();
 
   if (seeded.version !== contact.version) {
     if (sameList(goals, seeded.goals)) setGoals([...(recorded ?? [])]);
@@ -531,7 +531,7 @@ function CarePlanGoals({
       trimmed,
       idempotency.keyFor(`${contact.version}:${JSON.stringify(trimmed)}`),
     );
-    idempotency.settle(status);
+    idempotency.settle(status, err);
     setBusy(false);
     if (err) {
       if (isStaleWrite(status)) {

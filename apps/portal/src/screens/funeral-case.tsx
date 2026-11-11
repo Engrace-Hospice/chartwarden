@@ -1,4 +1,10 @@
-import { Button, CenteredCardLayout, Glyph, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  CenteredCardLayout,
+  Glyph,
+  clearIdempotencyKeys,
+  useApiClient,
+} from "@chartwarden/ui";
 // Restricted funeral-home access: the server binds the session to one decedent. This screen
 // must not request or present any chart, contact details or additional clinical information.
 import { useEffect, useRef, useState } from "react";
@@ -71,6 +77,9 @@ export function PortalFuneralCase(): JSX.Element {
     if (finishInFlight.current) return;
     finishInFlight.current = true;
     setFinishing(true);
+    // Ending the case signs out WITHOUT a page reload, so the held Idempotency-Keys (the collaborator redemption's, for one) must not
+    // survive for the next person on this page. Cleared before the sign-out is awaited.
+    clearIdempotencyKeys(client);
     try {
       await signOut();
       if (mounted.current) {

@@ -674,6 +674,12 @@ export interface DrainResult {
 export async function drainOrg(
   deps: SubmissionWorkerDeps,
   organizationId: string,
+  /**
+   * Asked before EACH row: false stops the drain and leaves the rest queued. The tick resolves the org's binding once, so without this
+   * a config taken out of service mid-tick (a platform operator's BAA revoke) would still send up to DRAIN_BATCH more rows through the
+   * binding the tick pinned. Absent = the binding is static (nothing can change it).
+   */
+  stillBound?: () => Promise<boolean>,
 ): Promise<DrainResult> {
   // ADR-0110 D7 — an org without the claims-billing add-on is skipped, not leased: its rows stay queued (no attempt spent)
   // and the next tick asks again. A failed entitlement read in enforce mode skips too (fail closed, no DLQ).
@@ -685,6 +691,7 @@ export async function drainOrg(
   const failures: string[] = [];
   let sent = 0;
   for (const id of await listDue(deps, organizationId)) {
+    if (stillBound && !(await stillBound())) break; // out of service since the tick began: the rest stays queued
     try {
       const leased = await leaseOne(deps, organizationId, id);
       if (leased.kind !== "send") continue;
@@ -748,7 +755,14 @@ export async function runSubmissionDrain(deps: SubmissionWorkerDeps): Promise<Dr
         }
         continue;
       }
-      const res = await drainOrg(orgDeps, organizationId);
+      const res = await drainOrg(orgDeps, organizationId, async () => {
+        // re-resolved per row from the ORIGINAL (per-org) binding; any failure to resolve stops the drain (fail closed, rows stay queued)
+        try {
+          return (await withOrgBinding(deps, organizationId, deps.log)).binding.vendor !== null;
+        } catch {
+          return false;
+        }
+      });
       sent += res.sent;
       failures.push(...res.failures);
     } catch (err) {

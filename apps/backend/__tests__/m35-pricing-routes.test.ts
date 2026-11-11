@@ -103,6 +103,7 @@ const contract: PlatformContractView = {
 
 interface Calls {
   readonly created: unknown[];
+  readonly planReads: string[];
   readonly planWrites: unknown[];
   readonly tenantReads: unknown[];
   readonly platformReads: unknown[];
@@ -111,7 +112,14 @@ interface Calls {
 function makeServices(calls: Calls): { plans: PricingPlanService; contracts: ContractService } {
   const plans: PricingPlanService = {
     list: async () => [plan],
-    get: async () => plan,
+    get: async () => {
+      calls.planReads.push("admin-get");
+      return plan;
+    },
+    getOffered: async () => {
+      calls.planReads.push("offered-get");
+      return plan;
+    },
     listOffered: async () => [plan],
     create: async (actor, input, reason) => {
       calls.planWrites.push({ op: "create", actor, input, reason });
@@ -146,6 +154,7 @@ function makeServices(calls: Calls): { plans: PricingPlanService; contracts: Con
     // The system's outside-billing change (the M34 wizard's post-commit sync) is not a route: no route test reaches it.
     setModeNoneForOutsideBilling: async () => ({ changed: false }),
     hasContract: async () => true,
+    billingServiceModeForOrg: async () => contract.billingServiceMode,
     platformView: async (actor, orgSlug) => {
       calls.platformReads.push({ actor, orgSlug });
       return { contract, statements: [] };
@@ -169,7 +178,13 @@ const grantsOf = (role: keyof typeof PLATFORM_OPS_ROLE_GRANTS) => [
 ];
 
 function makeServer() {
-  const calls: Calls = { created: [], planWrites: [], tenantReads: [], platformReads: [] };
+  const calls: Calls = {
+    created: [],
+    planReads: [],
+    planWrites: [],
+    tenantReads: [],
+    platformReads: [],
+  };
   const store = createInMemoryEffectivePermissionStore([
     {
       orgId: PLATFORM_ORG,
@@ -341,7 +356,7 @@ describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription
   });
 
   it("refuses an unknown billing service mode", async () => {
-    const { app } = makeServer();
+    const { app, calls } = makeServer();
     const res = await app.inject({
       method: "POST",
       url,
@@ -473,7 +488,7 @@ describe("the platform pricing reads and the price preview", () => {
   });
 
   it("previews with the same math a statement uses, and shows both sides of the greater-of rule", async () => {
-    const { app } = makeServer();
+    const { app, calls } = makeServer();
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/platform/pricing/preview",
@@ -499,6 +514,7 @@ describe("the platform pricing reads and the price preview", () => {
     expect(body.billing).toEqual({ mode: "managed_billing", bps: 400, feeCents: 400_000 });
     expect(body.monthlyCents).toBe(700_000);
     expect(body.firstMonthCents).toBe(950_000);
+    expect(calls.planReads).toEqual(["offered-get"]);
   });
 
   it("prices the FIRST month by the days live from a planned go-live date: Nov 20 is 11 of 30 days (the go-live day counts)", async () => {

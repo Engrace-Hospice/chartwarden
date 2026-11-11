@@ -371,6 +371,89 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // 10b. support_session.started.org_admin - the same event, to the organization's own administrators (slice 7).
+  //
+  // The rule above reaches the compliance officer, who does not exist until step 12 of 14 of the onboarding wizard, while a
+  // help session is opened during steps 1-11. `role_set` over `org_admin` (an M36 built-in, resolved inside the emit org) puts
+  // the same notice in front of the administrators who may end it. A distinct (`info`) floor: the unique index admits one row
+  // per (org, event, floor). Tenant-overridable like its sibling (it is the tenant's own notice).
+  {
+    ruleKey: "support_session.started.org_admin",
+    eventType: "m34.support_session.started",
+    category: "administrative",
+    severityFloor: floorOf("info"),
+    specSeverity: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    ruleKey: "support_session.elevated",
+    eventType: "m34.support_session.elevated",
+    category: "administrative",
+    severityFloor: floorOf("warn"),
+    specSeverity: "warn",
+    recipientResolver: "compliance_officer_for_tenant",
+    resolverArgs: {},
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    ruleKey: "support_session.elevated.org_admin",
+    eventType: "m34.support_session.elevated",
+    category: "administrative",
+    severityFloor: floorOf("info"),
+    specSeverity: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    ruleKey: "support_session.expired",
+    eventType: "m34.support_session.expired",
+    category: "administrative",
+    severityFloor: floorOf("warn"),
+    specSeverity: "warn",
+    recipientResolver: "compliance_officer_for_tenant",
+    resolverArgs: {},
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    ruleKey: "support_session.expired.org_admin",
+    eventType: "m34.support_session.expired",
+    category: "administrative",
+    severityFloor: floorOf("info"),
+    specSeverity: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // 10c. support_consent.granted.platform_ops - consent now exists: operators may start (slice 7).
+  //
+  // Emitted under the TENANT's organization, so it routes at the zero-authority `platform_alert_audience` role operators are
+  // bound with inside a tenant (the same reason as `tenant_export.oversized_hold`), and it is LOCKED: a tenant administrator's
+  // rule override must not be able to redirect or silence the signal that ChartWarden has been asked for help.
+  {
+    ruleKey: "support_consent.granted.platform_ops",
+    eventType: "m34.support_consent_grant.issued",
+    category: "administrative",
+    severityFloor: floorOf("warn"),
+    specSeverity: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] },
+    channelsOverride: null,
+    systemLocked: true,
+    enabled: true,
+  },
   // 11. dsar_export.sla_escalation_20d — DSAR aged 20d → DSAR-officer + compliance officer (warn)
   {
     ruleKey: "dsar_export.sla_escalation_20d",
@@ -545,7 +628,7 @@ export const M36_BUILT_IN_RESOLVERS: readonly string[] = [
  */
 export const seedableM34AlertRules = (): readonly M34AlertRuleSeed[] => M34_ALERT_RULES;
 
-/** The sixteen distinct §4.8 rule keys (the canonical key set, before platform-ops companion rows). */
+/** The canonical rule keys (before platform-ops companion rows; slice 7 adds the two support-consent keys). */
 export const M34_ALERT_RULE_KEYS = [
   "tenant.onboarding_step_blocked_5d",
   "tenant.onboarding_overdue",
@@ -557,6 +640,12 @@ export const M34_ALERT_RULE_KEYS = [
   "tenant.shred_pending_approval",
   "tenant.shred_executed",
   "support_session.started",
+  "support_session.started.org_admin",
+  "support_session.elevated",
+  "support_session.elevated.org_admin",
+  "support_session.expired",
+  "support_session.expired.org_admin",
+  "support_consent.granted.platform_ops",
   "dsar_export.sla_escalation_20d",
   "dsar_export.sla_escalation_27d",
   "dsar_export.sla_escalation_30d",

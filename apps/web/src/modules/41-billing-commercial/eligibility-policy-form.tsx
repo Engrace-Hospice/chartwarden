@@ -5,7 +5,15 @@
 // step-up draft key and sends the user to /step-up; on return the form is restored and the user submits again, nothing is sent for
 // them. The client check mirrors the server (a whole number of days, 1 to 365); the server stays the authority and its answers are
 // shown in fixed words, never echoed.
-import { Button, InlineAlert, SelectField, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  InlineAlert,
+  NO_ANSWER,
+  SelectField,
+  TextField,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -98,13 +106,13 @@ export function EligibilityPolicyForm({
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  // One key per attempt: kept across a retry of the same body, dropped when a field changes and on any HTTP response; kept only after a thrown/no-response failure.
-  const attemptKey = useRef<string | null>(null);
+  // One key per attempt, held by the shared useAttemptKey: kept across a retry of the same body while no answer settled the attempt (a
+  // thrown fetch, a gateway page, the in-flight 409), dropped when a field changes and on any other response.
+  const attempt = useAttemptKey();
 
   const edit =
     (name: keyof Fields) =>
     (value: string): void => {
-      attemptKey.current = null;
       setFields((prev) => ({ ...prev, [name]: value }));
     };
 
@@ -122,17 +130,17 @@ export function EligibilityPolicyForm({
     if (!policy || maxAgeDays === null) return;
     inFlight.current = true;
     setBusy(true);
-    attemptKey.current ??= crypto.randomUUID();
+    const key = attempt.keyFor(JSON.stringify([planId, policy, maxAgeDays]));
     try {
       const { error, response } = await client.PATCH(
         "/api/v1/billing/commercial/payer-plans/{id}/eligibility-policy",
         {
-          params: { path: { id: planId }, header: { "Idempotency-Key": attemptKey.current } },
+          params: { path: { id: planId }, header: { "Idempotency-Key": key } },
           body: { policy, maxAgeDays },
         },
       );
+      attempt.settle(response.status, error);
       if (!error) {
-        attemptKey.current = null;
         clearStepUpDraft(draftKey);
         onSaved({ policy, maxAgeDays });
         return;
@@ -146,17 +154,16 @@ export function EligibilityPolicyForm({
       if (!back.has("entity")) back.set("entity", providerEntityId);
       const stepUp = stepUpRedirectFor(error, `${location.pathname}?${back.toString()}`);
       if (stepUp) {
-        // The guard refused before doing anything: a fresh attempt after the ceremony needs a fresh key.
-        attemptKey.current = null;
+        // The guard refused before doing anything: `settle` above already retired the key, so the attempt after the ceremony has a fresh one.
         stashStepUpDraft(draftKey, fields);
         navigate(stepUp);
         return;
       }
-      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so a key survives only
-      // when no HTTP response arrived (the catch below); any response, 503/500/403/404/422 included, retires it.
-      attemptKey.current = null;
+      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so `settle` above retires
+      // the key on any answer the app gave; only a throw (below), a gateway page and the in-flight 409 keep it.
       setServerError(describeFailure(response.status));
     } catch {
+      attempt.settle(NO_ANSWER);
       setServerError(describeFailure(0));
     } finally {
       inFlight.current = false;

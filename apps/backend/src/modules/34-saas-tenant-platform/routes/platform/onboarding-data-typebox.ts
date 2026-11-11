@@ -32,13 +32,16 @@ export const ONBOARDING_REASON_MAX = 500;
  * trimmed. Whitespace is folded BEFORE the strip so "line one\nline two" never fuses into one word.
  */
 export function normalizeReason(raw: string): string {
+  // The reason is copied into the tenant-visible audit trail: it is no place for a patient, so it goes through the same
+  // identifier screen as every other wizard free text, AS TYPED first (a control character between digits is a separator to the
+  // screen; stripped first it would join them into an unbroken run, which the screen lets through on purpose) ...
+  assertNoPatientIdentifier("reason", raw);
   const reason = raw
     .replace(/\s+/gu, " ")
     .replace(/\p{C}+/gu, "")
     .replace(/ {2,}/gu, " ")
     .trim();
-  // The reason is copied into the tenant-visible audit trail: it is no place for a patient, so it goes through the same
-  // identifier screen as every other wizard free text (judged AFTER the strip, so zero-width padding cannot split a value).
+  // ... and again AS STORED (a run of control characters longer than the screen's separator window hides nothing once stripped).
   assertNoPatientIdentifier("reason", reason);
   return reason;
 }
@@ -73,6 +76,46 @@ export const OnboardingReasonSchema = Type.Object({
   }),
 });
 
+/**
+ * Verify a tenant's BAA: the platform's usual `reason`, plus an explicit acknowledgement that is required (409
+ * CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED otherwise) when the tenant re-recorded the very document an operator revoked before.
+ */
+export const OnboardingBaaVerifyRequest = Type.Composite([
+  OnboardingReasonSchema,
+  Type.Object({
+    acknowledgePreviousRevocation: Type.Optional(
+      Type.Boolean({
+        description:
+          "Send true to verify a record whose document is the one a platform operator revoked before (the platform view's baa.previousRevocation.sameDocument says so). Without it the verify is refused with 409 CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED. The audit row records the supersession.",
+      }),
+    ),
+  }),
+]);
+
+/** The closed reasons for revoking a BAA (M23's `BAA_REVOKE_REASON_CODES`, which M34 may not import; M23 re-validates). */
+const BaaRevokeReasonCodeSchema = Type.Union([
+  Type.Literal("vendor_terminated"),
+  Type.Literal("account_closed"),
+  Type.Literal("baa_expired"),
+  Type.Literal("other"),
+]);
+
+/**
+ * Revoke a tenant's vendor BAA. NO free text: a closed reason code and the ticket the operator acts under (a tenant-readable audit
+ * row and a durable column copy these, so nothing a person types freely may reach them). There is no `reason` field on this route.
+ */
+export const OnboardingBaaRevokeRequest = Type.Object(
+  {
+    reasonCode: BaaRevokeReasonCodeSchema,
+    ticketRef: Type.String({
+      pattern: "^[A-Z][A-Z0-9]{1,9}-[0-9]{1,8}$",
+      description:
+        "The ticket the revoke was ordered under, such as SEC-42 (capital letters and digits, a dash, a number). Platform-only: the tenant's view never shows it, but the audit trail does.",
+    }),
+  },
+  { additionalProperties: false },
+);
+
 export const OnboardingResourceParamsSchema = Type.Object({
   orgSlug: Type.String({ minLength: 1, maxLength: 128 }),
   id: Type.String({ format: "uuid" }),
@@ -96,6 +139,14 @@ export const OnboardingLocationPatchRequest = Type.Composite([
 ]);
 
 /**
+ * The identifier pattern of M23's `UpsertMacCredentialBodySchema` (billing-typebox.ts `MAC_IDENTIFIER_PATTERN`), copied because M34 may
+ * not import M23; a test pins the two strings equal. A separator-formed SSN shape in an id is refused (422 EVIDENCE_LOOKS_LIKE_PHI).
+ */
+const MAC_IDENTIFIER_PATTERN = String.raw`^(?![\s\S]*(?<![0-9\uFF10-\uFF19])[0-9\uFF10-\uFF19]{3}[\s.\-\u2010-\u2015\u2212\uFF0D\uFF0E][0-9\uFF10-\uFF19]{2}[\s.\-\u2010-\u2015\u2212\uFF0D\uFF0E][0-9\uFF10-\uFF19]{4}(?![0-9\uFF10-\uFF19]))`;
+const MAC_IDENTIFIER_NOTE =
+  "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.";
+
+/**
  * The MAC credential body is M23's (`UpsertMacCredentialBodySchema`, which M34 may not import); M23 re-validates it
  * with that schema, so this is the published copy. `clientSecret` is write-only.
  */
@@ -108,15 +159,36 @@ export const OnboardingMacCredentialUpsertRequest = Type.Composite([
       description:
         "The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422.",
     }),
-    submitterId: Type.String({ minLength: 1, maxLength: 64 }),
-    tradingPartnerId: Type.String({ minLength: 1, maxLength: 64 }),
-    clientId: Type.String({ minLength: 1, maxLength: 256 }),
+    submitterId: Type.String({
+      minLength: 1,
+      maxLength: 64,
+      pattern: MAC_IDENTIFIER_PATTERN,
+      description: MAC_IDENTIFIER_NOTE,
+    }),
+    tradingPartnerId: Type.String({
+      minLength: 1,
+      maxLength: 64,
+      pattern: MAC_IDENTIFIER_PATTERN,
+      description: MAC_IDENTIFIER_NOTE,
+    }),
+    clientId: Type.String({
+      minLength: 1,
+      maxLength: 256,
+      pattern: MAC_IDENTIFIER_PATTERN,
+      description: MAC_IDENTIFIER_NOTE,
+    }),
     clientSecret: Type.String({
       minLength: 1,
       maxLength: 4096,
       description: "Write-only: sealed under the tenant's own key and never returned.",
     }),
-    baaRecordRef: Type.Optional(Type.String({ maxLength: 256 })),
+    baaRecordRef: Type.Optional(
+      Type.String({
+        maxLength: 256,
+        description:
+          "Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error.",
+      }),
+    ),
     credentialExpiresAt: Type.Optional(Type.String({ format: "date-time" })),
   }),
   OnboardingReasonSchema,
@@ -133,7 +205,10 @@ export const OnboardingMacCredentialViewSchema = Type.Object({
   hasSecret: Type.Boolean({ description: "The secret itself is never projected." }),
   baaRecordRef: Nullable(Type.String()),
   credentialExpiresAt: Nullable(Iso),
-  lastSandboxTestAt: Nullable(Iso),
+  lastSandboxTestAt: Type.Union([Iso, Type.Null()], {
+    description:
+      "When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
+  }),
   version: Type.Integer(),
   createdAt: Iso,
   updatedAt: Iso,
@@ -315,6 +390,27 @@ export const OnboardingClearinghouseViewSchema = Type.Object({
       documentRef: Type.String(),
       recordedAt: Iso,
       verified: Nullable(Type.Object({ at: Iso })),
+      revoked: Type.Boolean({
+        description:
+          "True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor.",
+      }),
+      revokedAt: Nullable(Iso),
+      revokedReasonCode: Nullable(BaaRevokeReasonCodeSchema),
+      revokedTicketRef: Type.Optional(
+        Type.String({
+          description:
+            "The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail).",
+        }),
+      ),
+      previousRevocation: Type.Optional(
+        Type.Object({
+          at: Iso,
+          sameDocument: Type.Boolean({
+            description:
+              "True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation.",
+          }),
+        }),
+      ),
     }),
   ),
   activatedAt: Nullable(Iso),

@@ -81,9 +81,28 @@ describe("ProvisioningCard", () => {
     await waitFor(() =>
       expect(POST).toHaveBeenCalledWith("/api/v1/platform/tenants/{orgSlug}/provision/retry", {
         params: { path: { orgSlug: "cedar-ridge" } },
+        headers: { "Idempotency-Key": expect.any(String) },
       }),
     );
     expect(await screen.findByText(/queued/i)).toBeTruthy();
+  });
+
+  it("every retry click carries its own Idempotency-Key: a replay of an earlier lost-reply answer would start nothing", async () => {
+    const GET = vi.fn(async () => status("failed", { failedReason: "gateway 503" }));
+    const POST = vi.fn(async () => ({
+      error: { error: { message: "the provisioning job is 'running', not failed" } },
+    }));
+    mount({ GET, POST });
+
+    fireEvent.click(await screen.findByRole("button", { name: /retry provisioning/i }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: /retry provisioning/i }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(2));
+
+    const keyOf = (call: unknown[]): string | undefined =>
+      (call[1] as { headers?: Record<string, string> }).headers?.["Idempotency-Key"];
+    expect(keyOf(POST.mock.calls[0] ?? [])).toBeTruthy();
+    expect(keyOf(POST.mock.calls[1] ?? [])).not.toBe(keyOf(POST.mock.calls[0] ?? []));
   });
 
   it("keeps the failure visible and says why when the retry is refused", async () => {

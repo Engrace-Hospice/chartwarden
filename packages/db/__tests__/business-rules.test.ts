@@ -71,6 +71,17 @@ describe("businessRule() — the registration IS the index declaration", () => {
     );
   });
 
+  it("registers the one-live-subscription rule beside its partial unique index", () => {
+    const violation = classifyDatabaseError(
+      wrapped(pgUniqueViolation("subscription_org_active_uq")),
+    );
+    expect(violation).toMatchObject({
+      kind: "business-rule-violation",
+      constraint: "subscription_org_active_uq",
+    });
+    expect(violation?.meaning).toMatch(/another live subscription/i);
+  });
+
   it("maps a duplicate go-live attestation, a duplicate platform BAA record and a second live help request to a 409 meaning, not a 500", () => {
     // Review fix (code M4): all are races the application check cannot close (two officers attesting at once, two operators
     // filing the same addendum, two members asking for help at once), so Postgres's 23505 is the authority and must read as the

@@ -14,6 +14,7 @@ import {
 } from "../pricing/census-daily";
 import { listContractedOrgIds } from "../pricing/contract-select";
 import type { GoLiveReader } from "../pricing/ports";
+import { CENSUS_SWEEP_INTERVAL_HOURS } from "../pricing/statement-period";
 import { type StatementStripePort, runStatementSweep } from "../pricing/statement-service";
 import { type CensusDeps, aggregateAddonForOrg, runPatientCensusForOrg } from "./census";
 import {
@@ -25,6 +26,7 @@ import {
   runRevenueSnapshot,
   runUsageAggregationForOrg,
 } from "./jobs";
+import { runPauseResumeSweep } from "./pause-resume";
 import { type RefundExecutorDeps, runRefundExecutionSweep } from "./refund-executor";
 import { runWebhookHandlerSweep } from "./webhook-handler";
 import type { WebhookPayloadCipher } from "./webhook-payload-crypto";
@@ -46,6 +48,8 @@ const M35_QUEUES = {
   patientCensus: "m35.patient-census",
   // Slice 2 — the monthly statement of every org on a census_banded contract (draft while the month is open, final after).
   pricingStatement: "m35.pricing-statement",
+  // An operator's pause whose end date has passed is resumed (the stored status follows the date; billing already counts it as over).
+  pauseResume: "m35.subscription-pause-resume",
 } as const;
 
 /** Cron patterns (UTC). Sweeps that wait on Stripe-driven state run often; calendar jobs run once. */
@@ -57,8 +61,11 @@ const M35_SCHEDULES = {
   invoiceReconciler: "0 4 * * *",
   webhookHandler: "* * * * *",
   refundExecutor: "*/5 * * * *",
-  patientCensus: "0 */6 * * *",
+  // the daily census sweep: the statement's expectation of how many days a month's census holds is derived from this interval
+  patientCensus: `0 */${CENSUS_SWEEP_INTERVAL_HOURS} * * *`,
   pricingStatement: "30 * * * *",
+  // hourly, between the dunning tick (:00) and the usage aggregator (:15), so a lapsed pause is normally back to `active` within the hour (later if the worker is late or skips the row)
+  pauseResume: "5 * * * *",
 } as const;
 
 export interface M35WorkerDeps {
@@ -84,8 +91,8 @@ export interface M35WorkerDeps {
     readonly stripe?: StatementStripePort;
     /**
      * The backstop for "a tenant that bills outside ChartWarden pays no billing percentage": the M34 wizard sets the mode post-commit and
-     * best effort, so a failure there is only retried by another clearinghouse change. This runs for every org BEFORE its statement is
-     * computed, and applies the rule if the org's clearinghouse is `outside` and its mode is not already none. Idempotent and cheap.
+     * best effort, so a failure there is otherwise retried only by another clearinghouse change. The hourly pricing worker runs this for
+     * every current contract, including onboarding and paused tenants with no statement run. Idempotent and cheap.
      */
     readonly reconcileOutsideMode?: (organizationId: string) => Promise<void>;
   };
@@ -114,6 +121,47 @@ export async function reconcileThenStatement(
     }
   }
   await statement(organizationId);
+}
+
+/**
+ * Reconcile every not-canceled contract, including onboarding and paused tenants that have no statement run yet. The statement sweep's
+ * own organization list is go-live filtered, so tying this repair to statement generation leaves precisely those non-live tenants stale.
+ */
+export async function reconcileOutsideModes(
+  reconcile: ((organizationId: string) => Promise<void>) | undefined,
+  log: M35JobDeps["log"],
+  organizationIds: Iterable<string>,
+): Promise<void> {
+  if (!reconcile) return;
+  for (const organizationId of organizationIds) {
+    try {
+      await reconcile(organizationId);
+    } catch (err) {
+      log?.("m35 outside billing mode reconcile failed for an org", { organizationId, err });
+    }
+  }
+}
+
+/** One hourly pricing tick: repair every current contract before generating any statements. */
+export async function runPricingStatementTick(
+  jobs: M35JobDeps,
+  pricing: NonNullable<M35WorkerDeps["pricing"]>,
+): Promise<void> {
+  // Reconcile the current-contract population first. This deliberately includes onboarding and paused organizations: neither is
+  // guaranteed to reach statement generation, but both may hold a contract whose mode must be none while billing outside.
+  const current = await listContractedOrgIds(jobs.platformRunner, "current", nowOf(jobs));
+  await reconcileOutsideModes(pricing.reconcileOutsideMode, jobs.log, current);
+  // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
+  // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
+  await runStatementSweep({
+    platformRunner: jobs.platformRunner,
+    keyProvider: pricing.keyProvider,
+    netCollections: pricing.netCollections,
+    goLive: pricing.goLive,
+    ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
+    ...(jobs.now ? { now: jobs.now } : {}),
+    ...(jobs.log ? { log: jobs.log } : {}),
+  });
 }
 
 /** One Worker per bound queue. */
@@ -152,6 +200,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
       ),
     ),
     worker(M35_QUEUES.revenueSnapshot, () => runRevenueSnapshot(jobs)),
+    worker(M35_QUEUES.pauseResume, () => runPauseResumeSweep(jobs)),
   ];
   if (deps.cipher) {
     const cipher = deps.cipher;
@@ -210,31 +259,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
   }
   if (deps.pricing) {
     const pricing = deps.pricing;
-    workers.push(
-      worker(M35_QUEUES.pricingStatement, () =>
-        // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
-        // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
-        runStatementSweep(
-          {
-            platformRunner: jobs.platformRunner,
-            keyProvider: pricing.keyProvider,
-            netCollections: pricing.netCollections,
-            goLive: pricing.goLive,
-            ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
-            ...(jobs.now ? { now: jobs.now } : {}),
-            ...(jobs.log ? { log: jobs.log } : {}),
-          },
-          // The outside-mode backstop runs for every org BEFORE its statement (a failure of it never blocks the statement).
-          (organizationId, statement) =>
-            reconcileThenStatement(
-              pricing.reconcileOutsideMode,
-              jobs.log,
-              statement,
-              organizationId,
-            ),
-        ),
-      ),
-    );
+    workers.push(worker(M35_QUEUES.pricingStatement, () => runPricingStatementTick(jobs, pricing)));
   }
   return workers;
 }
@@ -255,6 +280,7 @@ export async function scheduleM35Jobs(
     { name: M35_QUEUES.usageAggregator, pattern: M35_SCHEDULES.usageAggregator },
     { name: M35_QUEUES.invoiceReconciler, pattern: M35_SCHEDULES.invoiceReconciler },
     { name: M35_QUEUES.revenueSnapshot, pattern: M35_SCHEDULES.revenueSnapshot },
+    { name: M35_QUEUES.pauseResume, pattern: M35_SCHEDULES.pauseResume },
     ...(opts.webhookHandler
       ? [{ name: M35_QUEUES.webhookHandler, pattern: M35_SCHEDULES.webhookHandler }]
       : []),

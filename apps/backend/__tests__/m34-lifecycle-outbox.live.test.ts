@@ -49,6 +49,7 @@ const ORG_C = "11111111-1111-4111-8111-1111f2050203";
 const TENANT_ACCOUNT_C = "55555555-5555-4555-8555-5555f2050207";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-8444-4444f2050204";
 const SESSION_USER = "66666666-6666-4666-8666-6666f2050206";
+const SUPPORT_SESSION = "77777777-7777-4777-8777-7777f2050207";
 const PLATFORM_JOB_ID = "test-m34-lifecycle-outbox";
 
 describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
@@ -167,10 +168,14 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
       },
       lifecycleAlerts,
       supportSessionPorts: {
-        audit: { async emitCriticalAudit() {} },
-        outbox: { async publish() {} },
-        alerts: { async emitAlert() {} },
         now: () => new Date(),
+        // This suite never opens or closes a support session.
+        async emitAlert() {
+          throw new Error("support-session alerts are not bound in this suite");
+        },
+        bind() {
+          throw new Error("support-session ports are not bound in this suite");
+        },
       },
       platformJobId: PLATFORM_JOB_ID,
     };
@@ -294,9 +299,9 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
       [grantId, ORG_A, TENANT_ACCOUNT_A, grantor],
     );
     await admin.query(
-      `INSERT INTO support_session (organization_id,support_consent_grant_id,actor_membership_id,expires_at)
-       VALUES ($1,$2,$3, now() + interval '1 hour')`,
-      [ORG_A, grantId, operator],
+      `INSERT INTO support_session (id,organization_id,support_consent_grant_id,actor_membership_id,expires_at)
+       VALUES ($1,$2,$3,$4, now() + interval '1 hour')`,
+      [SUPPORT_SESSION, ORG_A, grantId, operator],
     );
     const resolver = buildDrizzleTenantPlatformAbacResolver({
       db: platformDb.db,
@@ -311,14 +316,14 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     expect(
       await resolver.hasActiveConsentedSupportSession({
         organizationId: platformOrg,
-        tenantAccountId: TENANT_ACCOUNT_A,
+        supportSessionId: SUPPORT_SESSION,
         actorMembershipId: operator,
       }),
     ).toBe(true);
     expect(
       await resolver.hasActiveConsentedSupportSession({
         organizationId: platformOrg,
-        tenantAccountId: TENANT_ACCOUNT_A,
+        supportSessionId: SUPPORT_SESSION,
         actorMembershipId: grantor,
       }),
     ).toBe(false);
@@ -330,7 +335,7 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     expect(
       await resolver.hasActiveConsentedSupportSession({
         organizationId: platformOrg,
-        tenantAccountId: TENANT_ACCOUNT_A,
+        supportSessionId: SUPPORT_SESSION,
         actorMembershipId: operator,
       }),
     ).toBe(false);

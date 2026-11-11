@@ -1,9 +1,10 @@
 // M36 ADR-0078 (G-6, G-2) - the state behind the two reassign dialogs. Opening reads the eligible colleagues and nothing else. One
-// Idempotency-Key is minted per attempt and sent on the POST; it is dropped after ANY HTTP response (the server caches errors under the
-// key) and when a choice changes, and kept only after a thrown fetch (the same attempt may have been saved, so its replay must be recognised). A refusal never says why a person is ineligible. The caller's `run` owns the busy
+// Idempotency-Key is held per attempt by the shared useAttemptKey and sent on the POST; it is dropped after any answer the app gave (the
+// server caches errors under the key) and when a choice changes, and kept across a thrown fetch, a gateway page and the in-flight 409 (the
+// same attempt may have been saved, so its replay must be recognised). A refusal never says why a person is ineligible. The caller's `run` owns the busy
 // state, the live announcement and the list refresh; this hook only builds the call and maps the answer to words.
 import type { AckReassignCandidate, AckSupervisorReasonCode } from "@chartwarden/types";
-import { useApiClient } from "@chartwarden/ui";
+import { NO_ANSWER, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   REASSIGN_CANNOT_TAKE_TEXT,
@@ -17,18 +18,6 @@ import {
   REASSIGN_SIGN_IN_TEXT,
   REASSIGN_TOO_MANY_TEXT,
 } from "./ack-reassign-wording";
-
-/** A fresh Idempotency-Key; falls back to a random string where crypto.randomUUID is unavailable (an insecure context). */
-function newKey(): string {
-  try {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID();
-    }
-  } catch {
-    // fall through
-  }
-  return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-}
 
 export type ReassignMode = "party" | "supervisor";
 
@@ -112,21 +101,19 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
   const [reason, setReasonRaw] = useState<AckSupervisorReasonCode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // The key of the attempt in flight or awaiting a retry; null = the next submit mints one.
-  const key = useRef<string | null>(null);
+  // The key of the attempt in flight or awaiting a retry: the same while the choice is unchanged, a new one once it changes.
+  const attempt = useAttemptKey();
   const inFlight = useRef(false);
   const token = useRef(0);
   // A changed choice clears the last refusal; a choice made while a call is in flight is ignored (the call keeps the one it was sent with).
   const setUserId = useCallback((value: string | null): void => {
     if (inFlight.current) return;
     setError(null);
-    key.current = null;
     setUserIdRaw(value);
   }, []);
   const setReason = useCallback((value: AckSupervisorReasonCode | null): void => {
     if (inFlight.current) return;
     setError(null);
-    key.current = null;
     setReasonRaw(value);
   }, []);
 
@@ -171,8 +158,7 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
         : { assigned_user_id: userId };
     const perform = async (): Promise<ReassignResult> => {
       try {
-        key.current ??= newKey();
-        const idempotencyKey = key.current;
+        const idempotencyKey = attempt.keyFor(JSON.stringify([mode, requestId, body]));
         const result = await client.POST(PATHS[mode].post, {
           params: {
             path: { id: requestId },
@@ -181,8 +167,9 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
           body,
         });
         const status = result?.response?.status;
-        // Any HTTP response is cached server-side under its key (errors included): never retry on it.
-        if (status !== undefined) key.current = null;
+        // Any answer the app gave is cached server-side under its key (errors included): never retry on it. A gateway page and the
+        // in-flight 409 are not that answer, and `settle` keeps the key for them.
+        if (status !== undefined) attempt.settle(status, result?.error);
         if (result?.error || status === undefined || status >= 400) {
           const failure = reassignFailure(status);
           return failure;
@@ -193,6 +180,7 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
           failure: false,
         };
       } catch {
+        attempt.settle(NO_ANSWER);
         return reassignFailure(undefined);
       }
     };
@@ -204,7 +192,7 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
       inFlight.current = false;
       setSubmitting(false);
     }
-  }, [client, mode, requestId, reason, run, userId]);
+  }, [attempt, client, mode, requestId, reason, run, userId]);
 
   return {
     candidates,
