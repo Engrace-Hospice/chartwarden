@@ -242,10 +242,39 @@ backticks and `<( )`/`>( )` as command lines, and sees through `sudo`, `env`, `b
 inline interpreter code and heredoc or stdin script bodies as text, with quotes and `+` removed. It cannot
 read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
 prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
-current directory; they are judged only when that directory is itself protected), a recursive delete of an
-ANCESTOR of the repo root, or the writers it has no model for (`ditto`, `cpio -p`, `split`, compilers and
-bundlers with an output option such as `cc -o` or `tsc --outFile`, `git bundle`, `zip -O`, and any program that
-writes where its own configuration says). Whole-tree reads that bypass
+current directory; they are judged only when that directory is itself protected), a `$VAR` or computed program
+name (`${X:-git} push`, an array run as a command), or the writers it has no model for (`split`, `cpio -p`,
+compilers and bundlers with an output option such as `cc -o` or `tsc --outFile`, `git bundle` and `git archive -o`,
+and any program that writes where its own configuration says). writes where its own configuration says). Wave 3 added, each with a test file under `scripts/__tests__/harness-*.test.ts`:
+the `&&` trust of a `cd` is per command (only a group, a pipe or a `&` at or before a command cancels it, and the
+lines of a script a shell reads do; a later pipe does not); another spelling of the root or home (upper case,
+the `/System/Volumes/Data` firmlink, `/tmp` for `/private/tmp`) names the same protected file; a write to the bun
+binary or a shell startup file (`~/.bun/**`, `~/.zshenv`, `~/.zshrc`, `~/.profile`, `~/.bash*`) asks;
+inline code (`python -c/-Bc`, `perl -e/-ne`, `node -pe`, `php -r`, `deno eval`, `osascript -e`, `awk`) and a script a shell is
+handed (`echo '…' | sh`, `bash <<< '…'`, `source <(echo '…')`) are judged, and a pipe into a shell from anything but
+`echo`/`printf`/a heredoc asks; a command word built around a substitution (`$(true)git push …`), an `ssh` host a
+substitution or variable builds, and `function f { cmd; }` bodies are judged; more output writers (`gpg -o`, `zip F`,
+`tar cf F`, `pg_dump -f`, `psql -o`, `sqlite3 F`, `script F`, `ditto`, `plutil -o`, `yq -i`, `sponge`, `curl -D/-c/--trace/--stderr`,
+`openssl -writerand/-keylogfile/-sess_out`, rsync's `--log-file/--backup-dir/--write-batch/--temp-dir`, `cp -tDIR`/`--target=DIR`,
+`host:path` naming this machine) and the read-write redirect `<>` are judged like a redirect target; `rm -r`, `chmod/chown/chgrp/setfacl/
+chflags/xattr -R`, `mv`, `find -delete` and an unpacked archive (`tar`/`bsdtar`/`gtar`, `7z x`, `cpio -i`, `ditto -x`) over an
+ancestor of the repo root ask, as do GNU abbreviations (`rm --rec`); a `find` action is narrowed only by a name or path
+test that matches no protected file (`-name '*.tmp'` narrows, `-name '*'`, `'*.ts'`, `-o -true`, `! -name` do not), and
+`-exec sh -c 'rm {}'`, `env rm`, `sudo rm`, `perl -pi` count as writers; wrappers (`caffeinate`, `arch`, `flock`, `parallel`,
+`strace`, `doas`, `pkexec`, `taskset`, `chrt`, `busybox`, `gtimeout`, `xcrun`, `lima`, `runuser`, `sudo --user`, `exec -a`,
+`stdbuf -o`, `env -P`) are seen through, and a command string handed to a shell (`watch`, `su -c`, `flock -c`, `ssh localhost 'cmd'`,
+`ssh -o ProxyCommand=`, `rsync -e`, `tar --checkpoint-action=exec=`) is judged as a command line; `docker|podman run` with a
+writable bind mount of the repo is judged with the container's paths mapped back (`-v "$PWD":/w img rm /w/x`); a nested
+`claude --bare`, `codex --disable … hooks`, `-C`/`--cd`, or an agent started outside the repo asks. Recursive reads, copies
+and archives (`grep -r`, `--rec`, `-d recurse`, `rg -u`, `find … -exec cat|grep`, `cp -r`, `rsync -a`, `ditto`, `tar c`, `zip -r`)
+of a directory that holds a live env file that EXISTS (`deploy/production`, `apps`, `apps/backend`) ask; `printenv SECRET`,
+a script that prints the whole environment or a secret variable (`print(os.environ)`, `console.log(process.env.X_TOKEN)`),
+`security find-*-password`/`dump-keychain`, `gh auth token`, `docker exec … env|printenv`, and `~/.gnupg` are refused, and
+`docker inspect` without a narrow `--format` asks. Limits that remain: a program the wrapper and writer tables do not name; a
+here-string, pipe or `source <( )` that is not `echo`/`printf`; a bind mount reached through a compose file; a
+`cat deploy/production/*` (a bare `*` never matches a dotfile, so it reads no live env file, but it can read one named
+`*.env`); a name pattern or regex the narrowing check cannot compile (it never compiles an agent's regex, so it counts as
+broad). Whole-tree reads that bypass
 `.gitignore` (`grep -r`, `rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built
 by command substitution and agents started with approval prompts, the sandbox or hooks off. A harness
 switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, `HOME`, …) followed by `=`, `+=` or `:=` asks

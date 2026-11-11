@@ -14,6 +14,19 @@ const H = "scripts/harness";
 
 describe("a program that writes the file an option or operand names asks on a protected target", () => {
   it.each([
+    // closed by the second wave, pinned with the rest of the review's list
+    `sed -n 'w ${H}/x' f`,
+    `sed 's/a/b/w ${H}/x' f`,
+    `sed -n 'W ${H}/x' f`,
+    `curl -O --output-dir ${H} http://localhost:1/x`,
+    `curl --output-dir ${H} -o name http://localhost:1/x`,
+    `wget -P ${H} http://localhost:1/x`,
+    `wget --directory-prefix=${H} http://localhost:1/x`,
+    `find . -fprint ${H}/x`,
+    `find . -fprintf ${H}/x '%p'`,
+    `find . -fls ${H}/x`,
+    `find . -exec cp {} ${H}/ \\;`,
+    `find . -exec mv {} ${H}/ \\;`,
     `gpg -o ${H}/x -d f`,
     `gpg --output ${H}/x -d f`,
     `gpg --output=${H}/x -d f`,
