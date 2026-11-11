@@ -36,7 +36,7 @@ const SECRET_WORDS = String.raw`[A-Za-z0-9_]*(?:DATABASE_URL|SECRET|TOKEN|PASSWO
 const SINK = String.raw`(?:print|pprint|repr|json\.dumps|console\.(?:log|info|warn|error|dir)|JSON\.stringify|Object\.(?:keys|values|entries)|puts|p)`;
 /** A script printing the whole environment: `print(os.environ)`, `console.log(process.env)`, `print %ENV`, `p ENV.to_h`. */
 const ENVIRONMENT_DUMP = new RegExp(
-  String.raw`\b${SINK}\s*\(?\s*(?:dict\(\s*)?(?:os\.environ|process\.env)\b(?![.\[])|\b(?:print|puts|p)\s+(?:%ENV\b|ENV\b(?:\.to_h|\.to_a|\.inspect)?)`,
+  String.raw`\b${SINK}\s*\(?\s*(?:dict\(\s*)?(?:os\.environ|process\.env)\b(?![.\[])|\b(?:print|puts|p)\s+(?:%ENV\b|ENV\.(?:to_h|to_a|inspect)\b)`,
 );
 /** A script printing one secret variable by name. */
 const SECRET_LOOKUP = new RegExp(
