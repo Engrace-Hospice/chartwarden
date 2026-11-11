@@ -21,6 +21,7 @@
 import { userInfo } from "node:os";
 
 import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
+import { hasWildcard, isMagicPathspec, wholeTreeWriterReason } from "./git-tree-rules";
 import {
   PROTECTED_FRAGMENT,
   PROTECTED_SAMPLES,
@@ -889,11 +890,13 @@ function gitInvocation(args: readonly string[]): {
     const a = args[k] ?? "";
     if (GIT_GLOBAL_VALUE.test(a)) {
       if (a === "-c" || a === "--config-env") configs.push(args[k + 1] ?? "");
-      if (a === "-C") dirs.push(args[k + 1] ?? "");
+      if (a === "-C" || a === "--work-tree") dirs.push(args[k + 1] ?? "");
       k++;
       continue;
     }
     if (a.startsWith("--config-env=")) configs.push(a.slice("--config-env=".length));
+    // `--work-tree=DIR` names the tree a write lands in, as `-C DIR` names where git runs.
+    if (a.startsWith("--work-tree=")) dirs.push(a.slice("--work-tree=".length));
     if (GIT_GLOBAL_EQ.test(a) || GIT_GLOBAL_FLAG.test(a)) continue;
     if (a.startsWith("-")) {
       unknownGlobal ??= a;
@@ -1868,7 +1871,17 @@ function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, di
   const one = positional[0] ?? "";
   const rel = resolvePath(one, dir, ctx);
   const isPath = rel === null || protectedTouch(rel, WHOLE_TREE);
-  return isPath && (ctx.exists?.(one) ?? true) ? [one] : [];
+  return isPath && existsFrom(one, rel, ctx) ? [one] : [];
+}
+
+/**
+ * Does `word` name a file where the command runs? `rel` is where it lands (null: unknown), so a `cd scripts/harness
+ * && git checkout pre-tool-guard.ts` is judged against that directory, not the one the shell started in.
+ */
+function existsFrom(word: string, rel: string | null, ctx: BashContext): boolean {
+  const root = ctx.root ? trimSlashes(ctx.root) : "";
+  if (rel === null || rel.startsWith("~") || !root) return ctx.exists?.(word) ?? true;
+  return ctx.exists?.(rel.startsWith("/") ? rel : `${root}/${rel}`) ?? true;
 }
 
 /** `git format-patch -o DIR` writes its patch files into DIR. */
@@ -1915,17 +1928,42 @@ function gitWriteVerdict(
   if (sub === "format-patch") return formatPatchVerdict(rest, cwds, ctx);
   // `git -C a -C a ...` thousands of times, after a few `cd`s, was a minute of path resolution; no real command has more.
   if (gitDirs.length > MAX_GIT_DIR_OPERANDS) return ask(TOO_MANY_GIT_DIRS_REASON);
-  if (!/^(checkout|restore|rm|mv)$/.test(sub)) return null;
+  const treeWriter = wholeTreeWriterReason(sub, rest);
+  const writesPaths = /^(checkout|restore|rm|mv)$/.test(sub);
+  if (!treeWriter && !writesPaths) return null;
   for (const cwd of cwds) {
     let dir = cwd;
     for (const d of gitDirs) dir = dir === null ? null : capLength(resolvePath(d, dir, ctx, true));
+    if (treeWriter && treeHoldsRepo(dir, ctx))
+      return ask(
+        `${treeWriter}, the guard and the compliance record included, and can put an older version back. A human decides.`,
+      );
+    if (!writesPaths) continue;
     for (const p of gitPathspecs(sub, rest, ctx, dir)) {
+      if (isMagicPathspec(p)) return ask(MAGIC_PATHSPEC_REASON);
       const rel = resolvePath(p, dir, ctx);
       if (rel === null) return ask(UNKNOWN_DIR_REASON);
-      if (protectedTouch(rel, WHOLE_TREE)) return ask(protectedReason(rel));
+      if (hasWildcard(rel) ? wildcardReachesProtected(rel) : protectedTouch(rel, WHOLE_TREE)) {
+        return ask(protectedReason(rel));
+      }
     }
   }
   return null;
+}
+
+const MAGIC_PATHSPEC_REASON =
+  "A magic pathspec (`:/`, `:(top)`, `:(glob)`) names files from the top of the tree whatever directory this runs in, so it can reach the guard and the compliance record. A human decides.";
+
+/** Does a pathspec wildcard (`*`, `scripts/h*`, `.*`) expand onto any protected path? */
+function wildcardReachesProtected(spec: string): boolean {
+  const tokens = globTokens(spec.toLowerCase());
+  return PROTECTED_SAMPLES.some((sample) => globMatches(tokens, sample));
+}
+
+/** Does the working tree this git command acts on hold the repo (and so the guard)? An unknown directory may. */
+function treeHoldsRepo(dir: Cwd, ctx: BashContext): boolean {
+  if (dir === null || !ctx.root) return true;
+  return !dir.startsWith("/") && !dir.startsWith("~");
 }
 
 // A coding agent started with its approval prompts, sandbox or hook configuration switched off is an agent
