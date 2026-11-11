@@ -352,7 +352,8 @@ out every Claude call). So the guard enforces its own deadline. `pre-tool-guard.
 (`hard-deadline.ts`): it arms a 6.5 s timer before it reads stdin, runs the judgement (`guard-judge.ts`) in a Bun
 worker (`guard-worker.ts`), and when the timer fires, the worker dies or errors without answering, or stdin never
 ends, it prints the standard deny JSON, a stderr line and EXITS 2 (a block in both agents), whatever the worker is
-stuck in. Normal answers are unchanged (JSON for a deny or an ask, nothing for an allow, exit 0); the extra
+stuck in. The worker makes `process.exit` a throw: on bun 1.3.5 (what CI pins) a `process.exit(0)` called in a
+worker ended the WHOLE process silently with status 0, which both agents read as an allow. Normal answers are unchanged (JSON for a deny or an ask, nothing for an allow, exit 0); the extra
 latency is about 2 ms per call. A worker needs neither `--config` nor `--tsconfig-override` of its own: it is
 started by the already-hardened entry, and the hostile-config tests run through it. Test seams, never set in
 production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `throw`) and

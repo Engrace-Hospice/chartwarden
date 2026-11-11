@@ -76,6 +76,16 @@ const pinned = (command: string, extra: Record<string, string>) =>
     }),
   );
 
+/**
+ * bun 1.3.5 (what CI pins) prints this line to stderr for `--tsconfig-override=/dev/null`, and the base commit
+ * does too; it is not the guard speaking, so a test that checks the guard's stderr is empty ignores it.
+ */
+const withoutBunNoise = (stderr: string): string =>
+  stderr.replace(
+    /Internal error: directory mismatch for directory "\/dev\/null", fd \d+\. .*\n?/g,
+    "",
+  );
+
 const deniedWithExit2 = (r: { status: number | null; stdout: string; stderr: string }): void => {
   expect(r.status, r.stderr).toBe(2);
   const out = JSON.parse(r.stdout).hookSpecificOutput;
@@ -130,6 +140,14 @@ describe("a judgement that hangs, dies or crashes is refused with exit 2, in bot
     expect(ms).toBeLessThan(WITHIN_MS); // the default 6.5 s deadline is still in force: this is the close event
   });
 
+  // On bun 1.3.5 (CI) a `process.exit(0)` called in a worker ended the WHOLE process silently with status 0, which
+  // reads as allow; the worker makes `process.exit` a throw, so any such call is answered with a deny.
+  it("a `process.exit` inside the worker is refused too, not read as an allow", () => {
+    const { r, ms } = entry({ CW_HARNESS_TEST_FAULT: "process-exit" });
+    deniedWithExit2(r);
+    expect(ms).toBeLessThan(WITHIN_MS);
+  });
+
   it("a worker that throws is refused at once", () => {
     const { r, ms } = entry({ CW_HARNESS_TEST_FAULT: "throw" });
     deniedWithExit2(r);
@@ -174,7 +192,7 @@ describe("a call the guard can judge is answered as before, and quickly", () => 
     const { r, ms } = pinned(claudeCommand, {});
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toBe("");
-    expect(r.stderr).toBe("");
+    expect(withoutBunNoise(r.stderr)).toBe("");
     expect(ms).toBeLessThan(WITHIN_MS);
   });
 
