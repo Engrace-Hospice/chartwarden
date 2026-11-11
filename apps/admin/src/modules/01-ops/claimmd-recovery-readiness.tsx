@@ -1,5 +1,5 @@
 import { Button, InlineAlert, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 
 type Stage = "capture" | "ownership_resolution" | "m25_delivery";
@@ -25,10 +25,14 @@ type Assessment = {
 
 export function ClaimMdRecoveryReadiness(): JSX.Element {
   const client = useApiClient();
-  const recoveryClient = client as unknown as {
-    GET(path: string, options: unknown): Promise<{ data?: unknown; error?: unknown }>;
-    POST(path: string, options: unknown): Promise<{ data?: unknown; error?: unknown }>;
-  };
+  const recoveryClient = useMemo(
+    () =>
+      client as unknown as {
+        GET(path: string, options: unknown): Promise<{ data?: unknown; error?: unknown }>;
+        POST(path: string, options: unknown): Promise<{ data?: unknown; error?: unknown }>;
+      },
+    [client],
+  );
   const [health, setHealth] = useState<{ usage: "test" | "production" }>();
   const [inboxId, setInboxId] = useState("");
   const [stage, setStage] = useState<Stage>("capture");
@@ -38,10 +42,20 @@ export function ClaimMdRecoveryReadiness(): JSX.Element {
 
   const loadHealth = useCallback(async () => {
     setError(undefined);
-    const result = await client.GET("/api/v1/ops/claimmd/observability");
-    if (result.error || !result.data) setError("Central Claim.MD health is unavailable.");
-    else setHealth(result.data as { usage: "test" | "production" });
-  }, [client]);
+    const result = await recoveryClient.GET("/api/v1/ops/claimmd/observability", {});
+    const data = result.data;
+    if (
+      result.error ||
+      typeof data !== "object" ||
+      data === null ||
+      !("usage" in data) ||
+      (data.usage !== "test" && data.usage !== "production")
+    ) {
+      setError("Central Claim.MD health is unavailable.");
+    } else {
+      setHealth({ usage: data.usage });
+    }
+  }, [recoveryClient]);
 
   useEffect(() => {
     void loadHealth();
