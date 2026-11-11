@@ -21,6 +21,8 @@
 import { userInfo } from "node:os";
 
 import { execCommandWrites, findActions } from "./find-expr";
+import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
+import { hasWildcard, isMagicPathspec, wholeTreeWriterReason } from "./git-tree-rules";
 import { globMatches, globTokens } from "./glob";
 import { switchesHarness } from "./harness-switch";
 import {
@@ -35,6 +37,12 @@ import {
 } from "./inline-code";
 import { type LongOption, optionValues } from "./option-values";
 import { relativeTo } from "./path-alias";
+import {
+  PROTECTED_FRAGMENT,
+  PROTECTED_SAMPLES,
+  isProtectedPath,
+  protectedPathPattern,
+} from "./protected-paths";
 import { environmentLeak, reachesLiveEnv, storedSecretVerdict } from "./secret-reads";
 import {
   BARE,
@@ -47,6 +55,17 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { isToolchainPath } from "./toolchain-paths";
+import {
+  MAX_COMMAND_JUDGE_MS,
+  baseName,
+  expandBraces,
+  halted,
+  refillWork,
+  spendJudgedChars,
+  spendResolution,
+  trimSlashes,
+  work,
+} from "./work-budget";
 import {
   RUNS_COMMAND_STRING,
   WRAPPER_OPERANDS,
@@ -716,94 +735,8 @@ function readsShellScript(segment: string): boolean {
   });
 }
 
-const MAX_BRACE_ALTERNATIVES = 256;
-const MAX_BRACE_GROUPS = 16;
-
-/**
- * What ONE command may spend. The 64 KB cap bounds the text, not the work: 1,300 words that each expand to 256
- * brace alternatives, judged against 16 candidate directories, are five million path resolutions (12 s), and
- * the hook is killed at 10 s and the call then runs. So brace alternatives and path resolutions draw on a
- * budget that `classifyBash` refills for each command and that every nested `$( )` and `bash -c` shares. Past
- * it nothing more is expanded or resolved (a resolution answers "unknown directory"), and the command asks.
- */
-const MAX_COMMAND_BRACE_ALTERNATIVES = 4096;
-const MAX_COMMAND_PATH_RESOLUTIONS = 16_384;
-/** Text judged across the command and everything nested in it (`$( )`, `bash -c`, `eval`): four times the 64 KB command cap. */
-const MAX_COMMAND_JUDGED_CHARS = 256 * 1024;
-/** A word longer than a path can be (PATH_MAX) is not a file name, so its braces are not expanded. */
-const MAX_BRACE_WORD_CHARS = 4096;
-/**
- * Wall-clock backstop for one `classifyBash`. The hook is killed at 10 s and Claude Code then runs the call, and
- * the guard judges a command twice when the root or cwd is a symlink, so each judging gets a second.
- */
-const MAX_COMMAND_JUDGE_MS = 1000;
 const WORK_BUDGET_REASON =
   "This command has too many brace alternatives, path targets or nested commands, or is too big, for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in, and with every command nested in another). Split it into smaller commands, or let a human run it.";
-const freshWork = (limitMs: number) => ({
-  braces: MAX_COMMAND_BRACE_ALTERNATIVES,
-  resolutions: MAX_COMMAND_PATH_RESOLUTIONS,
-  chars: MAX_COMMAND_JUDGED_CHARS,
-  deadline: performance.now() + limitMs,
-  spent: false,
-});
-let work = freshWork(MAX_COMMAND_JUDGE_MS);
-const refillWork = (limitMs: number): void => {
-  work = freshWork(limitMs);
-};
-/** Has this command used up its time? Marks the budget spent, so the command asks. */
-function outOfTime(): boolean {
-  if (!work.spent && performance.now() > work.deadline) work.spent = true;
-  return work.spent;
-}
-
-/**
- * The first `{a,b}` group in `word` that has no brace inside it, split into the text before, its body and
- * the text after; null when there is none. One pass: a regex for this backtracks quadratically on `{,,,,`.
- */
-function firstBraceGroup(word: string): { pre: string; body: string; post: string } | null {
-  let open = -1;
-  let comma = false;
-  for (let i = 0; i < word.length; i++) {
-    const ch = word[i];
-    if (ch === "{") {
-      open = i;
-      comma = false;
-    } else if (ch === ",") comma ||= open >= 0;
-    else if (ch === "}") {
-      if (open >= 0 && comma) {
-        return { pre: word.slice(0, open), body: word.slice(open + 1, i), post: word.slice(i + 1) };
-      }
-      open = -1;
-      comma = false;
-    }
-  }
-  return null;
-}
-
-/** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
-function expandBraces(word: string): string[] {
-  if (word.length > MAX_BRACE_WORD_CHARS) return [word];
-  let out = [word];
-  for (let round = 0; round < MAX_BRACE_GROUPS; round++) {
-    const next: string[] = [];
-    let changed = false;
-    for (const w of out) {
-      const group = next.length >= MAX_BRACE_ALTERNATIVES ? null : firstBraceGroup(w);
-      if (group && work.braces <= 0) work.spent = true; // a group is left unexpanded
-      if (!group || work.braces <= 0) {
-        next.push(w);
-        continue;
-      }
-      changed = true;
-      const alternatives = group.body.split(",");
-      work.braces -= alternatives.length;
-      for (const alt of alternatives) next.push(`${group.pre}${alt}${group.post}`);
-    }
-    out = next;
-    if (!changed) break;
-  }
-  return out;
-}
 
 /** What the shell does to a word before the program sees it: remove backslashes, expand braces. */
 const unescapeWord = (t: string): string => t.replace(/\\(.)/gs, "$1");
@@ -929,11 +862,13 @@ function gitInvocation(args: readonly string[]): {
     const a = args[k] ?? "";
     if (GIT_GLOBAL_VALUE.test(a)) {
       if (a === "-c" || a === "--config-env") configs.push(args[k + 1] ?? "");
-      if (a === "-C") dirs.push(args[k + 1] ?? "");
+      if (a === "-C" || a === "--work-tree") dirs.push(args[k + 1] ?? "");
       k++;
       continue;
     }
     if (a.startsWith("--config-env=")) configs.push(a.slice("--config-env=".length));
+    // `--work-tree=DIR` names the tree a write lands in, as `-C DIR` names where git runs.
+    if (a.startsWith("--work-tree=")) dirs.push(a.slice("--work-tree=".length));
     if (GIT_GLOBAL_EQ.test(a) || GIT_GLOBAL_FLAG.test(a)) continue;
     if (a.startsWith("-")) {
       unknownGlobal ??= a;
@@ -947,10 +882,6 @@ function gitInvocation(args: readonly string[]): {
 /** `-c` keys that only change presentation. Any other key is a decision for the human. */
 const GIT_SAFE_CONFIG =
   /^(color\.[a-z0-9.-]+|advice\.[a-z0-9.-]+|core\.(quotepath|abbrev|precomposeunicode)|log\.date)$/i;
-/** `-c` keys that switch off the repo's hooks or make git run a program of the caller's choosing. */
-const GIT_EXEC_CONFIG =
-  /^(core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass)|alias\.|credential\.helper|diff\.external|protocol\.ext)/i;
-const configKey = (kv: string): string => kv.split("=")[0] ?? "";
 
 /** Environment overrides that change what git runs or which config it reads. */
 const GIT_ENV_OVERRIDE = /^GIT_/;
@@ -1098,9 +1029,8 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   }
   // Every nested text is judged whole, and one that holds the next level holds nearly the whole command again, so
   // the TEXT judged is budgeted, not only the number of judgings.
-  work.chars -= c.length;
-  if (work.chars < 0) work.spent = true;
-  if (outOfTime()) return ask(WORK_BUDGET_REASON);
+  spendJudgedChars(c.length);
+  if (halted()) return ask(WORK_BUDGET_REASON);
   const { parts, incomplete } = splitSegments(c);
   const parsedParts = parts.map((part) => parseSegment(part.text));
 
@@ -1134,7 +1064,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   // `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named.
   const cdpath = /\bCDPATH\b/.test(c);
   parts.forEach((part, index) => {
-    if (outOfTime()) return;
+    if (halted()) return;
     const parsed = parsedParts[index] as Parsed;
     // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
     const shellIn = part.chained && part.joiner === "&&" ? after : anywhere;
@@ -1209,15 +1139,8 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
 const SECRET_MENTION =
   /(?:^|[^A-Za-z0-9_$)\]])\.(?:env(?!\.example)(?:\.[A-Za-z]+)?|pgpass|netrc)(?![A-Za-z0-9_])|['"/][\w-]+\.env(?:\.(?:local|development|staging|production|tenant))?['"]|id_(?:rsa|ed25519|ecdsa)|\.ssh\/|\.aws\/credentials|['"/][\w.-]*\.(?:pem|key|p12|pfx)['"]/;
 
-/** The agent's own guard, ledger, approved lists and the compliance record. */
-// `/i`: macOS and Windows resolve `.CLAUDE/`, `Compliance/` and `.CODEX/HOOKS.JSON` to the real files, so a
-// case-sensitive match is a bypass. The repo-root-anchored directories come first; the settings, hook and
-// instruction files that an agent (or `bun`) loads from ANY directory — nested, or under `~` — are matched
-// at any depth. `bunfig.toml` is one: a `preload` line in it runs before the guard itself does.
-const PROTECTED_PATH =
-  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.agents\/(rules|agents|skills|plugins)(\/|$)|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.github\/workflows(\/|$)|deploy\/production(\/|$)|\.gitleaks\.toml$|\.trivyignore\.yaml$|AGENTS\.md$|CLAUDE\.md$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)|(^|\/)(\.claude\/settings(\.local)?\.json|\.codex\/(hooks\.json|config\.toml)|\.?bunfig\.toml|AGENTS\.override\.md)$|(^|\/)\.codex\/(hooks|rules)\//i;
-/** A repo-relative path the harness protects: guard, ledger, rules, compliance record, Codex hook config. */
-export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel);
+export { isProtectedPath };
+const PROTECTED_PATH = protectedPathPattern;
 
 // What is typed into an interactive process later reaches it through Codex's `write_stdin`, which does
 // NOT fire PreToolUse. Login, quiet and connection flags do not make a process terminate: require a real
@@ -1355,7 +1278,6 @@ export const isInteractiveShell = (cmd: string): boolean =>
 /** The directory a command runs in: repo-relative (`""` = the root), `~/…`, an absolute path, or unknown. */
 type Cwd = string | null;
 
-const trimSlashes = (p: string): string => p.replace(/\/+$/, "");
 /** The account's home directory from the user database, for when `$HOME` is unset or empty. */
 function accountHome(): string {
   try {
@@ -1417,10 +1339,7 @@ const REPO_ROOT = /^\$\(git rev-parse --show-toplevel\)(?=\/|$)/;
  * it resolves against at most {@link MAX_CWD_CANDIDATES} directories, and a chain of them stays linear.
  */
 function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): string | null {
-  if (!strict && --work.resolutions < 0) {
-    work.spent = true;
-    return null;
-  }
+  if (!spendResolution(raw.length + (cwd?.length ?? 0), strict)) return null;
   let t = unescapeWord(raw)
     .replace(/^\$\{?CODEX_HOME\}?(?=\/|$)/, "~/.codex")
     .replace(/^\$\{?HOME\}?(?=\/|$)/, "~");
@@ -1458,6 +1377,8 @@ const startingDir = (ctx: BashContext): Cwd =>
 /** More possible directories than this means the guard has lost the thread: treat the directory as unknown. */
 const MAX_CWD_CANDIDATES = 16;
 const MAX_CWD_CHARS = 1024;
+/** A directory path longer than `MAX_CWD_CHARS` is not followed: it becomes the unknown directory. */
+const capLength = (dir: Cwd): Cwd => (dir !== null && dir.length > MAX_CWD_CHARS ? null : dir);
 
 const capDirs = (dirs: readonly Cwd[]): readonly Cwd[] =>
   dirs.length > MAX_CWD_CANDIDATES ? [null] : dirs;
@@ -1488,7 +1409,7 @@ function nextDir(
   const target = cdTarget(args);
   if (target === "-") return null;
   const dir = resolvePath(target, cwd, ctx, true);
-  return dir !== null && dir.length > MAX_CWD_CHARS ? null : dir;
+  return capLength(dir);
 }
 
 /** Programs that run a script in THIS shell, which may `cd` anywhere. */
@@ -1530,40 +1451,6 @@ function nextDirs(
 const runIn = (dirs: readonly Cwd[], target: string, ctx: BashContext): readonly Cwd[] =>
   capDirs([...new Set(dirs.map((dir) => nextDir(dir, "cd", [target], ctx, false)))]);
 
-/** Representative protected files, lower-case: a directory that holds one of them is an ancestor. */
-const PROTECTED_SAMPLES: readonly string[] = [
-  ".claude/settings.json",
-  ".claude/settings.local.json",
-  ".claude/rules/x",
-  ".claude/agents/x",
-  ".claude/skills/x",
-  ".claude/audit/x",
-  ".claude/.cache/x",
-  ".agents/rules/x",
-  ".agents/agents/x",
-  ".agents/skills/x",
-  ".agents/plugins/x",
-  ".codex/hooks.json",
-  ".codex/config.toml",
-  ".codex/hooks/x",
-  ".codex/rules/x",
-  "scripts/harness/x",
-  "scripts/check-compliance-controls.ts",
-  "compliance/x",
-  ".githooks/x",
-  ".github/codeowners",
-  ".github/workflows/x",
-  "deploy/production/x",
-  ".trivyignore.yaml",
-  "agents.md",
-  "claude.md",
-  "~/.codex/hooks.json",
-  "~/.codex/config.toml",
-  "~/.claude/settings.json",
-  "~/.claude/settings.local.json",
-  "~/.bunfig.toml",
-];
-
 /** What one command writes to. `anc`: a directory that CONTAINS a protected path counts; `merge`: the repo root does too. */
 interface WriteTarget {
   readonly raw: string;
@@ -1579,7 +1466,6 @@ function protectedTouch(rel: string, t: WriteTarget): boolean {
   return dir === "" ? t.merge : PROTECTED_SAMPLES.some((s) => s.startsWith(`${dir}/`));
 }
 
-const baseName = (p: string): string => p.replace(/\/+\.?$/, "").replace(/^.*\//, "");
 /** `src/.`, `src/` and `.` copy a directory's CONTENTS onto the destination. */
 const isContentsSource = (s: string): boolean => /(^|\/)\.?$/.test(s);
 
@@ -1820,6 +1706,10 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   }
   if (prog === "curl") return curlWrites(args);
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
+  if (prog === "git") {
+    const { sub, rest } = gitInvocation(args);
+    return gitFileWrites(sub, rest).map((f) => wt(f));
+  }
   const outputOptions = OUTPUT_OPTIONS.get(prog);
   if (outputOptions) {
     return outputOptions
@@ -1887,16 +1777,6 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
 
 /** Quotes, `+`, backslashes and whitespace removed: `'scripts/'+'harness/x'` reads as `scripts/harness/x`. */
 const squash = (s: string): string => s.replace(/['"`+\\\s]/g, "");
-// A protected path as it reads once squashed. Directories anchored at the repo root must not be preceded
-// by a path component (`docs/compliance/` is a docs page); settings and hook files count at any depth.
-const PROTECTED_FRAGMENT = new RegExp(
-  [
-    String.raw`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_-]\/)(?:\.claude\/(?:audit|\.cache|rules|agents|skills)|\.agents\/(?:rules|agents|skills|plugins)|scripts\/harness|compliance\/|\.githooks|\.github\/workflows|deploy\/production|\.gitleaks\.toml|\.trivyignore\.yaml|agents\.md|claude\.md|scripts\/check-compliance-controls|\.github\/codeowners)`,
-    String.raw`(?<![A-Za-z0-9_-])(?:\.claude\/settings(?:\.local)?\.json|\.codex\/(?:hooks|config\.toml|rules)|\.?bunfig\.toml|agents\.override\.md)`,
-  ].join("|"),
-  "i",
-);
-
 /** A script (inline `-c` code, or a heredoc/stdin body) naming a secret file (deny) or a protected one (ask). */
 function scriptTextVerdict(text: string): BashVerdict | null {
   const flat = squash(text);
@@ -1958,7 +1838,17 @@ function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, di
   const one = positional[0] ?? "";
   const rel = resolvePath(one, dir, ctx);
   const isPath = rel === null || protectedTouch(rel, WHOLE_TREE);
-  return isPath && (ctx.exists?.(one) ?? true) ? [one] : [];
+  return isPath && existsFrom(one, rel, ctx) ? [one] : [];
+}
+
+/**
+ * Does `word` name a file where the command runs? `rel` is where it lands (null: unknown), so a `cd scripts/harness
+ * && git checkout pre-tool-guard.ts` is judged against that directory, not the one the shell started in.
+ */
+function existsFrom(word: string, rel: string | null, ctx: BashContext): boolean {
+  const root = ctx.root ? trimSlashes(ctx.root) : "";
+  if (rel === null || rel.startsWith("~") || !root) return ctx.exists?.(word) ?? true;
+  return ctx.exists?.(rel.startsWith("/") ? rel : `${root}/${rel}`) ?? true;
 }
 
 /** `git format-patch -o DIR` writes its patch files into DIR. */
@@ -1978,6 +1868,10 @@ function formatPatchVerdict(
   return null;
 }
 
+/** More `git -C` operands than this is not a command anyone types: the guard asks instead of following them. */
+const MAX_GIT_DIR_OPERANDS = 8;
+const TOO_MANY_GIT_DIRS_REASON =
+  "This git command has more than 8 `-C` operands, too many for the guard to follow; a human decides.";
 /** `git apply`/`am` (a diff we cannot read), `clean`, and checkout/restore/rm/mv onto protected paths. */
 function gitWriteVerdict(
   sub: string,
@@ -1999,17 +1893,44 @@ function gitWriteVerdict(
     );
   }
   if (sub === "format-patch") return formatPatchVerdict(rest, cwds, ctx);
-  if (!/^(checkout|restore|rm|mv)$/.test(sub)) return null;
+  // `git -C a -C a ...` thousands of times, after a few `cd`s, was a minute of path resolution; no real command has more.
+  if (gitDirs.length > MAX_GIT_DIR_OPERANDS) return ask(TOO_MANY_GIT_DIRS_REASON);
+  const treeWriter = wholeTreeWriterReason(sub, rest);
+  const writesPaths = /^(checkout|restore|rm|mv)$/.test(sub);
+  if (!treeWriter && !writesPaths) return null;
   for (const cwd of cwds) {
     let dir = cwd;
-    for (const d of gitDirs) dir = dir === null ? null : resolvePath(d, dir, ctx, true);
+    for (const d of gitDirs) dir = dir === null ? null : capLength(resolvePath(d, dir, ctx, true));
+    if (treeWriter && treeHoldsRepo(dir, ctx))
+      return ask(
+        `${treeWriter}, the guard and the compliance record included, and can put an older version back. A human decides.`,
+      );
+    if (!writesPaths) continue;
     for (const p of gitPathspecs(sub, rest, ctx, dir)) {
+      if (isMagicPathspec(p)) return ask(MAGIC_PATHSPEC_REASON);
       const rel = resolvePath(p, dir, ctx);
       if (rel === null) return ask(UNKNOWN_DIR_REASON);
-      if (protectedTouch(rel, WHOLE_TREE)) return ask(protectedReason(rel));
+      if (hasWildcard(rel) ? wildcardReachesProtected(rel) : protectedTouch(rel, WHOLE_TREE)) {
+        return ask(protectedReason(rel));
+      }
     }
   }
   return null;
+}
+
+const MAGIC_PATHSPEC_REASON =
+  "A magic pathspec (`:/`, `:(top)`, `:(glob)`) names files from the top of the tree whatever directory this runs in, so it can reach the guard and the compliance record. A human decides.";
+
+/** Does a pathspec wildcard (`*`, `scripts/h*`, `.*`) expand onto any protected path? */
+function wildcardReachesProtected(spec: string): boolean {
+  const tokens = globTokens(spec.toLowerCase());
+  return PROTECTED_SAMPLES.some((sample) => globMatches(tokens, sample));
+}
+
+/** Does the working tree this git command acts on hold the repo (and so the guard)? An unknown directory may. */
+function treeHoldsRepo(dir: Cwd, ctx: BashContext): boolean {
+  if (dir === null || !ctx.root) return true;
+  return !dir.startsWith("/") && !dir.startsWith("~");
 }
 
 // A coding agent started with its approval prompts, sandbox or hook configuration switched off is an agent
@@ -2416,14 +2337,8 @@ function classifySegment(
         }
       }
     }
-    if (
-      sub === "config" &&
-      /core\.hooksPath/.test(argline) &&
-      !/(--get|--list|-l)\b/.test(argline) &&
-      !/core\.hooksPath\s+\.githooks\b/.test(argline)
-    ) {
-      return deny("Re-pointing core.hooksPath disables the repo's git hooks.");
-    }
+    const configDenial = sub === "config" ? gitConfigDenial(rest) : null;
+    if (configDenial) return deny(configDenial);
     if (sub === "push") {
       const refs = rest.filter((a) => !a.startsWith("-")); // remote, then refspecs
       const remoteRefs = refs.slice(1);

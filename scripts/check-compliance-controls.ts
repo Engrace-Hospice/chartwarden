@@ -239,6 +239,9 @@ export const FORBIDDEN_ENV = [
   "CW_STOP_GATE",
   "CLAUDE_PROJECT_DIR",
   "CW_HARNESS_ROOT_FOR_TESTS",
+  // Test seams of the guard's hard deadline: one forces a hang, crash or exit in the worker, the other shortens the deadline.
+  "CW_HARNESS_TEST_FAULT",
+  "CW_HARNESS_DEADLINE_MS_FOR_TESTS",
   // bun reads it for every run, and `--preload x.ts` in it runs x.ts before the hook script (verified).
   "BUN_OPTIONS",
   // Re-point an agent at a configuration directory that has no hooks.
@@ -315,15 +318,23 @@ const PINNED_CLAUDE_HOOKS = [
  * - `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session
  *   directory would otherwise run before the guard and could silence it, and a `tsconfig.json` `paths` map
  *   would replace the guard's own imports (see {@link BUN_HARDENED});
- * - `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs the call when a hook times out (its limit here
- *   is 10 s, which {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a
- *   failed `exec` (no `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0,
- *   which is an ALLOW;
+ * - `perl -e 'alarm 8; ...'`: Codex runs the call when a hook times out (its limit here is 10 s, which
+ *   {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a failed `exec` (no
+ *   `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0, which is an ALLOW;
+ * - the script is found by walking up from the session directory (`Cwd::getcwd`, the real path) to the nearest
+ *   directory that holds `.git`, `.codex/hooks.json` AND `scripts/harness/pre-tool-guard.ts`, and NOT with
+ *   `git rev-parse --show-toplevel`: that follows `core.worktree`, so `git config core.worktree /tmp/x` (or a
+ *   line appended to `.git/config`) made the hook run `/tmp/x/scripts/harness/pre-tool-guard.ts` and two allowed
+ *   commands switched the Codex guard off. Reading no git configuration at all leaves nothing to redirect; a
+ *   nested `git init` below the session directory must also plant the hook config and the script (both
+ *   protected paths at any depth) to win; nothing found means exit 127, and the wrapper below refuses the call;
  * - `|| { ...; exit 2; }`: exit 2 with a message BLOCKS in Codex; any other failure (bun not on the hook's
  *   PATH, a crash, the alarm) is "failed, and the call proceeds".
  */
 export const CODEX_ALARM_SECONDS = 8;
-export const CODEX_GUARD_COMMAND = `perl -e 'alarm ${CODEX_ALARM_SECONDS}; exec @ARGV or exit 127' ${BUN_HARDENED} "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
+const CODEX_FIND_ROOT_AND_EXEC =
+  'use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127';
+export const CODEX_GUARD_COMMAND = `perl -e 'alarm ${CODEX_ALARM_SECONDS}; ${CODEX_FIND_ROOT_AND_EXEC}' ${BUN_HARDENED} || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
 
 /** PURE — `.codex/hooks.json` must hold exactly the one guard hook, and nothing that could shadow it. */
 export function checkCodexHooks(text: string | undefined): string[] {
@@ -607,6 +618,40 @@ export interface HarnessFiles {
   codexHooks?: string | undefined;
   /** What `git check-ignore` says about the `.gitignore` text ({@link probeGitignore}). Judged when present. */
   gitignoreProbe?: IgnoreProbe | undefined;
+  /** `package.json` text, `undefined` when the file is missing. Checked only when the key is present. */
+  packageJson?: string | undefined;
+}
+
+/**
+ * `bun --no-env-file`, which every pinned hook command passes, is a silent no-op on bun 1.3.0 to 1.3.2 (verified
+ * against each release; 1.3.3 and later honour it), so a session directory's environment file would be loaded
+ * before the guard. `engines.bun` must therefore promise at least this version.
+ */
+export const MIN_BUN: readonly [number, number, number] = [1, 3, 3];
+
+const bunVersionNumber = (major: number, minor: number, patch: number): number =>
+  major * 1_000_000 + minor * 1_000 + patch;
+
+/** PURE: `package.json` must declare `engines.bun` as a range whose floor is {@link MIN_BUN} or higher. */
+export function checkBunEngine(text: string | undefined): string[] {
+  const need = `engines.bun in package.json must be a range that starts at ${MIN_BUN.join(".")} or later (bun --no-env-file is a silent no-op before it, so the hooks would load a session environment file)`;
+  if (text === undefined) return [`package.json is missing; ${need}`];
+  let range: unknown;
+  try {
+    range = (JSON.parse(text) as { engines?: { bun?: unknown } }).engines?.bun;
+  } catch (e) {
+    return [`package.json does not parse: ${String(e)}`];
+  }
+  if (typeof range !== "string") return [`package.json declares no engines.bun; ${need}`];
+  // A floor: `>=1.3.3`, `^1.3.3`, `~1.3.3` or an exact version. Anything else (`*`, `<2`, `latest`, `1.3`) names no floor.
+  const floor = /^\s*(?:>=|\^|~)?\s*v?(\d+)\.(\d+)\.(\d+)(?:[-+][\w.-]+)?\s*(?:<[^|]*)?$/.exec(
+    range,
+  );
+  const atLeast =
+    floor !== null &&
+    bunVersionNumber(Number(floor[1]), Number(floor[2]), Number(floor[3])) >=
+      bunVersionNumber(...MIN_BUN);
+  return atLeast ? [] : [`package.json engines.bun is \`${range}\`; ${need}`];
 }
 
 /** PURE over file contents. */
@@ -773,6 +818,7 @@ export function checkHarness(files: HarnessFiles): string[] {
     v.push("AGENTS.md is not a verbatim copy of CLAUDE.md");
   if (files.mirror) v.push(...checkMirror(files.mirror.claude, files.mirror.agents));
   if ("codexHooks" in files) v.push(...checkCodexHooks(files.codexHooks));
+  if ("packageJson" in files) v.push(...checkBunEngine(files.packageJson));
   return v;
 }
 
@@ -815,6 +861,7 @@ export function readHarnessInputs(root: string): HarnessFiles {
     registry: read("compliance/synthetic-identifiers.json"),
     mirror: { claude: readMirrorTree(root, ".claude"), agents: readMirrorTree(root, ".agents") },
     codexHooks: read(".codex/hooks.json"),
+    packageJson: read("package.json"),
   };
 }
 
