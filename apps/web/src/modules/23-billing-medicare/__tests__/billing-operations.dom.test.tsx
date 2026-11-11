@@ -15,7 +15,11 @@ const denied = () => ({
   response: new Response(null, { status: 403 }),
 });
 const providers = ["provider-a", "provider-b"];
-function mount(get: ReturnType<typeof vi.fn>, path = "/billing/operations") {
+function mount(
+  get: ReturnType<typeof vi.fn>,
+  path = "/billing/operations",
+  permissions: string[] = [],
+) {
   const post = vi.fn();
   render(
     <ApiClientProvider client={{ GET: get, POST: post } as unknown as ApiClient}>
@@ -25,6 +29,7 @@ function mount(get: ReturnType<typeof vi.fn>, path = "/billing/operations") {
           organizationId: "o1",
           providerEntityIds: providers,
           locationIds: ["location-a"],
+          permissions,
         }}
       >
         <MemoryRouter initialEntries={[path]}>
@@ -37,6 +42,73 @@ function mount(get: ReturnType<typeof vi.fn>, path = "/billing/operations") {
 }
 
 describe("Billing Operations", () => {
+  it("shows source-qualified M25 amounts and does not invent an A/R total", async () => {
+    const summary = {
+      dateBasis: "era_received_at_utc",
+      fromDate: "2026-10-01",
+      toDate: "2026-10-31",
+      providerEntityId: "provider-a",
+      completeness: "exact_for_m25_remittance_advice",
+      receivedAdviceCount: 2,
+      reportedAdviceCount: 2,
+      reportedEraPaymentCents: "10000",
+      reportedClaimPaymentCents: "9500",
+      fullyPostedClaimPaymentCents: "7000",
+      postedClaimPaymentCents: "7000",
+      fullyPostedAdviceCount: 1,
+      partialPostedAdviceCount: 1,
+      reportedAdjustmentsByGroup: { CO: "0", CR: "0", OA: "1000", PI: "0", PR: "0" },
+      reportedPlbCents: "500",
+      unmatchedLineCount: 1,
+      latestReceivedAt: "2026-10-30T12:00:00.000Z",
+      claimMdStagesIncluded: false,
+      authoritativeAr: { status: "unavailable", reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER" },
+    };
+    const get = vi.fn(async (path: string, _options?: unknown) => {
+      if (path === "/api/v1/remittance/revenue-cycle-summary") return ok(summary);
+      if (path === "/api/v1/remittance/claimmd-operational-health")
+        return ok({
+          scope: "tenant_attributed_m25_stages",
+          completeness: "exact_for_authorized_provider_stages",
+          stageCount: 4,
+          states: { staged: 3, held: 1 },
+          exceptionCount: 1,
+          oldestExceptionAt: "2026-10-29T12:00:00.000Z",
+          latestStageAt: "2026-10-30T12:00:00.000Z",
+          centralCapture: {
+            status: "restricted",
+            reasonCode: "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE",
+          },
+          requestBudget: {
+            status: "unavailable",
+            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION",
+          },
+        });
+      return ok({ items: [] });
+    });
+    mount(get, "/billing/operations?entity=provider-a&eraFrom=2026-10-01&eraTo=2026-10-31", [
+      "remittance.read",
+    ]);
+    expect((await screen.findAllByText("$70.00")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Authoritative open A\/R and aging are unavailable/)).toBeTruthy();
+    expect(screen.getByText("$5.00")).toBeTruthy();
+    expect(await screen.findByText("Stages requiring attention")).toBeTruthy();
+    expect(
+      screen.getByText(/Live worker heartbeat and observed request-budget usage are unavailable/),
+    ).toBeTruthy();
+    expect(screen.queryByText("$30.00 open A/R")).toBeNull();
+    await waitFor(() =>
+      expect(
+        get.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/v1/remittance/revenue-cycle-summary" &&
+            (options as { params: { query: Record<string, unknown> } }).params.query
+              .providerEntityId === "provider-a",
+        ),
+      ).toBe(true),
+    );
+  });
+
   it("opens a read/triage investigation without offering source retry or financial actions", async () => {
     const investigation = {
       id: "case-1",
@@ -53,6 +125,14 @@ describe("Billing Operations", () => {
             investigation,
             source: {
               sourceModule: "M41",
+              submissionId: "attempt-1",
+              claimId: "claim-1",
+              providerEntityId: "provider-a",
+              attempt: 1,
+              reference: "COM-1",
+              payer: "Synthetic Plan",
+              occurredAt: "2026-11-01T00:00:00Z",
+              currentStatus: "in_doubt",
               sourceHref: "/commercial/billing/claims/claim-1",
               reasonCode: "TRANSPORT_TIMEOUT",
             },
@@ -250,6 +330,50 @@ describe("Billing Operations", () => {
         ),
       ).toBe(true),
     );
+  });
+
+  it("opens persisted investigation history when the source is no longer in doubt", async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/provider-entities") return ok({ items: [] });
+      if (path === "/api/v1/locations") return ok({ items: [] });
+      if (path === "/api/v1/billing/operations/investigations")
+        return ok({
+          items: [{ id: "case-old", sourceModule: "M41", status: "resolved", version: 4 }],
+          nextCursor: null,
+        });
+      if (path.endsWith("/investigations/{id}"))
+        return ok({
+          investigation: {
+            id: "case-old",
+            status: "resolved",
+            version: 4,
+            assignedToMembershipId: null,
+          },
+          source: {
+            sourceModule: "M41",
+            submissionId: "attempt-old",
+            claimId: "claim-old",
+            providerEntityId: "provider-a",
+            attempt: 1,
+            reference: "COM-OLD",
+            payer: "Synthetic Plan",
+            reasonCode: null,
+            occurredAt: "2026-10-01T00:00:00Z",
+            currentStatus: "sent",
+            sourceHref: "/commercial/billing/claims/claim-old",
+          },
+          history: [],
+          notes: [],
+        });
+      return ok({ items: [], nextCursor: null });
+    });
+    mount(get, "/billing/operations", ["billing.operations.read"]);
+    fireEvent.click(await screen.findByRole("button", { name: "View investigation history" }));
+    expect(await screen.findByText(/Current submission status: sent/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open source record" }).getAttribute("href")).toBe(
+      "/commercial/billing/claims/claim-old",
+    );
+    expect(screen.queryByText(/submission outcome still in doubt/i)).toBeNull();
   });
 
   it("surfaces owner-projected in-doubt submissions without implying failure or offering a retry", async () => {

@@ -99,6 +99,54 @@ export interface PayerPlanView {
 }
 
 export interface CommercialClaimReadService {
+  getPaymentReconciliation(
+    actor: ReadActor,
+    claimId: string,
+  ): Promise<{
+    claim: {
+      id: string;
+      claimControlNumber: string;
+      providerEntityId: string;
+      payerId: string;
+      payerName: string;
+      state: string;
+      serviceFrom: string;
+      serviceTo: string;
+      /** Current mutable claim amount; not represented as original submitted charge. */
+      currentChargeCents: number;
+      originalSubmittedChargeCents: null;
+    };
+    payments: {
+      items: readonly {
+        remittanceAdviceId: string;
+        remittanceLineId: string;
+        payerReportedPaymentCents: string;
+        m25PostedPaymentCents: string | null;
+        adviceStatus: "parsed" | "posted" | "partial_posted";
+        lineMatchState: string;
+        receivedAt: string;
+      }[];
+      payerReportedPaymentCents: string;
+      m25PostedPaymentCents: string;
+      completeness: "exact_for_matched_m25_remittance_lines";
+      historyRecordCount: number;
+      detailTruncated: boolean;
+    };
+  }>;
+  getSubmissionForInvestigation(
+    actor: ReadActor,
+    submissionId: string,
+  ): Promise<{
+    submissionId: string;
+    claimId: string;
+    claimControlNumber: string;
+    providerEntityId: string;
+    attemptCount: number;
+    reasonCode: string | null;
+    occurredAt: string;
+    status: string;
+    payer: string;
+  }>;
   getInDoubtSubmission(
     actor: ReadActor,
     submissionId: string,
@@ -171,11 +219,99 @@ export interface CommercialClaimReadService {
 export function buildCommercialClaimReadService(
   db: CommercialDb,
   seams: Pick<CommercialClaimSeams, "caseload">,
+  m25Payments: {
+    readForClaim(input: {
+      organizationId: string;
+      userId: string;
+      providerEntityScope?: readonly string[];
+      claimId: string;
+      providerEntityId: string;
+      payerId: string;
+    }): Promise<{
+      items: readonly {
+        remittanceAdviceId: string;
+        remittanceLineId: string;
+        payerReportedPaymentCents: string;
+        m25PostedPaymentCents: string | null;
+        adviceStatus: "parsed" | "posted" | "partial_posted";
+        lineMatchState: string;
+        receivedAt: string;
+      }[];
+      payerReportedPaymentCents: string;
+      m25PostedPaymentCents: string;
+      completeness: "exact_for_matched_m25_remittance_lines";
+      historyRecordCount: number;
+      detailTruncated: boolean;
+    }>;
+  } = {
+    async readForClaim() {
+      throw new ChartWardenError(
+        "M25_REMITTANCE_READER_UNAVAILABLE",
+        "Commercial claim payment reconciliation is unavailable.",
+        503,
+      );
+    },
+  },
 ): CommercialClaimReadService {
+  const requiredSourceString = (value: unknown, field: string): string => {
+    if (typeof value === "string" && value.length > 0) return value;
+    throw new ChartWardenError(
+      "M41_PAYMENT_SOURCE_INCOMPLETE",
+      `Commercial claim payment source is missing ${field}.`,
+      409,
+    );
+  };
+  const requiredCents = (value: unknown): number => {
+    if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+    throw new ChartWardenError(
+      "M41_PAYMENT_SOURCE_INCOMPLETE",
+      "Commercial claim payment source has no safe current charge value.",
+      409,
+    );
+  };
   const inOrg = <T>(actor: ReadActor, fn: (tx: CommercialTx) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
   return {
-    async getInDoubtSubmission(actor, submissionId) {
+    async getPaymentReconciliation(actor, claimId) {
+      // getClaim is the M41 owner authorization boundary: organization/provider and patient caseload
+      // are revalidated from current source records before M25 payment facts are requested.
+      const source = await this.getClaim(actor, claimId);
+      const sourceClaimId = requiredSourceString(source.claim.id, "claim identity");
+      const sourceProviderId = requiredSourceString(
+        source.claim.providerEntityId,
+        "provider identity",
+      );
+      const sourcePayerId = requiredSourceString(source.plan.payerId, "payer identity");
+      const paymentFacts = await m25Payments.readForClaim({
+        organizationId: actor.organizationId,
+        userId: actor.userId,
+        providerEntityScope: actor.billingScope?.all
+          ? undefined
+          : (actor.billingScope?.providerEntityIds ?? []),
+        claimId: sourceClaimId,
+        providerEntityId: sourceProviderId,
+        payerId: sourcePayerId,
+      });
+      return {
+        claim: {
+          id: sourceClaimId,
+          claimControlNumber: requiredSourceString(
+            source.claim.claimControlNumber,
+            "claim reference",
+          ),
+          providerEntityId: sourceProviderId,
+          payerId: sourcePayerId,
+          payerName: requiredSourceString(source.plan.planName, "payer plan name"),
+          state: requiredSourceString(source.claim.state, "claim state"),
+          serviceFrom: requiredSourceString(source.claim.serviceFrom, "service start date"),
+          serviceTo: requiredSourceString(source.claim.serviceTo, "service end date"),
+          currentChargeCents: requiredCents(source.claim.totalChargeCents),
+          originalSubmittedChargeCents: null,
+        },
+        payments: paymentFacts,
+      };
+    },
+    async getSubmissionForInvestigation(actor, submissionId) {
       const S = schema.commercialSubmissions;
       const C = schema.commercialClaims;
       const [row] = await inOrg(actor, (tx) =>
@@ -195,13 +331,7 @@ export function buildCommercialClaimReadService(
             ),
           )
           .innerJoin(schema.commercialPayerPlan, eq(schema.commercialPayerPlan.id, C.planId))
-          .where(
-            and(
-              eq(S.id, submissionId),
-              eq(S.organizationId, actor.organizationId),
-              eq(S.status, "in_doubt"),
-            ),
-          )
+          .where(and(eq(S.id, submissionId), eq(S.organizationId, actor.organizationId)))
           .limit(1),
       );
       if (!row) throw new NotFoundError("in-doubt submission not found");
@@ -215,9 +345,14 @@ export function buildCommercialClaimReadService(
         attemptCount: row.submission.attemptCount,
         reasonCode: row.submission.lastFailureCode,
         occurredAt: row.submission.updatedAt.toISOString(),
-        status: "in_doubt",
+        status: row.submission.status,
         payer: row.planName,
       };
+    },
+    async getInDoubtSubmission(actor, submissionId) {
+      const source = await this.getSubmissionForInvestigation(actor, submissionId);
+      if (source.status !== "in_doubt") throw new NotFoundError("in-doubt submission not found");
+      return source as Awaited<ReturnType<CommercialClaimReadService["getInDoubtSubmission"]>>;
     },
     async listInDoubtSubmissions(actor, f) {
       assertProviderInScope(actor, f.providerEntityId);

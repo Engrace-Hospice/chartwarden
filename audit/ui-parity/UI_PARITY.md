@@ -5,8 +5,8 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 394 screens wired across web/portal/admin.
-- **admin**: 39 screen(s)
+**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 395 screens wired across web/portal/admin.
+- **admin**: 40 screen(s)
 - **portal**: 19 screen(s)
 - **web**: 336 screen(s)
 
@@ -365,6 +365,7 @@
 | web | 41-billing-commercial | `commercial.authorizations` | `/commercial/billing/authorizations` | `commercial_billing.read` | ✅ |
 | web | 41-billing-commercial | `commercial.enrollments` | `/commercial/billing/enrollments` | `commercial_billing.read` | ✅ |
 | web | 41-billing-commercial | `commercial.eligibility` | `/commercial/billing/eligibility` | `commercial_billing.read` | ✅ |
+| admin | 01-ops | `admin.ops.claimmd-recovery-readiness` | `/admin/ops/claimmd-recovery-readiness` | `billing.rule_config.platform_admin` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 23-billing-medicare | `admin.billing.wage-index-load` | `/admin/billing/wage-indexes/load` | `billing.rule_config.platform_admin` | ✅ |

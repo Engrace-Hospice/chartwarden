@@ -10,7 +10,8 @@ export interface InvestigationSourceRef {
   readonly providerEntityId: string;
 }
 interface Props {
-  readonly source: InvestigationSourceRef;
+  readonly source?: InvestigationSourceRef;
+  readonly investigationId?: string;
   readonly onClose: () => void;
 }
 type ApiData = Record<string, unknown>;
@@ -21,7 +22,11 @@ type InvestigationApiClient = {
 const requestKey = () => crypto.randomUUID();
 const field = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Element {
+export function BillingInvestigationPanel({
+  source,
+  investigationId,
+  onClose,
+}: Props): JSX.Element {
   // The generated schema has >1,900 paths; openapi-fetch's conditional path
   // types exceed TS's instantiation depth in this leaf component. The route
   // schemas remain generated and checked; narrow the local transport surface.
@@ -39,6 +44,8 @@ export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Eleme
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loadEpoch, setLoadEpoch] = useState(0);
+  const requestedSourceModule = source?.sourceModule;
+  const requestedSubmissionId = source?.submissionId;
   const refresh = async (caseId: string) => {
     const response = await client.GET("/api/v1/billing/operations/investigations/{id}", {
       params: { path: { id: caseId } },
@@ -54,27 +61,39 @@ export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Eleme
       setBusy(true);
       setError("");
       try {
-        const opened = await client.POST("/api/v1/billing/operations/investigations", {
-          headers: { "Idempotency-Key": `${loadEpoch}-${requestKey()}` },
-          body: { sourceModule: source.sourceModule, submissionId: source.submissionId },
-        });
-        if (opened.error || !opened.data)
-          throw new Error("Investigation could not be opened. Check access to the source record.");
-        const id = field((opened.data as unknown as ApiData).id);
+        let id = investigationId ?? "";
+        if (!id && requestedSourceModule && requestedSubmissionId) {
+          const opened = await client.POST("/api/v1/billing/operations/investigations", {
+            headers: { "Idempotency-Key": `${loadEpoch}-${requestKey()}` },
+            body: { sourceModule: requestedSourceModule, submissionId: requestedSubmissionId },
+          });
+          if (opened.error || !opened.data)
+            throw new Error(
+              "Investigation could not be opened. Check access to the source record.",
+            );
+          id = field((opened.data as unknown as ApiData).id);
+        }
+        if (!id) throw new Error("Investigation reference is unavailable.");
         const response = await client.GET("/api/v1/billing/operations/investigations/{id}", {
           params: { path: { id } },
         });
         if (response.error || !response.data)
           throw new Error("Investigation details are unavailable. Retry the read.");
-        if (active) setDetail(response.data as unknown as ApiData);
+        const loaded = response.data as unknown as ApiData;
+        if (active) setDetail(loaded);
+        const sourceInfo = loaded.source as ApiData | undefined;
+        const sourceModule = field(sourceInfo?.sourceModule) as Module;
+        const sourceProviderEntityId = field(sourceInfo?.providerEntityId);
+        const sourceSubmissionId = field(sourceInfo?.submissionId);
         if (canAssign) {
           const people = await client.GET(
             "/api/v1/billing/operations/investigations/investigators",
             {
               params: {
                 query: {
-                  providerEntityId: source.providerEntityId,
-                  sourceModule: source.sourceModule,
+                  providerEntityId: sourceProviderEntityId,
+                  sourceModule,
+                  submissionId: sourceSubmissionId,
                 },
               },
             },
@@ -95,14 +114,7 @@ export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Eleme
     return () => {
       active = false;
     };
-  }, [
-    canAssign,
-    client,
-    loadEpoch,
-    source.providerEntityId,
-    source.sourceModule,
-    source.submissionId,
-  ]);
+  }, [canAssign, client, loadEpoch, requestedSourceModule, requestedSubmissionId, investigationId]);
 
   const retryRead = async () => {
     if (!caseId) {
@@ -147,7 +159,8 @@ export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Eleme
   const status = field(investigation?.status);
   const version = Number(investigation?.version ?? 0);
   const caseId = field(investigation?.id);
-  const sourceState = "Submission outcome in doubt";
+  const sourceInfo = detail?.source as ApiData | undefined;
+  const sourceState = field(sourceInfo?.currentStatus);
   const postAssignment = (body: {
     assignedToMembershipId: string | null;
     version: number;
@@ -191,7 +204,10 @@ export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Eleme
         <div>
           <h2 id="billing-investigation-title">Billing investigation</h2>
           <p>
-            {source.sourceModule} · {sourceState}. The request may have reached the payer.
+            {field(sourceInfo?.sourceModule)} ·{" "}
+            {sourceState === "in_doubt"
+              ? "Submission outcome in doubt. The request may have reached the payer."
+              : `Current submission status: ${sourceState || "Unavailable"}.`}
           </p>
           <p>
             Administrative investigation status: <strong>{status || "Opening"}</strong>
@@ -233,7 +249,7 @@ export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Eleme
               <dd>{field((detail.source as ApiData | undefined)?.payer) || "Unavailable"}</dd>
               <dt>Submission attempt</dt>
               <dd>
-                {source.sourceModule} · {field((detail.source as ApiData | undefined)?.attempt)}
+                {field(sourceInfo?.sourceModule)} · {field(sourceInfo?.attempt)}
               </dd>
             </dl>
             <p>
@@ -444,7 +460,9 @@ export function BillingInvestigationPanel({ source, onClose }: Props): JSX.Eleme
             )}
             {status === "resolved" || status === "closed" ? (
               <output>
-                <strong>Investigation resolved — submission outcome still in doubt.</strong>
+                <strong>Administrative investigation is {status}.</strong> The source submission
+                currently reports {sourceState || "an unavailable status"}. This case status does
+                not change that source record.
               </output>
             ) : null}
           </section>

@@ -295,6 +295,162 @@ export function createClaimMdEraStore(input: {
         CLAIMMD_ERA_METRICS_JOB_ID,
       );
     },
+    /**
+     * Read-only recovery assessment over one exact durable source. It never decrypts source bytes,
+     * changes a cursor/state/lease, or claims that a later execution will still be eligible.
+     */
+    async recoveryPreflight(inputPreflight: {
+      readonly inboxId: string;
+      readonly accountReference: string;
+      readonly usage: "test" | "production";
+      readonly stage: "capture" | "ownership_resolution" | "m25_delivery";
+    }) {
+      if (
+        !/^[0-9a-f-]{36}$/i.test(inputPreflight.inboxId) ||
+        !/^[A-Za-z0-9._:-]{1,128}$/.test(inputPreflight.accountReference)
+      )
+        throw new Error("CLAIMMD_ERA_PREFLIGHT_INVALID");
+      return run(
+        "Claim.MD ERA recovery preflight",
+        async (tx) => {
+          const [source] = await tx
+            .select({
+              id: I.id,
+              streamId: I.streamId,
+              state: I.captureState,
+              retryCount: I.retryCount,
+              digest: I.original835Digest,
+              updatedAt: I.updatedAt,
+            })
+            .from(I)
+            .where(
+              and(
+                eq(I.id, inputPreflight.inboxId),
+                eq(I.vendor, "claimmd"),
+                eq(I.accountReference, inputPreflight.accountReference),
+                eq(I.usage, inputPreflight.usage),
+              ),
+            )
+            .limit(1);
+          if (!source) throw new Error("CLAIMMD_ERA_PREFLIGHT_NOT_FOUND");
+          const [[stream], [resolution], [delivery], prior] = await Promise.all([
+            tx
+              .select({ leaseUntil: S.leaseUntil })
+              .from(S)
+              .where(eq(S.id, source.streamId))
+              .limit(1),
+            tx
+              .select({
+                state: R.status,
+                version: R.resolutionVersion,
+                organizationId: R.organizationId,
+                providerEntityId: R.providerEntityId,
+                digest: R.original835Digest,
+              })
+              .from(R)
+              .where(eq(R.inboxId, source.id))
+              .limit(1),
+            tx
+              .select({
+                state: D.state,
+                attemptCount: D.attemptCount,
+                safeErrorCode: D.safeErrorCode,
+                tenantFinalized: D.tenantFinalized,
+                resolutionVersion: D.resolutionVersion,
+                organizationId: D.organizationId,
+                providerEntityId: D.providerEntityId,
+              })
+              .from(D)
+              .where(eq(D.inboxId, source.id))
+              .limit(1),
+            tx
+              .select({ outcome: REC.outcome, stage: REC.stage })
+              .from(REC)
+              .where(eq(REC.inboxId, source.id)),
+          ]);
+          const leaseActive = Boolean(stream?.leaseUntil && stream.leaseUntil > new Date());
+          const priorStageAttempts = prior.filter(
+            (row) => row.stage === inputPreflight.stage,
+          ).length;
+          const blockers: string[] = [];
+          let currentState = source.state;
+          let currentVersion = source.retryCount;
+          let disposition: "eligible_for_simulation" | "already_processed" | "blocked" = "blocked";
+
+          if (leaseActive) blockers.push("ACTIVE_LEASE");
+          if (priorStageAttempts >= 3) blockers.push("RECOVERY_ATTEMPT_LIMIT");
+          if (inputPreflight.stage === "capture") {
+            if (source.state !== "retryable_failure") blockers.push("CAPTURE_STATE_NOT_RETRYABLE");
+            if (source.retryCount < MAX_CAPTURE_RETRIES)
+              blockers.push("CAPTURE_RETRY_LIMIT_NOT_REACHED");
+          } else if (inputPreflight.stage === "ownership_resolution") {
+            currentState = resolution?.state ?? "missing";
+            currentVersion = resolution?.version ?? 0;
+            if (source.state !== "captured") blockers.push("SOURCE_NOT_CAPTURED");
+            if (!resolution) blockers.push("RESOLUTION_MISSING");
+            else if (resolution.state === "verified") disposition = "already_processed";
+            else if (resolution.state === "conflict") blockers.push("OWNERSHIP_CONFLICT");
+          } else {
+            currentState = delivery?.state ?? "missing";
+            currentVersion = delivery?.attemptCount ?? 0;
+            if (!delivery || !resolution) blockers.push("DELIVERY_OR_RESOLUTION_MISSING");
+            else if (
+              ["delivered", "possible_duplicate", "exact_duplicate"].includes(delivery.state)
+            )
+              disposition = "already_processed";
+            else {
+              if (delivery.state !== "held") blockers.push("DELIVERY_NOT_HELD");
+              if (
+                !["DELIVERY_RETRY_LIMIT", "SOURCE_REVALIDATION_FAILED"].includes(
+                  delivery.safeErrorCode ?? "",
+                )
+              )
+                blockers.push("DELIVERY_REASON_UNSUPPORTED");
+              if (resolution.state !== "verified") blockers.push("OWNERSHIP_NOT_VERIFIED");
+              if (resolution.digest !== source.digest) blockers.push("SOURCE_DIGEST_MISMATCH");
+              if (delivery.resolutionVersion !== resolution.version)
+                blockers.push("RESOLUTION_VERSION_MISMATCH");
+              if (
+                delivery.organizationId !== resolution.organizationId ||
+                delivery.providerEntityId !== resolution.providerEntityId
+              )
+                blockers.push("ATTRIBUTION_SCOPE_MISMATCH");
+            }
+          }
+          if (disposition !== "already_processed" && blockers.length === 0)
+            disposition = "eligible_for_simulation";
+          return {
+            inboxId: source.id,
+            usage: inputPreflight.usage,
+            stage: inputPreflight.stage,
+            currentState,
+            currentVersion,
+            sourceDigestPresent: Boolean(source.digest),
+            tenantAttribution:
+              resolution?.organizationId && resolution.providerEntityId
+                ? "verified"
+                : "unattributed",
+            leaseActive,
+            priorRecoveryAttempts: priorStageAttempts,
+            disposition,
+            blockers,
+            financialEffects: {
+              status: "not_evaluated" as const,
+              reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING" as const,
+            },
+            simulation: {
+              available: disposition === "eligible_for_simulation",
+              mutatesSource: false as const,
+              callsVendor: false as const,
+              authorizesExecution: false as const,
+            },
+            assessedAt: new Date().toISOString(),
+          };
+        },
+        CLAIMMD_ERA_RECOVERY_JOB_ID,
+        { isolation: "repeatable read" },
+      );
+    },
     /** There is deliberately no stream insert here; bootstrap is an operator-reviewed SQL action. */
     async acquire(
       accountReference: string,

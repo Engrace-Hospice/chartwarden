@@ -619,7 +619,12 @@ export interface M23ReadRouteService {
       readonly count: { readonly kind: "lower_bound"; readonly value: number };
     }
   >;
-  /** Exact source-owner authorization read used by Billing Operations before opening an investigation. */
+  /** Current source-owner authorization read used by Billing Operations; status may have left in_doubt. */
+  getSubmissionForInvestigation(
+    actor: M23ReadActor,
+    submissionId: string,
+  ): Promise<InDoubtSubmissionView & { readonly status: string }>;
+  /** Compatibility read for worklists that require the current in_doubt state. */
   getInDoubtSubmission(actor: M23ReadActor, submissionId: string): Promise<InDoubtSubmissionView>;
   getClaim(actor: M23ReadActor, claimId: string): Promise<ClaimDetailView>;
   listClaimLines(actor: M23ReadActor, claimId: string): Promise<readonly ClaimLineView[]>;
@@ -726,6 +731,6 @@ export interface InDoubtSubmissionView {
   readonly providerEntityId: string;
   readonly reasonCode: string | null;
   readonly occurredAt: string;
-  readonly status: "in_doubt";
+  readonly status: string;
   readonly payer: "Medicare";
 }

@@ -134,6 +134,414 @@ function sourceStatus(error: unknown, response: { status?: number } | undefined)
   return response?.status === 403 ? "denied" : error ? "error" : "ready";
 }
 
+type RevenueSummary = {
+  receivedAdviceCount: number;
+  reportedAdviceCount: number;
+  reportedEraPaymentCents: string;
+  reportedClaimPaymentCents: string;
+  fullyPostedClaimPaymentCents: string;
+  postedClaimPaymentCents: string;
+  fullyPostedAdviceCount: number;
+  partialPostedAdviceCount: number;
+  reportedAdjustmentsByGroup: Record<string, string>;
+  reportedPlbCents: string;
+  unmatchedLineCount: number;
+  latestReceivedAt: string | null;
+  authoritativeAr: { status: "unavailable"; reasonCode: string };
+};
+
+function isRevenueSummary(value: unknown): value is RevenueSummary {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<RevenueSummary>;
+  return (
+    typeof row.receivedAdviceCount === "number" &&
+    typeof row.reportedAdviceCount === "number" &&
+    typeof row.reportedEraPaymentCents === "string" &&
+    typeof row.reportedClaimPaymentCents === "string" &&
+    typeof row.fullyPostedClaimPaymentCents === "string" &&
+    typeof row.postedClaimPaymentCents === "string" &&
+    typeof row.fullyPostedAdviceCount === "number" &&
+    typeof row.partialPostedAdviceCount === "number" &&
+    !!row.reportedAdjustmentsByGroup &&
+    typeof row.reportedPlbCents === "string" &&
+    typeof row.unmatchedLineCount === "number" &&
+    !!row.authoritativeAr
+  );
+}
+
+function cents(value: string | undefined): string {
+  try {
+    const amount = BigInt(value ?? "0");
+    const negative = amount < 0n;
+    const absolute = negative ? -amount : amount;
+    const whole = (absolute / 100n).toLocaleString("en-US");
+    const fraction = String(absolute % 100n).padStart(2, "0");
+    return `${negative ? "−" : ""}$${whole}.${fraction}`;
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function utcDay(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function M25FinancialSummary({
+  providerId,
+  fromDate,
+  toDate,
+  allowed,
+}: {
+  providerId: string;
+  fromDate: string;
+  toDate: string;
+  allowed: boolean;
+}): JSX.Element {
+  const client = useApiClient();
+  const [data, setData] = useState<RevenueSummary | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error" | "denied">("loading");
+  const [retryCount, setRetryCount] = useState(0);
+  const requestKeyRef = useRef("");
+  const requestKey = `${providerId}|${fromDate}|${toDate}|${retryCount}`;
+
+  useEffect(() => {
+    requestKeyRef.current = requestKey;
+    let active = true;
+    setData(null);
+    if (!allowed || !providerId) {
+      setState(allowed ? "ready" : "denied");
+      return () => {
+        active = false;
+      };
+    }
+    setState("loading");
+    const getReport = client.GET as (
+      path: string,
+      options: unknown,
+    ) => Promise<{ data?: unknown; error?: unknown; response?: { status?: number } }>;
+    void getReport("/api/v1/remittance/revenue-cycle-summary", {
+      params: { query: { providerEntityId: providerId, fromDate, toDate } },
+    })
+      .then((response) => {
+        if (!active || requestKeyRef.current !== requestKey) return;
+        if (response.error || !isRevenueSummary(response.data)) {
+          setState(response.response?.status === 403 ? "denied" : "error");
+          return;
+        }
+        setData(response.data);
+        setState("ready");
+      })
+      .catch(() => {
+        if (active && requestKeyRef.current === requestKey) setState("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [allowed, client, fromDate, providerId, requestKey, toDate]);
+
+  const retry = () => setRetryCount((count) => count + 1);
+
+  return (
+    <section aria-label="M25 remittance financial activity" style={{ padding: "0 1.5rem" }}>
+      <div
+        style={{
+          border: "1px solid var(--color-outline-variant)",
+          borderRadius: ".6rem",
+          padding: "1rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            gap: ".75rem",
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Remittance financial activity</h2>
+            <p style={{ margin: ".25rem 0 0", color: "var(--color-on-surface-variant)" }}>
+              Exact M25 records received {fromDate} through {toDate} (UTC). Claim.MD stages not yet
+              posted to M25 are excluded.
+            </p>
+          </div>
+          {state === "error" ? (
+            <Button tone="secondary" size="sm" onClick={retry}>
+              Retry report
+            </Button>
+          ) : null}
+        </div>
+        {state === "loading" ? (
+          <output aria-live="polite">Loading remittance activity…</output>
+        ) : null}
+        {state === "denied" ? (
+          <p role="alert">You do not have permission to view remittance financial activity.</p>
+        ) : null}
+        {state === "error" ? (
+          <p role="alert">
+            Remittance financial activity is unavailable. No zero totals are shown.
+          </p>
+        ) : null}
+        {state === "ready" && !providerId ? (
+          <output aria-live="polite">
+            Select an authorized provider to view its remittance records.
+          </output>
+        ) : null}
+        {state === "ready" && data ? (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: ".75rem",
+                marginTop: "1rem",
+              }}
+            >
+              <Metric
+                label="ERA envelope payment (BPR, includes PLB)"
+                value={cents(data.reportedEraPaymentCents)}
+                detail={`${data.reportedAdviceCount} parse-complete of ${data.receivedAdviceCount} received advice records`}
+              />
+              <Metric
+                label="Claim payments reported (CLP)"
+                value={cents(data.reportedClaimPaymentCents)}
+                detail="Source-reported, not proof of posting"
+              />
+              <Metric
+                label="Claim payments posted to M25"
+                value={cents(data.postedClaimPaymentCents)}
+                detail={`${data.fullyPostedAdviceCount} fully posted and ${data.partialPostedAdviceCount} partially posted advice records; only posted claim lines included`}
+              />
+              <Metric
+                label="Unmatched ERA lines"
+                value={data.unmatchedLineCount.toLocaleString("en-US")}
+                detail="M25 matching follow-up"
+              />
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", marginTop: ".85rem" }}>
+              <span>
+                Fully posted advice claim payments:{" "}
+                <strong>{cents(data.fullyPostedClaimPaymentCents)}</strong>
+              </span>
+              <span>
+                Provider-level PLB reported: <strong>{cents(data.reportedPlbCents)}</strong> (not
+                assigned to claims)
+              </span>
+              <span>
+                Latest local ERA receipt:{" "}
+                <strong>
+                  {data.latestReceivedAt
+                    ? new Date(data.latestReceivedAt).toLocaleString("en-US")
+                    : "None in period"}
+                </strong>
+              </span>
+            </div>
+            <details style={{ marginTop: ".75rem" }}>
+              <summary>Reported CAS adjustment totals by group</summary>
+              <ul>
+                {Object.entries(data.reportedAdjustmentsByGroup).map(([group, amount]) => (
+                  <li key={group}>
+                    {group}: {cents(amount)} reported; this is not an authorized write-off or
+                    receivable transfer.
+                  </li>
+                ))}
+              </ul>
+            </details>
+            <p
+              role="note"
+              style={{
+                borderLeft: ".2rem solid var(--color-warning)",
+                paddingLeft: ".75rem",
+              }}
+            >
+              Authoritative open A/R and aging are unavailable. These remittance facts do not
+              establish who owes an unresolved amount. No receivable, patient bill, or write-off is
+              inferred.
+            </p>
+            <nav
+              aria-label="Financial activity details"
+              style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}
+            >
+              <Link to="/remittance">M25 remittance records</Link>
+              <Link to="/remittance/claimmd-era-review">Claim.MD ERA review</Link>
+              <Link to="/billing">M23 claim overview</Link>
+            </nav>
+          </>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+type ClaimMdTenantHealth = {
+  scope: "tenant_attributed_m25_stages";
+  completeness: "exact_for_authorized_provider_stages";
+  stageCount: number;
+  states: Record<string, number>;
+  exceptionCount: number;
+  oldestExceptionAt: string | null;
+  latestStageAt: string | null;
+  centralCapture: { status: "restricted"; reasonCode: string };
+  requestBudget: { status: "unavailable"; reasonCode: string };
+};
+
+function isClaimMdTenantHealth(value: unknown): value is ClaimMdTenantHealth {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<ClaimMdTenantHealth>;
+  return (
+    row.scope === "tenant_attributed_m25_stages" &&
+    typeof row.stageCount === "number" &&
+    typeof row.exceptionCount === "number" &&
+    !!row.states &&
+    typeof row.states === "object" &&
+    !!row.centralCapture &&
+    !!row.requestBudget
+  );
+}
+
+function ClaimMdTenantOperationalHealth({
+  providerId,
+  allowed,
+}: { providerId: string; allowed: boolean }): JSX.Element {
+  const client = useApiClient();
+  const [data, setData] = useState<ClaimMdTenantHealth | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error" | "denied">("loading");
+  const [retry, setRetry] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retry is an explicit read-only refresh trigger
+  useEffect(() => {
+    let active = true;
+    setData(null);
+    if (!allowed || !providerId) {
+      setState(allowed ? "ready" : "denied");
+      return () => {
+        active = false;
+      };
+    }
+    setState("loading");
+    const get = client.GET as (
+      path: string,
+      options: unknown,
+    ) => Promise<{ data?: unknown; error?: unknown; response?: { status?: number } }>;
+    void get("/api/v1/remittance/claimmd-operational-health", {
+      params: { query: { providerEntityId: providerId } },
+    })
+      .then((response) => {
+        if (!active) return;
+        if (response.error || !isClaimMdTenantHealth(response.data)) {
+          setState(response.response?.status === 403 ? "denied" : "error");
+          return;
+        }
+        setData(response.data);
+        setState("ready");
+      })
+      .catch(() => active && setState("error"));
+    return () => {
+      active = false;
+    };
+  }, [allowed, client, providerId, retry]);
+
+  return (
+    <section aria-label="Claim.MD tenant ingestion health" style={{ padding: "0 1.5rem" }}>
+      <div
+        style={{
+          border: "1px solid var(--color-outline-variant)",
+          borderRadius: ".6rem",
+          padding: "1rem",
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Claim.MD staging health</h2>
+        <p>
+          Exact tenant-attributed M25 stages for this provider. Shared account polling, cursor
+          values, and unattributed quarantine are restricted to platform operations.
+        </p>
+        {state === "loading" ? <output aria-live="polite">Loading staging health…</output> : null}
+        {state === "denied" ? <p role="alert">Remittance health access is not granted.</p> : null}
+        {state === "error" ? (
+          <div role="alert">
+            <p>Staging health is unavailable. It has not been interpreted as zero activity.</p>
+            <Button tone="secondary" size="sm" onClick={() => setRetry((value) => value + 1)}>
+              Retry health read
+            </Button>
+          </div>
+        ) : null}
+        {state === "ready" && data ? (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                gap: ".75rem",
+              }}
+            >
+              <Metric
+                label="Attributed stages"
+                value={data.stageCount.toLocaleString("en-US")}
+                detail="Exact for the selected authorized provider"
+              />
+              <Metric
+                label="Stages requiring attention"
+                value={data.exceptionCount.toLocaleString("en-US")}
+                detail="Every state other than staged"
+              />
+              <Metric
+                label="Latest stage activity"
+                value={
+                  data.latestStageAt
+                    ? new Date(data.latestStageAt).toLocaleDateString("en-US")
+                    : "None"
+                }
+                detail="Persisted M25 stage timestamp"
+              />
+            </div>
+            <p>
+              States:{" "}
+              {Object.entries(data.states).length
+                ? Object.entries(data.states)
+                    .map(([name, count]) => `${name.replaceAll("_", " ")}: ${count}`)
+                    .join(" · ")
+                : "No attributed stages"}
+            </p>
+            <p role="note">
+              Live worker heartbeat and observed request-budget usage are unavailable because those
+              facts are not durably recorded. Refresh only rereads persisted evidence.
+            </p>
+          </>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  detail,
+}: { label: string; value: string; detail: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-outline-variant)",
+        borderRadius: ".4rem",
+        padding: ".7rem",
+      }}
+    >
+      <div style={{ color: "var(--color-on-surface-variant)", fontSize: ".82rem" }}>{label}</div>
+      <strong
+        style={{
+          display: "block",
+          fontSize: "1.25rem",
+          fontVariantNumeric: "tabular-nums",
+          margin: ".2rem 0",
+        }}
+      >
+        {value}
+      </strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
 export function BillingOperations(): JSX.Element {
   const client = useApiClient();
   const session = useSession();
@@ -149,6 +557,8 @@ export function BillingOperations(): JSX.Element {
   const eraPayer = params.get("eraPayer") ?? "";
   const eraFrom = params.get("eraFrom") ?? "";
   const eraTo = params.get("eraTo") ?? "";
+  const reportToDate = eraTo || utcDay(new Date());
+  const reportFromDate = eraFrom || utcDay(new Date(Date.now() - 89 * 86_400_000));
   const eraState = params.get("eraState") ?? "";
   const [providers, setProviders] = useState<Record<string, string>>({});
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -165,6 +575,58 @@ export function BillingOperations(): JSX.Element {
   const [investigationSource, setInvestigationSource] = useState<InvestigationSourceRef | null>(
     null,
   );
+  const [investigationCaseId, setInvestigationCaseId] = useState<string | null>(null);
+  const [investigationCases, setInvestigationCases] = useState<Raw[]>([]);
+  const [investigationCursor, setInvestigationCursor] = useState<string | null>(null);
+  const [investigationsState, setInvestigationsState] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const investigationRequestSequence = useRef(0);
+  const canReadInvestigations = session?.permissions?.includes("billing.operations.read") ?? false;
+
+  const loadInvestigations = useCallback(
+    async (cursor?: string | null) => {
+      if (!canReadInvestigations || !providerId) {
+        investigationRequestSequence.current += 1;
+        setInvestigationCases([]);
+        setInvestigationCursor(null);
+        setInvestigationsState("ready");
+        return;
+      }
+      const requestId = ++investigationRequestSequence.current;
+      setInvestigationsState("loading");
+      if (!cursor) {
+        setInvestigationCases([]);
+        setInvestigationCursor(null);
+      }
+      try {
+        const response = await client.GET("/api/v1/billing/operations/investigations", {
+          params: {
+            query: { providerEntityId: providerId, limit: 20, ...(cursor ? { cursor } : {}) },
+          },
+        });
+        if (requestId !== investigationRequestSequence.current) return;
+        if (response.error || !response.data) {
+          setInvestigationsState("error");
+          return;
+        }
+        const page = response.data as unknown as { items?: Raw[]; nextCursor?: string | null };
+        setInvestigationCases((existing) =>
+          cursor ? [...existing, ...(page.items ?? [])] : (page.items ?? []),
+        );
+        setInvestigationCursor(page.nextCursor ?? null);
+        setInvestigationsState("ready");
+      } catch {
+        if (requestId !== investigationRequestSequence.current) return;
+        setInvestigationsState("error");
+      }
+    },
+    [canReadInvestigations, client, providerId],
+  );
+
+  useEffect(() => {
+    void loadInvestigations(null);
+  }, [loadInvestigations]);
 
   const load = useCallback(
     async (append = false) => {
@@ -569,6 +1031,16 @@ export function BillingOperations(): JSX.Element {
           </div>
         ))}
       </section>
+      <M25FinancialSummary
+        providerId={providerId}
+        fromDate={reportFromDate}
+        toDate={reportToDate}
+        allowed={session?.permissions?.includes("remittance.read") ?? false}
+      />
+      <ClaimMdTenantOperationalHealth
+        providerId={providerId}
+        allowed={session?.permissions?.includes("remittance.read") ?? false}
+      />
       {issues.length > 0 ? (
         <output
           style={{
@@ -585,6 +1057,52 @@ export function BillingOperations(): JSX.Element {
             .join(" · ")}
           . Other authorized sources remain available; unavailable sources are not counted as empty.
         </output>
+      ) : null}
+      {canReadInvestigations ? (
+        <section aria-label="Billing investigations" style={{ padding: "1rem 1.5rem" }}>
+          <h2>Billing investigations</h2>
+          <p>Administrative case status is separate from the current submission status.</p>
+          {investigationsState === "loading" ? <LoadingSpinner /> : null}
+          {investigationsState === "error" ? (
+            <div role="alert">
+              <p>Investigation history is unavailable. It has not been treated as an empty list.</p>
+              <Button tone="secondary" size="sm" onClick={() => void loadInvestigations(null)}>
+                Retry
+              </Button>
+            </div>
+          ) : null}
+          {investigationsState === "ready" && investigationCases.length === 0 ? (
+            <p>No investigations are recorded for this provider.</p>
+          ) : null}
+          {investigationCases.length > 0 ? (
+            <ul>
+              {investigationCases.map((item) => (
+                <li key={text(item, "id", "")}>
+                  <span>
+                    {text(item, "sourceModule")} · {text(item, "status")}
+                  </span>{" "}
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => setInvestigationCaseId(text(item, "id", ""))}
+                  >
+                    View investigation history
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {investigationCursor ? (
+            <Button
+              tone="secondary"
+              size="sm"
+              disabled={investigationsState === "loading"}
+              onClick={() => void loadInvestigations(investigationCursor)}
+            >
+              Load more investigations
+            </Button>
+          ) : null}
+        </section>
       ) : null}
       <section aria-label="Billing worklist" style={{ padding: "0 1.5rem" }}>
         {Object.values(sources).some((source) => source.state === "loading") ? (
@@ -718,10 +1236,15 @@ export function BillingOperations(): JSX.Element {
         This workspace is for operational review and navigation. It does not post payments, approve
         posting, replay submissions, or confirm bank settlement.
       </p>
-      {investigationSource ? (
+      {investigationSource || investigationCaseId ? (
         <BillingInvestigationPanel
-          source={investigationSource}
-          onClose={() => setInvestigationSource(null)}
+          {...(investigationSource ? { source: investigationSource } : {})}
+          {...(investigationCaseId ? { investigationId: investigationCaseId } : {})}
+          onClose={() => {
+            setInvestigationSource(null);
+            setInvestigationCaseId(null);
+            void loadInvestigations(null);
+          }}
         />
       ) : null}
     </main>

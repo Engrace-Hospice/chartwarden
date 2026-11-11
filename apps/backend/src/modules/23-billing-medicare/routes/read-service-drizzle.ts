@@ -440,7 +440,7 @@ export function buildDrizzleM23ReadService(
         };
       });
     },
-    async getInDoubtSubmission(actor, submissionId) {
+    async getSubmissionForInvestigation(actor, submissionId) {
       return read(actor, async (tx) => {
         const S = schema.claimSubmission;
         const C = schema.claim;
@@ -451,6 +451,7 @@ export function buildDrizzleM23ReadService(
             claimId: C.id,
             claimControlNumber: C.claimControlNumber,
             providerEntityId: S.providerEntityId,
+            status: S.dispatchState,
             reasonCode: S.dispatchReasonCode,
             occurredAt: S.dispatchStartedAt,
             createdAt: S.createdAt,
@@ -469,7 +470,6 @@ export function buildDrizzleM23ReadService(
               eq(S.id, submissionId),
               eq(S.organizationId, actor.organizationId),
               eq(S.kind, "claim_837i"),
-              eq(S.dispatchState, "in_doubt"),
               actor.providerEntityScope
                 ? actor.providerEntityScope.length
                   ? inArray(C.providerEntityId, [...actor.providerEntityScope])
@@ -487,10 +487,15 @@ export function buildDrizzleM23ReadService(
           providerEntityId: row.providerEntityId,
           reasonCode: row.reasonCode,
           occurredAt: isoReq(row.occurredAt ?? row.createdAt),
-          status: "in_doubt",
+          status: row.status,
           payer: "Medicare",
         } satisfies InDoubtSubmissionView;
       });
+    },
+    async getInDoubtSubmission(actor, submissionId) {
+      const source = await this.getSubmissionForInvestigation(actor, submissionId);
+      if (source.status !== "in_doubt") throw new NotFoundError("in-doubt submission not found");
+      return source as InDoubtSubmissionView;
     },
     async listClaims(actor, filter: ClaimListFilter, cursor, limit) {
       const pageOf = (from: string | undefined) =>

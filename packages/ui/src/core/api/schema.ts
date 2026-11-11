@@ -6478,6 +6478,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/claims/{id}/payment-reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** M41-caseload-authorized commercial claim and exact M25 remittance line payment facts; distinguishes payer-reported and actually posted amounts. Original submitted charge and canonical A/R remain unavailable when not preserved by authoritative sources. */
+        get: operations["getApiV1BillingCommercialClaimsByIdPaymentreconciliation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/commercial/claims/{id}/ready": {
         parameters: {
             query?: never;
@@ -19512,6 +19529,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Repeat the server-authoritative recovery assessment without changing source, cursor, attribution, delivery, or financial state */
+        post: operations["postApiV1OpsClaimmdErasByInboxIdRecoverydryrun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assess one exact durable Claim.MD ERA source for recovery readiness without mutation */
+        get: operations["getApiV1OpsClaimmdErasByInboxIdRecoverypreflight"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/claimmd/observability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform-only durable Claim.MD polling and backlog evidence without account identifiers, cursor tokens, or payloads */
+        get: operations["getApiV1OpsClaimmdObservability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ops/outbox": {
         parameters: {
             query?: never;
@@ -25019,6 +25087,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remittance/claimmd-operational-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant-safe attributed Claim.MD ERA staging health without central account metadata */
+        get: operations["getApiV1RemittanceClaimmdoperationalhealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remittance/lines": {
         parameters: {
             query?: never;
@@ -25064,6 +25149,23 @@ export interface paths {
         put?: never;
         /** Manually match a remittance line to a claim (§4.1) */
         post: operations["postApiV1RemittanceLinesByIdManualmatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/revenue-cycle-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source-backed M25 Revenue Cycle payment and adjustment totals; authoritative A/R unavailable */
+        get: operations["getApiV1RemittanceRevenuecyclesummary"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -48947,6 +49049,67 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingCommercialClaimsByIdPaymentreconciliation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claim: {
+                            /** Format: uuid */
+                            id: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            payerId: string;
+                            payerName: string;
+                            state: string;
+                            /** Format: date */
+                            serviceFrom: string;
+                            /** Format: date */
+                            serviceTo: string;
+                            currentChargeCents: number;
+                            originalSubmittedChargeCents: null;
+                        };
+                        payments: {
+                            items: {
+                                /** Format: uuid */
+                                remittanceAdviceId: string;
+                                /** Format: uuid */
+                                remittanceLineId: string;
+                                payerReportedPaymentCents: string;
+                                m25PostedPaymentCents: string | null;
+                                adviceStatus: "parsed" | "posted" | "partial_posted";
+                                lineMatchState: string;
+                                /** Format: date-time */
+                                receivedAt: string;
+                            }[];
+                            payerReportedPaymentCents: string;
+                            m25PostedPaymentCents: string;
+                            /** @constant */
+                            completeness: "exact_for_matched_m25_remittance_lines";
+                            historyRecordCount: number;
+                            detailTruncated: boolean;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BillingCommercialClaimsByIdReady: {
         parameters: {
             query?: never;
@@ -51521,6 +51684,7 @@ export interface operations {
                             reasonCode: string | null;
                             /** Format: date-time */
                             occurredAt: string;
+                            currentStatus: string;
                             sourceHref: string;
                         };
                         history: {
@@ -51723,6 +51887,7 @@ export interface operations {
             query: {
                 providerEntityId: string;
                 sourceModule: "M23" | "M41";
+                submissionId: string;
             };
             header?: never;
             path?: never;
@@ -88408,6 +88573,188 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1OpsClaimmdErasByInboxIdRecoverydryrun: {
+        parameters: {
+            query: {
+                usage: "test" | "production";
+                stage: "capture" | "ownership_resolution" | "m25_delivery";
+            };
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        inboxId: string;
+                        usage: "test" | "production";
+                        stage: "capture" | "ownership_resolution" | "m25_delivery";
+                        currentState: string;
+                        currentVersion: number;
+                        sourceDigestPresent: boolean;
+                        tenantAttribution: "verified" | "unattributed";
+                        leaseActive: boolean;
+                        priorRecoveryAttempts: number;
+                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
+                        blockers: string[];
+                        financialEffects: {
+                            /** @constant */
+                            status: "not_evaluated";
+                            /** @constant */
+                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
+                        };
+                        simulation: {
+                            available: boolean;
+                            /** @constant */
+                            mutatesSource: false;
+                            /** @constant */
+                            callsVendor: false;
+                            /** @constant */
+                            authorizesExecution: false;
+                        };
+                        /** Format: date-time */
+                        assessedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsClaimmdErasByInboxIdRecoverypreflight: {
+        parameters: {
+            query: {
+                usage: "test" | "production";
+                stage: "capture" | "ownership_resolution" | "m25_delivery";
+            };
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        inboxId: string;
+                        usage: "test" | "production";
+                        stage: "capture" | "ownership_resolution" | "m25_delivery";
+                        currentState: string;
+                        currentVersion: number;
+                        sourceDigestPresent: boolean;
+                        tenantAttribution: "verified" | "unattributed";
+                        leaseActive: boolean;
+                        priorRecoveryAttempts: number;
+                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
+                        blockers: string[];
+                        financialEffects: {
+                            /** @constant */
+                            status: "not_evaluated";
+                            /** @constant */
+                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
+                        };
+                        simulation: {
+                            available: boolean;
+                            /** @constant */
+                            mutatesSource: false;
+                            /** @constant */
+                            callsVendor: false;
+                            /** @constant */
+                            authorizesExecution: false;
+                        };
+                        /** Format: date-time */
+                        assessedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsClaimmdObservability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        scope: "central_claimmd_account";
+                        /** @constant */
+                        accountReferenceExposed: false;
+                        usage: "test" | "production";
+                        responses: {
+                            cursor: {
+                                present: boolean;
+                                /** @constant */
+                                valueExposed: false;
+                            };
+                            lastAttemptAt: string | null;
+                            lastSuccessAt: string | null;
+                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
+                            backlog: {
+                                [key: string]: number;
+                            };
+                        };
+                        eras: {
+                            cursor: {
+                                present: boolean;
+                                /** @constant */
+                                valueExposed: false;
+                            };
+                            lastAttemptAt: string | null;
+                            lastSuccessAt: string | null;
+                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
+                            backlog: {
+                                [key: string]: number;
+                            };
+                        };
+                        requestBudget: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
+                        };
+                        workerHeartbeat: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_WORKER_HEARTBEAT";
+                        };
+                        /** Format: date-time */
+                        sampledAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1OpsOutbox: {
         parameters: {
             query?: {
@@ -103724,6 +104071,58 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1RemittanceClaimmdoperationalhealth: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        scope: "tenant_attributed_m25_stages";
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** @constant */
+                        completeness: "exact_for_authorized_provider_stages";
+                        stageCount: number;
+                        states: {
+                            [key: string]: number;
+                        };
+                        exceptionCount: number;
+                        oldestExceptionAt: string | null;
+                        latestStageAt: string | null;
+                        centralCapture: {
+                            /** @constant */
+                            status: "restricted";
+                            /** @constant */
+                            reasonCode: "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE";
+                        };
+                        requestBudget: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
+                        };
+                        /** Format: date-time */
+                        sampledAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1RemittanceLines: {
         parameters: {
             query?: {
@@ -103840,6 +104239,68 @@ export interface operations {
                     "application/json": {
                         id: string;
                         matchState: "posted" | "reversed" | "manual_matched";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceRevenuecyclesummary: {
+        parameters: {
+            query: {
+                providerEntityId?: string;
+                fromDate: string;
+                toDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        dateBasis: "era_received_at_utc";
+                        /** Format: date */
+                        fromDate: string;
+                        /** Format: date */
+                        toDate: string;
+                        providerEntityId: string | null;
+                        /** @constant */
+                        completeness: "exact_for_m25_remittance_advice";
+                        receivedAdviceCount: number;
+                        reportedAdviceCount: number;
+                        reportedEraPaymentCents: string;
+                        reportedClaimPaymentCents: string;
+                        fullyPostedClaimPaymentCents: string;
+                        postedClaimPaymentCents: string;
+                        fullyPostedAdviceCount: number;
+                        partialPostedAdviceCount: number;
+                        reportedAdjustmentsByGroup: {
+                            CO: string;
+                            CR: string;
+                            OA: string;
+                            PI: string;
+                            PR: string;
+                        };
+                        reportedPlbCents: string;
+                        unmatchedLineCount: number;
+                        latestReceivedAt: string | null;
+                        /** @constant */
+                        claimMdStagesIncluded: false;
+                        authoritativeAr: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER";
+                        };
                     };
                 };
             };

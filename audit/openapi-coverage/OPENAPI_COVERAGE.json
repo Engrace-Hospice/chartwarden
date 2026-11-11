@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1979,
-    "enriched": 1979,
+    "routes": 1985,
+    "enriched": 1985,
     "deficit": 0,
-    "mutating": 1127,
+    "mutating": 1128,
     "mutatingNoBody": 1,
-    "gets": 799,
+    "gets": 804,
     "getsNoResponse": 9
   },
   "modules": [
@@ -241,12 +241,12 @@
     },
     {
       "module": "25-remittance",
-      "routes": 175,
-      "enriched": 175,
+      "routes": 177,
+      "enriched": 177,
       "deficit": 0,
       "mutating": 113,
       "mutatingNoBody": 0,
-      "gets": 59,
+      "gets": 61,
       "getsNoResponse": 0
     },
     {
@@ -401,22 +401,22 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 28,
-      "enriched": 28,
+      "routes": 29,
+      "enriched": 29,
       "deficit": 0,
       "mutating": 17,
       "mutatingNoBody": 0,
-      "gets": 11,
+      "gets": 12,
       "getsNoResponse": 0
     },
     {
       "module": "bootstrap",
-      "routes": 12,
-      "enriched": 12,
+      "routes": 15,
+      "enriched": 15,
       "deficit": 0,
-      "mutating": 2,
+      "mutating": 3,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 12,
       "getsNoResponse": 1
     }
   ]

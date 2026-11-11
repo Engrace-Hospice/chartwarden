@@ -38,6 +38,7 @@ export interface BillingInvestigationSource {
   readonly payer: string;
   readonly reasonCode: string | null;
   readonly occurredAt: string;
+  readonly currentStatus: string;
   readonly sourceHref: string;
 }
 
@@ -64,10 +65,9 @@ export interface BillingInvestigationPorts {
     sourceModule: BillingInvestigationModule,
   ) => Promise<readonly { membershipId: string; displayName: string }[]>;
   readonly investigatorEligible: (
-    organizationId: string,
-    providerEntityId: string,
+    actor: BillingInvestigationActor,
     membershipId: string,
-    sourceModule: BillingInvestigationModule,
+    source: BillingInvestigationSource,
   ) => Promise<boolean>;
   readonly now?: () => Date;
 }
@@ -139,6 +139,7 @@ export const BillingOperationsInvestigatorQuerySchema = Type.Object(
   {
     providerEntityId: Type.String({ format: "uuid" }),
     sourceModule: Type.Union([Type.Literal("M23"), Type.Literal("M41")]),
+    submissionId: Type.String({ format: "uuid" }),
   },
   { additionalProperties: false },
 );
@@ -197,6 +198,7 @@ export const BillingOperationsInvestigationDetailSchema = Type.Object({
     payer: Type.String(),
     reasonCode: Type.Union([Type.String(), Type.Null()]),
     occurredAt: Type.String({ format: "date-time" }),
+    currentStatus: Type.String(),
     sourceHref: Type.String(),
   }),
   history: Type.Array(
@@ -384,7 +386,6 @@ export class BillingOperationsInvestigationService {
     submissionId: string,
     key: string,
   ) {
-    void key;
     const source = await this.source(actor, module, submissionId);
     const identity = `${module}:submission:${submissionId}`;
     return withOrgContext(
@@ -394,6 +395,26 @@ export class BillingOperationsInvestigationService {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${identity + actor.organizationId}, 52))`,
         );
+        const keyHash = digest(`open:${actor.organizationId}:${key}`);
+        const fingerprint = digest(JSON.stringify({ module, submissionId }));
+        const [priorRequest] = rowsOf(
+          await tx.execute(
+            sql`SELECT investigation_id, request_fingerprint FROM billing_operations_investigation_event WHERE organization_id = ${actor.organizationId}::uuid AND idempotency_key_hash = ${keyHash} LIMIT 1`,
+          ),
+        );
+        if (priorRequest) {
+          if (text(priorRequest, "request_fingerprint") !== fingerprint)
+            throw new ConflictError("Idempotency-Key was reused for another investigation source");
+          const [priorCase] = rowsOf(
+            await tx.execute(
+              sql`SELECT * FROM billing_operations_investigation WHERE organization_id = ${actor.organizationId}::uuid AND id = ${text(priorRequest, "investigation_id")}::uuid LIMIT 1`,
+            ),
+          );
+          if (!priorCase) throw new NotFoundError("billing investigation not found");
+          return view(priorCase);
+        }
+        if (source.currentStatus !== "in_doubt")
+          throw new NotFoundError("in-doubt source submission not found");
         const inserted = rowsOf(
           await tx.execute(
             sql`INSERT INTO billing_operations_investigation (organization_id, provider_entity_id, source_module, source_record_id, source_attempt_id, source_identity, source_reason_code, source_occurred_at, created_by_membership_id) VALUES (${actor.organizationId}::uuid, ${source.providerEntityId}::uuid, ${module}, ${source.claimId}::uuid, ${source.submissionId}::uuid, ${identity}, ${source.reasonCode}, ${source.occurredAt}::timestamptz, ${actor.membershipId}::uuid) ON CONFLICT (organization_id, source_identity) DO NOTHING RETURNING *`,
@@ -411,7 +432,7 @@ export class BillingOperationsInvestigationService {
         const caseView = view(row);
         if (inserted.length)
           await tx.execute(
-            sql`INSERT INTO billing_operations_investigation_event (organization_id, investigation_id, event_type, actor_membership_id, new_status, reason, idempotency_key_hash, request_fingerprint) VALUES (${actor.organizationId}::uuid, ${caseView.id}::uuid, 'created', ${actor.membershipId}::uuid, 'open', 'Investigation opened for an authorized source submission', ${digest(`open:${actor.organizationId}:${identity}`)}, ${digest(`created:${actor.membershipId}:${identity}`)})`,
+            sql`INSERT INTO billing_operations_investigation_event (organization_id, investigation_id, event_type, actor_membership_id, new_status, reason, idempotency_key_hash, request_fingerprint) VALUES (${actor.organizationId}::uuid, ${caseView.id}::uuid, 'created', ${actor.membershipId}::uuid, 'open', 'Investigation opened for an authorized source submission', ${keyHash}, ${fingerprint})`,
           );
         return caseView;
       },
@@ -458,10 +479,28 @@ export class BillingOperationsInvestigationService {
     actor: BillingInvestigationActor,
     providerEntityId: string,
     sourceModule: BillingInvestigationModule,
+    submissionId: string,
   ) {
     if (!providerAllowed(actor, providerEntityId))
       throw new NotFoundError("billing investigation provider not found");
-    return this.ports.eligibleInvestigators(actor.organizationId, providerEntityId, sourceModule);
+    const source = await this.source(actor, sourceModule, submissionId);
+    if (source.providerEntityId !== providerEntityId)
+      throw new NotFoundError("billing investigation provider not found");
+    const candidates = await this.ports.eligibleInvestigators(
+      actor.organizationId,
+      providerEntityId,
+      sourceModule,
+    );
+    const results = await Promise.all(
+      candidates.map(async (candidate) =>
+        (await this.ports.investigatorEligible(actor, candidate.membershipId, source))
+          ? candidate
+          : null,
+      ),
+    );
+    return results.filter(
+      (candidate): candidate is NonNullable<typeof candidate> => candidate !== null,
+    );
   }
 
   async assign(
@@ -473,15 +512,8 @@ export class BillingOperationsInvestigationService {
     key: string,
   ) {
     const item = await this.case(actor, id);
-    if (
-      assignedTo &&
-      !(await this.ports.investigatorEligible(
-        actor.organizationId,
-        item.providerEntityId,
-        assignedTo,
-        item.sourceModule,
-      ))
-    )
+    const source = await this.source(actor, item.sourceModule, item.sourceAttemptId);
+    if (assignedTo && !(await this.ports.investigatorEligible(actor, assignedTo, source)))
       throw new NotFoundError("eligible investigator not found");
     return withOrgContext(
       this.db,
@@ -681,14 +713,19 @@ export function registerBillingOperationsInvestigationRoutes(
       const q = request.query as {
         providerEntityId?: string;
         sourceModule?: BillingInvestigationModule;
+        submissionId?: string;
       };
-      if (!q.providerEntityId || !q.sourceModule)
-        throw new ValidationError("providerEntityId and sourceModule are required", []);
+      if (!q.providerEntityId || !q.sourceModule || !q.submissionId)
+        throw new ValidationError(
+          "providerEntityId, sourceModule and submissionId are required",
+          [],
+        );
       return {
         items: await service.investigators(
           writeActorOf(request) as BillingInvestigationActor,
           q.providerEntityId,
           q.sourceModule,
+          q.submissionId,
         ),
       };
     },

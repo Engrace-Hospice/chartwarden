@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1967,
-    "coveredRoutes": 1967,
-    "directRoutesReferenced": 1787
+    "routes": 1970,
+    "coveredRoutes": 1970,
+    "directRoutesReferenced": 1790
   },
   "modules": [
     {
@@ -400,6 +400,7 @@
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
+        "apps/backend/__tests__/claimmd-ops-recovery-readiness.live.test.ts",
         "apps/backend/__tests__/m23-clearinghouse-attempt-routes.test.ts",
         "apps/backend/__tests__/m23-dde-daily-change.live.test.ts",
         "apps/backend/__tests__/m23-dde-provider-identity-aging.live.test.ts",
@@ -440,9 +441,10 @@
     },
     {
       "module": "25-remittance",
-      "routes": 175,
+      "routes": 177,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/claimmd-ops-recovery-readiness.live.test.ts",
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
@@ -461,7 +463,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 154
+      "directRoutesReferenced": 156
     },
     {
       "module": "26-cap",
@@ -723,7 +725,7 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 28,
+      "routes": 29,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
@@ -733,7 +735,7 @@
         "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
         "apps/backend/__tests__/m41-commercial-submission-routes.test.ts"
       ],
-      "directRoutesReferenced": 19
+      "directRoutesReferenced": 20
     }
   ]
 }

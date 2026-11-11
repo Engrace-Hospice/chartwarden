@@ -263,6 +263,10 @@ async function main(): Promise<void> {
         END IF;
       END $$;`);
       await run("GRANT USAGE ON SCHEMA public TO chartwarden_platform;");
+      // BIL-5.5: central Claim.MD readers run on DATABASE_PLATFORM_URL. The capture carrier owns
+      // the narrowly enumerated central inbox grants; migrations cannot reliably grant it to the
+      // platform carrier because this operator-provisioned role may not exist during migration.
+      await run("GRANT claimmd_capture TO chartwarden_platform;");
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO chartwarden_platform;`);
       }

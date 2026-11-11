@@ -230,6 +230,8 @@ import {
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerOpsClaimMdEraRecoveryRoute } from "./bootstrap/routes/ops-claimmd-era-recovery";
+import { registerOpsClaimMdObservabilityRoute } from "./bootstrap/routes/ops-claimmd-observability";
+import { registerOpsClaimMdRecoveryReadinessRoutes } from "./bootstrap/routes/ops-claimmd-recovery-readiness";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import {
   RUST_PARITY_SWEEP_JOB_ID,
@@ -7230,11 +7232,27 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
               audit: buildM41OverrideAuditPort(),
             };
+            const m25CommercialPaymentRead = buildDrizzleM25ReadService(dbHandle.db);
             registerCommercialBillingRoutes(app, {
               assembly: buildCommercialClaimAssemblyService(dbHandle.db, m41Seams),
               lifecycle: buildCommercialClaimLifecycleService(dbHandle.db, m41Seams),
               authorizations: buildCommercialAuthorizationService(dbHandle.db, m41Seams),
-              reads: buildCommercialClaimReadService(dbHandle.db, m41Seams),
+              reads: buildCommercialClaimReadService(dbHandle.db, m41Seams, {
+                readForClaim: (query) =>
+                  m25CommercialPaymentRead.commercialClaimPaymentFacts(
+                    {
+                      organizationId: query.organizationId,
+                      userId: query.userId,
+                      roles: [],
+                      providerEntityScope: query.providerEntityScope,
+                    },
+                    {
+                      claimId: query.claimId,
+                      providerEntityId: query.providerEntityId,
+                      payerId: query.payerId,
+                    },
+                  ),
+              }),
               // ADR-0053 D10: the one submission path is the platform ClearinghouseTransport binding (unbound: CH_NOT_WIRED, nothing queued).
               submissions: buildCommercialSubmissionService(
                 dbHandle.db,
@@ -7409,7 +7427,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   if (module === "M23") {
                     if (!permissions.has("billing.claim.read"))
                       throw new NotFoundError("billing source record not found");
-                    const source = await operationsM23Reads.getInDoubtSubmission(
+                    const source = await operationsM23Reads.getSubmissionForInvestigation(
                       {
                         organizationId: actor.organizationId,
                         userId: actor.userId,
@@ -7428,12 +7446,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       payer: source.payer,
                       reasonCode: source.reasonCode,
                       occurredAt: source.occurredAt,
+                      currentStatus: source.status,
                       sourceHref: `/billing/claims/${source.claimId}`,
                     };
                   }
                   if (!permissions.has("commercial_billing.read"))
                     throw new NotFoundError("billing source record not found");
-                  const source = await operationsM41Reads.getInDoubtSubmission(
+                  const source = await operationsM41Reads.getSubmissionForInvestigation(
                     {
                       organizationId: actor.organizationId,
                       userId: actor.userId,
@@ -7454,23 +7473,84 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     payer: source.payer,
                     reasonCode: source.reasonCode,
                     occurredAt: source.occurredAt,
+                    currentStatus: source.status,
                     sourceHref: `/commercial/billing/claims/${source.claimId}`,
                   };
                 },
               },
               eligibleInvestigators: listEligibleOperationsInvestigators,
-              async investigatorEligible(
-                organizationId,
-                providerEntityId,
-                membershipId,
-                sourceModule,
-              ) {
+              async investigatorEligible(actor, membershipId, source) {
+                const organizationId = actor.organizationId;
                 const candidates = await listEligibleOperationsInvestigators(
                   organizationId,
-                  providerEntityId,
-                  sourceModule,
+                  source.providerEntityId,
+                  source.sourceModule,
                 );
-                return candidates.some((candidate) => candidate.membershipId === membershipId);
+                if (!candidates.some((candidate) => candidate.membershipId === membershipId))
+                  return false;
+                const [member] = await withOrgContext(
+                  dbHandle.db,
+                  { organizationId, userId: actor.userId },
+                  (tx) =>
+                    tx
+                      .select({ userId: schema.memberships.userId })
+                      .from(schema.memberships)
+                      .where(
+                        and(
+                          eq(schema.memberships.id, membershipId),
+                          eq(schema.memberships.organizationId, organizationId),
+                          eq(schema.memberships.status, "active"),
+                        ),
+                      )
+                      .limit(1),
+                );
+                if (!member) return false;
+                const permissions = await resolveActorPermissions({
+                  organizationId,
+                  userId: member.userId,
+                });
+                const sourcePermission =
+                  source.sourceModule === "M23" ? "billing.claim.read" : "commercial_billing.read";
+                if (
+                  !permissions.has("billing.operations.triage") ||
+                  !permissions.has(sourcePermission)
+                )
+                  return false;
+                try {
+                  if (source.sourceModule === "M23") {
+                    const target = await operationsM23Reads.getSubmissionForInvestigation(
+                      {
+                        organizationId,
+                        userId: member.userId,
+                        roles: [],
+                        providerEntityScope: [source.providerEntityId],
+                      },
+                      source.submissionId,
+                    );
+                    return (
+                      target.claimId === source.claimId &&
+                      target.providerEntityId === source.providerEntityId
+                    );
+                  }
+                  const target = await operationsM41Reads.getSubmissionForInvestigation(
+                    {
+                      organizationId,
+                      userId: member.userId,
+                      billingScope: {
+                        all: false,
+                        providerEntityIds: [source.providerEntityId],
+                      },
+                    },
+                    source.submissionId,
+                  );
+                  return (
+                    target.claimId === source.claimId &&
+                    target.providerEntityId === source.providerEntityId
+                  );
+                } catch (error) {
+                  if (error instanceof NotFoundError) return false;
+                  throw error;
+                }
               },
             },
           );
@@ -7604,6 +7684,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               service: claimMdEraRecoveryService,
               accountReference: claimMdRecoveryAccount,
               usage: claimMdRecoveryUsage,
+            });
+          }
+          if (
+            claimMdResponseOperationalReader &&
+            claimMdEraStore &&
+            claimMdRecoveryAccount &&
+            (claimMdRecoveryUsage === "test" || claimMdRecoveryUsage === "production")
+          ) {
+            registerOpsClaimMdObservabilityRoute(app, {
+              usage: claimMdRecoveryUsage,
+              responseSnapshot: () => claimMdResponseOperationalReader.snapshot(),
+              eraSnapshot: () =>
+                claimMdEraStore!.operationalSnapshot(claimMdRecoveryAccount, claimMdRecoveryUsage),
+            });
+            registerOpsClaimMdRecoveryReadinessRoutes(app, {
+              accountReference: claimMdRecoveryAccount,
+              usage: claimMdRecoveryUsage,
+              preflight: (query) => claimMdEraStore!.recoveryPreflight(query),
             });
           }
           // M41 (Billing - Commercial, #724) - commercial eligibility (270/271) and payer enrollment. The ONLY path to a payer is

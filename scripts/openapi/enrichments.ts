@@ -18,6 +18,11 @@ import {
   ReadyResponseSchema as M1ReadyResponseSchema,
   VersionResponseSchema as M1VersionResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/health";
+import { ClaimMdOperationalObservabilityResponseSchema as OpsClaimMdOperationalObservabilityResponseSchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-observability";
+import {
+  ClaimMdRecoveryReadinessQuerySchema as OpsClaimMdRecoveryReadinessQuerySchema,
+  ClaimMdRecoveryReadinessResponseSchema as OpsClaimMdRecoveryReadinessResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/ops-claimmd-recovery-readiness";
 import {
   FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
@@ -715,6 +720,10 @@ import {
   ClaimMdEraReviewQuerySchema as M25ClaimMdEraReviewQuerySchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/claimmd-era-review.schemas";
 import {
+  ClaimMdTenantOperationalHealthQuerySchema as M25ClaimMdTenantOperationalHealthQuerySchema,
+  ClaimMdTenantOperationalHealthResponseSchema as M25ClaimMdTenantOperationalHealthResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/claimmd-operational-health.schemas";
+import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
   RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
@@ -793,6 +802,10 @@ import {
   RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
   RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
+import {
+  RevenueCycleSummaryQuerySchema as M25RevenueCycleSummaryQuerySchema,
+  RevenueCycleSummaryResponseSchema as M25RevenueCycleSummaryResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/revenue-cycle-reporting.schemas";
 import {
   SubmissionCancelRequestSchema as M25SubmissionCancelRequestSchema,
   SubmissionReceiptRequestSchema as M25SubmissionReceiptRequestSchema,
@@ -1012,6 +1025,7 @@ import {
   ClaimListQuerySchema as M41ClaimListQuerySchema,
   ClaimListResponseSchema as M41ClaimListResponseSchema,
   CommercialClaimViewSchema as M41ClaimViewSchema,
+  CommercialPaymentReconciliationResponseSchema as M41CommercialPaymentReconciliationSchema,
   InDoubtSubmissionListQuerySchema as M41InDoubtSubmissionListQuerySchema,
   InDoubtSubmissionListResponseSchema as M41InDoubtSubmissionListResponseSchema,
   OverrideBodySchema as M41OverrideBodySchema,
@@ -9161,6 +9175,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25ClaimMdEraPostingActionResultSchema,
   },
   // ── remittance.routes.ts (§4.1 routes 1-8) ────────────────────────────────────────────────────
+  "GET /api/v1/remittance/revenue-cycle-summary": {
+    summary:
+      "Source-backed M25 Revenue Cycle payment and adjustment totals; authoritative A/R unavailable",
+    query: M25RevenueCycleSummaryQuerySchema,
+    response: M25RevenueCycleSummaryResponseSchema,
+  },
+  "GET /api/v1/remittance/claimmd-operational-health": {
+    summary: "Tenant-safe attributed Claim.MD ERA staging health without central account metadata",
+    query: M25ClaimMdTenantOperationalHealthQuerySchema,
+    response: M25ClaimMdTenantOperationalHealthResponseSchema,
+  },
   "GET /api/v1/remittance/advices": {
     summary: "Remittance advices (835 headers, cursor-paginated, §4.12)",
     query: M25ListQuerySchema,
@@ -15526,6 +15551,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "A commercial claim with its lines and the latest validation run (rule, severity, overridable, overridden, blocking, actionable message). Read-audited",
     response: M41ClaimViewSchema,
   },
+  "GET /api/v1/billing/commercial/claims/:id/payment-reconciliation": {
+    summary:
+      "M41-caseload-authorized commercial claim and exact M25 remittance line payment facts; distinguishes payer-reported and actually posted amounts. Original submitted charge and canonical A/R remain unavailable when not preserved by authoritative sources.",
+    response: M41CommercialPaymentReconciliationSchema,
+  },
   "GET /api/v1/billing/commercial/claims": {
     summary:
       "The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). Keyset paging: `limit` (default 50, max 100) and an opaque `cursor`; `nextCursor` is null on the last page. A page may hold fewer than `limit` rows (and even none) when claims outside the caseload were skipped; keep following `nextCursor`. Ids, dates, plan name and money only",
@@ -15714,6 +15744,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
 import { ClaimMdEraRecoveryBodySchema as M25ClaimMdEraRecoveryBodySchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-era-recovery";
 
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/ops/claimmd/observability": {
+    summary:
+      "Platform-only durable Claim.MD polling and backlog evidence without account identifiers, cursor tokens, or payloads",
+    response: OpsClaimMdOperationalObservabilityResponseSchema,
+  },
+  "GET /api/v1/ops/claimmd/eras/:inboxId/recovery-preflight": {
+    summary: "Assess one exact durable Claim.MD ERA source for recovery readiness without mutation",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
+  "POST /api/v1/ops/claimmd/eras/:inboxId/recovery-dry-run": {
+    summary:
+      "Repeat the server-authoritative recovery assessment without changing source, cursor, attribution, delivery, or financial state",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
   "POST /api/v1/ops/claimmd/eras/:inboxId/recovery": {
     summary:
       "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",

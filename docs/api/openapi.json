@@ -83152,6 +83152,199 @@
         }
       }
     },
+    "/api/v1/billing/commercial/claims/{id}/payment-reconciliation": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialClaimsByIdPaymentreconciliation",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "M41-caseload-authorized commercial claim and exact M25 remittance line payment facts; distinguishes payer-reported and actually posted amounts. Original submitted charge and canonical A/R remain unavailable when not preserved by authoritative sources.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "claim",
+                    "payments"
+                  ],
+                  "properties": {
+                    "claim": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "claimControlNumber",
+                        "providerEntityId",
+                        "payerId",
+                        "payerName",
+                        "state",
+                        "serviceFrom",
+                        "serviceTo",
+                        "currentChargeCents",
+                        "originalSubmittedChargeCents"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "claimControlNumber": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "payerId": {
+                          "type": "string"
+                        },
+                        "payerName": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "serviceFrom": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "serviceTo": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "currentChargeCents": {
+                          "type": "integer"
+                        },
+                        "originalSubmittedChargeCents": {
+                          "type": "null"
+                        }
+                      }
+                    },
+                    "payments": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "items",
+                        "payerReportedPaymentCents",
+                        "m25PostedPaymentCents",
+                        "completeness",
+                        "historyRecordCount",
+                        "detailTruncated"
+                      ],
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "remittanceAdviceId",
+                              "remittanceLineId",
+                              "payerReportedPaymentCents",
+                              "m25PostedPaymentCents",
+                              "adviceStatus",
+                              "lineMatchState",
+                              "receivedAt"
+                            ],
+                            "properties": {
+                              "remittanceAdviceId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "remittanceLineId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "payerReportedPaymentCents": {
+                                "pattern": "^-?[0-9]+$",
+                                "type": "string"
+                              },
+                              "m25PostedPaymentCents": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^-?[0-9]+$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "adviceStatus": {
+                                "anyOf": [
+                                  {
+                                    "const": "parsed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "posted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "partial_posted",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "lineMatchState": {
+                                "type": "string"
+                              },
+                              "receivedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "payerReportedPaymentCents": {
+                          "pattern": "^-?[0-9]+$",
+                          "type": "string"
+                        },
+                        "m25PostedPaymentCents": {
+                          "pattern": "^-?[0-9]+$",
+                          "type": "string"
+                        },
+                        "completeness": {
+                          "const": "exact_for_matched_m25_remittance_lines",
+                          "type": "string"
+                        },
+                        "historyRecordCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "detailTruncated": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/commercial/claims/{id}/ready": {
       "post": {
         "operationId": "postApiV1BillingCommercialClaimsByIdReady",
@@ -95198,6 +95391,7 @@
                         "payer",
                         "reasonCode",
                         "occurredAt",
+                        "currentStatus",
                         "sourceHref"
                       ],
                       "properties": {
@@ -95247,6 +95441,9 @@
                         },
                         "occurredAt": {
                           "format": "date-time",
+                          "type": "string"
+                        },
+                        "currentStatus": {
                           "type": "string"
                         },
                         "sourceHref": {
@@ -95996,6 +96193,15 @@
                   "type": "string"
                 }
               ]
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
             }
           }
         ],
@@ -238573,6 +238779,705 @@
         }
       }
     },
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-dry-run": {
+      "post": {
+        "operationId": "postApiV1OpsClaimmdErasByInboxIdRecoverydryrun",
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Repeat the server-authoritative recovery assessment without changing source, cursor, attribution, delivery, or financial state",
+        "parameters": [
+          {
+            "name": "inboxId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "usage",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "test",
+                  "type": "string"
+                },
+                {
+                  "const": "production",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "capture",
+                  "type": "string"
+                },
+                {
+                  "const": "ownership_resolution",
+                  "type": "string"
+                },
+                {
+                  "const": "m25_delivery",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "inboxId",
+                    "usage",
+                    "stage",
+                    "currentState",
+                    "currentVersion",
+                    "sourceDigestPresent",
+                    "tenantAttribution",
+                    "leaseActive",
+                    "priorRecoveryAttempts",
+                    "disposition",
+                    "blockers",
+                    "financialEffects",
+                    "simulation",
+                    "assessedAt"
+                  ],
+                  "properties": {
+                    "inboxId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "const": "test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "production",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "capture",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ownership_resolution",
+                          "type": "string"
+                        },
+                        {
+                          "const": "m25_delivery",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "currentState": {
+                      "type": "string"
+                    },
+                    "currentVersion": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sourceDigestPresent": {
+                      "type": "boolean"
+                    },
+                    "tenantAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "leaseActive": {
+                      "type": "boolean"
+                    },
+                    "priorRecoveryAttempts": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "disposition": {
+                      "anyOf": [
+                        {
+                          "const": "eligible_for_simulation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "already_processed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "financialEffects": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "not_evaluated",
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "const": "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "simulation": {
+                      "type": "object",
+                      "required": [
+                        "available",
+                        "mutatesSource",
+                        "callsVendor",
+                        "authorizesExecution"
+                      ],
+                      "properties": {
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "mutatesSource": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "callsVendor": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "authorizesExecution": {
+                          "const": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "assessedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-preflight": {
+      "get": {
+        "operationId": "getApiV1OpsClaimmdErasByInboxIdRecoverypreflight",
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Assess one exact durable Claim.MD ERA source for recovery readiness without mutation",
+        "parameters": [
+          {
+            "name": "inboxId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "usage",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "test",
+                  "type": "string"
+                },
+                {
+                  "const": "production",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "capture",
+                  "type": "string"
+                },
+                {
+                  "const": "ownership_resolution",
+                  "type": "string"
+                },
+                {
+                  "const": "m25_delivery",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "inboxId",
+                    "usage",
+                    "stage",
+                    "currentState",
+                    "currentVersion",
+                    "sourceDigestPresent",
+                    "tenantAttribution",
+                    "leaseActive",
+                    "priorRecoveryAttempts",
+                    "disposition",
+                    "blockers",
+                    "financialEffects",
+                    "simulation",
+                    "assessedAt"
+                  ],
+                  "properties": {
+                    "inboxId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "const": "test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "production",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "capture",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ownership_resolution",
+                          "type": "string"
+                        },
+                        {
+                          "const": "m25_delivery",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "currentState": {
+                      "type": "string"
+                    },
+                    "currentVersion": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sourceDigestPresent": {
+                      "type": "boolean"
+                    },
+                    "tenantAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "leaseActive": {
+                      "type": "boolean"
+                    },
+                    "priorRecoveryAttempts": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "disposition": {
+                      "anyOf": [
+                        {
+                          "const": "eligible_for_simulation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "already_processed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "financialEffects": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "not_evaluated",
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "const": "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "simulation": {
+                      "type": "object",
+                      "required": [
+                        "available",
+                        "mutatesSource",
+                        "callsVendor",
+                        "authorizesExecution"
+                      ],
+                      "properties": {
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "mutatesSource": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "callsVendor": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "authorizesExecution": {
+                          "const": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "assessedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ops/claimmd/observability": {
+      "get": {
+        "operationId": "getApiV1OpsClaimmdObservability",
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Platform-only durable Claim.MD polling and backlog evidence without account identifiers, cursor tokens, or payloads",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "scope",
+                    "accountReferenceExposed",
+                    "usage",
+                    "responses",
+                    "eras",
+                    "requestBudget",
+                    "workerHeartbeat",
+                    "sampledAt"
+                  ],
+                  "properties": {
+                    "scope": {
+                      "const": "central_claimmd_account",
+                      "type": "string"
+                    },
+                    "accountReferenceExposed": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "const": "test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "production",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "responses": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "cursor",
+                        "lastAttemptAt",
+                        "lastSuccessAt",
+                        "outcome",
+                        "backlog"
+                      ],
+                      "properties": {
+                        "cursor": {
+                          "type": "object",
+                          "required": [
+                            "present",
+                            "valueExposed"
+                          ],
+                          "properties": {
+                            "present": {
+                              "type": "boolean"
+                            },
+                            "valueExposed": {
+                              "const": false,
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "lastAttemptAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastSuccessAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "outcome": {
+                          "anyOf": [
+                            {
+                              "const": "failure_recorded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "success_recorded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_durable_attempt",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "backlog": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "eras": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "cursor",
+                        "lastAttemptAt",
+                        "lastSuccessAt",
+                        "outcome",
+                        "backlog"
+                      ],
+                      "properties": {
+                        "cursor": {
+                          "type": "object",
+                          "required": [
+                            "present",
+                            "valueExposed"
+                          ],
+                          "properties": {
+                            "present": {
+                              "type": "boolean"
+                            },
+                            "valueExposed": {
+                              "const": false,
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "lastAttemptAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastSuccessAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "outcome": {
+                          "anyOf": [
+                            {
+                              "const": "failure_recorded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "success_recorded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_durable_attempt",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "backlog": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "requestBudget": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "unavailable",
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "const": "NO_DURABLE_REQUEST_BUDGET_OBSERVATION",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "workerHeartbeat": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "unavailable",
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "const": "NO_DURABLE_WORKER_HEARTBEAT",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "sampledAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/ops/outbox": {
       "get": {
         "operationId": "getApiV1OpsOutbox",
@@ -295857,6 +296762,149 @@
         }
       }
     },
+    "/api/v1/remittance/claimmd-operational-health": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmdoperationalhealth",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Tenant-safe attributed Claim.MD ERA staging health without central account metadata",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "scope",
+                    "providerEntityId",
+                    "completeness",
+                    "stageCount",
+                    "states",
+                    "exceptionCount",
+                    "oldestExceptionAt",
+                    "latestStageAt",
+                    "centralCapture",
+                    "requestBudget",
+                    "sampledAt"
+                  ],
+                  "properties": {
+                    "scope": {
+                      "const": "tenant_attributed_m25_stages",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "completeness": {
+                      "const": "exact_for_authorized_provider_stages",
+                      "type": "string"
+                    },
+                    "stageCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "states": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "exceptionCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "oldestExceptionAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestStageAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "centralCapture": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "restricted",
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "const": "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "requestBudget": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "unavailable",
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "const": "NO_DURABLE_REQUEST_BUDGET_OBSERVATION",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "sampledAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/remittance/lines": {
       "get": {
         "operationId": "getApiV1RemittanceLines",
@@ -296199,6 +297247,219 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/revenue-cycle-summary": {
+      "get": {
+        "operationId": "getApiV1RemittanceRevenuecyclesummary",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Source-backed M25 Revenue Cycle payment and adjustment totals; authoritative A/R unavailable",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fromDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "toDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "dateBasis",
+                    "fromDate",
+                    "toDate",
+                    "providerEntityId",
+                    "completeness",
+                    "receivedAdviceCount",
+                    "reportedAdviceCount",
+                    "reportedEraPaymentCents",
+                    "reportedClaimPaymentCents",
+                    "fullyPostedClaimPaymentCents",
+                    "postedClaimPaymentCents",
+                    "fullyPostedAdviceCount",
+                    "partialPostedAdviceCount",
+                    "reportedAdjustmentsByGroup",
+                    "reportedPlbCents",
+                    "unmatchedLineCount",
+                    "latestReceivedAt",
+                    "claimMdStagesIncluded",
+                    "authoritativeAr"
+                  ],
+                  "properties": {
+                    "dateBasis": {
+                      "const": "era_received_at_utc",
+                      "type": "string"
+                    },
+                    "fromDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "toDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completeness": {
+                      "const": "exact_for_m25_remittance_advice",
+                      "type": "string"
+                    },
+                    "receivedAdviceCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "reportedAdviceCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "reportedEraPaymentCents": {
+                      "pattern": "^-?[0-9]+$",
+                      "type": "string"
+                    },
+                    "reportedClaimPaymentCents": {
+                      "pattern": "^-?[0-9]+$",
+                      "type": "string"
+                    },
+                    "fullyPostedClaimPaymentCents": {
+                      "pattern": "^-?[0-9]+$",
+                      "type": "string"
+                    },
+                    "postedClaimPaymentCents": {
+                      "pattern": "^-?[0-9]+$",
+                      "type": "string"
+                    },
+                    "fullyPostedAdviceCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "partialPostedAdviceCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "reportedAdjustmentsByGroup": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "CO",
+                        "CR",
+                        "OA",
+                        "PI",
+                        "PR"
+                      ],
+                      "properties": {
+                        "CO": {
+                          "pattern": "^-?[0-9]+$",
+                          "type": "string"
+                        },
+                        "CR": {
+                          "pattern": "^-?[0-9]+$",
+                          "type": "string"
+                        },
+                        "OA": {
+                          "pattern": "^-?[0-9]+$",
+                          "type": "string"
+                        },
+                        "PI": {
+                          "pattern": "^-?[0-9]+$",
+                          "type": "string"
+                        },
+                        "PR": {
+                          "pattern": "^-?[0-9]+$",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "reportedPlbCents": {
+                      "pattern": "^-?[0-9]+$",
+                      "type": "string"
+                    },
+                    "unmatchedLineCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "latestReceivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "claimMdStagesIncluded": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "authoritativeAr": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "unavailable",
+                          "type": "string"
+                        },
+                        "reasonCode": {
+                          "const": "NO_CANONICAL_RECEIVABLE_LEDGER",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

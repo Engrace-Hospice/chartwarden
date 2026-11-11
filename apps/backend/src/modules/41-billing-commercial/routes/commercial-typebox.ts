@@ -120,6 +120,57 @@ export const InDoubtSubmissionListResponseSchema = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
   count: Type.Object({ kind: Type.Literal("lower_bound"), value: Type.Integer({ minimum: 0 }) }),
 });
+export const CommercialPaymentReconciliationResponseSchema = Type.Object(
+  {
+    claim: Type.Object(
+      {
+        id: uuid(),
+        claimControlNumber: Type.String(),
+        providerEntityId: uuid(),
+        payerId: Type.String(),
+        payerName: Type.String(),
+        state: Type.String(),
+        serviceFrom: isoDate(),
+        serviceTo: isoDate(),
+        currentChargeCents: Type.Integer(),
+        originalSubmittedChargeCents: Type.Null(),
+      },
+      { additionalProperties: false },
+    ),
+    payments: Type.Object(
+      {
+        items: Type.Array(
+          Type.Object(
+            {
+              remittanceAdviceId: uuid(),
+              remittanceLineId: uuid(),
+              payerReportedPaymentCents: Type.String({ pattern: "^-?[0-9]+$" }),
+              m25PostedPaymentCents: Type.Union([
+                Type.String({ pattern: "^-?[0-9]+$" }),
+                Type.Null(),
+              ]),
+              adviceStatus: Type.Union([
+                Type.Literal("parsed"),
+                Type.Literal("posted"),
+                Type.Literal("partial_posted"),
+              ]),
+              lineMatchState: Type.String(),
+              receivedAt: Type.String({ format: "date-time" }),
+            },
+            { additionalProperties: false },
+          ),
+        ),
+        payerReportedPaymentCents: Type.String({ pattern: "^-?[0-9]+$" }),
+        m25PostedPaymentCents: Type.String({ pattern: "^-?[0-9]+$" }),
+        completeness: Type.Literal("exact_for_matched_m25_remittance_lines"),
+        historyRecordCount: Type.Integer({ minimum: 0 }),
+        detailTruncated: Type.Boolean(),
+      },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);
 export const PlanListQuerySchema = Type.Object(
   { providerEntityId: uuid() },
   { additionalProperties: false },

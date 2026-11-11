@@ -24,9 +24,18 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
+  resolveActorPermissions,
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { encodeCursor } from "@chartwarden/shared/route-kit";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
+import type {
+  ParsedRemittanceAdvice,
+  X12WorkerResult,
+  X12835WorkerClient,
+} from "@chartwarden/x12-835-client";
+import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -36,10 +45,16 @@ import { buildM41OverrideAuditPort } from "../src/m41-override-audit";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { registerClaimsRoutes } from "../src/modules/23-billing-medicare/routes/claims.routes";
 import { buildDrizzleM23ReadService } from "../src/modules/23-billing-medicare/routes/read-service-drizzle";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/events-by-m25";
+import {
+  PAYEE_UNCHECKED,
+  buildDrizzleM25IngestService,
+} from "../src/modules/25-remittance/ingest/service-drizzle";
 import {
   BillingOperationsInvestigationService,
   registerBillingOperationsInvestigationRoutes,
 } from "../src/modules/25-remittance/routes/billing-operations-investigations";
+import { buildDrizzleM25ReadService } from "../src/modules/25-remittance/routes/read-service-drizzle";
 import {
   type CommercialClaimSeams,
   M41_OUTBOX_EVENTS,
@@ -51,6 +66,7 @@ import {
   buildCommercialSubmissionService,
   registerCommercialBillingRoutes,
 } from "../src/modules/41-billing-commercial/index";
+import { buildRawEdi, sha256Hex } from "./_edi835-fixture";
 import {
   LIVE_APP_ROLE_PASSWORD,
   appRoleUrl,
@@ -78,6 +94,7 @@ const KEYS = [
   "billing.operations.triage",
   "billing.operations.assign",
   "billing.operations.resolve",
+  "remittance.read",
 ];
 
 describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => {
@@ -186,7 +203,8 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       buildCommercialAbacPredicates({
         db: handle.db,
         isInCaseload: async ({ userId, patientId }) =>
-          userId === USER && (!caseloadPatientAllowlist || caseloadPatientAllowlist.has(patientId)),
+          (userId === USER || userId === SCOPED_USER) &&
+          (!caseloadPatientAllowlist || caseloadPatientAllowlist.has(patientId)),
       }),
     )) {
       reg.register(name, predicate);
@@ -199,7 +217,8 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       // the per-patient axis: only USER has the patients on their caseload
       caseload: {
         isInCaseload: async ({ userId, patientId }) =>
-          userId === USER && (!caseloadPatientAllowlist || caseloadPatientAllowlist.has(patientId)),
+          (userId === USER || userId === SCOPED_USER) &&
+          (!caseloadPatientAllowlist || caseloadPatientAllowlist.has(patientId)),
       },
       admission: {
         resolveForRange: async () => ({
@@ -273,7 +292,24 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       security: { rateLimitEnabled: false },
       db: handle.db,
     });
-    const commercialReads = buildCommercialClaimReadService(handle.db, seams);
+    const m25PaymentReads = buildDrizzleM25ReadService(handle.db);
+    const commercialReads = buildCommercialClaimReadService(handle.db, seams, {
+      readForClaim: (query) =>
+        m25PaymentReads.commercialClaimPaymentFacts(
+          {
+            organizationId: query.organizationId,
+            userId: query.userId,
+            roles: [],
+            providerEntityScope: query.providerEntityScope,
+          },
+          {
+            claimId: query.claimId,
+            providerEntityId: query.providerEntityId,
+            payerId: query.payerId,
+          },
+        ),
+    });
+    const m23Reads = buildDrizzleM23ReadService(handle.db);
     registerCommercialBillingRoutes(app, {
       assembly: buildCommercialClaimAssemblyService(handle.db, seams),
       lifecycle: buildCommercialClaimLifecycleService(handle.db, seams),
@@ -286,9 +322,37 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       new BillingOperationsInvestigationService(handle.db, {
         sourceReader: {
           async read(actor, sourceModule, submissionId) {
-            if (sourceModule !== "M41")
-              throw new Error("M23 source is outside this M41 integration fixture");
-            const source = await commercialReads.getInDoubtSubmission(
+            if (sourceModule === "M23") {
+              const permissions = await resolveActorPermissions({
+                organizationId: actor.organizationId,
+                userId: actor.userId,
+              });
+              if (!permissions.has("billing.claim.read"))
+                throw new NotFoundError("billing source record not found");
+              const source = await m23Reads.getSubmissionForInvestigation(
+                {
+                  organizationId: actor.organizationId,
+                  userId: actor.userId,
+                  roles: [],
+                  providerEntityScope: actor.providerEntityScope,
+                },
+                submissionId,
+              );
+              return {
+                sourceModule: "M23",
+                submissionId: source.submissionId,
+                claimId: source.claimId,
+                providerEntityId: source.providerEntityId,
+                attempt: source.attemptIndex,
+                reference: source.claimControlNumber,
+                payer: source.payer,
+                reasonCode: source.reasonCode,
+                occurredAt: source.occurredAt,
+                currentStatus: source.status,
+                sourceHref: `/billing/claims/${source.claimId}`,
+              };
+            }
+            const source = await commercialReads.getSubmissionForInvestigation(
               {
                 organizationId: actor.organizationId,
                 userId: actor.userId,
@@ -309,16 +373,46 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
               payer: source.payer,
               reasonCode: source.reasonCode,
               occurredAt: source.occurredAt,
+              currentStatus: source.status,
               sourceHref: `/commercial/billing/claims/${source.claimId}`,
             };
           },
         },
-        eligibleInvestigators: async () => [],
-        investigatorEligible: async () => false,
+        eligibleInvestigators: async (_organizationId, scopedProvider, sourceModule) =>
+          scopedProvider === providerEntityId && (sourceModule === "M41" || sourceModule === "M23")
+            ? [{ membershipId, displayName: "Synthetic Investigator" }]
+            : [],
+        investigatorEligible: async (_actor, candidateMembershipId, source) => {
+          if (candidateMembershipId !== membershipId) return false;
+          try {
+            const current =
+              source.sourceModule === "M41"
+                ? await commercialReads.getSubmissionForInvestigation(
+                    {
+                      organizationId: ORG,
+                      userId: USER,
+                      billingScope: { all: false, providerEntityIds: [source.providerEntityId] },
+                    },
+                    source.submissionId,
+                  )
+                : await m23Reads.getSubmissionForInvestigation(
+                    {
+                      organizationId: ORG,
+                      userId: USER,
+                      roles: [],
+                      providerEntityScope: [source.providerEntityId],
+                    },
+                    source.submissionId,
+                  );
+            return current.claimId === source.claimId;
+          } catch {
+            return false;
+          }
+        },
       }),
     );
     registerClaimsRoutes(app, {
-      readService: buildDrizzleM23ReadService(handle.db),
+      readService: m23Reads,
       writeService: {} as never,
       assemblyService: {} as never,
       payerRouteStatus: async () => ({ status: "not_applicable" }),
@@ -497,6 +591,139 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect(ready.statusCode).toBe(200);
     expect(ready.json().state).toBe("ready");
     expect((await call(app, "POST", `${BASE}/claims/${claimId}/void`)).json().state).toBe("void");
+  });
+
+  it("reconciles a persisted M25 posted CLP through the authenticated M41 claim route", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    const created = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(s.patientId),
+    });
+    expect(created.statusCode).toBe(201);
+    const claimId = created.json().claimId as string;
+    const claimDetail = await call(app, "GET", `${BASE}/claims/${claimId}`);
+    expect(claimDetail.statusCode).toBe(200);
+    const claimControlNumber = claimDetail.json().claim.claimControlNumber as string;
+    const chargeCents = created.json().totalChargeCents as number;
+    const payerId = (
+      await admin.query("SELECT payer_id FROM commercial_payer_plan WHERE id=$1", [s.planId])
+    ).rows[0].payer_id as string;
+    const payerIcn = `SYNTHETIC-M41-REMIT-${randomUUID().slice(0, 8)}`;
+    const rawKey = `m41-reconciliation-${randomUUID()}.835`;
+    const raw = buildRawEdi("000009341", "9341");
+    const parsed: ParsedRemittanceAdvice = {
+      payerProgram: "commercial",
+      payer: { name: "Synthetic PPO", id: payerId },
+      interchangeControlNumber: "000009341",
+      transactionSetControlNumber: "9341",
+      checkOrEftTraceNumber: `M41-${randomUUID().replaceAll("-", "").slice(0, 32)}`,
+      paymentMethod: "eft",
+      totalPaymentAmount: chargeCents / 100,
+      productionDate: "2026-03-31",
+      claims: [
+        {
+          patientControlNumber: claimControlNumber,
+          payerIcn,
+          statusCode: 1,
+          totalCharge: chargeCents / 100,
+          totalPayment: chargeCents / 100,
+          patientResponsibility: 0,
+          serviceFrom: "2026-03-01",
+          serviceTo: "2026-03-31",
+          adjustments: [],
+          remarks: [],
+          serviceLines: [],
+        },
+      ],
+    };
+    const parser: X12835WorkerClient = {
+      async parse835(): Promise<X12WorkerResult<ParsedRemittanceAdvice>> {
+        return { ok: true, value: parsed };
+      },
+      async parse277ca() {
+        throw new Error("277CA is outside the payment reconciliation fixture");
+      },
+    };
+    const m25Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M25_OUTBOX_EVENTS]));
+    const ingest = buildDrizzleM25IngestService(handle.db, {
+      client: parser,
+      payeeNpi: PAYEE_UNCHECKED,
+      claims: {
+        commercial: {
+          async candidatesForLine() {
+            return [{ claimId, payerIcn, claimControlNumber }];
+          },
+          async patientIdForClaim() {
+            return s.patientId;
+          },
+        },
+      },
+      outbox: {
+        publish: (tx, emission) =>
+          m25Publisher.publish(tx as never, { ...emission, callerModule: "m25" }),
+      },
+    });
+    const received = await ingest.receiveAdvice(
+      { organizationId: ORG },
+      {
+        providerEntityId,
+        payerId,
+        payerKind: "commercial",
+        minioObjectKey: rawKey,
+        fileSha256: sha256Hex(raw),
+        rawEdi: raw,
+      },
+    );
+    expect(received.outcome).toBe("queued");
+    if (received.outcome !== "queued") throw new Error("expected queued synthetic ERA");
+    await expect(
+      ingest.postAdvice({ organizationId: ORG }, received.adviceId),
+    ).resolves.toMatchObject({ outcome: "posted" });
+
+    const beforeRead = await admin.query(
+      `SELECT
+         (SELECT count(*)::int FROM remittance_advice WHERE organization_id=$1 AND id=$2) AS advices,
+         (SELECT count(*)::int FROM remittance_line WHERE organization_id=$1 AND remittance_advice_id=$2) AS lines,
+         (SELECT count(*)::int FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm25.remittance.claim_%') AS events,
+         (SELECT state FROM commercial_claim WHERE organization_id=$1 AND id=$3) AS claim_state`,
+      [ORG, received.adviceId, claimId],
+    );
+
+    const response = await call(app, "GET", `${BASE}/claims/${claimId}/payment-reconciliation`);
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      claim: {
+        id: claimId,
+        claimControlNumber,
+        providerEntityId,
+        payerId,
+        currentChargeCents: chargeCents,
+        originalSubmittedChargeCents: null,
+      },
+      payments: {
+        payerReportedPaymentCents: String(chargeCents),
+        m25PostedPaymentCents: String(chargeCents),
+        historyRecordCount: 1,
+        items: [
+          expect.objectContaining({
+            remittanceAdviceId: received.adviceId,
+            payerReportedPaymentCents: String(chargeCents),
+            m25PostedPaymentCents: String(chargeCents),
+            adviceStatus: "posted",
+            lineMatchState: "posted",
+          }),
+        ],
+      },
+    });
+    const afterRead = await admin.query(
+      `SELECT
+         (SELECT count(*)::int FROM remittance_advice WHERE organization_id=$1 AND id=$2) AS advices,
+         (SELECT count(*)::int FROM remittance_line WHERE organization_id=$1 AND remittance_advice_id=$2) AS lines,
+         (SELECT count(*)::int FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm25.remittance.claim_%') AS events,
+         (SELECT state FROM commercial_claim WHERE organization_id=$1 AND id=$3) AS claim_state`,
+      [ORG, received.adviceId, claimId],
+    );
+    expect(afterRead.rows[0]).toEqual(beforeRead.rows[0]);
   });
 
   it("serves the work queue, the supported-payers view and the claim detail (plan, authorization, COB) without PHI (#726)", async () => {
@@ -1198,7 +1425,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect(deniedProvider.statusCode).toBe(404);
   });
 
-  it("opens and reads an M41 investigation through authenticated HTTP and the restricted app-role database path", async () => {
+  it("completes the M41 investigation lifecycle over authenticated HTTP and restricted PostgreSQL", async () => {
     const s = await seed("not_required");
     const app = server(s.admissionId);
     const assembled = await call(app, "POST", `${BASE}/claims/assemble`, {
@@ -1227,7 +1454,9 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     const remittancesBefore = Number(
       (await admin.query("SELECT count(*)::int AS n FROM remittance_advice")).rows[0].n,
     );
+    const openKey = `investigation-open-${randomUUID()}`;
     const created = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
       payload: { sourceModule: "M41", submissionId },
     });
     expect(created.statusCode).toBe(201);
@@ -1239,7 +1468,12 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     const id = created.json().id as string;
     const detail = await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`);
     expect(detail.statusCode).toBe(200);
-    expect(detail.json().source).toMatchObject({ submissionId, claimId, sourceModule: "M41" });
+    expect(detail.json().source).toMatchObject({
+      submissionId,
+      claimId,
+      sourceModule: "M41",
+      currentStatus: "in_doubt",
+    });
     const list = await call(app, "GET", "/api/v1/billing/operations/investigations?limit=1");
     expect(list.statusCode).toBe(200);
     expect(list.json().items.some((item: { id: string }) => item.id === id)).toBe(true);
@@ -1255,6 +1489,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       ).statusCode,
     ).toBe(404);
     const repeatedOpen = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
       payload: { sourceModule: "M41", submissionId },
     });
     expect(repeatedOpen.statusCode).toBe(201);
@@ -1262,11 +1497,249 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect(
       (
         await admin.query(
-          "SELECT count(*)::int AS n FROM billing_operations_investigation_event WHERE investigation_id=$1",
+          "SELECT count(*)::int AS n FROM billing_operations_investigation_event WHERE investigation_id=$1 AND event_type='created'",
           [id],
         )
       ).rows[0].n,
     ).toBe(1);
+
+    const investigators = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations/investigators?providerEntityId=${providerEntityId}&sourceModule=M41&submissionId=${submissionId}`,
+    );
+    expect(investigators.statusCode).toBe(200);
+    expect(investigators.json().items).toEqual([
+      { membershipId, displayName: "Synthetic Investigator" },
+    ]);
+    const ineligibleAssignment = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        key: `investigation-assign-ineligible-${randomUUID()}`,
+        payload: {
+          assignedToMembershipId: randomUUID(),
+          version: 1,
+          reason: "Reject an ineligible investigator",
+        },
+      },
+    );
+    expect(ineligibleAssignment.statusCode).toBe(404);
+    const assignmentKey = `investigation-assign-${randomUUID()}`;
+    const assigned = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        key: assignmentKey,
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 1,
+          reason: "Assign synthetic investigator",
+        },
+      },
+    );
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json().assignedToMembershipId).toBe(membershipId);
+    const assignmentRetry = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        key: assignmentKey,
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 1,
+          reason: "Assign synthetic investigator",
+        },
+      },
+    );
+    expect(assignmentRetry.statusCode).toBe(200);
+    const concurrentAssignments = await Promise.all([
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/assignment`, {
+        key: `assignment-race-${randomUUID()}`,
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 2,
+          reason: "Keep assigned investigator",
+        },
+      }),
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/assignment`, {
+        key: `assignment-race-${randomUUID()}`,
+        payload: { assignedToMembershipId: null, version: 2, reason: "Unassign competing request" },
+      }),
+    ]);
+    expect(concurrentAssignments.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    caseloadPatientAllowlist = new Set();
+    expect(
+      (
+        await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`, {
+          user: "scoped",
+        })
+      ).statusCode,
+    ).toBe(404);
+    const hiddenFromList = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations?providerEntityId=${providerEntityId}`,
+      { user: "scoped" },
+    );
+    expect(hiddenFromList.statusCode).toBe(200);
+    expect(hiddenFromList.json().items.some((item: { id: string }) => item.id === id)).toBe(false);
+    expect(hiddenFromList.json().count).toEqual({ kind: "lower_bound", value: 0 });
+    const inaccessibleInvestigators = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations/investigators?providerEntityId=${providerEntityId}&sourceModule=M41&submissionId=${submissionId}`,
+    );
+    expect(inaccessibleInvestigators.statusCode).toBe(200);
+    expect(inaccessibleInvestigators.json().items).toEqual([]);
+    caseloadPatientAllowlist = new Set([s.patientId]);
+
+    const noteKey = `investigation-note-${randomUUID()}`;
+    const noteBody = { body: "Synthetic follow-up confirmed with payer operations." };
+    const note = await call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+      key: noteKey,
+      payload: noteBody,
+    });
+    expect(note.statusCode).toBe(200);
+    expect(note.json()).toMatchObject({ authorMembershipId: membershipId, body: noteBody.body });
+    const noteRetry = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/notes`,
+      { key: noteKey, payload: noteBody },
+    );
+    expect(noteRetry.statusCode).toBe(200);
+    expect(noteRetry.json().id).toBe(note.json().id);
+    const conflictingNoteRetry = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/notes`,
+      {
+        key: noteKey,
+        payload: { body: "Different content under the existing idempotency key" },
+      },
+    );
+    expect(conflictingNoteRetry.statusCode).toBe(409);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM billing_operations_investigation_note WHERE investigation_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+          payload: { body: " " },
+        })
+      ).statusCode,
+    ).toBeGreaterThanOrEqual(400);
+    const spoofAttempt = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/notes`,
+      { payload: { body: "forged", authorMembershipId: OTHER_USER } },
+    );
+    expect(spoofAttempt.statusCode).toBe(200);
+    expect(spoofAttempt.json().authorMembershipId).toBe(membershipId);
+    const competingNotes = await Promise.all([
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+        key: `note-race-${randomUUID()}`,
+        payload: { body: "Concurrent synthetic note one." },
+      }),
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+        key: `note-race-${randomUUID()}`,
+        payload: { body: "Concurrent synthetic note two." },
+      }),
+    ]);
+    expect(competingNotes.map((response) => response.statusCode)).toEqual([200, 200]);
+
+    const transition = async (status: string, version: number, key: string, outcome?: string) =>
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/transitions`, {
+        key,
+        payload: {
+          status,
+          version,
+          reason: `Synthetic ${status} transition`,
+          ...(outcome ? { outcome } : {}),
+        },
+      });
+    const started = await transition("investigating", 7, `status-${randomUUID()}`);
+    expect(started.statusCode).toBe(200);
+    const stale = await transition("waiting_external", 7, `status-${randomUUID()}`);
+    expect(stale.statusCode).toBe(409);
+    const waiting = await transition("waiting_external", 8, `status-${randomUUID()}`);
+    expect(waiting.statusCode).toBe(200);
+    const resolved = await transition(
+      "resolved",
+      9,
+      `status-${randomUUID()}`,
+      "referred_to_source_workflow",
+    );
+    expect(resolved.statusCode).toBe(200);
+    const closed = await transition("closed", 10, `status-${randomUUID()}`);
+    expect(closed.statusCode).toBe(200);
+    const reopened = await transition("investigating", 11, `status-${randomUUID()}`);
+    expect(reopened.statusCode).toBe(200);
+    const concurrent = await Promise.all([
+      transition("waiting_external", 12, `status-${randomUUID()}`),
+      transition("resolved", 12, `status-${randomUUID()}`, "referred_to_source_workflow"),
+    ]);
+    expect(concurrent.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+
+    await admin.query(
+      "UPDATE commercial_submission SET status='sent', sent_at=now(), last_failure_code=NULL WHERE id=$1",
+      [submissionId],
+    );
+    const historical = await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`);
+    expect(historical.statusCode).toBe(200);
+    expect(historical.json().source.currentStatus).toBe("sent");
+    const delayedOpenRetry = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M41", submissionId },
+    });
+    expect(delayedOpenRetry.statusCode).toBe(201);
+    expect(delayedOpenRetry.json().id).toBe(id);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM billing_operations_investigation_event WHERE investigation_id=$1 AND event_type='created'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(["waiting_external", "resolved"]).toContain(historical.json().investigation.status);
+    expect(historical.json().notes).toHaveLength(4);
+    const historicalList = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations?providerEntityId=${providerEntityId}`,
+    );
+    expect(historicalList.statusCode).toBe(200);
+    expect(historicalList.json().items.some((item: { id: string }) => item.id === id)).toBe(true);
+    expect(
+      historical.json().history.map((entry: { event_type: string }) => entry.event_type),
+    ).toEqual(
+      expect.arrayContaining([
+        "created",
+        "assigned",
+        "note_added",
+        "status_changed",
+        "resolved",
+        "reopened",
+      ]),
+    );
+    const statusAfterInvestigation = (
+      await admin.query("SELECT status FROM commercial_submission WHERE id=$1", [submissionId])
+    ).rows[0].status;
+    expect(statusAfterInvestigation).toBe("sent");
+    expect(
+      Number((await admin.query("SELECT count(*)::int AS n FROM remittance_advice")).rows[0].n),
+    ).toBe(remittancesBefore);
 
     const orgB = randomUUID();
     const foreignId = randomUUID();
@@ -1292,15 +1765,151 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
         membershipId,
       ],
     );
+    const eventKeyHash = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    const eventFingerprint = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    const noteKeyHash = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    const noteFingerprint = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    await admin.query(
+      `INSERT INTO billing_operations_investigation_event
+        (organization_id,investigation_id,event_type,actor_membership_id,reason,idempotency_key_hash,request_fingerprint)
+       VALUES ($1,$2,'created',$3,'Synthetic foreign case',$4,$5)`,
+      [orgB, foreignId, membershipId, eventKeyHash, eventFingerprint],
+    );
+    await admin.query(
+      `INSERT INTO billing_operations_investigation_note
+        (organization_id,investigation_id,author_membership_id,body,idempotency_key_hash,request_fingerprint)
+       VALUES ($1,$2,$3,'Synthetic foreign note',$4,$5)`,
+      [orgB, foreignId, membershipId, noteKeyHash, noteFingerprint],
+    );
     const foreignDetail = await call(
       app,
       "GET",
       `/api/v1/billing/operations/investigations/${foreignId}`,
     );
     expect(foreignDetail.statusCode).toBe(404);
+    const visible = await withOrgContext(
+      handle.db,
+      { organizationId: ORG, userId: USER },
+      async (tx) => {
+        const [cases, events, notes] = await Promise.all([
+          tx.execute(
+            sql`SELECT id FROM billing_operations_investigation WHERE id=${foreignId}::uuid`,
+          ),
+          tx.execute(
+            sql`SELECT id FROM billing_operations_investigation_event WHERE investigation_id=${foreignId}::uuid`,
+          ),
+          tx.execute(
+            sql`SELECT id FROM billing_operations_investigation_note WHERE investigation_id=${foreignId}::uuid`,
+          ),
+        ]);
+        return [cases.rows.length, events.rows.length, notes.rows.length];
+      },
+    );
+    expect(visible).toEqual([0, 0, 0]);
     expect((await admin.query("SELECT count(*)::int AS n FROM remittance_advice")).rows[0].n).toBe(
       remittancesBefore,
     );
+  });
+
+  it("completes the M23 investigation lifecycle and retains authorized history after dispatch resolution", async () => {
+    const app = server(randomUUID());
+    const claimId = randomUUID();
+    const submissionId = randomUUID();
+    const controlNumber = `M23-${randomUUID().slice(0, 8)}`;
+    await admin.query(
+      `INSERT INTO claim (id,organization_id,provider_entity_id,patient_id,admission_id,election_period_id_from,
+        election_period_id_to,patient_payer_id,tob,service_from,service_to,state,claim_control_number,mac_jurisdiction,
+        sequestration_applied_pct,sequestration_policy_id,created_by_membership_id)
+       VALUES ($1,$2,$3,$4,$4,$4,$4,$4,'811','2026-09-01','2026-09-30','READY',$5,'cgs_j15','2.00',$4,$6)`,
+      [claimId, ORG, providerEntityId, randomUUID(), controlNumber, membershipId],
+    );
+    await admin.query(
+      `INSERT INTO claim_submission (id,organization_id,provider_entity_id,kind,claim_id,claim_control_number,attempt_index,
+        dispatch_state,dispatch_token,dispatch_started_at,dispatch_reason_code)
+       VALUES ($1,$2,$3,'claim_837i',$4,$5,1,'in_doubt',$6,now(),'TRANSPORT_OUTCOME_UNKNOWN')`,
+      [submissionId, ORG, providerEntityId, claimId, controlNumber, randomUUID()],
+    );
+    const openKey = `m23-open-${randomUUID()}`;
+    const opened = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M23", submissionId },
+    });
+    expect(opened.statusCode).toBe(201);
+    const id = opened.json().id as string;
+    const openedAgain = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M23", submissionId },
+    });
+    expect(openedAgain.statusCode).toBe(201);
+    expect(openedAgain.json().id).toBe(id);
+    const targetList = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations/investigators?providerEntityId=${providerEntityId}&sourceModule=M23&submissionId=${submissionId}`,
+    );
+    expect(targetList.statusCode).toBe(200);
+    expect(targetList.json().items).toContainEqual({
+      membershipId,
+      displayName: "Synthetic Investigator",
+    });
+    const assigned = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 1,
+          reason: "Assign synthetic M23 investigator",
+        },
+      },
+    );
+    expect(assigned.statusCode).toBe(200);
+    const notePayload = { body: "Synthetic M23 investigation note." };
+    const note = await call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+      payload: notePayload,
+    });
+    expect(note.statusCode).toBe(200);
+    const transition = (status: string, version: number, outcome?: string) =>
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/transitions`, {
+        payload: {
+          status,
+          version,
+          reason: `Synthetic M23 ${status}`,
+          ...(outcome ? { outcome } : {}),
+        },
+      });
+    expect((await transition("investigating", 3)).statusCode).toBe(200);
+    expect((await transition("waiting_external", 4)).statusCode).toBe(200);
+    expect((await transition("resolved", 5, "verified_no_action_required")).statusCode).toBe(200);
+    expect((await transition("closed", 6)).statusCode).toBe(200);
+    expect((await transition("investigating", 7)).statusCode).toBe(200);
+    await admin.query(
+      `UPDATE claim_submission SET dispatch_state='finished',outcome='submitted',generated_file_uri='synthetic://m23/claim.837i',
+        submitted_at=now(),worker_correlation_id=$2 WHERE id=$1`,
+      [submissionId, `synthetic-worker-${randomUUID()}`],
+    );
+    const historical = await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`);
+    expect(historical.statusCode).toBe(200);
+    expect(historical.json().source.currentStatus).toBe("finished");
+    expect(historical.json().investigation.status).toBe("investigating");
+    expect(historical.json().notes).toHaveLength(1);
+    expect(
+      historical.json().history.map((entry: { event_type: string }) => entry.event_type),
+    ).toEqual(
+      expect.arrayContaining(["created", "assigned", "note_added", "resolved", "reopened"]),
+    );
+    expect(
+      (await admin.query("SELECT dispatch_state FROM claim_submission WHERE id=$1", [submissionId]))
+        .rows[0].dispatch_state,
+    ).toBe("finished");
+    expect(
+      (
+        await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`, {
+          user: "scoped-pe2",
+        })
+      ).statusCode,
+    ).toBe(404);
   });
 
   it("keeps another tenant's in-doubt submission out of scoped HTTP results and guessed detail reads", async () => {
@@ -1473,10 +2082,13 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       `/api/v1/billing/claims/in-doubt-submissions?providerEntityId=${providerEntityId}`,
     );
     expect(m23Own.statusCode).toBe(200);
-    expect(m23Own.json().items.map((row: { submissionId: string }) => row.submissionId)).toEqual([
+    expect(m23Own.json().items.map((row: { submissionId: string }) => row.submissionId)).toContain(
       m23AttemptA,
-    ]);
-    expect(m23Own.json().count).toEqual({ kind: "lower_bound", value: 1 });
+    );
+    expect(
+      m23Own.json().items.map((row: { submissionId: string }) => row.submissionId),
+    ).not.toContain(m23AttemptB);
+    expect(m23Own.json().count.value).toBe(m23Own.json().items.length);
     expect(
       (
         await call(

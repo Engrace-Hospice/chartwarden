@@ -35,6 +35,7 @@ import {
   AssembleCommercialClaimBodySchema,
   AuthorizationListQuerySchema,
   ClaimListQuerySchema,
+  CommercialPaymentReconciliationResponseSchema,
   IdParamsSchema,
   InDoubtSubmissionListQuerySchema,
   InDoubtSubmissionListResponseSchema,
@@ -90,6 +91,7 @@ const readActor = (request: FastifyRequest) => ({
 });
 
 const READ = requirePermission("commercial_billing.read") as PreHandler;
+const REMITTANCE_READ = requirePermission("remittance.read") as PreHandler;
 const WRITE = requirePermission("commercial_billing.write") as PreHandler;
 const OVERRIDE = requirePermission("commercial_billing.override_validation") as PreHandler;
 const SCOPE = (key: string, getTarget: (r: Req) => Target): PreHandler =>
@@ -219,6 +221,24 @@ export function registerCommercialBillingRoutes(
     async (request) => {
       const { id } = parse(IdParamsSchema, request.params);
       return reads.getClaim(readActor(request), id);
+    },
+  );
+
+  app.get(
+    "/api/v1/billing/commercial/claims/:id/payment-reconciliation",
+    {
+      preHandler: [READ, REMITTANCE_READ, CASELOAD("commercial_billing.read")],
+      schema: { response: { 200: CommercialPaymentReconciliationResponseSchema } },
+      config: {
+        auditRead: {
+          resourceKind: "commercial_claim",
+          resourceIdParam: "id",
+        },
+      },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return reads.getPaymentReconciliation(readActor(request), id);
     },
   );
 
