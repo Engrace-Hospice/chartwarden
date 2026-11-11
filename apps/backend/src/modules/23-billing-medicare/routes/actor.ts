@@ -1,25 +1,57 @@
-// apps/backend/src/modules/23-billing-medicare/routes/actor.ts — the M23 service-facing actor shapes and the
-// one M23 extra over the route kit: the request envelope (correlation/request id, source ip, user agent)
-// the claim-submission and DDE audit rows carry. Actor resolution itself is `@chartwarden/shared/route-kit`
-// (org/user/membership from the server-assembled `request.context`, never the wire). M23 carries NO PHI and
-// NEVER the MBI digit (D13 / §3.6 / §8.7).
-import {
-  type RouteActor,
-  type WriteActor,
-  writeActorOf as kitWriteActorOf,
-} from "@chartwarden/shared/route-kit";
-import type { FastifyRequest } from "fastify";
+// apps/backend/src/modules/23-billing-medicare/routes/actor.ts — M23 (Billing — Medicare) route actor
+// binding (the M27 cost-report/routes/actor.ts precedent).
+//
+// The org/actor binding for every M23 route is ALWAYS server-side (the M2-assembled `request.context`,
+// NEVER the body/query). This is the single home for that extraction, so no handler reads an org id — or an
+// authoring/acting/overriding membership id — off the wire. Every authored M23 row (claim, claim_line,
+// claim_submission, validation_override, mac_submitter_credential, sequestration_policy) is stamped with the
+// server-assembled membership id, never one supplied by the client. M23 carries NO PHI and NEVER the MBI
+// digit (D13 / §3.6 / §8.7).
+//
+// AI-BLOCK (D13): Module 32 cannot create/modify/witness/resolve any M23 row. The per-route
+// `actor_kind='ai_*'` reject guard ({@link rejectAiActor}) is composed on every MUTATING route alongside
+// the §4.6 permission + §4.7 ABAC gates, so an AI principal can never reach a write handler.
+import { UnauthorizedError } from "@chartwarden/types";
+import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** What an M23 read service needs of the route actor. */
-export type M23ReadActor = Pick<RouteActor, "organizationId" | "userId" | "roles"> & {
-  /** Server-derived ABAC restriction; undefined means the existing org-wide billing role applies. */
-  readonly providerEntityScope?: readonly string[];
-};
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-/** What an M23 write service needs: the authoring membership, step-up, actor kind and request envelope. */
-export interface M23WriteActor
-  extends M23ReadActor,
-    Pick<WriteActor, "membershipId" | "stepUpRecent" | "actorKind"> {
+/**
+ * The READ-route actor: org + user + roles, all server-assembled from `request.context`. The GET routes
+ * (claim list/detail/lines/history/submissions/acks, validation runs, NOE/NOTR list/detail, eligibility,
+ * rule-config, sequestration-policy, MAC credentials, AR/metrics) compose over this. The eligibility +
+ * caseload reads are audit-read-logged at the route guard; that gate does not change the actor shape.
+ */
+export interface M23ReadActor {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly roles: readonly string[];
+}
+
+/** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
+export function actorOf(request: FastifyRequest): M23ReadActor {
+  const ctx = request.context;
+  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+}
+
+/**
+ * The MUTATING-route actor: the read actor PLUS the server-assembled active `membershipId` (the M2 session
+ * attribute `context.attributes.membershipId`), the recent-step-up flag (`context.attributes.stepUpRecent`,
+ * the §6 / §D14 server-verified re-authentication used to gate claim submit/replace/void + override +
+ * MAC-credential admin), and the actor kind (`context.attributes.actorKind`) the §D13 AI-block enforces.
+ * Every M23 command stamps `membershipId` as the row's authoring/acting principal —
+ * `createdByMembershipId` on a claim, `overrideMembershipId` on a validation override,
+ * `setByMembershipId` on a sequestration policy / MAC credential. It is NEVER read off the body.
+ */
+export interface M23WriteActor extends M23ReadActor {
+  readonly membershipId: string;
+  /** True iff the session carries a recent (server-verified) step-up auth (§6 / §D14). */
+  readonly stepUpRecent: boolean;
+  /** The acting principal kind (`user` / `system` / `ai_*`); the §D13 AI-block rejects every `ai_*`. */
+  readonly actorKind: string;
+  /** Request facts carried onto audit records (correlation id, request id, source IP, user agent). Optional: workers have none. */
   readonly request?: {
     readonly correlationId?: string;
     readonly requestId?: string;
@@ -28,17 +60,32 @@ export interface M23WriteActor
   };
 }
 
-/** The kit write actor (401 without a session, 403 without a membership) plus the request envelope. */
+/** Extract the write actor (org + user + roles + active membership + step-up + actor-kind), or 401/403. */
 export function writeActorOf(request: FastifyRequest): M23WriteActor {
-  const actor = kitWriteActorOf(request);
   const ctx = request.context;
+  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  const membershipId = ctx.attributes?.membershipId;
+  if (typeof membershipId !== "string" || membershipId.length === 0) {
+    // No active membership on the session → cannot own/author an M23 row (fail-closed, never anonymous).
+    throw new UnauthorizedError("an active membership is required to author billing content");
+  }
+  const actorKind =
+    typeof ctx.attributes?.actorKind === "string" ? ctx.attributes.actorKind : "user";
   return {
-    ...actor,
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    roles: ctx.roles,
+    membershipId,
+    stepUpRecent: ctx.attributes?.stepUpRecent === true,
+    actorKind,
     request: {
-      ...(ctx?.correlationId ? { correlationId: ctx.correlationId } : {}),
+      ...(ctx.correlationId ? { correlationId: ctx.correlationId } : {}),
       requestId: request.id,
-      ...(ctx?.ip ? { sourceIp: ctx.ip } : {}),
-      ...(ctx?.userAgent ? { userAgent: ctx.userAgent } : {}),
+      ...(ctx.ip ? { sourceIp: ctx.ip } : {}),
+      ...(ctx.userAgent ? { userAgent: ctx.userAgent } : {}),
     },
   };
 }
+
+// §D13 AI-BLOCK preHandler, composed on every M23 write route. It lives in bootstrap so M35's add-on writes reuse it.
+export { rejectAiActor } from "../../../bootstrap/reject-ai-actor";

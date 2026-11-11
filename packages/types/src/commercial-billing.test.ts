@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CLEARINGHOUSE_ENROLL_TYPE_VALUES,
   COMMERCIAL_AUTHORIZATION_REQUIREMENT_VALUES,
   COMMERCIAL_CLAIM_FILING_INDICATOR_VALUES,
   COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES,
   COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES,
+  COMMERCIAL_ENROLLMENT_REPORT_STATE_VALUES,
   COMMERCIAL_ENROLLMENT_STATUS_VALUES,
   COMMERCIAL_HOSPICE_LEVEL_OF_CARE_VALUES,
   COMMERCIAL_RATE_BASIS_VALUES,
@@ -33,7 +35,21 @@ function checkListFor(column: string, sql: string = MIGRATION): string[] {
   return [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!).sort();
 }
 
+const MIGRATION_1323 = readFileSync(
+  join(__dirname, "../../db/migrations/1323_m41_commercial_enrollment_report.sql"),
+  "utf8",
+);
+
 describe("M41 commercial billing code-side mirrors", () => {
+  it("mirror the 1323 enrollment-report CHECK lists exactly", () => {
+    expect([...COMMERCIAL_ENROLLMENT_REPORT_STATE_VALUES].sort()).toEqual(
+      checkListFor("state", MIGRATION_1323),
+    );
+    expect([...CLEARINGHOUSE_ENROLL_TYPE_VALUES].sort()).toEqual(
+      checkListFor("enroll_type", MIGRATION_1323),
+    );
+  });
+
   it("mirror the migration CHECK lists exactly", () => {
     expect([...COMMERCIAL_CLAIM_FILING_INDICATOR_VALUES].sort()).toEqual(
       checkListFor("claim_filing_indicator"),

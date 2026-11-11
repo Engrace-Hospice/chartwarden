@@ -1,9 +1,13 @@
 // ADR-0049 D3 — tenant slug rules. A slug is the DNS label a tenant is served at
 // (`<slug>.<TENANT_BASE_DOMAIN>`), so it is an RFC 1123 label, lower-case, never punycode, and never one
-// of the hosts ADR-0049 D2 reserves. The DB CHECK in migration 1144 repeats both rules; a test keeps the
+// of the hosts ADR-0049 D2 reserves. The DB guards (migrations 1144 and 1331) repeat both rules; a test keeps the
 // two in step.
 
-/** Hosts under the base domain that are never tenants (ADR-0049 D2). */
+/**
+ * Hosts under the base domain that are never tenants (ADR-0049 D2), plus `wardenx`: the legacy vhost the infra rename leaves
+ * behind (deploy/production/nginx/chartwarden-legacy-redirects.conf answers it with a 308 away), so a tenant of that name
+ * could never be reached. Migrations 1144 and 1331 carry the same names.
+ */
 export const RESERVED_TENANT_SLUGS: readonly string[] = [
   "www",
   "admin",
@@ -14,6 +18,7 @@ export const RESERVED_TENANT_SLUGS: readonly string[] = [
   "status",
   "docs",
   "mail",
+  "wardenx",
 ];
 
 /** RFC 1123 DNS label, lower-case, 1–63 characters; `validateTenantSlug` additionally requires 3+. */
@@ -31,6 +36,58 @@ export function validateTenantSlug(slug: string): TenantSlugValidation {
   if (slug.startsWith("xn--")) return { ok: false, reason: "punycode" };
   if (RESERVED_TENANT_SLUGS.includes(slug)) return { ok: false, reason: "reserved" };
   return { ok: true };
+}
+
+const MAX_TENANT_SLUG_LENGTH = 63;
+/** Trailing entity words dropped from a legal name ("Foo Hospice, LLC" -> "foo-hospice"). "of" and the like stay. */
+const LEGAL_ENTITY_SUFFIXES: ReadonlySet<string> = new Set([
+  "llc",
+  "inc",
+  "incorporated",
+  "corp",
+  "corporation",
+  "ltd",
+  "limited",
+  "pllc",
+  "lp",
+  "llp",
+  "co",
+  "company",
+]);
+
+/** Latin letters NFKD leaves whole (no base letter + mark), spelled the way they are usually romanised. Lower-case keys only. */
+const TRANSLITERATIONS: Readonly<Record<string, string>> = {
+  ø: "o",
+  æ: "ae",
+  œ: "oe",
+  ß: "ss",
+  ł: "l",
+  đ: "d",
+  ð: "d",
+  þ: "th",
+};
+const TRANSLITERATION_PATTERN = new RegExp(`[${Object.keys(TRANSLITERATIONS).join("")}]`, "g");
+
+/**
+ * A proposed host label for a legal business name, or "" when no valid one can be made (too short, reserved, no
+ * Latin letters). Lower-case, accents folded (ø, æ, ß, ł and the like are transliterated), periods and apostrophes dropped, other punctuation becomes a hyphen,
+ * trailing entity words (LLC, Inc, Corp, Ltd, PLLC, LP, Co ...) removed. It only suggests: the operator edits it,
+ * and the server's availability check and the database rules still decide.
+ */
+export function suggestTenantSlug(legalName: string): string {
+  const tokens = legalName
+    .toLowerCase() // before the map, so "Ø", "Æ", "ẞ" ... need no entries of their own
+    .replace(TRANSLITERATION_PATTERN, (letter) => TRANSLITERATIONS[letter] ?? "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[.'\u2019]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token !== "");
+  while (tokens.length > 1 && LEGAL_ENTITY_SUFFIXES.has(tokens[tokens.length - 1] ?? "")) {
+    tokens.pop();
+  }
+  const slug = tokens.join("-").slice(0, MAX_TENANT_SLUG_LENGTH).replace(/-+$/, "");
+  return validateTenantSlug(slug).ok ? slug : "";
 }
 
 export type TenantHostClass =

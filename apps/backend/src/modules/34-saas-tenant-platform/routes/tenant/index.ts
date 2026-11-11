@@ -7,6 +7,7 @@
 // under `withOrgContext` in prod so RLS scopes by `app.org_id`). The PLATFORM-scoped routes
 // (`withPlatformContext`) are a sibling surface (routes/platform/*) wired separately.
 import type { FastifyInstance } from "fastify";
+import type { OnboardingWizard } from "../../onboarding/wizard-service";
 import { registerTenantBaaRoutes } from "./baa";
 import { registerDsarExportRoutes } from "./dsar-export-jobs";
 import { registerOnboardingRoutes } from "./onboarding-tasks";
@@ -16,6 +17,8 @@ import { registerTenantExportRoutes } from "./tenant-export-jobs";
 
 export interface TenantRoutesDeps {
   service: TenantRouteService;
+  /** The onboarding wizard (tenant surface). */
+  wizard: OnboardingWizard;
 }
 
 /** Mount all five tenant-scoped M34 route groups behind the REAL Authorization Contract (§4.1 / §6). */

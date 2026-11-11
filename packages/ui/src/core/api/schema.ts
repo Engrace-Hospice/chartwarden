@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/admin/addons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the add-on catalog (admin) */
+        get: operations["getApiAdminAddons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/dunning": {
         parameters: {
             query?: never;
@@ -554,6 +571,110 @@ export interface paths {
         patch: operations["patchApiAdminPlansByIdMetersByMeterId"];
         trace?: never;
     };
+    "/api/admin/pricing/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Default census band thresholds: the five bands 0, 10, 17, 26 and 30 (a form's starting point, never a price) */
+        get: operations["getApiAdminPricingDefaults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every census-banded plan version (drafts and archived included) */
+        get: operations["getApiAdminPricingPlans"];
+        put?: never;
+        /** Create a draft plan (version 1 of a new family) */
+        post: operations["postApiAdminPricingPlans"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one census-banded plan version */
+        get: operations["getApiAdminPricingPlansById"];
+        /** Replace a draft plan's prices and bands */
+        put: operations["putApiAdminPricingPlansById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a published plan; subscriptions on it keep their price */
+        post: operations["postApiAdminPricingPlansByIdArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}/new-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy a published or archived plan into a new draft version */
+        post: operations["postApiAdminPricingPlansByIdNewversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a draft plan; its prices are frozen from then on */
+        post: operations["postApiAdminPricingPlansByIdPublish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/promos": {
         parameters: {
             query?: never;
@@ -755,6 +876,41 @@ export interface paths {
         get: operations["getApiAdminSubscriptionsById"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/addons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a subscription's add-ons (admin) */
+        get: operations["getApiAdminSubscriptionsByIdAddons"];
+        put?: never;
+        /** Grant or start a trial of an add-on */
+        post: operations["postApiAdminSubscriptionsByIdAddons"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/addons/{addonId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel an add-on */
+        post: operations["postApiAdminSubscriptionsByIdAddonsByAddonIdCancel"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1028,6 +1184,57 @@ export interface paths {
         get: operations["getApiV1AdminBillingDdeprovider"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every tenant's provider entities with the platform verification state of their current NPI (the Claim.MD sweep routes enrollment reports only to a verified one); platform-admin + platform-ops role (ADR-0053 amendment) */
+        get: operations["getApiV1AdminBillingNpiverifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the live NPI verification (enrollment reports for it become unroutable) — 409 NOT_VERIFIED when none; platform-admin + step-up (ADR-0053 amendment) */
+        post: operations["postApiV1AdminBillingNpiverificationsByProviderEntityIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that platform staff verified the provider entity owns its current NPI — 409 NPI_CHANGED when it is no longer the NPI checked, ALREADY_VERIFIED when live; platform-admin + step-up (ADR-0053 amendment) */
+        post: operations["postApiV1AdminBillingNpiverificationsByProviderEntityIdVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6290,23 +6497,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/billing/claims/in-doubt-submissions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Submission-first, tenant/provider-scoped M23 transport uncertainty queue. Each row is an actual durable claim submission attempt with outcome in doubt; the request may have reached the payer. Lower-bound counts describe the loaded page only; no retry is offered. */
-        get: operations["getApiV1BillingClaimsIndoubtsubmissions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/billing/clearinghouse-attempts/resolve": {
         parameters: {
             query?: never;
@@ -6472,23 +6662,6 @@ export interface paths {
         put?: never;
         /** Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract. */
         post: operations["postApiV1BillingCommercialClaimsByIdCorrectionsClearinghouserejection"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/commercial/claims/{id}/payment-reconciliation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** M41-caseload-authorized commercial claim and exact M25 remittance line payment facts; distinguishes payer-reported and actually posted amounts. Original submitted charge and canonical A/R remain unavailable when not preserved by authoritative sources. */
-        get: operations["getApiV1BillingCommercialClaimsByIdPaymentreconciliation"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6699,6 +6872,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/enrollment-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Advisory enrollment statuses a clearinghouse reported for a provider entity (Claim.MD webhook), newest first (commercial_billing.read; provider entity scope). A report never changes a send gate: staff apply it through the enrollments routes */
+        get: operations["getApiV1BillingCommercialEnrollmentreports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/enrollment-reports/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an enrollment report as applied (after the enrollment was recorded through the enrollments routes) or dismissed (commercial_billing.manage_enrollment; provider entity scope). Idempotent; 409 when it was already resolved the other way or superseded */
+        post: operations["postApiV1BillingCommercialEnrollmentreportsByIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/commercial/enrollments": {
         parameters: {
             query?: never;
@@ -6766,23 +6973,6 @@ export interface paths {
         head?: never;
         /** Set what stale or missing eligibility does for a plan: `warn` (default) or `block`, and how many days (1 to 365; default 30) make a check stale (commercial_billing.manage_enrollment + a fresh step-up, because relaxing it weakens a billing control; Idempotency-Key required) */
         patch: operations["patchApiV1BillingCommercialPayerplansByIdEligibilitypolicy"];
-        trace?: never;
-    };
-    "/api/v1/billing/commercial/submissions/in-doubt": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Submission-first M41 transport uncertainty queue. Enforces provider and patient caseload scope; the request may have reached the payer. Lower-bound counts describe loaded authorized rows only; no retry is offered. */
-        get: operations["getApiV1BillingCommercialSubmissionsIndoubt"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/billing/dde-items": {
@@ -7170,109 +7360,6 @@ export interface paths {
         };
         /** Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38) */
         get: operations["getApiV1BillingMetrics"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/operations/investigations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List tenant/provider-authorized M23/M41 operational investigations with per-owner source revalidation and lower-bound page counts */
-        get: operations["getApiV1BillingOperationsInvestigations"];
-        put?: never;
-        /** Open an audited read-only investigation for an exact authorized M23/M41 in-doubt submission attempt */
-        post: operations["postApiV1BillingOperationsInvestigations"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/operations/investigations/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read one tenant/provider-scoped investigation, revalidated against its M23/M41 source, notes, and append-only history */
-        get: operations["getApiV1BillingOperationsInvestigationsById"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/operations/investigations/{id}/assignment": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Assign or unassign an eligible investigator using an optimistic version and audited reason */
-        post: operations["postApiV1BillingOperationsInvestigationsByIdAssignment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/operations/investigations/{id}/notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Append a bounded non-source-mutating operational investigation note */
-        post: operations["postApiV1BillingOperationsInvestigationsByIdNotes"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/operations/investigations/{id}/transitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Append an audited operational status transition; resolution requires its separate permission and never resolves source submission uncertainty */
-        post: operations["postApiV1BillingOperationsInvestigationsByIdTransitions"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/operations/investigations/investigators": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List active, provider-authorized investigators with Billing Operations triage permission */
-        get: operations["getApiV1BillingOperationsInvestigationsInvestigators"];
         put?: never;
         post?: never;
         delete?: never;
@@ -17246,57 +17333,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/messaging/death-boards/{boardId}/funeral-home": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Staff SELECT the funeral home (funeral.invite) to receive the existing M2 funeral-home secure link. Sent only when a BAA is on file for that MDM funeral_home entity (fail closed): otherwise the notice is recorded blocked_no_baa, a supervisor is alerted and nothing is sent. The address is used once and never stored or echoed. The message is fixed text with no PHI. Repeating it never sends a second link. 503 when the transactional email provider is not bound */
-        post: operations["postApiV1MessagingDeathboardsByBoardIdFuneralhome"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messaging/death-boards/{boardId}/notifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The board's death notices and their state (internal in-app notices plus any funeral-home notice). Ids, enums and instants only; can_ack is the server's verdict for the caller. A missing, foreign or Part 2-restricted board is the same 404 */
-        get: operations["getApiV1MessagingDeathboardsByBoardIdNotifications"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messaging/death-notifications/{notificationId}/ack": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** The recipient (or a messaging.review holder) EXPLICITLY acknowledges an internal death notice; never a read receipt. Repeating it as the same person is a no-op; someone else is 403 DEATH_NOTIFICATION_NOT_RECIPIENT; an external notice is 409 */
-        post: operations["postApiV1MessagingDeathnotificationsByNotificationIdAck"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/messaging/deliveries/{id}/target": {
         parameters: {
             query?: never;
@@ -19529,57 +19565,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-dry-run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Repeat the server-authoritative recovery assessment without changing source, cursor, attribution, delivery, or financial state */
-        post: operations["postApiV1OpsClaimmdErasByInboxIdRecoverydryrun"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-preflight": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Assess one exact durable Claim.MD ERA source for recovery readiness without mutation */
-        get: operations["getApiV1OpsClaimmdErasByInboxIdRecoverypreflight"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ops/claimmd/observability": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Platform-only durable Claim.MD polling and backlog evidence without account identifiers, cursor tokens, or payloads */
-        get: operations["getApiV1OpsClaimmdObservability"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/ops/outbox": {
         parameters: {
             query?: never;
@@ -20634,23 +20619,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/patients/{id}/payers/{payerRowId}/void": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Void an unclaimed mistaken payer row as an audited empty window (step-up required) */
-        post: operations["postApiV1PatientsByIdPayersByPayerRowIdVoid"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/patients/{id}/privacy": {
         parameters: {
             query?: never;
@@ -21516,7 +21484,7 @@ export interface paths {
         /** Platform→tenant BAA register across tenants (cursor-paginated) */
         get: operations["getApiV1PlatformBaaregister"];
         put?: never;
-        /** File a BAA record for a (tenant_account, addendum_version) — UNIQUE */
+        /** File a BAA record for a (tenant_account, addendum_version) — UNIQUE (platform_tenant_baa.write_platform; step-up; no AI actor) */
         post: operations["postApiV1PlatformBaaregister"];
         delete?: never;
         options?: never;
@@ -21537,7 +21505,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a BAA record (execution/termination/dates/contacts/document linkage) */
+        /** Update a BAA record (execution/termination/dates/contacts/document linkage) (platform_tenant_baa.write_platform; step-up; no AI actor) */
         patch: operations["patchApiV1PlatformBaaregisterById"];
         trace?: never;
     };
@@ -21657,6 +21625,40 @@ export interface paths {
         put?: never;
         /** Activate/suspend/close an organization (platform-ops, §11 D19) */
         post: operations["postApiV1PlatformOrganizationsByOrganizationIdStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/pricing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The published, current plan versions an operator may sign */
+        get: operations["getApiV1PlatformPricingPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/pricing/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Price a plan for entered staff, census, collections and billing service mode (no write); a planned go-live date prices the first month by the days live */
+        post: operations["postApiV1PlatformPricingPreview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21852,6 +21854,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenant-slugs/{slug}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up; 429 past 30 probes a minute per user; each probe is one audited platform read) */
+        get: operations["getApiV1PlatformTenantslugsBySlugAvailability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants": {
         parameters: {
             query?: never;
@@ -21887,6 +21906,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/compliance-officer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign the tenant's compliance officer, an active member of that organization holding the compliance_officer role, with a required reason of 8 to 500 characters (platform ops; step-up). The operator and the reason are recorded in the audit trail; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED */
+        put: operations["putApiV1PlatformTenantsByOrgSlugComplianceofficer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/dek-rotate": {
         parameters: {
             query?: never;
@@ -21904,6 +21940,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/go-live/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
+        post: operations["postApiV1PlatformTenantsByOrgSlugGoliveApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/go-live/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a pending go-live attestation with a reason (platform ops; step-up) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugGoliveRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/key-ring": {
         parameters: {
             query?: never;
@@ -21915,6 +21985,59 @@ export interface paths {
         get: operations["getApiV1PlatformTenantsByOrgSlugKeyring"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's service locations, on the tenant's own RLS scope (platform ops; read is audited) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugLocations"];
+        put?: never;
+        /** Create a service location under one of the tenant's provider entities — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugLocations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a tenant service location's address / contact / timezone / lifecycle status — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugLocationsById"];
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/mac-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's MAC submitter credentials, masked (a hasSecret flag and the safe identifiers; the secret is never projected) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugMaccredentials"];
+        put?: never;
+        /** Create (201) or version-checked update (200, If-Match) of a tenant's MAC credential; clientSecret is write-only and sealed under the tenant's key — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugMaccredentials"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21945,10 +22068,44 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A tenant's full onboarding task list and the machine's current step (platform ops) */
+        /** A tenant's ordered onboarding wizard (platform ops): steps with lock state, owner, completion mode, evidence and who/when, the current step, the go-live state and the org profile (tasks and currentStep are the older names) */
         get: operations["getApiV1PlatformTenantsByOrgSlugOnboarding"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle a step on the tenant's behalf with required evidence and a reason (platform ops; step-up; no AI actor; strict sequence) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdAttest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-open a done or skipped step with a reason (platform ops; step-up; later steps keep their state) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdReopen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21964,12 +22121,64 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Skip an onboarding task with a recorded rationale (platform ops; step-up) */
+        /** Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence; go-live is not skippable) */
         post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/org-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the tenant organization's display name and IANA time zone during onboarding (platform ops; step-up) */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugOrgprofile"];
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugProviderentities"];
+        put?: never;
+        /** Create a provider entity for a tenant (CCN, NPI check digit, EIN sealed under the tenant's key and never returned; 503 TAX_ID_CIPHER_UNBOUND / TAX_ID_KEY_UNAVAILABLE until the key ring is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugProviderentities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a tenant provider entity's names / iQIES id / billing address / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugProviderentitiesById"];
         trace?: never;
     };
     "/api/v1/platform/tenants/{orgSlug}/provision-status": {
@@ -22023,6 +22232,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/state-medicaid-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's state Medicaid trading-partner credentials, masked (presence flags only; no secret or key is ever projected) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials"];
+        put?: never;
+        /** Create or version-bump a tenant's state Medicaid trading-partner credential; clientSecret / sftpKey are write-only and sealed under the tenant's key (503 CREDENTIAL_CRYPTO_UNBOUND until the credential key is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/status": {
         parameters: {
             query?: never;
@@ -22032,8 +22259,43 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Apply a lifecycle status transition (eleven-state machine; step-up) */
+        /** Apply a lifecycle status transition (eleven-state machine; step-up). onboarding → active is refused 409 GO_LIVE_TWO_PARTY_REQUIRED: go live through the compliance officer's attestation and POST /go-live/approve */
         post: operations["postApiV1PlatformTenantsByOrgSlugStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's signed contract and statements (platform; writes a read-audit row naming the operator) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugSubscription"];
+        put?: never;
+        /** Onboarding step 2: sign the tenant onto a plan version and settle the plan_contract step */
+        post: operations["postApiV1PlatformTenantsByOrgSlugSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet */
+        put: operations["putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -25087,23 +25349,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/remittance/claimmd-operational-health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Tenant-safe attributed Claim.MD ERA staging health without central account metadata */
-        get: operations["getApiV1RemittanceClaimmdoperationalhealth"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/remittance/lines": {
         parameters: {
             query?: never;
@@ -25149,23 +25394,6 @@ export interface paths {
         put?: never;
         /** Manually match a remittance line to a claim (§4.1) */
         post: operations["postApiV1RemittanceLinesByIdManualmatch"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/remittance/revenue-cycle-summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Source-backed M25 Revenue Cycle payment and adjustment totals; authoritative A/R unavailable */
-        get: operations["getApiV1RemittanceRevenuecyclesummary"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -26962,6 +27190,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subscription/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's own plan terms and latest statement (read-only) */
+        get: operations["getApiV1SubscriptionPricing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscription/resume": {
         parameters: {
             query?: never;
@@ -27819,6 +28064,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/compliance-officer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign the compliance officer (an active member of this organization holding the compliance_officer role) who attests go-live readiness (org_admin; step-up). Allowed while the tenant is onboarding or active; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED */
+        put: operations["putApiV1TenantComplianceofficer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/dsar-export-jobs": {
         parameters: {
             query?: never;
@@ -27939,6 +28201,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/go-live/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The compliance officer attests go-live readiness (step-up); a platform operator then approves. 409 ACTIVATION_GUARDS_FAILED lists the guards that fail */
+        post: operations["postApiV1TenantGoliveAttest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/onboarding": {
         parameters: {
             query?: never;
@@ -27946,10 +28225,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tenant's onboarding state (D3; cursor-paginated) */
+        /** The tenant's ordered onboarding wizard: steps with lock state, owner, completion mode, evidence and who/when, the current step, the go-live state and the org profile (items is the older name of steps) */
         get: operations["getApiV1TenantOnboarding"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/onboarding/{taskId}/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a step done with required evidence (human actor; the step's owner role; strict sequence). 409 ONBOARDING_STEP_OUT_OF_ORDER, 403 ONBOARDING_STEP_OWNER_MISMATCH */
+        post: operations["postApiV1TenantOnboardingByTaskIdAttest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27965,7 +28261,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Block a task with a reason (emits M36 alert) */
+        /** Block a step with a reason (emits M36 alert) */
         post: operations["postApiV1TenantOnboardingByTaskIdBlock"];
         delete?: never;
         options?: never;
@@ -27982,8 +28278,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete a task with evidence (precondition DSL → 422 if false) */
+        /** Deprecated alias of /attest: evidenceNote is required at runtime (422 ONBOARDING_EVIDENCE_REQUIRED); completionEvidence is ignored */
         post: operations["postApiV1TenantOnboardingByTaskIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/onboarding/{taskId}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-open a done or skipped step to edit it, with a required written reason (later steps keep their state; refused while a go-live attestation is pending) */
+        post: operations["postApiV1TenantOnboardingByTaskIdReopen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27999,12 +28312,29 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Advance an onboarding task pending → in_progress */
+        /** Advance an onboarding step pending → in_progress (strict sequence; the step's owner role) */
         post: operations["postApiV1TenantOnboardingByTaskIdStart"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/org-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the organization's display name and IANA time zone during onboarding (org_admin) */
+        patch: operations["patchApiV1TenantOrgprofile"];
         trace?: never;
     };
     "/api/v1/tenant/support-consent-grants": {
@@ -29208,6 +29538,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/claimmd/production": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inbound Claim.MD webhook, production account (Auth-Signature-Base64 HMAC-verified) */
+        post: operations["postApiV1WebhooksClaimmdProduction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/claimmd/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified) */
+        post: operations["postApiV1WebhooksClaimmdTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/minio/access-log": {
         parameters: {
             query?: never;
@@ -29749,6 +30113,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getApiAdminAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        entitlementKey: string;
+                        meterEventType: string;
+                        unitPriceCents: number | null;
+                        currencyCode: string;
+                        isActive: boolean;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiAdminDunning: {
         parameters: {
             query?: {
@@ -30855,7 +31252,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -30913,7 +31310,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -30960,7 +31357,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31016,7 +31413,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31063,7 +31460,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31110,7 +31507,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31219,6 +31616,470 @@ export interface operations {
                         overageUnitPriceCents: number;
                         billingAggregation: string;
                         warningThresholdPercent: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPricingDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bandThresholds: number[];
+                        currencyCode: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPricingPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlans: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    familySlug: string;
+                    name: string;
+                    description?: string | null;
+                    currencyCode?: string;
+                    perUserPriceCents: number;
+                    bands: {
+                        minAdc: number;
+                        monthlyFeeCents: number;
+                    }[];
+                    billingSoftwareBps: number;
+                    managedBillingBps: number;
+                    contractTermMonths: number;
+                    implementationFeeCents: number;
+                    minimumMonthlyCents: number | null;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPricingPlansById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiAdminPricingPlansById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    description?: string | null;
+                    currencyCode?: string;
+                    perUserPriceCents: number;
+                    bands: {
+                        minAdc: number;
+                        monthlyFeeCents: number;
+                    }[];
+                    billingSoftwareBps: number;
+                    managedBillingBps: number;
+                    contractTermMonths: number;
+                    implementationFeeCents: number;
+                    minimumMonthlyCents: number | null;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlansByIdArchive: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlansByIdNewversion: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlansByIdPublish: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
                     };
                 };
             };
@@ -31831,7 +32692,7 @@ export interface operations {
                             defaultPaymentMethodExpiresAt: string | null;
                             dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                         } & {
-                            planTier: "starter" | "professional" | "enterprise";
+                            planTier: "starter" | "professional" | "enterprise" | "census_banded";
                             stripeSubscriptionId: string | null;
                             /** Format: date-time */
                             startedAt: string;
@@ -31881,11 +32742,154 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
                         organizationName: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminSubscriptionsByIdAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    addonSlug: string;
+                    mode: "grant" | "trial";
+                    /** Format: date-time */
+                    trialEndsAt?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdAddonsByAddonIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addonId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
                     };
                 };
             };
@@ -31965,7 +32969,7 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
@@ -32019,7 +33023,7 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
@@ -32066,7 +33070,7 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
@@ -32143,6 +33147,17 @@ export interface operations {
                             projectedOverageCostCents: number;
                             thresholdState: "ok" | "warning" | "breached";
                         }[];
+                    } & {
+                        claimsBillingAddon: {
+                            addonSlug: string;
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            activePatientCount: number;
+                            unitPriceCents: number | null;
+                            computedAt: string | null;
+                        } | null;
                     };
                 };
             };
@@ -32511,6 +33526,124 @@ export interface operations {
                     "application/json": {
                         provider: "manual" | "in_memory" | "episode_alert";
                         wired: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminBillingNpiverifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingNpiverificationsByProviderEntityIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingNpiverificationsByProviderEntityIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The NPI the operator checked. */
+                    npi: string;
+                    /** @description How ownership was confirmed (for the audit record; no patient information). */
+                    evidence: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
                     };
                 };
             };
@@ -42618,7 +43751,6 @@ export interface operations {
                         membershipId: string | null;
                         displayName: string | null;
                         roles: string[];
-                        providerEntityIds: string[];
                         locationIds: string[];
                         orgWidePatientScope: boolean;
                         isAdmin: boolean;
@@ -48013,7 +49145,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -48038,7 +49170,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -48236,7 +49368,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -48352,7 +49484,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -48387,7 +49519,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -48416,7 +49548,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -48450,7 +49582,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -48496,57 +49628,6 @@ export interface operations {
                         /** Format: uuid */
                         initialValidationRunId: string;
                         initialValidationOutcome: "all_pass" | "failures_present" | "overrides_required";
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1BillingClaimsIndoubtsubmissions: {
-        parameters: {
-            query?: {
-                cursor?: string;
-                limit?: number;
-                providerEntityId?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: {
-                            /** Format: uuid */
-                            submissionId: string;
-                            attemptIndex: number;
-                            /** Format: uuid */
-                            claimId: string;
-                            claimControlNumber: string;
-                            /** Format: uuid */
-                            providerEntityId: string;
-                            reasonCode: string | null;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** @constant */
-                            status: "in_doubt";
-                            /** @constant */
-                            payer: "Medicare";
-                        }[];
-                        hasMore: boolean;
-                        nextCursor: string | null;
-                        count: {
-                            /** @constant */
-                            kind: "lower_bound";
-                            value: number;
-                        };
                     };
                 };
             };
@@ -48641,7 +49722,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -48678,7 +49759,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -48709,7 +49790,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -48780,7 +49861,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -48832,7 +49913,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49016,7 +50097,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49049,72 +50130,11 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
-    getApiV1BillingCommercialClaimsByIdPaymentreconciliation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        claim: {
-                            /** Format: uuid */
-                            id: string;
-                            claimControlNumber: string;
-                            /** Format: uuid */
-                            providerEntityId: string;
-                            payerId: string;
-                            payerName: string;
-                            state: string;
-                            /** Format: date */
-                            serviceFrom: string;
-                            /** Format: date */
-                            serviceTo: string;
-                            currentChargeCents: number;
-                            originalSubmittedChargeCents: null;
-                        };
-                        payments: {
-                            items: {
-                                /** Format: uuid */
-                                remittanceAdviceId: string;
-                                /** Format: uuid */
-                                remittanceLineId: string;
-                                payerReportedPaymentCents: string;
-                                m25PostedPaymentCents: string | null;
-                                adviceStatus: "parsed" | "posted" | "partial_posted";
-                                lineMatchState: string;
-                                /** Format: date-time */
-                                receivedAt: string;
-                            }[];
-                            payerReportedPaymentCents: string;
-                            m25PostedPaymentCents: string;
-                            /** @constant */
-                            completeness: "exact_for_matched_m25_remittance_lines";
-                            historyRecordCount: number;
-                            detailTruncated: boolean;
-                        };
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
     postApiV1BillingCommercialClaimsByIdReady: {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49193,7 +50213,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49237,7 +50257,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49338,7 +50358,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49378,7 +50398,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49416,7 +50436,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49446,7 +50466,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -49548,7 +50568,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -49670,6 +50690,90 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingCommercialEnrollmentreports: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                state?: "open" | "applied" | "dismissed" | "superseded";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            payerId: string | null;
+                            clearinghouseKey: string;
+                            clearinghousePayerId: string | null;
+                            enrollType: "era" | "1500" | "500" | "ub" | "elig" | "attach" | "unrecognized";
+                            vendorStatus: string;
+                            suggestedStatus: "enrolled" | null;
+                            vendorEnrollId: string | null;
+                            reportedAt: string;
+                            state: "open" | "applied" | "dismissed" | "superseded";
+                            resolvedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialEnrollmentreportsByIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    resolution: "applied" | "dismissed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        payerId: string | null;
+                        clearinghouseKey: string;
+                        clearinghousePayerId: string | null;
+                        enrollType: "era" | "1500" | "500" | "ub" | "elig" | "attach" | "unrecognized";
+                        vendorStatus: string;
+                        suggestedStatus: "enrolled" | null;
+                        vendorEnrollId: string | null;
+                        reportedAt: string;
+                        state: "open" | "applied" | "dismissed" | "superseded";
+                        resolvedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingCommercialEnrollments: {
         parameters: {
             query: {
@@ -49712,7 +50816,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -49760,7 +50864,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49851,7 +50955,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -49879,56 +50983,6 @@ export interface operations {
                         payerId: string;
                         eligibilityStalenessPolicy: "warn" | "block";
                         eligibilityMaxAgeDays: number;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1BillingCommercialSubmissionsIndoubt: {
-        parameters: {
-            query: {
-                providerEntityId: string;
-                cursor?: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: {
-                            /** Format: uuid */
-                            submissionId: string;
-                            /** Format: uuid */
-                            claimId: string;
-                            claimControlNumber: string;
-                            /** Format: uuid */
-                            providerEntityId: string;
-                            attemptCount: number;
-                            reasonCode: string | null;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** @constant */
-                            status: "in_doubt";
-                            payer: string;
-                        }[];
-                        hasMore: boolean;
-                        nextCursor: string | null;
-                        count: {
-                            /** @constant */
-                            kind: "lower_bound";
-                            value: number;
-                        };
                     };
                 };
             };
@@ -50016,7 +51070,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -50187,7 +51241,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50263,7 +51317,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50337,7 +51391,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50411,7 +51465,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50485,7 +51539,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50570,7 +51624,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50654,7 +51708,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50732,7 +51786,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50806,7 +51860,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50880,7 +51934,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -50954,7 +52008,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -51066,7 +52120,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -51498,422 +52552,6 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
-    getApiV1BillingOperationsInvestigations: {
-        parameters: {
-            query?: {
-                providerEntityId?: string;
-                status?: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
-                assigned?: "me" | "unassigned";
-                cursor?: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: {
-                            /** Format: uuid */
-                            id: string;
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: uuid */
-                            providerEntityId: string;
-                            sourceModule: "M23" | "M41";
-                            /** Format: uuid */
-                            sourceRecordId: string;
-                            /** Format: uuid */
-                            sourceAttemptId: string;
-                            sourceIdentity: string;
-                            sourceReasonCode: string | null;
-                            /** Format: date-time */
-                            sourceOccurredAt: string;
-                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
-                            resolutionOutcome: string | null;
-                            assignedToMembershipId: string | null;
-                            /** Format: uuid */
-                            createdByMembershipId: string;
-                            /** Format: date-time */
-                            createdAt: string;
-                            /** Format: date-time */
-                            updatedAt: string;
-                            closedAt: string | null;
-                            version: number;
-                        }[];
-                        nextCursor: string | null;
-                        hasMore: boolean;
-                        count: {
-                            /** @constant */
-                            kind: "lower_bound";
-                            value: number;
-                        };
-                        /** @constant */
-                        countScope: "authorized loaded cases";
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1BillingOperationsInvestigations: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
-                "Idempotency-Key": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    sourceModule: "M23" | "M41";
-                    /** Format: uuid */
-                    submissionId: string;
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        id: string;
-                        /** Format: uuid */
-                        organizationId: string;
-                        /** Format: uuid */
-                        providerEntityId: string;
-                        sourceModule: "M23" | "M41";
-                        /** Format: uuid */
-                        sourceRecordId: string;
-                        /** Format: uuid */
-                        sourceAttemptId: string;
-                        sourceIdentity: string;
-                        sourceReasonCode: string | null;
-                        /** Format: date-time */
-                        sourceOccurredAt: string;
-                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
-                        resolutionOutcome: string | null;
-                        assignedToMembershipId: string | null;
-                        /** Format: uuid */
-                        createdByMembershipId: string;
-                        /** Format: date-time */
-                        createdAt: string;
-                        /** Format: date-time */
-                        updatedAt: string;
-                        closedAt: string | null;
-                        version: number;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1BillingOperationsInvestigationsById: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        investigation: {
-                            /** Format: uuid */
-                            id: string;
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: uuid */
-                            providerEntityId: string;
-                            sourceModule: "M23" | "M41";
-                            /** Format: uuid */
-                            sourceRecordId: string;
-                            /** Format: uuid */
-                            sourceAttemptId: string;
-                            sourceIdentity: string;
-                            sourceReasonCode: string | null;
-                            /** Format: date-time */
-                            sourceOccurredAt: string;
-                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
-                            resolutionOutcome: string | null;
-                            assignedToMembershipId: string | null;
-                            /** Format: uuid */
-                            createdByMembershipId: string;
-                            /** Format: date-time */
-                            createdAt: string;
-                            /** Format: date-time */
-                            updatedAt: string;
-                            closedAt: string | null;
-                            version: number;
-                        };
-                        source: {
-                            sourceModule: "M23" | "M41";
-                            /** Format: uuid */
-                            submissionId: string;
-                            /** Format: uuid */
-                            claimId: string;
-                            /** Format: uuid */
-                            providerEntityId: string;
-                            attempt: number;
-                            reference: string;
-                            payer: string;
-                            reasonCode: string | null;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            currentStatus: string;
-                            sourceHref: string;
-                        };
-                        history: {
-                            event_type: string;
-                            /** Format: uuid */
-                            actor_membership_id: string;
-                            previous_status: string | null;
-                            new_status: string | null;
-                            from_assignee_membership_id: string | null;
-                            to_assignee_membership_id: string | null;
-                            reason: string | null;
-                            correlation_id: string | null;
-                            /** Format: date-time */
-                            occurredAt: string;
-                        }[];
-                        notes: {
-                            /** Format: uuid */
-                            id: string;
-                            /** Format: uuid */
-                            authorMembershipId: string;
-                            body: string;
-                            /** Format: date-time */
-                            createdAt: string;
-                        }[];
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1BillingOperationsInvestigationsByIdAssignment: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
-                "Idempotency-Key": string;
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    assignedToMembershipId: string | null;
-                    version: number;
-                    reason: string;
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        id: string;
-                        /** Format: uuid */
-                        organizationId: string;
-                        /** Format: uuid */
-                        providerEntityId: string;
-                        sourceModule: "M23" | "M41";
-                        /** Format: uuid */
-                        sourceRecordId: string;
-                        /** Format: uuid */
-                        sourceAttemptId: string;
-                        sourceIdentity: string;
-                        sourceReasonCode: string | null;
-                        /** Format: date-time */
-                        sourceOccurredAt: string;
-                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
-                        resolutionOutcome: string | null;
-                        assignedToMembershipId: string | null;
-                        /** Format: uuid */
-                        createdByMembershipId: string;
-                        /** Format: date-time */
-                        createdAt: string;
-                        /** Format: date-time */
-                        updatedAt: string;
-                        closedAt: string | null;
-                        version: number;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1BillingOperationsInvestigationsByIdNotes: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
-                "Idempotency-Key": string;
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    body: string;
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        id: string;
-                        /** Format: uuid */
-                        authorMembershipId: string;
-                        body: string;
-                        /** Format: date-time */
-                        createdAt: string;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1BillingOperationsInvestigationsByIdTransitions: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
-                "Idempotency-Key": string;
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    status: "investigating" | "waiting_external" | "resolved" | "closed";
-                    version: number;
-                    reason: string;
-                    outcome?: "verified_no_action_required" | "referred_to_source_workflow" | "waiting_for_external_confirmation" | "duplicate_investigation" | "unable_to_resolve";
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        id: string;
-                        /** Format: uuid */
-                        organizationId: string;
-                        /** Format: uuid */
-                        providerEntityId: string;
-                        sourceModule: "M23" | "M41";
-                        /** Format: uuid */
-                        sourceRecordId: string;
-                        /** Format: uuid */
-                        sourceAttemptId: string;
-                        sourceIdentity: string;
-                        sourceReasonCode: string | null;
-                        /** Format: date-time */
-                        sourceOccurredAt: string;
-                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
-                        resolutionOutcome: string | null;
-                        assignedToMembershipId: string | null;
-                        /** Format: uuid */
-                        createdByMembershipId: string;
-                        /** Format: date-time */
-                        createdAt: string;
-                        /** Format: date-time */
-                        updatedAt: string;
-                        closedAt: string | null;
-                        version: number;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1BillingOperationsInvestigationsInvestigators: {
-        parameters: {
-            query: {
-                providerEntityId: string;
-                sourceModule: "M23" | "M41";
-                submissionId: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: {
-                            /** Format: uuid */
-                            membershipId: string;
-                            displayName: string;
-                        }[];
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
     getApiV1BillingRatetables: {
         parameters: {
             query: {
@@ -51969,7 +52607,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -52098,7 +52736,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -52374,7 +53012,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -52401,7 +53039,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -52443,7 +53081,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -52522,7 +53160,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -52610,7 +53248,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -52753,6 +53391,14 @@ export interface operations {
                         daysUntilSuspension: number | null;
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
+                        claimsBilling?: {
+                            entitled: boolean;
+                            status: "none" | "trialing" | "active" | "canceled";
+                            reason: ("never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
+                            trialEndsAt: string | null;
+                            activePatientCount: number | null;
+                            enforced: boolean;
+                        };
                     };
                 };
             };
@@ -52940,7 +53586,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -53035,7 +53681,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -53140,7 +53786,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -53237,7 +53883,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -53324,7 +53970,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -53366,7 +54012,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -53542,7 +54188,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -53655,7 +54301,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -53810,7 +54456,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -53900,7 +54546,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -55121,7 +55767,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -55193,7 +55839,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -55456,7 +56102,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -56182,7 +56828,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -56308,7 +56954,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -66838,8 +67484,6 @@ export interface operations {
             content: {
                 "application/json": {
                     patientId: string;
-                    /** Format: uuid */
-                    funeralHomeId: string;
                     recipientEmail?: string;
                 };
             };
@@ -67104,7 +67748,6 @@ export interface operations {
                     ifVersion?: number;
                     /** Format: date-time */
                     targetDate: string;
-                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
                     authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     data: {
                         I?: {
@@ -67248,8 +67891,6 @@ export interface operations {
                 "application/json": {
                     reason: string;
                     ifVersion?: number;
-                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
-                    authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                 };
             };
         };
@@ -68256,7 +68897,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68290,7 +68931,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68344,7 +68985,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68371,7 +69012,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68428,7 +69069,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68462,7 +69103,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68511,7 +69152,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68783,7 +69424,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -68843,7 +69484,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -69121,7 +69762,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -69719,7 +70360,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -70260,7 +70901,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
                 /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
@@ -78358,7 +78999,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -78666,7 +79307,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -78702,7 +79343,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -79575,7 +80216,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -79944,7 +80585,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -80698,7 +81339,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -80805,7 +81446,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -80905,7 +81546,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -81090,7 +81731,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -81227,7 +81868,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -81751,131 +82392,6 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
-    postApiV1MessagingDeathboardsByBoardIdFuneralhome: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                boardId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: uuid */
-                    funeral_home_entity_id: string;
-                    recipient_email: string;
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        notification: {
-                            /** Format: uuid */
-                            id: string;
-                            /** Format: uuid */
-                            board_id: string;
-                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
-                            state: "pending" | "sent" | "acked" | "sending" | "reconciling" | "failed" | "blocked_no_baa" | "not_applicable";
-                            /** Format: date-time */
-                            created_at: string;
-                            acked_at: string | null;
-                            acked_by: string | null;
-                            can_ack: boolean;
-                        };
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1MessagingDeathboardsByBoardIdNotifications: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                boardId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        enabled: boolean;
-                        /** Format: uuid */
-                        patient_id?: string;
-                        notifications: {
-                            /** Format: uuid */
-                            id: string;
-                            /** Format: uuid */
-                            board_id: string;
-                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
-                            state: "pending" | "sent" | "acked" | "sending" | "reconciling" | "failed" | "blocked_no_baa" | "not_applicable";
-                            /** Format: date-time */
-                            created_at: string;
-                            acked_at: string | null;
-                            acked_by: string | null;
-                            can_ack: boolean;
-                        }[];
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1MessagingDeathnotificationsByNotificationIdAck: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                notificationId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        notification: {
-                            /** Format: uuid */
-                            id: string;
-                            /** Format: uuid */
-                            board_id: string;
-                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
-                            state: "pending" | "sent" | "acked" | "sending" | "reconciling" | "failed" | "blocked_no_baa" | "not_applicable";
-                            /** Format: date-time */
-                            created_at: string;
-                            acked_at: string | null;
-                            acked_by: string | null;
-                            can_ack: boolean;
-                        };
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
     getApiV1MessagingDeliveriesByIdTarget: {
         parameters: {
             query?: never;
@@ -82100,7 +82616,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -82475,7 +82991,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -85297,7 +85813,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -86820,7 +87336,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -86987,7 +87503,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -87361,7 +87877,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -87823,7 +88339,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
             };
             path: {
@@ -88568,188 +89084,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1OpsClaimmdErasByInboxIdRecoverydryrun: {
-        parameters: {
-            query: {
-                usage: "test" | "production";
-                stage: "capture" | "ownership_resolution" | "m25_delivery";
-            };
-            header?: never;
-            path: {
-                inboxId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        inboxId: string;
-                        usage: "test" | "production";
-                        stage: "capture" | "ownership_resolution" | "m25_delivery";
-                        currentState: string;
-                        currentVersion: number;
-                        sourceDigestPresent: boolean;
-                        tenantAttribution: "verified" | "unattributed";
-                        leaseActive: boolean;
-                        priorRecoveryAttempts: number;
-                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
-                        blockers: string[];
-                        financialEffects: {
-                            /** @constant */
-                            status: "not_evaluated";
-                            /** @constant */
-                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
-                        };
-                        simulation: {
-                            available: boolean;
-                            /** @constant */
-                            mutatesSource: false;
-                            /** @constant */
-                            callsVendor: false;
-                            /** @constant */
-                            authorizesExecution: false;
-                        };
-                        /** Format: date-time */
-                        assessedAt: string;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1OpsClaimmdErasByInboxIdRecoverypreflight: {
-        parameters: {
-            query: {
-                usage: "test" | "production";
-                stage: "capture" | "ownership_resolution" | "m25_delivery";
-            };
-            header?: never;
-            path: {
-                inboxId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        inboxId: string;
-                        usage: "test" | "production";
-                        stage: "capture" | "ownership_resolution" | "m25_delivery";
-                        currentState: string;
-                        currentVersion: number;
-                        sourceDigestPresent: boolean;
-                        tenantAttribution: "verified" | "unattributed";
-                        leaseActive: boolean;
-                        priorRecoveryAttempts: number;
-                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
-                        blockers: string[];
-                        financialEffects: {
-                            /** @constant */
-                            status: "not_evaluated";
-                            /** @constant */
-                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
-                        };
-                        simulation: {
-                            available: boolean;
-                            /** @constant */
-                            mutatesSource: false;
-                            /** @constant */
-                            callsVendor: false;
-                            /** @constant */
-                            authorizesExecution: false;
-                        };
-                        /** Format: date-time */
-                        assessedAt: string;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1OpsClaimmdObservability: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @constant */
-                        scope: "central_claimmd_account";
-                        /** @constant */
-                        accountReferenceExposed: false;
-                        usage: "test" | "production";
-                        responses: {
-                            cursor: {
-                                present: boolean;
-                                /** @constant */
-                                valueExposed: false;
-                            };
-                            lastAttemptAt: string | null;
-                            lastSuccessAt: string | null;
-                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
-                            backlog: {
-                                [key: string]: number;
-                            };
-                        };
-                        eras: {
-                            cursor: {
-                                present: boolean;
-                                /** @constant */
-                                valueExposed: false;
-                            };
-                            lastAttemptAt: string | null;
-                            lastSuccessAt: string | null;
-                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
-                            backlog: {
-                                [key: string]: number;
-                            };
-                        };
-                        requestBudget: {
-                            /** @constant */
-                            status: "unavailable";
-                            /** @constant */
-                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
-                        };
-                        workerHeartbeat: {
-                            /** @constant */
-                            status: "unavailable";
-                            /** @constant */
-                            reasonCode: "NO_DURABLE_WORKER_HEARTBEAT";
-                        };
-                        /** Format: date-time */
-                        sampledAt: string;
-                    };
-                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -92378,48 +92712,6 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
-    postApiV1PatientsByIdPayersByPayerRowIdVoid: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-                payerRowId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    reason: "wrong_payer" | "wrong_coverage_kind" | "wrong_subscriber_id" | "wrong_effective_date" | "duplicate_entry";
-                };
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        id: string;
-                        payerId: string;
-                        rank: number;
-                        coverageKind: string;
-                        subscriberId: string;
-                        groupNumber: string | null;
-                        binPcn: string | null;
-                        current: boolean;
-                        effectiveFrom: string;
-                        effectiveTo: string | null;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
     getApiV1PatientsByIdPrivacy: {
         parameters: {
             query?: never;
@@ -94824,7 +95116,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -94905,6 +95197,8 @@ export interface operations {
                     /** Format: email */
                     breachNotificationContactEmail?: string;
                     breachNotificationContactPhone?: string;
+                    /** Format: uuid */
+                    documentId?: string;
                 };
             };
         };
@@ -95351,6 +95645,130 @@ export interface operations {
                     "application/json": {
                         status: "created" | "active" | "suspended" | "closed";
                         sessionsRevoked: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformPricingPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformPricingPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    planId: string;
+                    staffCount: number;
+                    averageDailyCensus: number;
+                    expectedNetCollectionsCents: number;
+                    billingServiceMode: "none" | "billing_software" | "managed_billing";
+                    /** Format: date */
+                    plannedGoLiveOn?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        plan: {
+                            /** Format: uuid */
+                            id: string;
+                            slug: string;
+                            name: string;
+                            version: number;
+                            status: "draft" | "published" | "archived";
+                            currencyCode: string;
+                        };
+                        inputs: {
+                            staffCount: number;
+                            averageDailyCensus: number;
+                            expectedNetCollectionsCents: number;
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            /** Format: date */
+                            plannedGoLiveOn?: string;
+                        };
+                        platformFee: {
+                            perUserSubtotalCents: number;
+                            bandFeeCents: number;
+                            bandMinAdc: number;
+                            bandMaxAdc: number | null;
+                            feeCents: number;
+                            basis: "per_user" | "census_band";
+                        };
+                        billing: {
+                            mode: "none" | "billing_software" | "managed_billing";
+                            bps: number;
+                            feeCents: number;
+                        };
+                        minimumAdjustmentCents: number;
+                        monthlyCents: number;
+                        implementationFeeCents: number;
+                        firstMonthCents: number;
+                        firstMonthDaysLive: number | null;
+                        firstMonthDaysInPeriod: number | null;
+                        contractTermMonths: number;
                     };
                 };
             };
@@ -95834,6 +96252,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantslugsBySlugAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        valid: boolean;
+                        available: boolean;
+                        reason?: "format" | "punycode" | "reserved" | "taken";
+                        url?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformTenants: {
         parameters: {
             query?: {
@@ -95978,6 +96426,40 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1PlatformTenantsByOrgSlugComplianceofficer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugDekrotate: {
         parameters: {
             query?: never;
@@ -96004,6 +96486,188 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         jobId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugGoliveApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugGoliveRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
                     };
                 };
             };
@@ -96039,6 +96703,284 @@ export interface operations {
                         dekLastRotatedAt: string | null;
                         destroyedAt: string | null;
                         destructionCertificateId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            name: string;
+                            addressLine1: string;
+                            addressLine2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                            phone: string | null;
+                            fax: string | null;
+                            timezone: string;
+                            status: "created" | "active" | "suspended" | "closed";
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugLocations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    name: string;
+                    addressLine1: string;
+                    addressLine2?: string;
+                    city: string;
+                    state: string;
+                    postalCode: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugLocationsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    addressLine1?: string;
+                    addressLine2?: string;
+                    city?: string;
+                    state?: string;
+                    postalCode?: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone?: string;
+                    status?: "created" | "active" | "suspended" | "closed";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugMaccredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            credentialId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            macJurisdiction: string;
+                            submitterId: string;
+                            tradingPartnerId: string;
+                            clientId: string;
+                            /** @description The secret itself is never projected. */
+                            hasSecret: boolean;
+                            baaRecordRef: string | null;
+                            credentialExpiresAt: string | null;
+                            lastSandboxTestAt: string | null;
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugMaccredentials: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The credential's current integer version; required to update an existing credential, absent on a first create. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422. */
+                    macJurisdiction: string;
+                    submitterId: string;
+                    tradingPartnerId: string;
+                    clientId: string;
+                    /** @description Write-only: sealed under the tenant's own key and never returned. */
+                    clientSecret: string;
+                    baaRecordRef?: string;
+                    /** Format: date-time */
+                    credentialExpiresAt?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        /** @description The secret itself is never projected. */
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
                     };
                 };
             };
@@ -96101,19 +97043,232 @@ export interface operations {
                         tenantAccountId: string;
                         orgSlug: string;
                         tenantStatus: string;
-                        currentStep: string | null;
-                        tasks: {
-                            id: string;
-                            templateKey: string;
-                            status: string;
-                            isCanonical: boolean;
-                            canonicalOrder: number | null;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
                             dueAt: string | null;
                             startedAt: string | null;
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
                         }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                        orgProfile: {
+                            displayName: string;
+                            orgTimezone: string;
+                        } | null;
+                        currentStep: string | null;
+                        tasks: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdAttest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    evidenceNote: string;
+                    evidenceRef?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -96146,16 +97301,261 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
-                        status: string;
-                        isCanonical: boolean;
-                        canonicalOrder: number | null;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugOrgprofile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    orgTimezone?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        displayName: string;
+                        orgTimezone: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugProviderentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            ccn: string;
+                            legalName: string;
+                            doingBusinessAs: string | null;
+                            fiscalIntermediary: string | null;
+                            npi: string;
+                            /** @description MMDD */
+                            fiscalYearEnd: string;
+                            iqiesFacilityId: string | null;
+                            billingAddress: {
+                                line1: string;
+                                line2: string | null;
+                                city: string;
+                                state: string;
+                                postalCode: string;
+                            } | null;
+                            status: "created" | "active" | "suspended" | "closed";
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugProviderentities: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description CMS Certification Number. */
+                    ccn: string;
+                    /** @description 10 digits with a correct NPI check digit. */
+                    npi: string;
+                    legalName: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    /** @description 9-digit EIN (12-3456789). Write-once: enveloped by the KMS cipher, never returned. 503 TAX_ID_CIPHER_UNBOUND until that cipher is bound. */
+                    taxId: string;
+                    /** @description MMDD */
+                    fiscalYearEnd: string;
+                    iqiesFacilityId?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugProviderentitiesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName?: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    iqiesFacilityId?: string;
+                    /** @description The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address. */
+                    billingAddress?: {
+                        line1: string;
+                        line2?: string;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                    };
+                    status?: "created" | "active" | "suspended" | "closed";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
                     };
                 };
             };
@@ -96258,6 +97658,105 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            serviceState: string;
+                            channel: string;
+                            mcoId: string | null;
+                            tradingPartnerId: string;
+                            clientId: string | null;
+                            sftpHost: string | null;
+                            portalUrl: string | null;
+                            activeFrom: string;
+                            activeTo: string | null;
+                            lastSandboxTestAt: string | null;
+                            lastSandboxTestResult: string | null;
+                            version: number;
+                            /** @description The secret itself is never projected. */
+                            hasClientSecret: boolean;
+                            /** @description The key itself is never projected. */
+                            hasSftpKey: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description Two-letter state code. */
+                    serviceState: string;
+                    channel: "direct_mmis" | "cco_clearinghouse" | "sftp" | "portal" | "state_proprietary";
+                    /** Format: uuid */
+                    mcoId?: string;
+                    tradingPartnerId: string;
+                    clientId?: string;
+                    clientSecret?: string;
+                    sftpHost?: string;
+                    sftpUser?: string;
+                    sftpKey?: string;
+                    portalUrl?: string;
+                    /** Format: date */
+                    activeFrom: string;
+                    /** Format: date */
+                    activeTo?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugStatus: {
         parameters: {
             query?: never;
@@ -96289,6 +97788,273 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         status: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contract: {
+                            /** Format: uuid */
+                            subscriptionId: string;
+                            plan: {
+                                /** Format: uuid */
+                                id: string;
+                                slug: string;
+                                name: string;
+                                version: number;
+                                currencyCode: string;
+                            };
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            billingBps: number;
+                            pendingBillingServiceMode: {
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                /** Format: date */
+                                effectiveOn: string;
+                            } | null;
+                            /** Format: date */
+                            contractStartOn: string;
+                            contractTermMonths: number;
+                            /** Format: date */
+                            contractEndsOn: string;
+                            perUserPriceCents: number;
+                            bands: {
+                                minAdc: number;
+                                maxAdc: number | null;
+                                monthlyFeeCents: number;
+                            }[];
+                            billingSoftwareBps: number;
+                            managedBillingBps: number;
+                            implementationFeeCents: number;
+                            minimumMonthlyCents: number | null;
+                            /** Format: uuid */
+                            signedByMembershipId: string;
+                            signedReason: string;
+                            orderFormRef: string | null;
+                        } | null;
+                        statements: {
+                            /** Format: uuid */
+                            id: string;
+                            periodYearMonth: string;
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            status: "draft" | "final";
+                            currencyCode: string;
+                            inputs: {
+                                staffCount: number;
+                                staffCountBasis: "identity_filtered" | "ledger_unfiltered";
+                                averageDailyCensus: number;
+                                adcDaysObserved: number;
+                                adcDaysInPeriod: number;
+                                daysLive: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                netCollectionsCents: number;
+                                netCollectionsRemittanceCount: number;
+                                netCollectionsPendingCount: number;
+                            };
+                            terms: {
+                                perUserPriceCents: number;
+                                bandMinAdc: number;
+                                bandFeeCents: number;
+                                billingBps: number;
+                                minimumMonthlyCents: number | null;
+                            };
+                            platformFee: {
+                                perUserSubtotalCents: number;
+                                bandFeeCents: number;
+                                feeCents: number;
+                                basis: "per_user" | "census_band";
+                            };
+                            billingFeeCents: number;
+                            priorPeriodLines: {
+                                sourceYearMonth: string;
+                                netCollectionsCents: number;
+                                remittanceCount: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                billingBps: number;
+                                feeCents: number;
+                            }[];
+                            priorPeriodFeeCents: number;
+                            oneTimeFeeCents: number;
+                            minimumAdjustmentCents: number;
+                            totalCents: number;
+                            needsReview: boolean;
+                            /** Format: date-time */
+                            computedAt: string;
+                            finalizedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugSubscription: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    planSlug: string;
+                    billingServiceMode: "none" | "billing_software" | "managed_billing";
+                    orderFormRef?: string | null;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contract: {
+                            /** Format: uuid */
+                            subscriptionId: string;
+                            plan: {
+                                /** Format: uuid */
+                                id: string;
+                                slug: string;
+                                name: string;
+                                version: number;
+                                currencyCode: string;
+                            };
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            billingBps: number;
+                            pendingBillingServiceMode: {
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                /** Format: date */
+                                effectiveOn: string;
+                            } | null;
+                            /** Format: date */
+                            contractStartOn: string;
+                            contractTermMonths: number;
+                            /** Format: date */
+                            contractEndsOn: string;
+                            perUserPriceCents: number;
+                            bands: {
+                                minAdc: number;
+                                maxAdc: number | null;
+                                monthlyFeeCents: number;
+                            }[];
+                            billingSoftwareBps: number;
+                            managedBillingBps: number;
+                            implementationFeeCents: number;
+                            minimumMonthlyCents: number | null;
+                            /** Format: uuid */
+                            signedByMembershipId: string;
+                            signedReason: string;
+                            orderFormRef: string | null;
+                        };
+                        resumed: boolean;
+                        planContractStep: {
+                            status: "settled" | "already_settled" | "pending";
+                            reason?: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    billingServiceMode: "none" | "billing_software" | "managed_billing";
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        plan: {
+                            /** Format: uuid */
+                            id: string;
+                            slug: string;
+                            name: string;
+                            version: number;
+                            currencyCode: string;
+                        };
+                        billingServiceMode: "none" | "billing_software" | "managed_billing";
+                        billingBps: number;
+                        pendingBillingServiceMode: {
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            /** Format: date */
+                            effectiveOn: string;
+                        } | null;
+                        /** Format: date */
+                        contractStartOn: string;
+                        contractTermMonths: number;
+                        /** Format: date */
+                        contractEndsOn: string;
+                        perUserPriceCents: number;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number;
+                        managedBillingBps: number;
+                        implementationFeeCents: number;
+                        minimumMonthlyCents: number | null;
+                        /** Format: uuid */
+                        signedByMembershipId: string;
+                        signedReason: string;
+                        orderFormRef: string | null;
                     };
                 };
             };
@@ -103381,7 +105147,6 @@ export interface operations {
         parameters: {
             query?: {
                 providerEntityId?: string;
-                locationId?: string;
                 state?: string;
                 payer?: string;
                 fromDate?: string;
@@ -103467,7 +105232,6 @@ export interface operations {
                         eraId: string;
                         fileIndex: number;
                         transactionSetControlNumber: string;
-                        sourceDigest: string;
                         state: string;
                         holdReason: string | null;
                         possibleDuplicate: boolean;
@@ -103533,17 +105297,6 @@ export interface operations {
                             reason: string | null;
                             reference: string | null;
                             amount: number | null;
-                            providerIdentifierMasked: string | null;
-                            fiscalPeriod: string | null;
-                            segmentPosition: number | null;
-                            occurrence: number | null;
-                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
-                            /** @constant */
-                            historicalReference: "not_verified";
-                            /** @constant */
-                            policyStatus: "not_configured";
-                            /** @constant */
-                            postingEligible: false;
                         }[];
                         claimOutcomes: {
                             claimId: string | null;
@@ -103811,7 +105564,8 @@ export interface operations {
                             submittedAt: string;
                             supportingEvidence: string[];
                             selectable: boolean;
-                            submittedLines: "available" | "unavailable";
+                            /** @constant */
+                            submittedLines: "unavailable";
                         }[];
                         /** @constant */
                         postingAuthorized: false;
@@ -103891,7 +105645,6 @@ export interface operations {
                         reason: string;
                         adviceId: string | null;
                         remittanceLineId: string | null;
-                        remittanceLineIds: string[];
                     }[];
                 };
             };
@@ -103926,60 +105679,6 @@ export interface operations {
                         providerEntityId: string;
                         payer: string | null;
                         paymentCents: number | null;
-                        billedCents: number | null;
-                        unresolvedCents: number | null;
-                        providerAdjustments: {
-                            sourceDigest: string;
-                            providerIdentifierMasked: string | null;
-                            fiscalPeriod: string | null;
-                            segmentPosition: number | null;
-                            occurrence: number | null;
-                            reason: string | null;
-                            reference: string | null;
-                            amountCents: number | null;
-                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
-                            /** @constant */
-                            historicalReference: "not_verified";
-                            policy: {
-                                /** @constant */
-                                status: "not_configured";
-                                version: null;
-                            };
-                            /** @constant */
-                            action: "none";
-                        }[];
-                        claims: {
-                            claimIndex: number;
-                            billingModule: "M23" | "M41" | null;
-                            patientControlNumber: string | null;
-                            payerIcn: string | null;
-                            claimId: string | null;
-                            payerId: string | null;
-                            submissionId: string | null;
-                            evidenceId: string | null;
-                            evidenceVersion: number;
-                            matching: "verified" | "human_confirmed_candidate" | "blocked";
-                            billedCents: number | null;
-                            paidCents: number | null;
-                            patientResponsibilityCents: number | null;
-                            adjustments: {
-                                /** @constant */
-                                scope: "claim";
-                                groupCode: "CO" | "PR" | "OA" | "PI" | "CR" | "unknown";
-                                reasonCode: string | null;
-                                amountCents: number | null;
-                                responsibility: "provider_reported" | "patient_reported" | "other_unallocated" | "payer_initiated_reported" | "correction_or_reversal_reported" | "unsupported";
-                                classification: "contractual_obligation_reported" | "patient_responsibility_reported" | "other_adjustment_unresolved" | "payer_initiated_reduction_reported" | "correction_or_reversal_reported" | "unsupported";
-                                accountingDisposition: "unresolved_review" | "policy_required";
-                                policyVersion: null;
-                                m25Action: "flagged_review" | "not_authorized";
-                            }[];
-                            unresolvedCents: number | null;
-                            financialStatus: "fully_paid" | "partial_paid" | "unsupported";
-                            duplicate: "none" | "potential";
-                            eligible: boolean;
-                            blockers: string[];
-                        }[];
                         claimId: string | null;
                         eligible: boolean;
                         status: "eligible" | "blocked" | "already_posted";
@@ -104062,60 +105761,7 @@ export interface operations {
                         outcome: "approved" | "already_approved" | "posted" | "already_posted";
                         adviceId: string | null;
                         remittanceLineId: string | null;
-                        remittanceLineIds: string[];
                         paymentCents: number;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1RemittanceClaimmdoperationalhealth: {
-        parameters: {
-            query: {
-                providerEntityId: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @constant */
-                        scope: "tenant_attributed_m25_stages";
-                        /** Format: uuid */
-                        providerEntityId: string;
-                        /** @constant */
-                        completeness: "exact_for_authorized_provider_stages";
-                        stageCount: number;
-                        states: {
-                            [key: string]: number;
-                        };
-                        exceptionCount: number;
-                        oldestExceptionAt: string | null;
-                        latestStageAt: string | null;
-                        centralCapture: {
-                            /** @constant */
-                            status: "restricted";
-                            /** @constant */
-                            reasonCode: "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE";
-                        };
-                        requestBudget: {
-                            /** @constant */
-                            status: "unavailable";
-                            /** @constant */
-                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
-                        };
-                        /** Format: date-time */
-                        sampledAt: string;
                     };
                 };
             };
@@ -104239,68 +105885,6 @@ export interface operations {
                     "application/json": {
                         id: string;
                         matchState: "posted" | "reversed" | "manual_matched";
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    getApiV1RemittanceRevenuecyclesummary: {
-        parameters: {
-            query: {
-                providerEntityId?: string;
-                fromDate: string;
-                toDate: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @constant */
-                        dateBasis: "era_received_at_utc";
-                        /** Format: date */
-                        fromDate: string;
-                        /** Format: date */
-                        toDate: string;
-                        providerEntityId: string | null;
-                        /** @constant */
-                        completeness: "exact_for_m25_remittance_advice";
-                        receivedAdviceCount: number;
-                        reportedAdviceCount: number;
-                        reportedEraPaymentCents: string;
-                        reportedClaimPaymentCents: string;
-                        fullyPostedClaimPaymentCents: string;
-                        postedClaimPaymentCents: string;
-                        fullyPostedAdviceCount: number;
-                        partialPostedAdviceCount: number;
-                        reportedAdjustmentsByGroup: {
-                            CO: string;
-                            CR: string;
-                            OA: string;
-                            PI: string;
-                            PR: string;
-                        };
-                        reportedPlbCents: string;
-                        unmatchedLineCount: number;
-                        latestReceivedAt: string | null;
-                        /** @constant */
-                        claimMdStagesIncluded: false;
-                        authoritativeAr: {
-                            /** @constant */
-                            status: "unavailable";
-                            /** @constant */
-                            reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER";
-                        };
                     };
                 };
             };
@@ -109737,6 +111321,116 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1SubscriptionPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contract: {
+                            /** Format: uuid */
+                            subscriptionId: string;
+                            plan: {
+                                /** Format: uuid */
+                                id: string;
+                                slug: string;
+                                name: string;
+                                version: number;
+                                currencyCode: string;
+                            };
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            billingBps: number;
+                            pendingBillingServiceMode: {
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                /** Format: date */
+                                effectiveOn: string;
+                            } | null;
+                            /** Format: date */
+                            contractStartOn: string;
+                            contractTermMonths: number;
+                            /** Format: date */
+                            contractEndsOn: string;
+                            perUserPriceCents: number;
+                            bands: {
+                                minAdc: number;
+                                maxAdc: number | null;
+                                monthlyFeeCents: number;
+                            }[];
+                            billingSoftwareBps: number;
+                            managedBillingBps: number;
+                            implementationFeeCents: number;
+                            minimumMonthlyCents: number | null;
+                        } | null;
+                        latestStatement: {
+                            /** Format: uuid */
+                            id: string;
+                            periodYearMonth: string;
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            status: "draft" | "final";
+                            currencyCode: string;
+                            inputs: {
+                                staffCount: number;
+                                staffCountBasis: "identity_filtered" | "ledger_unfiltered";
+                                averageDailyCensus: number;
+                                adcDaysObserved: number;
+                                adcDaysInPeriod: number;
+                                daysLive: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                netCollectionsCents: number;
+                                netCollectionsRemittanceCount: number;
+                                netCollectionsPendingCount: number;
+                            };
+                            terms: {
+                                perUserPriceCents: number;
+                                bandMinAdc: number;
+                                bandFeeCents: number;
+                                billingBps: number;
+                                minimumMonthlyCents: number | null;
+                            };
+                            platformFee: {
+                                perUserSubtotalCents: number;
+                                bandFeeCents: number;
+                                feeCents: number;
+                                basis: "per_user" | "census_band";
+                            };
+                            billingFeeCents: number;
+                            priorPeriodLines: {
+                                sourceYearMonth: string;
+                                netCollectionsCents: number;
+                                remittanceCount: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                billingBps: number;
+                                feeCents: number;
+                            }[];
+                            priorPeriodFeeCents: number;
+                            oneTimeFeeCents: number;
+                            minimumAdjustmentCents: number;
+                            totalCents: number;
+                            needsReview: boolean;
+                            /** Format: date-time */
+                            computedAt: string;
+                            finalizedAt: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1SubscriptionResume: {
         parameters: {
             query?: never;
@@ -113085,6 +114779,37 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1TenantComplianceofficer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1TenantDsarexportjobs: {
         parameters: {
             query?: {
@@ -113409,6 +115134,97 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1TenantGoliveAttest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1TenantOnboarding: {
         parameters: {
             query?: {
@@ -113428,20 +115244,170 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items: {
-                            id: string;
-                            templateKey: string;
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
                             status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
                             assignedToMembershipId: string | null;
                             dueAt: string | null;
                             startedAt: string | null;
                             completedAt: string | null;
                             blockerReason: string | null;
-                            /** Format: date-time */
-                            createdAt: string;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                        orgProfile: {
+                            displayName: string;
+                            orgTimezone: string;
+                        } | null;
+                        items: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantOnboardingByTaskIdAttest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    evidenceNote: string;
+                    evidenceRef?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -113473,16 +115439,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
                         status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
                         assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
-                        /** Format: date-time */
-                        createdAt: string;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -113505,6 +115493,8 @@ export interface operations {
                     completionEvidence?: {
                         [key: string]: unknown;
                     };
+                    evidenceNote?: string;
+                    evidenceRef?: string;
                 };
             };
         };
@@ -113516,16 +115506,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
                         status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
                         assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
-                        /** Format: date-time */
-                        createdAt: string;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantOnboardingByTaskIdReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -113555,16 +115630,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
                         status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
                         assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
-                        /** Format: date-time */
-                        createdAt: string;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1TenantOrgprofile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    orgTimezone?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        displayName: string;
+                        orgTimezone: string;
                     };
                 };
             };
@@ -118260,6 +120389,96 @@ export interface operations {
                         ratio: number | null;
                         status: "unavailable" | "green" | "yellow" | "red";
                         reason?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksClaimmdProduction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    UTCTime?: string;
+                    acct_number: string | number;
+                    remote_acct_number?: string;
+                    events: ({
+                        eventid: string | number;
+                        /** @description enroll | appeal | test (the list is not documented) */
+                        event_type: string;
+                        event_time?: string;
+                        event_data?: {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    })[];
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksClaimmdTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    UTCTime?: string;
+                    acct_number: string | number;
+                    remote_acct_number?: string;
+                    events: ({
+                        eventid: string | number;
+                        /** @description enroll | appeal | test (the list is not documented) */
+                        event_type: string;
+                        event_time?: string;
+                        event_data?: {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    })[];
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
                     };
                 };
             };

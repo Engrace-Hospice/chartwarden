@@ -32,11 +32,13 @@ import type {
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   BillableEncounterReader,
+  BillingServiceModeReader,
   BillingStatusProvider,
   CarePlanReader,
   CareTeamProvider,
   CaseloadProvider,
   CertificationReader,
+  ClaimsBillingEntitlementReader,
   ComfortKitDispatchProvider,
   CredentialReader,
   DeathDischargeReader,
@@ -89,6 +91,7 @@ import type {
   MedicationOrderProvider,
   MileagePayrollReader,
   MswRiskFactorReader,
+  NetCollectionsReader,
   NonCoveredItemsReader,
   OnCallProvider,
   OnboardingStatusProvider,
@@ -101,6 +104,7 @@ import type {
   PatientAllergyReader,
   PatientCaregiverReader,
   PatientCaregiverRosterReader,
+  PatientCensusReader,
   PatientCounterProvider,
   PatientCoverageReader,
   PatientHopeAdmissionPrefillReader,
@@ -309,6 +313,16 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
 export const patientPrivacyFlagReaderDenyStub: PatientPrivacyFlagReader = {
   roomingFactsFor() {
     throw new NotImplementedError("PatientPrivacyFlagReader");
+  },
+};
+
+/** M5 — ADR-0110 the active-patient census page. Throws: an unread census must never count as zero patients. */
+export const patientCensusReaderDenyStub: PatientCensusReader = {
+  activePatientIdsPage() {
+    throw new NotImplementedError("PatientCensusReader");
+  },
+  activePatientCount() {
+    throw new NotImplementedError("PatientCensusReader");
   },
 };
 
@@ -1937,6 +1951,34 @@ export const usageMeteringIngestDenyStub: UsageMeteringIngest = {
 export const patientCounterProviderDenyStub: PatientCounterProvider = {
   async activePatientCountForPeriod() {
     throw new NotImplementedError("PatientCounterProvider");
+  },
+};
+
+/** ADR-0110 — the claims-billing entitlement read. Throws until M35 registers the real reader: the route gate and
+ *  the worker hold treat a throw as "unavailable" and fail CLOSED (503 / hold), and boot refuses a non-`off`
+ *  CLAIMS_BILLING_ENFORCEMENT while this stub is still bound. */
+export const claimsBillingEntitlementReaderDenyStub: ClaimsBillingEntitlementReader = {
+  async entitlementForOrg() {
+    throw new NotImplementedError("ClaimsBillingEntitlementReader");
+  },
+};
+
+/** Slice 2 — the subscription's billing service mode. Throws: an unread mode must never read as `none` (a tenant that
+ *  bills in ChartWarden would look like one that bills outside it). */
+export const billingServiceModeReaderDenyStub: BillingServiceModeReader = {
+  async billingServiceModeForOrg() {
+    throw new NotImplementedError("BillingServiceModeReader");
+  },
+};
+
+/** Slice 2 (M25) — an org's net collections for a period. Throws: an unread meter must never read as zero collections
+ *  (a zero would price the billing service at nothing). */
+export const netCollectionsReaderDenyStub: NetCollectionsReader = {
+  async netCollectionsForPeriod() {
+    throw new NotImplementedError("NetCollectionsReader");
+  },
+  async netCollectionsByMonth() {
+    throw new NotImplementedError("NetCollectionsReader");
   },
 };
 

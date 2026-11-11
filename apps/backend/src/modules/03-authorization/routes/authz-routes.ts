@@ -1,13 +1,3 @@
-import type { AuditContext } from "@chartwarden/audit";
-import {
-  ORG_WIDE_SCOPE_ROLES,
-  allPermissionMirrorRows,
-  isSystemLocked,
-  isTenantRoleReserved,
-  requirePermission,
-  requireSession,
-  validateRoleGrant,
-} from "@chartwarden/auth";
 // apps/backend/src/modules/03-authorization/routes/authz-routes.ts — M3-T08 the Module 3
 // route inventory (M3 spec §4.3–4.4; the §6 meta-permission matrix; the §7.4–7.6 workflows).
 //
@@ -30,7 +20,17 @@ import {
 // Validation is deliberately ordered AFTER the §6 meta-permission preHandler and after each
 // route's existing existence lookup, so the §9.3 IDOR semantics are unchanged: an unauthorized
 // actor still sees 403 (never 422) and an authorized actor still sees 404 for an absent object.
-import type { PreHandler } from "@chartwarden/shared/route-kit";
+import type { AuditContext } from "@chartwarden/audit";
+import {
+  ORG_WIDE_SCOPE_ROLES,
+  allPermissionMirrorRows,
+  isSystemLocked,
+  isSystemManagedRoleKey,
+  isTenantRoleReserved,
+  requirePermission,
+  requireSession,
+  validateRoleGrant,
+} from "@chartwarden/auth";
 import {
   ChartWardenError,
   ForbiddenError,
@@ -78,6 +78,9 @@ import {
 } from "./authz-typebox";
 
 const DEFAULT_BREAK_GLASS_TTL_SEC = 4 * 3600; // §3.5 D1 — default +4h time-box.
+
+/** A guard wrapper so a @chartwarden/auth GuardHandler is a Fastify preHandler. */
+type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** Build the audit context for an M3 event from the request + scope. */
 function auditContextFor(request: FastifyRequest): AuditContext {
@@ -144,6 +147,16 @@ const orgWideKeyReserved = () =>
     422,
   );
 
+// Slice 2: `external_auditor` is the role M3's auditor grant creates in a tenant org (system_default), and a real auditor must always
+// land on THAT row. A tenant-written role under the same key is never system_default; the grant would find it by key and attach an
+// auditor to a tenant-editable role, and the staff meter would not treat it as the auditor exclusion.
+const systemManagedKeyReserved = () =>
+  new ChartWardenError(
+    "RESERVED_ROLE",
+    "this role key is created and managed by the system and cannot be created by a tenant",
+    422,
+  );
+
 export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRouteDeps): void {
   const breakGlassTtlSec = deps.breakGlassTtlSec ?? DEFAULT_BREAK_GLASS_TTL_SEC;
 
@@ -193,6 +206,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       // enrichment reader and the migration 0318 CHECK enforce the same rule below this route.
       if (isTenantRoleReserved(body)) throw reservedRole();
       if (ORG_WIDE_SCOPE_ROLES.includes(body.key)) throw orgWideKeyReserved();
+      if (isSystemManagedRoleKey(body.key)) throw systemManagedKeyReserved();
 
       await assertNoEscalation(request, organizationId, userId, permissionKeys);
 

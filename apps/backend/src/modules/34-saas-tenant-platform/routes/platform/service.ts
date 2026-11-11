@@ -13,7 +13,8 @@
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
-import { type CursorPage, PLATFORM_CURSOR_SCOPE, paginate } from "../keyset-page";
+import { assertExecutedBaaHasDocument } from "./baa-guards";
+import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (the thin worker-trigger seam the command routes inject) ─────────────────────────────
 
@@ -214,6 +215,8 @@ export interface CreateBaaRecordArgs {
   readonly expiresOn: string | null;
   readonly breachNotificationContactEmail: string | null;
   readonly breachNotificationContactPhone: string | null;
+  /** Required when `baaStatus` is `executed` (422 BAA_DOCUMENT_REQUIRED). */
+  readonly documentId: string | null;
 }
 export interface UpdateBaaRecordArgs {
   readonly baaStatus?: string;
@@ -289,6 +292,8 @@ export interface TenantPlatformRouteService {
     limit: number | undefined,
   ): Promise<CursorPage<TenantSummaryView>>;
   getTenantOverview(orgSlug: string): Promise<TenantOverview>;
+  /** True when an organization holds `slug` now or ever did (a retired slug is an alias and is never reused; ADR-0049 D3). */
+  isTenantSlugTaken(slug: string): Promise<boolean>;
   provisionTenant(
     actorMembershipId: string,
     args: ProvisionTenantArgs,
@@ -692,7 +697,10 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           )
           .map(toSummary),
       );
-      return paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      return paginate(rows, cursor, limit);
+    },
+    async isTenantSlugTaken(slug) {
+      return tenants.has(slug); // the slice has no retired-slug aliases; the Drizzle service reads them
     },
     async getTenantOverview(orgSlug) {
       const r = loadTenant(orgSlug);
@@ -838,7 +846,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((i) => (filter.status ? i.status === filter.status : true))
           .map((i) => ({ ...i, createdAt: i.issuedAt })),
       );
-      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...i }) => i) };
     },
     async issueInvitation(_actorUserId, args) {
@@ -872,7 +880,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     },
     async listOnboardingTemplates(cursor, limit) {
       const rows = desc([...templates.values()].map((t) => ({ ...t })));
-      return paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      return paginate(rows, cursor, limit);
     },
     async upsertOnboardingTemplate(_actorUserId, args) {
       const existing = templates.get(args.key);
@@ -898,14 +906,14 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((s) => (filter.status ? s.status === filter.status : true))
           .map((s) => ({ ...sessionView(s), createdAt: s.startedAt })),
       );
-      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...s }) => s) };
     },
     async listSessionEvents(sessionId, cursor, limit) {
       const s = sessions.get(sessionId);
       if (!s) throw new NotFoundError("support session");
       const rows = desc([...s.events].map((e) => ({ ...e, createdAt: e.occurredAt })));
-      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...e }) => e) };
     },
     async startSession(args) {
@@ -1005,7 +1013,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((i) => (filter.source ? i.source === filter.source : true))
           .map((i) => ({ ...i, createdAt: i.receivedAt })),
       );
-      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...i }) => i) };
     },
     async qualifyIntent(intentId, actorMembershipId, args) {
@@ -1063,10 +1071,11 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
           .map((b) => ({ ...b, createdAt: b.executedOn ?? b.effectiveOn ?? "0000-00-00" })),
       );
-      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...b }) => b) };
     },
     async createBaaRecord(_actorUserId, args) {
+      assertExecutedBaaHasDocument(args);
       // UNIQUE (tenant_account, addendum_version) — a duplicate is a 409 (the DB index enforces it in prod).
       for (const b of baaRecords.values()) {
         if (
@@ -1090,7 +1099,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         executedOn: args.executedOn,
         effectiveOn: args.effectiveOn,
         expiresOn: args.expiresOn,
-        documentId: null,
+        documentId: args.documentId,
         attestedAt: null,
       };
       baaRecords.set(id, view);
@@ -1107,6 +1116,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         expiresOn: args.expiresOn ?? b.expiresOn,
         documentId: args.documentId ?? b.documentId,
       };
+      assertExecutedBaaHasDocument(view);
       baaRecords.set(baaId, view);
       return view;
     },
@@ -1122,7 +1132,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((j) => (filter.held === undefined ? true : j.held === filter.held))
           .map((j) => ({ ...j, createdAt: j.requestedAt })),
       );
-      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const page = paginate(rows, cursor, limit);
       return {
         ...page,
         items: page.items.map(({ createdAt: _c, held, ...j }) => ({
@@ -1171,7 +1181,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((f) => (filter.flagKind ? f.flagKind === filter.flagKind : true))
           .map((f) => ({ ...f, createdAt: f.updatedAt })),
       );
-      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...f }) => f) };
     },
     async upsertFeatureFlag(_actorUserId, args) {

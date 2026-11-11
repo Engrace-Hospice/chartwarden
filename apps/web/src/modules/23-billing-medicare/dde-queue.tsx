@@ -7,6 +7,7 @@
 // never logged. 2026-09-25 redesign pattern (the admissions census + drawer); kit components and wx-* classes only.
 // The server evaluates every rule and is the only authorization point (ADR-0030).
 import {
+  ClaimsBillingNotice,
   CursorPagination,
   EmptyState,
   InlineAlert,
@@ -220,6 +221,7 @@ export function DdeQueue(): JSX.Element {
         </header>
 
         <BillingTabs />
+        <ClaimsBillingNotice />
         <DdeProviderStatus />
 
         <div className="wx-filter-panel">

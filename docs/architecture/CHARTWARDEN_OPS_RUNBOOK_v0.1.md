@@ -1619,9 +1619,14 @@ curl -sf -X POST $API/api/v1/invitations \
 #      The invitee accepts at POST /api/v1/invitations/accept, which creates the membership.
 #      NOTE: `org_admin` and `administrator` are two DISTINCT roles — see §7's role catalog.
 
-# 7. Configure tenant settings  →  NOT IMPLEMENTED as an operator route.
-#    `organization_setting` rows (e.g. `org_timezone`, `breakglass_cosign_required`) are written by
-#    the owning module's own admin surface or by psql. There is no generic settings CLI or route.
+# 7. Configure tenant settings. The onboarding wizard's org profile route sets the two settings every tenant needs
+#    on day one - the display name and the IANA time zone (`org_timezone`); both are validated (an unknown zone is a
+#    422 INVALID_ORG_TIMEZONE). The tenant's own org_admin has the equivalent PATCH /api/v1/tenant/org-profile.
+#    Other `organization_setting` rows (e.g. `breakglass_cosign_required`) are still written by the owning module's own
+#    admin surface or by psql; there is no generic settings CLI or route.
+curl -sf -X PATCH $API/api/v1/platform/tenants/<slug>/org-profile \
+  -H "authorization: Bearer $PLATFORM_OPS_TOKEN" -H "content-type: application/json" \
+  -d '{"orgTimezone":"America/Chicago","displayName":"<Display>"}'     # fresh step-up required
 
 # 8. Set initial feature flags — the M34 admin surface:
 curl -sf -X POST $API/api/v1/platform/feature-flags \
@@ -1633,7 +1638,20 @@ curl -sf -X POST $API/api/v1/platform/feature-flags \
 # Stripe customer + subscription
 
 # 10. Verify by signing in as admin user
-# 11. Confirm BAA executed and on file (compliance check)
+# 11. Confirm BAA executed and on file (compliance check). BAA register writes need a fresh step-up and the
+#     `platform_tenant_baa.write_platform` key (the read key alone no longer allows POST/PATCH /platform/baa-register).
+#     Going live is two-party and is NOT a status change: the wizard (GET /platform/tenants/<slug>/onboarding) walks the
+#     steps in order; when they are settled the tenant's compliance officer attests readiness
+#     (POST /api/v1/tenant/go-live/attest, step-up) and a platform operator approves
+#     (POST /api/v1/platform/tenants/<slug>/go-live/approve, step-up, written reason). Approval re-checks every activation
+#     guard at that moment and answers 409 ACTIVATION_GUARDS_FAILED listing what failed. The approver must be a different
+#     PERSON than the attester (409 GO_LIVE_SAME_PERSON: one user with a tenant membership and a platform one counts once),
+#     the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active
+#     compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE); a stale or expired attestation is withdrawn
+#     with POST .../go-live/revoke so the officer can attest again. Reassigning the compliance officer voids a pending
+#     attestation by itself; a platform assignment (PUT .../compliance-officer) needs a written reason and is audited with
+#     the operator. The daily onboarding sweep settles steps from facts and never activates a tenant;
+#     POST /platform/tenants/<slug>/status with toStatus=active from onboarding is refused 409 GO_LIVE_TWO_PARTY_REQUIRED.
 # 12. Tenant added to monitoring dashboards
 
 # 13. Customer success: kickoff call, training, data migration plan

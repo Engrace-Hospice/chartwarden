@@ -1,20 +1,3 @@
-import { createHash, randomUUID } from "node:crypto";
-import {
-  type ClaimDocument837i,
-  type ClaimState,
-  type ClaimTransitionEvent,
-  DDE_WATCHDOG_LOOKAHEAD_DAYS,
-  type EligibilityOutcome,
-  type NoticeState,
-  canTransition as canClaimTransition,
-  deriveControlNumber,
-  medicareReceiptDay,
-  noeMachine,
-  notrMachine,
-  parseControlNumber,
-  reduce as reduceClaim,
-  repositories,
-} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
@@ -47,7 +30,23 @@ import {
 // The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system sentinel (M4 NULLIFs it).
 //
 // AI-BLOCK (D13): no `@chartwarden/ai-platform` import anywhere here; a background job has no acting user.
-import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  type ClaimDocument837i,
+  type ClaimState,
+  type ClaimTransitionEvent,
+  DDE_WATCHDOG_LOOKAHEAD_DAYS,
+  type EligibilityOutcome,
+  type NoticeState,
+  canTransition as canClaimTransition,
+  deriveControlNumber,
+  medicareReceiptDay,
+  noeMachine,
+  notrMachine,
+  parseControlNumber,
+  reduce as reduceClaim,
+  repositories,
+} from "@chartwarden/billing";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   CH,
@@ -59,10 +58,15 @@ import {
   scopeKey,
 } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import {
+  type HoldableJob,
+  holdUnlessClaimsBillingEntitled,
+} from "../../../bootstrap/claims-billing-gate";
 import { shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import { reviewedClaimSourceIsStale } from "../services/claim-preview-integrity";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import { isVoidM23Claim } from "../void-claim";
 import { CLAIMMD_M23_PAYER_ROUTES_ENV, CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
 import {
   ClearinghouseTransportError,
@@ -296,15 +300,6 @@ export interface MacPortalPort {
     readonly locationId?: string | null;
     readonly noticeId?: string;
     readonly expectedRouteFingerprint?: string;
-    readonly submittedLines?: readonly {
-      readonly internalClaimLineId: string | null;
-      readonly revenueCode: string;
-      readonly procedureCode: string | null;
-      readonly serviceFrom: string;
-      readonly serviceTo: string;
-      readonly units: string;
-      readonly chargeCents: number;
-    }[];
   }): Promise<{
     readonly accepted: boolean;
     readonly generatedFileUri: string;
@@ -571,6 +566,9 @@ export interface M23WorkerDeps {
   /** Structured logger for failures that must not abort the cron (ids only, never PHI). */
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
 }
+
+/** The empty-string system sentinel `withOrgContext` carries — the M4 trigger NULLIFs it (no acting user). */
+const M23_WORKER_SYSTEM_USER_ID = "";
 
 // ── the bound port bundles (bind what we can; lazy throw-on-call for the genuinely-missing infra) ───────────
 
@@ -875,7 +873,6 @@ async function generateClaim837i(
   readonly stediJson?: StediClaimJson;
   readonly correlationId: string;
   readonly sourceFingerprint: string | null;
-  readonly submittedLines?: Awaited<ReturnType<typeof renderClaimForTransport>>["submittedLines"];
 }> {
   const transport = activeTransport(deps);
   if (!transport) {
@@ -1026,7 +1023,6 @@ export async function runClaimSubmitWithinLegacyTransaction(
     readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
     readonly sourceFingerprint: string | null;
-    readonly submittedLines?: Awaited<ReturnType<typeof generateClaim837i>>["submittedLines"];
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
@@ -1062,7 +1058,6 @@ export async function runClaimSubmitWithinLegacyTransaction(
       kind: "claim_837i",
       x12: generated.x12,
       stediJson: generated.stediJson,
-      submittedLines: generated.submittedLines,
       controlNumber: job.claimControlNumber,
       claimId: job.claimId,
       submissionId: job.submissionId,
@@ -1299,7 +1294,6 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
     readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
     readonly sourceFingerprint: string | null;
-    readonly submittedLines?: Awaited<ReturnType<typeof generateClaim837i>>["submittedLines"];
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
@@ -1340,7 +1334,6 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         kind: "claim_837i",
         x12: generated.x12,
         stediJson: generated.stediJson,
-        submittedLines: generated.submittedLines,
         controlNumber: claimControlNumber,
         claimId: job.claimId,
         submissionId: job.submissionId,
@@ -1608,7 +1601,6 @@ export async function runClaimSubmit(
       kind: "claim_837i",
       x12: prepared.generated.x12,
       stediJson: prepared.generated.stediJson,
-      submittedLines: prepared.generated.submittedLines,
       controlNumber: job.claimControlNumber,
       claimId: job.claimId,
       submissionId: job.submissionId,
@@ -2540,7 +2532,7 @@ async function applyAcks(
     try {
       await withOrgContext(
         deps.db,
-        { organizationId: ack.organizationId, userId: CONSUMER_USER_ID },
+        { organizationId: ack.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
         (txAny) => routeAck(txAny as unknown as BillingDb, deps, submissionId, ack),
       );
     } catch (err) {
@@ -2577,7 +2569,7 @@ async function runTransportAckPull(
       for (const t of page) {
         const submission = await withOrgContext(
           deps.db,
-          { organizationId, userId: CONSUMER_USER_ID },
+          { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
           (txAny) =>
             new ClaimSubmissionRepository(txAny as unknown as BillingDb).findLatestAttempt(
               t.providerEntityId,
@@ -2790,7 +2782,7 @@ async function queueDdeWorkIsolated(
   try {
     return await withOrgContext(
       deps.db,
-      { organizationId, userId: CONSUMER_USER_ID },
+      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
       async (txAny) => queueDdeWork(deps, txAny as unknown as BillingDb, organizationId, kind, now),
     );
   } catch (err) {
@@ -2838,63 +2830,67 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
-    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
-      const tx = txAny as unknown as BillingDb;
-      const noes = new NoeRepository(tx);
-      const outbox = outboxOf(deps);
-      const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
-      for (const noe of candidates) {
-        const days = daysToTarget(noe.windowTargetAt, now);
-        if (days < 0) {
-          await noticeWindowOf(deps).recordBreach({
-            tx,
-            kind: "noe",
-            noticeId: noe.id,
-            expectedVersion: noe.version,
-            breachedAt: now,
-          });
-          await outbox.publish(tx, {
-            eventName: "m23.noe.window_breached",
-            organizationId,
-            aggregateKind: "noe",
-            aggregateId: noe.id,
-            payload: {
-              noeId: noe.id,
-              admissionId: noe.admissionId,
-              breachedAt: now.toISOString(),
-            },
-          });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.noe.window_breached",
-            severity: "critical",
-            organizationId,
-            payload: { noeId: noe.id, admissionId: noe.admissionId },
-          });
-        } else if (days <= 2) {
-          await outbox.publish(tx, {
-            eventName: "m23.noe.window_warning",
-            organizationId,
-            aggregateKind: "noe",
-            aggregateId: noe.id,
-            payload: {
-              noeId: noe.id,
-              admissionId: noe.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.noe.window_warning",
-            severity: "warn",
-            organizationId,
-            payload: {
-              noeId: noe.id,
-              admissionId: noe.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+      async (txAny) => {
+        const tx = txAny as unknown as BillingDb;
+        const noes = new NoeRepository(tx);
+        const outbox = outboxOf(deps);
+        const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
+        for (const noe of candidates) {
+          const days = daysToTarget(noe.windowTargetAt, now);
+          if (days < 0) {
+            await noticeWindowOf(deps).recordBreach({
+              tx,
+              kind: "noe",
+              noticeId: noe.id,
+              expectedVersion: noe.version,
+              breachedAt: now,
+            });
+            await outbox.publish(tx, {
+              eventName: "m23.noe.window_breached",
+              organizationId,
+              aggregateKind: "noe",
+              aggregateId: noe.id,
+              payload: {
+                noeId: noe.id,
+                admissionId: noe.admissionId,
+                breachedAt: now.toISOString(),
+              },
+            });
+            await alertsOf(deps).dispatch({
+              alertCode: "m23.noe.window_breached",
+              severity: "critical",
+              organizationId,
+              payload: { noeId: noe.id, admissionId: noe.admissionId },
+            });
+          } else if (days <= 2) {
+            await outbox.publish(tx, {
+              eventName: "m23.noe.window_warning",
+              organizationId,
+              aggregateKind: "noe",
+              aggregateId: noe.id,
+              payload: {
+                noeId: noe.id,
+                admissionId: noe.admissionId,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+              },
+            });
+            await alertsOf(deps).dispatch({
+              alertCode: "m23.noe.window_warning",
+              severity: "warn",
+              organizationId,
+              payload: {
+                noeId: noe.id,
+                admissionId: noe.admissionId,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+              },
+            });
+          }
         }
-      }
-    });
+      },
+    );
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
     ddeFailures.push({
       organizationId,
@@ -2912,63 +2908,67 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
-    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
-      const tx = txAny as unknown as BillingDb;
-      const notrs = new NotrRepository(tx);
-      const outbox = outboxOf(deps);
-      const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
-      for (const notr of candidates) {
-        const days = daysToTarget(notr.windowTargetAt, now);
-        if (days < 0) {
-          await noticeWindowOf(deps).recordBreach({
-            tx,
-            kind: "notr",
-            noticeId: notr.id,
-            expectedVersion: notr.version,
-            breachedAt: now,
-          });
-          await outbox.publish(tx, {
-            eventName: "m23.notr.window_breached",
-            organizationId,
-            aggregateKind: "notr",
-            aggregateId: notr.id,
-            payload: {
-              notrId: notr.id,
-              admissionId: notr.admissionId,
-              breachedAt: now.toISOString(),
-            },
-          });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.notr.window_breached",
-            severity: "critical",
-            organizationId,
-            payload: { notrId: notr.id },
-          });
-        } else if (days <= 2) {
-          await outbox.publish(tx, {
-            eventName: "m23.notr.window_warning",
-            organizationId,
-            aggregateKind: "notr",
-            aggregateId: notr.id,
-            payload: {
-              notrId: notr.id,
-              admissionId: notr.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.notr.window_warning",
-            severity: "warn",
-            organizationId,
-            payload: {
-              notrId: notr.id,
-              admissionId: notr.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+      async (txAny) => {
+        const tx = txAny as unknown as BillingDb;
+        const notrs = new NotrRepository(tx);
+        const outbox = outboxOf(deps);
+        const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
+        for (const notr of candidates) {
+          const days = daysToTarget(notr.windowTargetAt, now);
+          if (days < 0) {
+            await noticeWindowOf(deps).recordBreach({
+              tx,
+              kind: "notr",
+              noticeId: notr.id,
+              expectedVersion: notr.version,
+              breachedAt: now,
+            });
+            await outbox.publish(tx, {
+              eventName: "m23.notr.window_breached",
+              organizationId,
+              aggregateKind: "notr",
+              aggregateId: notr.id,
+              payload: {
+                notrId: notr.id,
+                admissionId: notr.admissionId,
+                breachedAt: now.toISOString(),
+              },
+            });
+            await alertsOf(deps).dispatch({
+              alertCode: "m23.notr.window_breached",
+              severity: "critical",
+              organizationId,
+              payload: { notrId: notr.id },
+            });
+          } else if (days <= 2) {
+            await outbox.publish(tx, {
+              eventName: "m23.notr.window_warning",
+              organizationId,
+              aggregateKind: "notr",
+              aggregateId: notr.id,
+              payload: {
+                notrId: notr.id,
+                admissionId: notr.admissionId,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+              },
+            });
+            await alertsOf(deps).dispatch({
+              alertCode: "m23.notr.window_warning",
+              severity: "warn",
+              organizationId,
+              payload: {
+                notrId: notr.id,
+                admissionId: notr.admissionId,
+                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+              },
+            });
+          }
         }
-      }
-    });
+      },
+    );
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
     ddeFailures.push({
       organizationId,
@@ -2988,35 +2988,39 @@ export async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<voi
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   for (const { organizationId } of orgs) {
-    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
-      const tx = txAny as unknown as BillingDb;
-      const checks = new EligibilityCheckRepository(tx);
-      const outbox = outboxOf(deps);
-      const stale = await checks.listStaleForOrg(organizationId, now);
-      for (const check of stale) {
-        // The table is append-only: an older stale row is superseded by a fresher check, and a patient
-        // whose LATEST check is current is not expired — only the latest row decides (and it is unique
-        // per patient, so no further de-duplication is needed).
-        const latest = await checks.findLatestForPatient(organizationId, check.patientId);
-        if (latest && latest.id !== check.id) continue;
-        await outbox.publish(tx, {
-          eventName: "m23.eligibility.expired",
-          organizationId,
-          aggregateKind: "patient",
-          aggregateId: check.patientId,
-          payload: {
-            patientId: check.patientId,
-            lastCheckedAt: check.checkedAt.toISOString(),
-          },
-        });
-        await alertsOf(deps).dispatch({
-          alertCode: "m23.eligibility.expired",
-          severity: "warn",
-          organizationId,
-          payload: { patientId: check.patientId },
-        });
-      }
-    });
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+      async (txAny) => {
+        const tx = txAny as unknown as BillingDb;
+        const checks = new EligibilityCheckRepository(tx);
+        const outbox = outboxOf(deps);
+        const stale = await checks.listStaleForOrg(organizationId, now);
+        for (const check of stale) {
+          // The table is append-only: an older stale row is superseded by a fresher check, and a patient
+          // whose LATEST check is current is not expired — only the latest row decides (and it is unique
+          // per patient, so no further de-duplication is needed).
+          const latest = await checks.findLatestForPatient(organizationId, check.patientId);
+          if (latest && latest.id !== check.id) continue;
+          await outbox.publish(tx, {
+            eventName: "m23.eligibility.expired",
+            organizationId,
+            aggregateKind: "patient",
+            aggregateId: check.patientId,
+            payload: {
+              patientId: check.patientId,
+              lastCheckedAt: check.checkedAt.toISOString(),
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.eligibility.expired",
+            severity: "warn",
+            organizationId,
+            payload: { patientId: check.patientId },
+          });
+        }
+      },
+    );
   }
 }
 
@@ -3132,97 +3136,35 @@ export async function runMacPortalHealth(
 // ── live worker construction (the M27 m27-jobs.ts template) ────────────────────────────────────────────────
 
 /**
- * Construct one BullMQ `Worker` per §4.8 WORK queue. Domain workers open the per-job `withOrgContext(orgId)` RLS
- * envelope here; claim submit/retry workers use their own short prepare/finalize scopes so no transaction spans
- * external transport. Returns the workers so the composition root can `close()` them
- * on shutdown — the caller owns the lifecycle; nothing here runs at import (constructing a Worker opens the
- * Valkey connection, which must happen only in production wiring, never in tests).
+ * ADR-0110 D7 — the queues that START new claims-billing work: a job for an org without the add-on is HELD (moved back
+ * to delayed, no attempt spent, no DLQ), never failed. NOE / NOTR / transfer-notice submission, acknowledgment pulls,
+ * validation and revalidation are deliberately absent (CMS deadlines; finish in-flight work).
  */
-export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
-  const { connection } = deps;
-  const orgScoped = <D extends { organizationId: string }>(
-    queue: string,
-    concurrency: number,
-    run: (tx: BillingDb, deps: M23WorkerDeps, data: D) => Promise<void>,
-  ): Worker =>
-    new Worker(
-      queue,
-      async (job) => {
-        const data = job.data as D;
-        if (!data.organizationId) {
-          throw new Error(
-            `M23 worker ${queue}: job.data.organizationId missing (the JobEnqueuePort must enrich it)`,
-          );
-        }
-        return withOrgContext(
-          deps.db,
-          {
-            organizationId: data.organizationId,
-            userId: CONSUMER_USER_ID,
-          },
-          (tx) => run(tx as unknown as BillingDb, deps, data),
-        );
-      },
-      { connection, concurrency },
-    );
-  const submissionScoped = <D extends { organizationId: string }>(
-    queue: string,
-    concurrency: number,
-    run: (tx: BillingDb, deps: M23WorkerDeps, data: D) => Promise<void>,
-  ): Worker =>
-    new Worker(
-      queue,
-      async (job) => {
-        const data = job.data as D;
-        if (!data.organizationId) throw new Error(`M23 worker ${queue}: organizationId missing`);
-        // Submission processors own short prepare/finalize tenant transactions. Never wrap transport in one.
-        return run(deps.db, deps, data);
-      },
-      { connection, concurrency },
-    );
+export const M23_CLAIMS_BILLING_GATED_QUEUES: ReadonlySet<string> = new Set([
+  M23_QUEUES.claimSubmit,
+  M23_QUEUES.claimSubmitRetry,
+  M23_QUEUES.eligibilityRefresh,
+]);
 
-  return [
-    submissionScoped<ClaimSubmitJob>(
-      M23_QUEUES.claimSubmit,
-      M23_QUEUE_PARAMS.claimSubmit.concurrency,
-      runClaimSubmit,
-    ),
-    submissionScoped<ClaimSubmitRetryJob>(
-      M23_QUEUES.claimSubmitRetry,
-      M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
-      runClaimSubmitRetry,
-    ),
-    orgScoped<NoeSubmitJob>(
-      M23_QUEUES.noeSubmit,
-      M23_QUEUE_PARAMS.noeSubmit.concurrency,
-      runNoeSubmit,
-    ),
-    orgScoped<NotrSubmitJob>(
-      M23_QUEUES.notrSubmit,
-      M23_QUEUE_PARAMS.notrSubmit.concurrency,
-      runNotrSubmit,
-    ),
-    orgScoped<TransferNoticeSubmitJob>(
-      M23_QUEUES.transferNoticeSubmit,
-      M23_QUEUE_PARAMS.transferNoticeSubmit.concurrency,
-      runTransferNoticeSubmitJob,
-    ),
-    orgScoped<EligibilityRefreshJob>(
-      M23_QUEUES.eligibilityRefresh,
-      M23_QUEUE_PARAMS.eligibilityRefresh.concurrency,
-      runEligibilityRefresh,
-    ),
-    orgScoped<ValidationRunJob>(
-      M23_QUEUES.validationRun,
-      M23_QUEUE_PARAMS.validationRun.concurrency,
-      runValidationRun,
-    ),
-    orgScoped<RevalidateConsumerJob>(
-      M23_QUEUES.revalidateConsumer,
-      M23_QUEUE_PARAMS.revalidateConsumer.concurrency,
-      runRevalidateConsumer,
-    ),
-  ];
+/**
+ * Hold a gated queue's job for an org without the add-on — unless it submits a VOID claim (ADR-0110: voids stay
+ * available), read from the stored claim under the job's org. A failed void lookup holds (fail closed).
+ */
+async function holdNewClaimsWork(
+  deps: Pick<M23WorkerDeps, "db">,
+  job: HoldableJob,
+  token: string | undefined,
+  queue: string,
+  data: { readonly organizationId: string; readonly claimId?: unknown },
+): Promise<void> {
+  if (!M23_CLAIMS_BILLING_GATED_QUEUES.has(queue)) return;
+  const { organizationId, claimId } = data;
+  await holdUnlessClaimsBillingEntitled(job, token, organizationId, queue, {
+    exempt:
+      typeof claimId === "string"
+        ? () => isVoidM23Claim(deps.db, organizationId, claimId)
+        : undefined,
+  });
 }
 
 /**
@@ -3240,12 +3182,13 @@ export function registerM23DomainWorkers(deps: M23WorkerDeps): Worker[] {
   ): Worker =>
     new Worker(
       queue,
-      async (job) => {
+      async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        await holdNewClaimsWork(deps, job, token, queue, data);
         await withOrgContext(
           deps.db,
-          { organizationId: data.organizationId, userId: CONSUMER_USER_ID },
+          { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
       },
@@ -3375,14 +3318,15 @@ export function registerM23LaunchWorkers(
   ) =>
     new Worker(
       queue,
-      async (job) => {
+      async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        await holdNewClaimsWork(deps, job, token, queue, data);
         await withOrgContext(
           deps.db,
           {
             organizationId: data.organizationId,
-            userId: CONSUMER_USER_ID,
+            userId: M23_WORKER_SYSTEM_USER_ID,
           },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
@@ -3396,9 +3340,11 @@ export function registerM23LaunchWorkers(
   ) =>
     new Worker(
       queue,
-      async (job) => {
+      async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        // ADR-0110 — hold claim submit / retry for an org without the add-on, before any transport.
+        await holdNewClaimsWork(deps, job, token, queue, data);
         return run(deps.db, deps, data);
       },
       { connection: deps.connection, concurrency },
@@ -3431,7 +3377,7 @@ export function registerM23LaunchWorkers(
  * Construct the §4.8 CRON workers (the per-MAC-jurisdiction ack pulls + portal health, and the per-org window /
  * stale watchdogs). The cron tick carries no payload — each processor reads its own ports (the org / jurisdiction
  * enumerators) and opens `withOrgContext` INSIDE itself (it fans across orgs). Concurrency 1 — a cron tick is a
- * singleton. Returns the workers; the caller owns `close()`. Mirrors `registerM23Workers`; nothing runs at import.
+ * singleton. Returns the workers; the caller owns `close()`. Mirrors `registerM23DomainWorkers`; nothing runs at import.
  */
 export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
   const { connection } = deps;

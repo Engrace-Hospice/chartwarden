@@ -77,6 +77,28 @@ export const COMMERCIAL_ENROLLMENT_STATUS_VALUES = [
 ] as const;
 export type CommercialEnrollmentStatus = (typeof COMMERCIAL_ENROLLMENT_STATUS_VALUES)[number];
 
+/** Migration 1323: the review state of an advisory clearinghouse enrollment report (staff apply or dismiss; a newer one supersedes). */
+export const COMMERCIAL_ENROLLMENT_REPORT_STATE_VALUES = [
+  "open",
+  "applied",
+  "dismissed",
+  "superseded",
+] as const;
+export type CommercialEnrollmentReportState =
+  (typeof COMMERCIAL_ENROLLMENT_REPORT_STATE_VALUES)[number];
+
+/** Claim.MD enrollment kinds (`500` is a value its own docs list beside `1500`); `unrecognized` is anything else reported. */
+export const CLEARINGHOUSE_ENROLL_TYPE_VALUES = [
+  "era",
+  "1500",
+  "500",
+  "ub",
+  "elig",
+  "attach",
+  "unrecognized",
+] as const;
+export type ClearinghouseEnrollType = (typeof CLEARINGHOUSE_ENROLL_TYPE_VALUES)[number];
+
 /** What a 271 said about coverage on the service date. `unknown` is a response we could not read as active or inactive. */
 export const COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES = ["active", "inactive", "unknown"] as const;
 export type CommercialEligibilityOutcome = (typeof COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES)[number];

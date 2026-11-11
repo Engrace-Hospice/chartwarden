@@ -95,6 +95,19 @@ export const DEATH_BOARD_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/**
+ * M34 `GET /platform/tenant-slugs/:slug/availability` (the New tenant form's live check): 30/min/user (one probe per 2 s) and
+ * 300/min/org. Each probe is an audited platform-context read, so the cap bounds audit rows as well as database reads.
+ * Fail-open: an availability control. It reveals only whether a name is taken to a caller who already holds
+ * `tenant.read_platform` and can list tenants, so it is not a probing oracle (contrast the M36 search limiter).
+ */
+export const TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 30,
+  perOrg: 300,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 export interface RouteRateLimitOptions {
   readonly store: RateLimitStore;
   readonly limit: RouteRateLimit;

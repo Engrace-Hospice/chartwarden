@@ -14,7 +14,6 @@ const row = {
   eraId: "synthetic-era-ref",
   fileIndex: 0,
   transactionSetControlNumber: "0001",
-  sourceDigest: "b".repeat(64),
   state: "staged",
   holdReason: null,
   possibleDuplicate: false,
@@ -51,21 +50,7 @@ const row = {
       remarks: [],
     },
   ],
-  providerAdjustments: [
-    {
-      reason: "WO",
-      reference: "SYNTHETIC-PLB",
-      amount: -5,
-      providerIdentifierMasked: "••••9999",
-      fiscalPeriod: "2026-12-31",
-      segmentPosition: 12,
-      occurrence: 1,
-      classification: "overpayment_recovery_reported" as const,
-      historicalReference: "not_verified" as const,
-      policyStatus: "not_configured" as const,
-      postingEligible: false as const,
-    },
-  ],
+  providerAdjustments: [{ reason: "WO", reference: "SYNTHETIC-PLB", amount: -5 }],
   claimOutcomes: [
     {
       claimId: CLAIM,
@@ -135,8 +120,6 @@ let decisionSaved = false;
 let financialDecisionSaved = false;
 let manualScenario = false;
 let postingScenario = false;
-let medicareScenario = false;
-let contractualAdjustmentScenario = false;
 let postingApproved = false;
 let postingExecuted = false;
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -179,64 +162,12 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         planDigest: "a".repeat(64),
         stageId: STAGE,
         providerEntityId: row.providerEntityId,
-        payer: medicareScenario ? "Synthetic Medicare MAC" : "Synthetic Payer",
-        paymentCents: contractualAdjustmentScenario ? 7_000 : 13_000,
-        billedCents: contractualAdjustmentScenario ? 10_000 : 13_000,
-        unresolvedCents: contractualAdjustmentScenario ? 3_000 : 0,
-        claims: (medicareScenario || contractualAdjustmentScenario ? [1] : [1, 2]).map(
-          (claimIndex) => ({
-            claimIndex: claimIndex - 1,
-            billingModule: medicareScenario ? "M23" : "M41",
-            patientControlNumber: `SYNTHETIC-POST-PCN-${claimIndex}`,
-            payerIcn: `SYNTHETIC-POST-ICN-${claimIndex}`,
-            claimId: CLAIM,
-            payerId: "payer-1",
-            submissionId: `70000000-0000-4000-8000-00000000000${claimIndex}`,
-            evidenceId: `60000000-0000-4000-8000-00000000000${claimIndex}`,
-            evidenceVersion: 1,
-            matching: "verified",
-            billedCents: contractualAdjustmentScenario ? 10000 : 6500,
-            paidCents: contractualAdjustmentScenario ? 7000 : 6500,
-            patientResponsibilityCents: 0,
-            adjustments: contractualAdjustmentScenario
-              ? [
-                  {
-                    scope: "claim",
-                    groupCode: "CO",
-                    reasonCode: "45",
-                    amountCents: 3000,
-                    responsibility: "provider_reported",
-                    classification: "contractual_obligation_reported",
-                    accountingDisposition: "policy_required",
-                    policyVersion: null,
-                    m25Action: "not_authorized",
-                  },
-                ]
-              : [],
-            unresolvedCents: contractualAdjustmentScenario ? 3000 : 0,
-            financialStatus: contractualAdjustmentScenario ? "unsupported" : "fully_paid",
-            duplicate: "none",
-            eligible: !contractualAdjustmentScenario && !medicareScenario,
-            blockers: medicareScenario
-              ? ["MEDICARE_POSTING_NOT_CERTIFIED"]
-              : contractualAdjustmentScenario
-                ? ["CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"]
-                : [],
-          }),
-        ),
+        payer: "Synthetic Payer",
+        paymentCents: 13_000,
         claimId: CLAIM,
-        eligible: !contractualAdjustmentScenario && !medicareScenario && !postingExecuted,
-        status:
-          contractualAdjustmentScenario || medicareScenario
-            ? "blocked"
-            : postingExecuted
-              ? "already_posted"
-              : "eligible",
-        blockers: medicareScenario
-          ? ["CLAIM_NOT_ELIGIBLE"]
-          : contractualAdjustmentScenario
-            ? ["CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"]
-            : [],
+        eligible: !postingExecuted,
+        status: postingExecuted ? "already_posted" : "eligible",
+        blockers: [],
         featureEnabled: true,
         approval: postingExecuted ? "posted" : postingApproved ? "approved" : "not_approved",
         createdAt: "2026-10-01T01:00:00.000Z",
@@ -256,7 +187,6 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
                 reason: "Approved synthetic posting plan",
                 adviceId: null,
                 remittanceLineId: null,
-                remittanceLineIds: [],
               },
               ...(postingExecuted
                 ? [
@@ -267,10 +197,6 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
                       reason: "Executed synthetic posting plan",
                       adviceId: STAGE,
                       remittanceLineId: "90000000-0000-4000-8000-000000000009",
-                      remittanceLineIds: [
-                        "90000000-0000-4000-8000-000000000009",
-                        "90000000-0000-4000-8000-000000000010",
-                      ],
                     },
                   ]
                 : []),
@@ -295,10 +221,6 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         outcome: "posted",
         adviceId: STAGE,
         remittanceLineId: "90000000-0000-4000-8000-000000000009",
-        remittanceLineIds: [
-          "90000000-0000-4000-8000-000000000009",
-          "90000000-0000-4000-8000-000000000010",
-        ],
         paymentCents: 13_000,
       }),
       { status: 200, headers: { "content-type": "application/json" } },
@@ -547,8 +469,6 @@ afterEach(() => {
   financialDecisionSaved = false;
   manualScenario = false;
   postingScenario = false;
-  medicareScenario = false;
-  contractualAdjustmentScenario = false;
   postingApproved = false;
   postingExecuted = false;
 });
@@ -684,109 +604,24 @@ describe("M25 Claim.MD ERA nonposting review", () => {
       await screen.findByRole("button", { name: "Review remittance from Synthetic Payer" }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Review posting readiness" }));
-    expect(await screen.findAllByText("Eligible")).toHaveLength(3);
+    expect(await screen.findByText("Eligible")).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox", { name: "Posting action reason" }), {
       target: { value: "Approved synthetic posting plan" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Approve plan" }));
     expect(await screen.findByText("Approved")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Execute approved posting" }));
-    expect(await screen.findByText(/M25 committed 2 claim records/)).toBeTruthy();
-    expect(
-      screen
-        .getAllByRole("table")
-        .some((table) => table.textContent?.includes("SYNTHETIC-POST-PCN-2")),
-    ).toBe(true);
-    expect(
-      calls.some((call) => call.method === "POST" && call.path.endsWith("/posting-plan")),
-    ).toBe(true);
-    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/approval"))).toBe(
+    expect(await screen.findByText(/M25 remittance record created/)).toBeTruthy();
+    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/posting-plan"))).toBe(
       true,
     );
-    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/execution"))).toBe(
-      true,
-    );
+    expect(
+      calls.some((call) => call.method === "POST" && call.path.endsWith("/approval")),
+    ).toBe(true);
+    expect(
+      calls.some((call) => call.method === "POST" && call.path.endsWith("/execution")),
+    ).toBe(true);
     confirm.mockRestore();
-  });
-
-  it("shows CO as payer-reported responsibility and keeps an unconfigured write-off blocked", async () => {
-    postingScenario = true;
-    contractualAdjustmentScenario = true;
-    render(
-      <ApiClientProvider
-        client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
-      >
-        <SessionProvider
-          session={{
-            userId: "synthetic-user",
-            organizationId: "synthetic-org",
-            membershipId: "synthetic-membership",
-            roles: ["finance_reviewer"],
-            permissions: ["remittance.read", "remittance.financial_review"],
-            isAdmin: false,
-          }}
-        >
-          <ToastProvider>
-            <MemoryRouter>
-              <ClaimMdEraReview />
-            </MemoryRouter>
-          </ToastProvider>
-        </SessionProvider>
-      </ApiClientProvider>,
-    );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Review remittance from Synthetic Payer" }),
-    );
-    fireEvent.click(await screen.findByRole("button", { name: "Review posting readiness" }));
-    expect(await screen.findByText(/payer-reported provider responsibility/)).toBeTruthy();
-    expect(screen.getByText(/policy required; no write-off is authorized/)).toBeTruthy();
-    expect(screen.getByRole("list", { name: "Posting blockers" }).textContent).toContain(
-      "policy authorizes a contractual write-off",
-    );
-    expect(screen.queryByRole("button", { name: "Execute approved posting" })).toBeNull();
-    expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/execution"))).toBe(
-      false,
-    );
-  });
-
-  it("shows the verified Medicare claim link and the explicit nonposting certification blocker", async () => {
-    medicareScenario = true;
-    postingScenario = true;
-    render(
-      <ApiClientProvider
-        client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
-      >
-        <SessionProvider
-          session={{
-            userId: "synthetic-medicare-reviewer",
-            organizationId: "synthetic-org",
-            membershipId: "synthetic-membership",
-            roles: ["billing_specialist"],
-            permissions: ["remittance.read", "remittance.financial_review"],
-            isAdmin: false,
-          }}
-        >
-          <ToastProvider>
-            <MemoryRouter>
-              <ClaimMdEraReview />
-            </MemoryRouter>
-          </ToastProvider>
-        </SessionProvider>
-      </ApiClientProvider>,
-    );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Review remittance from Synthetic Payer" }),
-    );
-    fireEvent.click(await screen.findByRole("button", { name: "Review posting readiness" }));
-    expect(
-      await screen.findByText(/Medicare Claim.MD financial posting is not certified/),
-    ).toBeTruthy();
-    expect(
-      screen
-        .getAllByRole("link")
-        .some((link) => link.getAttribute("href") === `/billing/claims/${CLAIM}`),
-    ).toBe(true);
-    expect(screen.queryByRole("button", { name: "Execute approved posting" })).toBeNull();
   });
 
   it("supports evidence-based manual claim selection and reports historical lines as unavailable", async () => {

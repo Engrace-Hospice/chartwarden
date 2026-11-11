@@ -7,7 +7,7 @@
 // and the M22 document id of the executed PDF. This repo inserts/updates the record and serves the
 // expiry sweep that drives the BAA-expiry alert rules (§4.8).
 import { type DbClient, schema } from "@chartwarden/db";
-import { asc, desc, eq, isNotNull } from "drizzle-orm";
+import { asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 const B = schema.platformTenantBaaRecord;
 
@@ -15,9 +15,18 @@ const B = schema.platformTenantBaaRecord;
 export class BaaRegisterRepository {
   constructor(private readonly db: DbClient) {}
 
-  /** Insert a platform-tenant BAA record (one per (tenant_account, addendum_version), UNIQUE). */
-  async create(values: schema.NewPlatformTenantBaaRecord): Promise<schema.PlatformTenantBaaRecord> {
-    const [row] = await this.db.insert(B).values(values).returning();
+  /**
+   * Insert a platform-tenant BAA record (one per (tenant_account, addendum_version), UNIQUE). Names only the columns the
+   * platform carrier may INSERT (`platformTenantBaaRecordCreate`); the row is read back for the full shape.
+   */
+  async create(
+    values: schema.NewPlatformTenantBaaRecordCreate,
+  ): Promise<schema.PlatformTenantBaaRecord> {
+    const [created] = await this.db
+      .insert(schema.platformTenantBaaRecordCreate)
+      .values(values)
+      .returning({ id: sql<string>`id` });
+    const row = created ? await this.findById(created.id) : null;
     if (!row) throw new Error("platform_tenant_baa_record insert returned no row");
     return row;
   }
@@ -73,6 +82,7 @@ export class BaaRegisterRepository {
         | "complianceOfficerAttestationMembershipId"
         | "attestedAt"
         | "documentId"
+        | "updatedByUserId"
       >
     >,
   ): Promise<schema.PlatformTenantBaaRecord> {

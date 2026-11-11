@@ -3,8 +3,10 @@
 // payer_appeal_case is one row per level of that path, separate from the Medicare appeal_case chain (its tier enum and
 // NOT NULL Medicare deadline are Medicare rules). Closed sets are text + CHECK mirrored in domain/payer-appeal-path.ts and
 // domain/payer-appeal.ts; no pgEnum. payer_id is a logical M40 id (M25 does not depend on M40). Free text is audit-scrubbed.
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -145,5 +147,41 @@ export const payerAppealCaseEvent = pgTable(
   },
   (t) => ({
     byCase: index("ix_payer_appeal_event_case").on(t.payerAppealCaseId, t.occurredAt),
+  }),
+);
+
+// Migration 1324 (ADR-0053 amendment D7): each appeal event a clearinghouse reported (Claim.MD webhook) and what M25 did with it.
+// One vendor appeal binds at most one case (partial unique index over `opened` / `linked`). No PHI, no vendor free text.
+export const payerAppealVendorReport = pgTable(
+  "payer_appeal_vendor_report",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id").notNull(),
+    sourceEventKey: text("source_event_key").notNull(),
+    vendor: text("vendor").notNull(),
+    vendorAppealId: text("vendor_appeal_id"),
+    vendorStatus: text("vendor_status").notNull(),
+    controlNumber: text("control_number").notNull(),
+    denialCaseId: uuid("denial_case_id").references(() => denialCase.id, { onDelete: "restrict" }),
+    payerAppealCaseId: uuid("payer_appeal_case_id").references(() => payerAppealCase.id, {
+      onDelete: "restrict",
+    }),
+    disposition: text("disposition").notNull(),
+    reason: text("reason"),
+    reportedAt: timestamp("reported_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byCase: index("payer_appeal_vendor_report_case_ix").on(t.payerAppealCaseId),
+    byDenial: index("payer_appeal_vendor_report_denial_ix").on(t.denialCaseId),
+    // Migration 1460 (replaces 1324's mis-parenthesised check): a report that bound or touched a case carries no reason;
+    // a `recorded_only` report always carries one.
+    reasonCheck: check(
+      "payer_appeal_vendor_report_reason_chk",
+      sql`(disposition IN ('opened','linked','timeline') AND reason IS NULL) OR (disposition = 'recorded_only' AND reason IS NOT NULL)`,
+    ),
   }),
 );

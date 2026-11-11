@@ -1,4 +1,3 @@
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/tenants.ts — M34 (§4.1 platform-ops).
 //
 // The platform-ops tenant-lifecycle route surface (§4.1 platform-ops table; §4.2 per-route specs; §6/D10
@@ -15,9 +14,16 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 // The lifecycle-COMMAND routes (provision / status / offboard / shred / dek-rotate) ENQUEUE the matching
 // §4.3 worker job through the service's injected enqueue port + emit the outbox descriptor; the live
 // BullMQ worker construction is Phase 2D (see service.ts TODO).
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
-import { ChartWardenError, UnauthorizedError, validateTenantSlug } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  UnauthorizedError,
+  tenantOriginForSlug,
+  validateTenantSlug,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { screenFreeText, screenNames } from "../free-text";
 import {
   DekRotateRequest,
   OffboardTenantRequest,
@@ -26,6 +32,7 @@ import {
   ShredTenantRequest,
   StatusTransitionRequest,
   TenantListQuerySchema,
+  TenantSlugParamsSchema,
   parse,
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
@@ -33,6 +40,13 @@ import type { TenantPlatformRouteService } from "./service";
 export interface TenantPlatformRouteDeps {
   /** The §4.1 platform-ops route service (in-memory in the slice; Drizzle under `withPlatformContext` in prod). */
   service: TenantPlatformRouteService;
+  /** `TENANT_BASE_DOMAIN`; absent or null (single-host mode) leaves the availability answer without an address. */
+  tenantBaseDomain?: string | null;
+  /**
+   * Per-route cap on the availability probe (`createRouteRateLimit`, composed in `index.ts`). It runs AFTER the permission and
+   * ABAC gates, so a caller those refuse never spends it. Absent = only the global limiter applies (tests, no-db boot).
+   */
+  slugAvailabilityRateLimit?: PreHandler;
 }
 
 const orgSlugOf = (request: FastifyRequest): string =>
@@ -78,7 +92,7 @@ export function registerTenantPlatformRoutes(
   app: FastifyInstance,
   deps: TenantPlatformRouteDeps,
 ): void {
-  const { service } = deps;
+  const { service, tenantBaseDomain, slugAvailabilityRateLimit } = deps;
 
   // 1 — list tenants (cross-tenant, cursor-paginated; filters status/plan/created_after/legal-name). §4.1.
   app.get("/api/v1/platform/tenants", { preHandler: [LIST, ABAC_LIST] }, async (request) => {
@@ -91,6 +105,35 @@ export function registerTenantPlatformRoutes(
     );
   });
 
+  // 1a — is this subdomain usable? Format/reserved are decided here (no data read); taken covers a live slug AND a retired
+  // alias (a slug is never reused; ADR-0049 D3). Read-only and non-PHI, so no step-up; the platform read is audited (warn, not
+  // critical: see `isTenantSlugTaken` in service-drizzle.ts) and rate-limited per user, since each probe writes an audit row.
+  app.get(
+    "/api/v1/platform/tenant-slugs/:slug/availability",
+    {
+      preHandler: [
+        READ,
+        ABAC_READ,
+        ...(slugAvailabilityRateLimit ? [slugAvailabilityRateLimit] : []),
+      ],
+    },
+    async (request) => {
+      writeActorOf(request);
+      const { slug } = parse(TenantSlugParamsSchema, request.params);
+      const checked = validateTenantSlug(slug);
+      if (!checked.ok) return { slug, valid: false, available: false, reason: checked.reason };
+      const url = tenantBaseDomain ? tenantOriginForSlug(slug, tenantBaseDomain) : null;
+      const taken = await service.isTenantSlugTaken(slug);
+      return {
+        slug,
+        valid: true,
+        available: !taken,
+        ...(taken ? { reason: "taken" as const } : {}),
+        ...(url ? { url } : {}),
+      };
+    },
+  );
+
   // 3 — provision a tenant from a signup_intent OR raw input (step-up; enqueues `tenant.provision`). §4.1/§4.2.
   app.post(
     "/api/v1/platform/tenants",
@@ -98,6 +141,10 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(ProvisionTenantRequest, request.body);
+      screenNames({
+        legalBusinessName: body.legalBusinessName,
+        firstAdminFullName: body.firstAdminFullName,
+      });
       // ADR-0049 D3: the host label follows the rules the database enforces, refused here with an actionable reason.
       const checked = body.slug === undefined ? null : validateTenantSlug(body.slug);
       if (checked && !checked.ok) {
@@ -143,6 +190,7 @@ export function registerTenantPlatformRoutes(
       // not the raw Better Auth user id.
       const { membershipId } = writeActorOf(request);
       const body = parse(StatusTransitionRequest, request.body);
+      screenFreeText({ transitionReason: body.transitionReason }); // stored on the status event a tenant can read
       const res = await service.transitionStatus(orgSlugOf(request), membershipId, {
         toStatus: body.toStatus,
         transitionReason: body.transitionReason,
@@ -179,6 +227,7 @@ export function registerTenantPlatformRoutes(
       // membershipId (not userId) — same reasoning as the status-transition route above.
       const { membershipId } = writeActorOf(request);
       const body = parse(OffboardTenantRequest, request.body);
+      screenFreeText({ transitionReason: body.transitionReason });
       const res = await service.offboardTenant(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
         exportPurpose: body.exportPurpose,
@@ -194,6 +243,7 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(ShredTenantRequest, request.body);
+      screenFreeText({ transitionReason: body.transitionReason });
       const res = await service.requestShred(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
         destructionCertificateId: body.destructionCertificateId,
@@ -209,6 +259,8 @@ export function registerTenantPlatformRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(DekRotateRequest, request.body);
+      // `reason` is accepted and DISCARDED: requestDekRotate enqueues the job without it. A change that stores it must screen it
+      // (screenFreeText), like the transition reasons above.
       const res = await service.requestDekRotate(orgSlugOf(request), membershipId, {
         reason: body.reason,
       });

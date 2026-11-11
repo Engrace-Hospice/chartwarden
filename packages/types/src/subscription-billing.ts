@@ -60,8 +60,22 @@ export type BillingPseudonym = string;
 // ── §3.3 pgEnum value mirrors (kept in lock-step with `@chartwarden/subscription-billing`'s `enums.ts` and the
 // `packages/db/src/schema/subscription-billing/*` pgEnums the T02 migration lands) ─────────────────────
 
-/** §3.3 `plan_tier` — the plan grade (platform-shared catalog, D11). */
-export type PlanTier = "starter" | "professional" | "enterprise";
+/**
+ * §3.3 `plan_tier` — the plan grade (platform-shared catalog, D11). `starter` / `professional` / `enterprise` are the
+ * RETIRED flat tiers (rows stay readable, none is offered to a new tenant); `census_banded` is the contracted model
+ * (platform fee = greater of staff x per-user price and the census-band flat fee, plus a billing-service percentage).
+ */
+export type PlanTier = "starter" | "professional" | "enterprise" | "census_banded";
+
+/**
+ * How a subscription uses ChartWarden for billing. `none` = the tenant bills outside ChartWarden (no percentage),
+ * `billing_software` = the tenant bills in ChartWarden (the lower rate), `managed_billing` = ChartWarden bills for the
+ * tenant (the higher rate; priced here, the service itself is not built).
+ */
+export type BillingServiceMode = "none" | "billing_software" | "managed_billing";
+
+/** A statement is `draft` while its month is open (recomputed each sweep) and `final` once the month is closed. */
+export type SubscriptionStatementStatus = "draft" | "final";
 
 /** §3.3 `billing_cadence` — the base-price billing period. */
 export type BillingCadence = "monthly" | "annual";
@@ -129,7 +143,8 @@ export type UsageEventType =
   | "ai_tokens_consumed"
   | "fhir_egress_request"
   | "hl7_message_inbound"
-  | "hl7_message_outbound";
+  | "hl7_message_outbound"
+  | "billing_addon_patient"; // ADR-0110: the claims-billing add-on monthly active-patient census
 
 /** §3.3 `usage_event_source_module` — which module emitted a usage event (idempotency key component). */
 export type UsageEventSourceModule = "m1" | "m2" | "m5" | "m23" | "m24" | "m28" | "m29" | "m32";
@@ -205,6 +220,8 @@ export const M35_EVENT_NAMES = [
   "m35.stripe.api_call_failed",
   "m35.tenant.billing_blocked",
   "m35.revenue.monthly_snapshot_computed",
+  "m35.claims_billing_addon.granted", // ADR-0110
+  "m35.claims_billing_addon.canceled", // ADR-0110
 ] as const;
 
 export type M35EventName = (typeof M35_EVENT_NAMES)[number];
@@ -485,6 +502,15 @@ export interface M35RevenueMonthlySnapshotComputedPayload {
   readonly activeSubscriptions: number;
 }
 
+/** ADR-0110 — the claims-billing add-on grant / cancel push (ids, status, effective instant only). */
+export interface M35ClaimsBillingAddonChangedPayload {
+  readonly subscriptionAddonId: string;
+  readonly subscriptionId: SubscriptionId;
+  readonly organizationId: OrgId;
+  readonly status: SubscriptionAddonStatus;
+  readonly effectiveAt: IsoInstant;
+}
+
 /** Name → payload map for the §4.11 taxonomy (the dispatcher's compile-time contract). */
 export interface M35EventPayloadMap {
   "m35.subscription.created": M35SubscriptionCreatedPayload;
@@ -519,6 +545,8 @@ export interface M35EventPayloadMap {
   "m35.stripe.api_call_failed": M35StripeApiCallFailedPayload;
   "m35.tenant.billing_blocked": M35TenantBillingBlockedPayload;
   "m35.revenue.monthly_snapshot_computed": M35RevenueMonthlySnapshotComputedPayload;
+  "m35.claims_billing_addon.granted": M35ClaimsBillingAddonChangedPayload;
+  "m35.claims_billing_addon.canceled": M35ClaimsBillingAddonChangedPayload;
 }
 
 // ── §2.2 / §4.5 shared domain value shapes (surfaced by the published seams below) ─────────────────────
@@ -651,6 +679,90 @@ export interface PatientCounterProvider {
     periodStart: IsoInstant;
     periodEnd: IsoInstant;
   }): Promise<number>;
+}
+
+// ── ADR-0110 the claims-billing add-on ─────────────────────────────────────────────────────────────────
+
+/** The add-on slug / entitlement key (migration 1321 seeds the one `addon` row). */
+export const CLAIMS_BILLING_ADDON_SLUG = "claims_billing";
+
+/** Why an org is NOT entitled to start new claims-billing work (ADR-0110 D3). */
+export type ClaimsBillingDenyReason =
+  | "never_purchased"
+  | "lapsed"
+  | "subscription_suspended"
+  | "subscription_canceled"
+  | "subscription_paused";
+
+export type ClaimsBillingEntitlement =
+  | { readonly entitled: true }
+  | { readonly entitled: false; readonly reason: ClaimsBillingDenyReason };
+
+/** `subscription_addon.status` (migration 1321 CHECK). */
+export type SubscriptionAddonStatus = "trialing" | "active" | "canceled";
+
+/**
+ * ADR-0110 — the claims-billing entitlement read (owner M35). Entitled = a trialing/active, not-ended
+ * `subscription_addon` row AND a base subscription in trialing/active/past_due/at_risk. No cache: every call reads
+ * the database (the gate memoises per request). Throws when the read fails; a new-work caller fails CLOSED on it.
+ */
+export interface ClaimsBillingEntitlementReader {
+  entitlementForOrg(organizationId: OrgId): Promise<ClaimsBillingEntitlement>;
+}
+
+/**
+ * Slice 2 (tenant pricing) — the billing service mode of an organisation's subscription (owner M35). `null` = the org has
+ * no LIVE contracted (census_banded) subscription right now, which is wider than "never contracted": it is also what an org
+ * whose contracted subscription is CANCELED or PAUSED reads (the read covers live contracts only, the same scope the daily
+ * census records for; a pause with an end date whose date has passed counts as live again, an open-ended pause or one still
+ * in the future does not). A paused org still has a contract and a mode; this read does not report it. A caller must therefore
+ * not take `null` to mean "uncontracted, so unrestricted" for an org that may be paused or between contracts. A small read so
+ * another module can enforce a rule that depends on it (slice 3: a tenant that bills outside ChartWarden must be on `none`).
+ * Reads the database every call (no cache); throws when the read fails, and a caller that must not guess fails closed.
+ */
+export interface BillingServiceModeReader {
+  billingServiceModeForOrg(organizationId: OrgId): Promise<BillingServiceMode | null>;
+}
+
+/**
+ * Slice 2 (tenant pricing) — one organisation's NET COLLECTIONS for a period (owner M25 remittance), the meter the
+ * billing-service percentage is charged on. Integer cents.
+ *   netCents          = the sum of `remittance_advice.total_payment_amount` (835 BPR02) over remittances of the org
+ *                       with a posted or partially posted parse state whose payment date (BPR16, the EFT effective /
+ *                       check issue date: `production_date`) falls in [periodStart, periodEnd). BPR02 is itself
+ *                       `sum(CLP04 claim payments, reversals negative) - PLB provider-level adjustments`, so claim
+ *                       reversals, overpayment recoveries and takebacks that arrive on an 835 are already netted.
+ *   remittanceCount   = how many remittances that sum covers.
+ *   pendingCount      = remittances with a payment date in the period that are NOT yet posted (queued, parsing, parsed
+ *                       or failed): money that arrived and is not in `netCents` yet. A draft statement picks them up
+ *                       once they post; a closed month with pending > 0 is a data-quality flag, not a silent zero.
+ * Aggregate dollars only: no patient row, claim id or MBI crosses.
+ */
+export interface NetCollections {
+  readonly netCents: number;
+  readonly remittanceCount: number;
+  readonly pendingCount: number;
+}
+
+/** One UTC calendar month of {@link NetCollections}, keyed `YYYY-MM` by the month of the payment date. */
+export interface NetCollectionsMonth extends NetCollections {
+  readonly yearMonth: string;
+}
+
+export interface NetCollectionsReader {
+  netCollectionsForPeriod(
+    organizationId: OrgId,
+    period: { readonly periodStart: Date; readonly periodEnd: Date },
+  ): Promise<NetCollections>;
+  /**
+   * The same meter grouped by UTC calendar month of the payment date, one row per month that has any remittance in
+   * [periodStart, periodEnd). The statement run reads its whole range in ONE call, because a CLOSED month's collections can
+   * grow after it finalizes (a remittance dated inside it posts late) and that growth is billed on the next open statement.
+   */
+  netCollectionsByMonth(
+    organizationId: OrgId,
+    period: { readonly periodStart: Date; readonly periodEnd: Date },
+  ): Promise<NetCollectionsMonth[]>;
 }
 
 /** §4.5 platform-shared revenue metrics (consumed by M33 for the platform-ops revenue dashboard). */

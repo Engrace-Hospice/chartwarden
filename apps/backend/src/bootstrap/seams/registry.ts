@@ -39,6 +39,7 @@ import {
   bereavementRiskNarrativeProviderDenyStub,
   bereavementRiskTierProviderDenyStub,
   billableEncounterReaderDenyStub,
+  billingServiceModeReaderDenyStub,
   billingStatusProviderDenyStub,
   capAccrualReaderDenyStub,
   capProjectionProviderDenyStub,
@@ -50,6 +51,7 @@ import {
   claimReaderDenyStub,
   claimSettlementProviderDenyStub,
   claimSubmissionReaderDenyStub,
+  claimsBillingEntitlementReaderDenyStub,
   comfortKitDispatchProviderDenyStub,
   commercialClaimReaderDenyStub,
   complianceStatusProviderDenyStub,
@@ -124,6 +126,7 @@ import {
   mileagePayrollReaderDenyStub,
   mswRiskFactorReaderDenyStub,
   narrativeEnhancementProviderDenyStub,
+  netCollectionsReaderDenyStub,
   nonCoveredDmeSuppliesReaderDenyStub,
   nonCoveredMedicationsReaderDenyStub,
   nppesProviderReaderDenyStub,
@@ -138,6 +141,7 @@ import {
   patientAllergyReaderDenyStub,
   patientCaregiverReaderDenyStub,
   patientCaregiverRosterReaderDenyStub,
+  patientCensusReaderDenyStub,
   patientCounterProviderDenyStub,
   patientCoverageReaderDenyStub,
   patientDaysProviderDenyStub,
@@ -322,6 +326,14 @@ export const REQUIRED_SEAMS = [
     ownerModule: 5,
     phi: true,
     denyStub: patientPrivacyFlagReaderDenyStub,
+  },
+  // ADR-0110 — M5's active-patient census page for the M35 claims-billing add-on. Raw patient ids cross → phi:true
+  // (M35 pseudonymizes them in memory and stores only the HMAC).
+  {
+    key: "PatientCensusReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientCensusReaderDenyStub,
   },
   // M40 — TASK-015/ARCH-018: the M31 bereaved-portal `/resources` read. Deny-stub only — no
   // `external_grief_resource` table exists yet (M40 has not built this catalog).
@@ -736,6 +748,28 @@ export const REQUIRED_SEAMS = [
     ownerModule: 35,
     phi: false,
     denyStub: patientCounterProviderDenyStub,
+  },
+  // ADR-0110 — the claims-billing add-on entitlement (owner M35). Aggregate org metadata, no patient row → phi:false.
+  {
+    key: "ClaimsBillingEntitlementReader",
+    ownerModule: 35,
+    phi: false,
+    denyStub: claimsBillingEntitlementReaderDenyStub,
+  },
+  // Slice 2 (tenant pricing) — the subscription's billing service mode (owner M35). One enum value per org → phi:false.
+  {
+    key: "BillingServiceModeReader",
+    ownerModule: 35,
+    phi: false,
+    denyStub: billingServiceModeReaderDenyStub,
+  },
+  // Slice 2 — an org's NET COLLECTIONS for a period, the M35 billing-service meter (owner M25). One aggregate dollar total
+  // per call, no patient row, claim id or MBI crosses → phi:false.
+  {
+    key: "NetCollectionsReader",
+    ownerModule: 25,
+    phi: false,
+    denyStub: netCollectionsReaderDenyStub,
   },
   {
     key: "RevenueMetricsProvider",

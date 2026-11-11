@@ -93,6 +93,11 @@ describe("route-kit actor", () => {
 
   it("requires a membership for a write and maps it to userId for membership-attributed services", () => {
     expect(() => writeActorOf(ctx({ attributes: {} }))).toThrow(ForbiddenError);
+    // the message is neutral: `writeActorOf` also gates READ routes that attribute the read to the member (an operator's audited read)
+    expect(() => writeActorOf(ctx({ attributes: {} }))).toThrow(
+      /active membership is required to act on this record/,
+    );
+    expect(() => writeActorOf(ctx({ attributes: {} }))).not.toThrow(/author/);
     expect(membershipActorOf(ctx())).toEqual({
       organizationId: ORG_A,
       userId: "m-1",

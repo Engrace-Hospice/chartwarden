@@ -61,6 +61,8 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             responseStatus: T.responseStatus,
             responseBody: T.responseBody,
             expiresAt: T.expiresAt,
+            // by the DATABASE's clock, so a skewed app clock cannot make a young claim look stuck
+            pendingForMs: sql<string>`(extract(epoch from (now() - ${T.createdAt})) * 1000)::bigint`,
           })
           .from(T)
           .where(and(eq(T.organizationId, organizationId), eq(T.key, key)))
@@ -71,7 +73,13 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
         // resurrect a response long after the client stopped expecting one. The row is left for the
         // §3.10 sweeper rather than deleted here (a read must not mutate).
         if (row.expiresAt.getTime() <= Date.now()) return null;
-        if (row.state === "pending") return { state: "pending", requestHash: row.requestHash };
+        if (row.state === "pending") {
+          return {
+            state: "pending",
+            requestHash: row.requestHash,
+            pendingForMs: Number(row.pendingForMs),
+          };
+        }
         return {
           state: "complete",
           requestHash: row.requestHash,
@@ -139,6 +147,24 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             responseBody: (response.body ?? null) as never,
           })
           .where(and(eq(T.organizationId, organizationId), eq(T.key, key), eq(T.state, "pending")));
+      });
+    },
+
+    async release(organizationId, key, requestHash): Promise<void> {
+      await scoped(organizationId, async (tx) => {
+        // The claimant's own PENDING row only: a completed response someone is replaying, or a fresh claim another
+        // request made with a different fingerprint after this one's expired, is never deleted. The retryable outcome
+        // (a deadlock 409, a 5xx) is thereby not cached, and the same key can run again.
+        await tx
+          .delete(T)
+          .where(
+            and(
+              eq(T.organizationId, organizationId),
+              eq(T.key, key),
+              eq(T.state, "pending"),
+              eq(T.requestHash, requestHash),
+            ),
+          );
       });
     },
   };

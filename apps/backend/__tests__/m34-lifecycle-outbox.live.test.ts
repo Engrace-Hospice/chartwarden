@@ -23,10 +23,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
-import {
-  ACTIVATION_REFUSAL_ALERT_THRESHOLD,
-  shouldAlertActivationRefusal,
-} from "@chartwarden/saas-tenant-platform";
 import { registerPlatformJob } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -45,12 +41,13 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 
 const ORG_A = "11111111-1111-4111-8111-1111f2050201";
+const ORG_B = "11111111-1111-4111-8111-1111f2050202";
 const TENANT_ACCOUNT_A = "55555555-5555-4555-8555-5555f2050205";
+const TENANT_ACCOUNT_B = "55555555-5555-4555-8555-5555f2050206";
+const ORG_C = "11111111-1111-4111-8111-1111f2050203";
+const TENANT_ACCOUNT_C = "55555555-5555-4555-8555-5555f2050207";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-8444-4444f2050204";
 const SESSION_USER = "66666666-6666-4666-8666-6666f2050206";
-// A second tenant, kept in `onboarding`, for the automatic-activation cases (the suite above walks tenant A's status).
-const ORG_B = "11111111-1111-4111-8111-1111f2050202";
-const TENANT_ACCOUNT_B = "55555555-5555-4555-8555-5555f2050206";
 const PLATFORM_JOB_ID = "test-m34-lifecycle-outbox";
 
 describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
@@ -340,9 +337,12 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     ).toBeNull();
   });
 
-  // The onboarding sweep activates a tenant once every canonical step settles: same machine and guards as the platform
-  // route, under the system actor (no membership). An unmet guard is a normal "not yet", and a second call is a no-op.
-  describe("automatic activation (system actor)", () => {
+  // An operator's onboarding-data write holds the SHARED `tenant-onboarding:<org>` advisory lock from before it reads the
+  // tenant status until it commits (routes/platform/tenant-onboarding-lock.ts). Whatever moves the tenant out of
+  // provisioning/onboarding takes it EXCLUSIVE, so it waits for that write instead of changing the tenant underneath it.
+  // Going live is the go-live APPROVAL (m34-onboarding-wizard.live.test.ts proves the lock there); this suite proves it on
+  // the status route, which can no longer activate an onboarding tenant at all.
+  describe("onboarding tenant: the status route and in-flight onboarding-data writes", () => {
     async function seedOnboardingTenant() {
       await admin.query(
         `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'f103-b','Bravo Hospice LLC','Bravo Hospice','active')`,
@@ -353,136 +353,133 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
          VALUES ($1,$2,'onboarding','Bravo Hospice LLC','billing@bravo.test','breach@bravo.test')`,
         [TENANT_ACCOUNT_B, ORG_B],
       );
-      // At least one canonical template must exist (an empty catalog is not "complete"); then settle every one.
-      await admin.query(
-        `INSERT INTO onboarding_task_template (key,display_label,description,canonical_order,required_role,default_due_days_after_provisioning,is_canonical)
-         VALUES ('live_test_step','Live test step','Seeded by the live suite',999,'org_admin',7,true)
-         ON CONFLICT (key) DO NOTHING`,
-      );
-      await admin.query(
-        `INSERT INTO onboarding_task (organization_id,tenant_account_id,template_key,status)
-         SELECT $1,$2,key,'done' FROM onboarding_task_template WHERE is_canonical`,
-        [ORG_B, TENANT_ACCOUNT_B],
-      );
     }
 
-    it("refuses with the unmet guard, leaving the tenant in onboarding, while no BAA is executed", async () => {
+    async function holdSharedOnboardingLock(orgId: string) {
+      const writer = new Client({ connectionString: DB_URL });
+      await writer.connect();
+      await writer.query("BEGIN");
+      await writer.query(
+        "SELECT pg_advisory_xact_lock_shared(hashtextextended('tenant-onboarding:' || $1::text, 0))",
+        [orgId],
+      );
+      let released = false;
+      return {
+        async release() {
+          if (released) return;
+          released = true;
+          await writer.query("COMMIT");
+          await writer.end();
+        },
+      };
+    }
+    /** True when `work` has finished (resolved or rejected) within `ms`; false when it is still waiting. */
+    const settlesWithin = (work: Promise<unknown>, ms: number) =>
+      Promise.race([
+        work.then(
+          () => true,
+          () => true,
+        ),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), ms)),
+      ]);
+
+    it("refuses to activate it by hand, immediately and without waiting for an in-flight write", async () => {
       await seedOnboardingTenant();
-
-      const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
-
-      expect(result).toEqual({
-        activated: false,
-        reason: "BAA_NOT_EXECUTED",
-        refusalStreak: { days: 1, advanced: true },
-      });
-      const row = await admin.query("SELECT status, metadata FROM tenant_account WHERE id = $1", [
+      const writer = await holdSharedOnboardingLock(ORG_B);
+      try {
+        const attempt = service().transitionStatus("f103-b", ACTOR_MEMBERSHIP, {
+          toStatus: "active",
+          transitionReason: "operator activates the tenant",
+        });
+        expect(await settlesWithin(attempt, 750), "the 409 needs no lock").toBe(true);
+        await expect(attempt).rejects.toMatchObject({
+          code: "GO_LIVE_TWO_PARTY_REQUIRED",
+          statusCode: 409,
+        });
+      } finally {
+        await writer.release();
+      }
+      const row = await admin.query("SELECT status FROM tenant_account WHERE id = $1", [
         TENANT_ACCOUNT_B,
       ]);
       expect(row.rows[0].status).toBe("onboarding");
-      expect(row.rows[0].metadata.onboardingActivationRefusal).toMatchObject({
-        reason: "BAA_NOT_EXECUTED",
-        days: 1,
-      });
     });
 
-    it("does not double count a retried sweep on the same day", async () => {
-      const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
-
-      expect(result).toEqual({
-        activated: false,
-        reason: "BAA_NOT_EXECUTED",
-        refusalStreak: { days: 1, advanced: false },
-      });
-    });
-
-    /** Pretend the stored streak was last counted yesterday (optionally under another reason). */
-    async function backdateStreak(reason?: string): Promise<void> {
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const { rows } = await admin.query("SELECT metadata FROM tenant_account WHERE id = $1", [
-        TENANT_ACCOUNT_B,
-      ]);
-      const stored = rows[0].metadata.onboardingActivationRefusal;
-      const metadata = {
-        ...rows[0].metadata,
-        onboardingActivationRefusal: {
-          ...stored,
-          lastDay: yesterday,
-          reason: reason ?? stored.reason,
-        },
-      };
-      await admin.query("UPDATE tenant_account SET metadata = $2::jsonb WHERE id = $1", [
-        TENANT_ACCOUNT_B,
-        JSON.stringify(metadata),
-      ]);
-    }
-
-    it("counts consecutive days and crosses the alert threshold exactly once per newly counted day", async () => {
-      const days: number[] = [];
-      const alerts: boolean[] = [];
-      for (let n = 0; n < ACTIVATION_REFUSAL_ALERT_THRESHOLD; n++) {
-        await backdateStreak();
-        const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
-        if (result.activated || !result.refusalStreak) throw new Error("expected a refusal");
-        days.push(result.refusalStreak.days);
-        alerts.push(shouldAlertActivationRefusal(result.refusalStreak));
+    it("transitionStatus out of onboarding waits for an onboarding-data write in flight", async () => {
+      const writer = await holdSharedOnboardingLock(ORG_B);
+      try {
+        const attempt = service().transitionStatus("f103-b", ACTOR_MEMBERSHIP, {
+          toStatus: "suspended",
+          transitionReason: "operator suspends the tenant",
+        });
+        expect(
+          await settlesWithin(attempt, 750),
+          "the transition must wait for the in-flight write",
+        ).toBe(false);
+        await writer.release();
+        // The machine has no onboarding -> suspended edge, so it refuses: it got that far only after the write committed.
+        await expect(attempt).rejects.toMatchObject({ code: "ILLEGAL_TENANT_TRANSITION" });
+      } finally {
+        await writer.release();
       }
-
-      // The same-day retry above left the streak at 1, so each backdated pass counts the next day.
-      expect(days).toEqual(
-        Array.from({ length: ACTIVATION_REFUSAL_ALERT_THRESHOLD }, (_, i) => i + 2),
-      );
-      expect(alerts.at(-1)).toBe(true);
     });
+  });
 
-    it("restarts the streak at 1 when the refusal reason changes class", async () => {
-      await backdateStreak("TASKS_NOT_SETTLED");
-
-      const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
-
-      expect(result).toMatchObject({
-        activated: false,
-        reason: "BAA_NOT_EXECUTED",
-        refusalStreak: { days: 1, advanced: true },
+  // Two operator transitions racing on one tenant: the loser read a status that is no longer true. It must refuse, not
+  // overwrite the winner's status and write a ledger row with the wrong from-status.
+  it("a transition whose status read went stale while it waited is refused with 409 TENANT_STATUS_CHANGED", async () => {
+    await admin.query(
+      `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'f103-c','Charlie Hospice LLC','Charlie Hospice','active')`,
+      [ORG_C],
+    );
+    await admin.query(
+      `INSERT INTO tenant_account (id,organization_id,status,legal_business_name,billing_contact_email,breach_notification_email)
+       VALUES ($1,$2,'active','Charlie Hospice LLC','billing@charlie.test','breach@charlie.test')`,
+      [TENANT_ACCOUNT_C, ORG_C],
+    );
+    const winner = new Client({ connectionString: DB_URL });
+    await winner.connect();
+    let open = true;
+    try {
+      await winner.query("BEGIN");
+      await winner.query("SELECT 1 FROM tenant_account WHERE id = $1 FOR UPDATE", [
+        TENANT_ACCOUNT_C,
+      ]);
+      const loser = service().transitionStatus("f103-c", ACTOR_MEMBERSHIP, {
+        toStatus: "suspended",
+        transitionReason: "operator suspends the tenant",
       });
-    });
-
-    it("activates under the system actor once the BAA is executed: ledger has no membership, activated_at is set", async () => {
-      await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id,tenant_account_id,addendum_version,baa_status,executed_on,effective_on)
-         VALUES ($1,$2,'v1','executed','2026-01-01','2026-01-01')`,
-        [ORG_B, TENANT_ACCOUNT_B],
-      );
-
-      const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
-
-      expect(result).toEqual({ activated: true });
-      const row = await admin.query(
-        "SELECT status, activated_at, metadata FROM tenant_account WHERE id = $1",
-        [TENANT_ACCOUNT_B],
-      );
-      expect(row.rows[0].status).toBe("active");
-      expect(row.rows[0].metadata.onboardingActivationRefusal).toBeUndefined();
-      expect(row.rows[0].activated_at).not.toBeNull();
-      const ledger = await admin.query(
-        `SELECT from_status, to_status, actor_kind, actor_membership_id, side_effects_recorded
-           FROM tenant_account_status_event WHERE tenant_account_id = $1 ORDER BY occurred_at DESC LIMIT 1`,
-        [TENANT_ACCOUNT_B],
-      );
-      expect(ledger.rows[0]).toMatchObject({
-        from_status: "onboarding",
-        to_status: "active",
-        actor_kind: "system_automated",
-        actor_membership_id: null,
-      });
-      // The ledger says which effects ran and which the machine named but nothing runs (the welcome email).
-      expect(ledger.rows[0].side_effects_recorded.notRun).toContain("welcome_email");
-    });
-
-    it("is a no-op the second time (the tenant is no longer in onboarding)", async () => {
-      const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
-
-      expect(result).toEqual({ activated: false, reason: "NOT_IN_ONBOARDING" });
-    });
+      loser.catch(() => {}); // handled below; keeps an early assertion failure from leaving an unhandled rejection
+      // Wait until the loser has read 'active' and is actually blocked on the winner's row lock (no fixed sleep).
+      const winnerPid = (await winner.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      let blocked = false;
+      for (let i = 0; i < 100 && !blocked; i++) {
+        const r = await admin.query(
+          "SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+          [winnerPid],
+        );
+        blocked = r.rowCount === 1;
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(blocked, "the loser read 'active' and now waits on the row").toBe(true);
+      await winner.query("UPDATE tenant_account SET status = 'at_risk' WHERE id = $1", [
+        TENANT_ACCOUNT_C,
+      ]);
+      await winner.query("COMMIT");
+      open = false;
+      await expect(loser).rejects.toMatchObject({ code: "TENANT_STATUS_CHANGED", statusCode: 409 });
+    } finally {
+      if (open) await winner.query("ROLLBACK");
+      await winner.end();
+    }
+    const row = await admin.query("SELECT status FROM tenant_account WHERE id = $1", [
+      TENANT_ACCOUNT_C,
+    ]);
+    expect(row.rows[0].status).toBe("at_risk");
+    const ledger = await admin.query(
+      "SELECT count(*)::int AS n FROM tenant_account_status_event WHERE tenant_account_id = $1",
+      [TENANT_ACCOUNT_C],
+    );
+    expect(ledger.rows[0].n).toBe(0);
   });
 });

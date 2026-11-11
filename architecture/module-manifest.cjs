@@ -35,7 +35,7 @@
  *   - Backend code for a module lives at  apps/backend/src/modules/<NN-slug>/
  *   - Shared domain-area logic lives in   packages/<area>/
  *   - LEAVES (importable by everyone, depend on nothing app-specific):
- *       packages/shared, packages/types, packages/ui
+ *       packages/shared, packages/types, packages/domain, packages/ui
  *   - FOUNDATION HELPERS (implicitly importable by every module — ADR-0005 D4):
  *       packages/audit, packages/auth, packages/tenancy, packages/db/src/schema.
  *   - A module may import from: own codePaths + dependsOn codePaths + LEAVES +
@@ -59,7 +59,7 @@ exports.ALL_OWNED_PATHS =
     void 0;
 exports.allowedImportPaths = allowedImportPaths;
 exports.allowedTables = allowedTables;
-exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/ui"];
+exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/domain", "packages/ui"];
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge
  * (ADR-0005 D4): audit() (packages/audit), requirePermission/requireAbac/
@@ -265,7 +265,6 @@ exports.MODULES = [
       "death_board",
       "death_board_item",
       "death_board_item_event",
-      "death_notification",
       "alarm_source",
       "alarm_source_mapping",
       "alarm_ingest_event",
@@ -374,6 +373,7 @@ exports.MODULES = [
       "commercial_payer_route", // #721 - the payer id each clearinghouse routes a plan on
       "commercial_contract_rate", // #721 - contract rate terms per level of care
       "commercial_payer_enrollment",
+      "commercial_enrollment_report", // ADR-0053 D7 - advisory clearinghouse enrollment reports (staff confirm)
       "commercial_authorization",
       "commercial_eligibility_check",
       "commercial_claim",
@@ -696,13 +696,6 @@ exports.MODULES = [
       "bereavement_mailing_config",
       "bereavement_mailing_run",
       "bereavement_mailing_item",
-      "bereavement_support_group",
-      "bereavement_support_group_session",
-      "bereavement_support_group_enrollment",
-      "bereavement_support_group_attendance",
-      "bereavement_memorial_service",
-      "bereavement_memorial_invitation",
-      "bereavement_library_item",
       "tenant_bereavement_external_source_gate_override",
     ],
   },
@@ -873,6 +866,9 @@ exports.MODULES = [
     dependsOn: [1, 6, 8, 22, 38, 40],
     ownedTables: [
       "billing_edi_profile",
+      "claimmd_webhook_event",
+      // ADR-0053 amendment precondition 2 (migration 1326): platform-verified NPI ownership the Claim.MD sweep routes on.
+      "provider_npi_verification",
       "claim",
       "claim_acknowledgment",
       "claim_line",
@@ -887,7 +883,6 @@ exports.MODULES = [
       "claimmd_ack_application",
       "claimmd_ack_delivery",
       "claimmd_submission_evidence",
-      "claimmd_submission_line_evidence",
       "claimmd_notice_submission_evidence",
       "claimmd_notice_receipt_observation",
       "claimmd_submission_receipt_observation",
@@ -991,16 +986,13 @@ exports.MODULES = [
       "claimmd_era_recovery_action",
       "claimmd_era_resolution",
       "claimmd_era_resolution_history",
-      "claimmd_era_match_decision",
-      "claimmd_era_financial_review_decision",
-      "claimmd_era_posting_plan",
-      "claimmd_era_posting_event",
       "appeal_tier_detail",
       "recorded_deadline",
       "payer_appeal_path",
       "payer_appeal_path_level",
       "payer_appeal_case",
       "payer_appeal_case_event",
+      "payer_appeal_vendor_report", // ADR-0053 D7 - clearinghouse-reported appeal events and the case each bound
       "representative_form_version",
       "representative_appointment",
       "beneficiary_appeal",
@@ -1015,9 +1007,6 @@ exports.MODULES = [
       "remittance_line",
       "remittance_remark",
       "remittance_service_line",
-      "billing_operations_investigation",
-      "billing_operations_investigation_event",
-      "billing_operations_investigation_note",
     ],
   },
   {
@@ -1229,6 +1218,7 @@ exports.MODULES = [
     name: "SaaS Tenant Platform",
     codePaths: [
       "packages/saas-tenant-platform",
+      "packages/admin-ui-shell",
       "apps/admin/src/shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
       "apps/web/src/modules/34-saas",
@@ -1251,6 +1241,7 @@ exports.MODULES = [
       "tenant_invitation",
       "tenant_export_job",
       "tenant_export_job_event",
+      "tenant_go_live_attestation",
       "tenant_key_destruction_log",
       "tenant_key_ring",
       "tenant_signup_intent",
@@ -1272,6 +1263,7 @@ exports.MODULES = [
     dependsOn: [1],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
+        "addon", // ADR-0110 claims-billing add-on catalog (platform-shared)
         "dunning_state",
         "invoice",
         "invoice_line",
@@ -1289,6 +1281,7 @@ exports.MODULES = [
         "stripe_api_call_audit",
         "stripe_webhook_event",
         "subscription",
+        "subscription_addon", // ADR-0110 (tenant read-only; platform-runner writes)
         "subscription_state_history",
         "usage_event",
         "usage_period_aggregate",

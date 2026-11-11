@@ -22,19 +22,10 @@ import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { COMMERCIAL_SUBMISSION_MAX_ATTEMPTS, ChartWardenError } from "@chartwarden/types";
-import {
-  CH,
-  type ClearinghouseTransport,
-  claimMdFilename,
-  extractX12SubmissionEvidence,
-  scopeKey,
-} from "@chartwarden/x12-837-client";
+import { CH, type ClearinghouseTransport } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
-import type {
-  ClaimMdReceiptIdentifier,
-  ClaimMdSubmissionEvidencePort,
-} from "../../23-billing-medicare/claimmd-evidence/store";
+import { claimsBillingAllowsWork } from "../../../bootstrap/claims-billing-gate";
 import type { CommercialContextPort } from "../eligibility/service";
 import type { Render837iArgs, Render837iResult } from "../services/render-837i";
 import { evaluateGateForClaim } from "../services/submission-service";
@@ -108,8 +99,6 @@ export interface SubmissionWorkerDeps {
   readonly renderer: {
     render(actor: CommercialActor, args: Render837iArgs): Promise<Render837iResult>;
   };
-  /** Required for Claim.MD only; the repository commits evidence before the transport request. */
-  readonly claimMdEvidence?: ClaimMdSubmissionEvidencePort;
   readonly outbox: CommercialOutboxPort;
   readonly activeOrgs: {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
@@ -358,73 +347,6 @@ async function requeue(
 /** SHA-256 of the exact 837I. One-way, and the file itself is never stored. */
 const hashOf = (x12: string): string => createHash("sha256").update(x12).digest("hex");
 
-/** Persist exact Claim.MD identity before network I/O; other vendor sends retain their existing path. */
-export async function reserveM41ClaimMdEvidence(input: {
-  readonly vendor: string | null;
-  readonly evidence?: ClaimMdSubmissionEvidencePort;
-  readonly organizationId: string;
-  readonly providerEntityId: string;
-  readonly locationId: string | null;
-  readonly claimId: string;
-  readonly submissionId: string;
-  readonly controlNumber: string;
-  readonly attemptCount: number;
-  readonly payerId: string;
-  readonly billingNpi: string;
-  readonly usage: "test" | "production";
-  readonly x12: string;
-  readonly submittedLines?: readonly {
-    readonly internalClaimLineId: string;
-    readonly revenueCode: string;
-    readonly procedureCode: string | null;
-    readonly serviceFrom: string;
-    readonly serviceTo: string;
-    readonly units: string;
-    readonly chargeCents: number;
-  }[];
-  readonly outboundReference: string;
-  readonly now: Date;
-}): Promise<string | null> {
-  if (input.vendor !== "claimmd") return null;
-  const evidence = input.evidence;
-  if (!evidence || evidence.usage !== input.usage)
-    throw new Error("CLAIMMD_EVIDENCE_NOT_CONFIGURED");
-  let parsed: ReturnType<typeof extractX12SubmissionEvidence>;
-  try {
-    parsed = extractX12SubmissionEvidence(input.x12);
-  } catch {
-    throw new Error("CLAIMMD_X12_IDENTITY_INVALID");
-  }
-  if (parsed.claims.length !== 1) throw new Error("CLAIMMD_SINGLE_CLAIM_REQUIRED");
-  const outbound = parsed.claims[0]!;
-  if (
-    outbound.pcn !== input.controlNumber ||
-    outbound.payerId !== input.payerId ||
-    outbound.billingNpi !== input.billingNpi
-  )
-    throw new Error("CLAIMMD_X12_IDENTITY_CONFLICT");
-  try {
-    return await evidence.reserve({
-      organizationId: input.organizationId,
-      providerEntityId: input.providerEntityId,
-      locationId: input.locationId,
-      claimId: input.claimId,
-      billingModule: "M41",
-      submissionId: input.submissionId,
-      attemptKey: `${input.submissionId}:${input.attemptCount}`,
-      accountReference: evidence.accountReference,
-      usage: input.usage,
-      x12Claim: outbound,
-      ...(input.submittedLines === undefined ? {} : { submittedLines: input.submittedLines }),
-      payloadSha256: parsed.payloadSha256,
-      outboundReference: input.outboundReference,
-      reservedAt: input.now,
-    });
-  } catch {
-    throw new Error("CLAIMMD_EVIDENCE_RESERVATION_FAILED");
-  }
-}
-
 /**
  * Freeze what is about to be sent AND mark that the transport is about to be called (so an interruption from here on is known to be
  * ambiguous), in ONE transaction under the claim's row lock. The lock makes "read the claim's first hash, then write mine" atomic:
@@ -538,38 +460,7 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
   if ((await bindPayloadAndMarkCallStarted(deps, sub, payloadHash)) === "changed") {
     return endWithoutSend(deps, sub, FAILURE.PAYLOAD_CHANGED);
   }
-  let evidenceId: string | null;
-  try {
-    evidenceId = await reserveM41ClaimMdEvidence({
-      vendor: deps.binding.vendor,
-      evidence: deps.claimMdEvidence,
-      organizationId: sub.organizationId,
-      providerEntityId: sub.providerEntityId,
-      locationId: sub.locationId,
-      claimId: sub.claimId,
-      submissionId: sub.id,
-      controlNumber: sub.controlNumber,
-      attemptCount: sub.attemptCount,
-      payerId: sub.clearinghousePayerId,
-      billingNpi: context.billingNpi ?? "",
-      usage: context.usage,
-      x12: rendered.x12,
-      submittedLines: rendered.submittedLines,
-      outboundReference: claimMdFilename(scopeKey(context), transportKeyFor(sub.claimId), "x12"),
-      now: nowOf(deps),
-    });
-  } catch (err) {
-    return endWithoutSend(
-      deps,
-      sub,
-      err instanceof Error && /^CLAIMMD_[A-Z_]+$/.test(err.message)
-        ? err.message
-        : "CLAIMMD_EVIDENCE_RESERVATION_FAILED",
-    );
-  }
   let outcome: SendOutcome | { readonly kind: "accepted"; readonly receiptId: string };
-  let vendorIdentifiers: readonly { readonly field: string; readonly value: string }[] | undefined;
-  let receiptReplayed = false;
   try {
     const result = await deps.binding.transport.submitClaim(context, {
       kind: "claim",
@@ -577,8 +468,6 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
       idempotencyKey: transportKeyFor(sub.claimId),
       payload: { format: "x12", x12: rendered.x12 },
     });
-    vendorIdentifiers = result.ok ? result.data.vendorIdentifiers : undefined;
-    receiptReplayed = result.ok && result.data.replayed;
     outcome = result.ok
       ? { kind: "accepted", receiptId: result.data.clearinghouseSubmissionId }
       : classifyTransportRefusal(result.degraded.code, result.degraded.ambiguous === true);
@@ -587,57 +476,8 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
     outcome = { kind: "in_doubt", code: FAILURE.TRANSPORT_FAULT };
   }
   switch (outcome.kind) {
-    case "accepted": {
-      if (evidenceId && deps.claimMdEvidence) {
-        const fieldNamespace: Record<string, "file" | "batch" | "claim" | "remote_claim" | "pcn"> =
-          {
-            fileid: "file",
-            inboundid: "file",
-            batchid: "batch",
-            claimid: "claim",
-            claimmd_id: "remote_claim",
-            remote_claimid: "remote_claim",
-            pcn: "pcn",
-          };
-        const identifiers = vendorIdentifiers?.flatMap(({ field, value }) => {
-          const namespace = fieldNamespace[field];
-          return namespace
-            ? [
-                {
-                  field: field as ClaimMdReceiptIdentifier["field"],
-                  namespace,
-                  value,
-                },
-              ]
-            : [];
-        }) ?? [
-          {
-            field: "clearinghouseSubmissionId" as const,
-            namespace: "opaque_submission" as const,
-            value: outcome.receiptId,
-          },
-        ];
-        try {
-          await deps.claimMdEvidence.observe({
-            evidenceId,
-            organizationId: sub.organizationId,
-            accountReference: deps.claimMdEvidence.accountReference,
-            usage: context.usage,
-            identifiers,
-            source: vendorIdentifiers
-              ? receiptReplayed
-                ? "upload_reconciliation"
-                : "upload_response"
-              : "attempt_store_replay",
-            sourceReference: sub.id,
-            observedAt: nowOf(deps),
-          });
-        } catch {
-          return endSubmission(deps, sub, "in_doubt", FAILURE.RECORD_FAULT, outcome.receiptId);
-        }
-      }
+    case "accepted":
       return recordAcceptedOrDoubt(deps, sub, outcome.receiptId);
-    }
     case "retry":
       return requeue(deps, sub, outcome.code, outcome.ambiguous);
     case "in_doubt":
@@ -658,6 +498,13 @@ export async function drainOrg(
   deps: SubmissionWorkerDeps,
   organizationId: string,
 ): Promise<DrainResult> {
+  // ADR-0110 D7 — an org without the claims-billing add-on is skipped, not leased: its rows stay queued (no attempt spent)
+  // and the next tick asks again. A failed entitlement read in enforce mode skips too (fail closed, no DLQ).
+  if (
+    !(await claimsBillingAllowsWork(organizationId, { queue: M41_CRON_QUEUES.submissionDrain }))
+  ) {
+    return { sent: 0, failures: [] };
+  }
   const failures: string[] = [];
   let sent = 0;
   for (const id of await listDue(deps, organizationId)) {

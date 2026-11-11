@@ -13,7 +13,7 @@
 // composition root merges this into the platform event catalog at boot (the M27/M30/M33 precedent).
 export { M35_OUTBOX_EVENTS } from "./events-by-m35";
 
-// §4.7 — the twenty-six permission keys M35 contributes to M3's catalog (the auth-package mirror-row
+// §4.7 — the twenty-eight permission keys M35 contributes to M3's catalog (the auth-package mirror-row
 // projector consumes `M35_CONTRIBUTED_PERMISSIONS`; routes gate on these keys via requirePermission).
 export {
   type M35ContributedPermissionKey,
@@ -87,3 +87,58 @@ export {
   scheduleM35Jobs,
 } from "./billing-runtime/workers";
 export type { M35JobDeps } from "./billing-runtime/jobs";
+
+// ADR-0110 — the claims-billing add-on: the entitlement reader (registered as the `ClaimsBillingEntitlementReader`
+// seam) and the platform-ops add-on service the route mount binds.
+export {
+  type AddonService,
+  buildDrizzleAddonService,
+} from "./addon/addon-service";
+export {
+  createDrizzleClaimsBillingEntitlementReader,
+  decideClaimsBillingEntitlement,
+} from "./addon/entitlement";
+export { registerM35Seams } from "./seams/register";
+export {
+  aggregateAddonForOrg,
+  activePeriodKeyFor,
+  countActivePatientsForPeriod,
+  createDrizzlePatientCounterProvider,
+  runPatientCensusForOrg,
+} from "./billing-runtime/census";
+
+// Slice 2 (tenant pricing) - the census_banded plan editor, the onboarding contract (step 2 `plan_contract`), the daily census, the
+// monthly statement and the tenant's own pricing read. The ports (`OnboardingPricingPort`, `PlatformAuditPort`) are bound by the
+// composition root: M35 has no edge to M34 or M4.
+export {
+  type ContractService,
+  type ContractView,
+  type PlatformContractView,
+  type TenantPricingView,
+  buildContractService,
+  readBillingServiceMode,
+} from "./pricing/contract-service";
+export { type PricingRouteDeps, registerPricingRoutes } from "./pricing/pricing.routes";
+export {
+  type PricingPlanService,
+  type PricingPlanView,
+  buildPricingPlanService,
+} from "./pricing/plan-service";
+export {
+  type OnboardingPricingPort,
+  type OnboardingTenantFacts,
+  type PlanContractStep,
+  PLAN_CONTRACT_STEP_KEY,
+  type PlatformAuditEntry,
+  type PlatformAuditPort,
+  buildPlatformAuditPort,
+} from "./pricing/ports";
+export { recordDailyCensusForOrg } from "./pricing/census-daily";
+export { countActiveStaffForMonth } from "./pricing/staff-meter";
+export {
+  STATEMENT_FINALIZE_GRACE_DAYS,
+  type StatementStripePort,
+  type StatementView,
+  calendarMonthOf,
+  runStatementsForOrg,
+} from "./pricing/statement-service";

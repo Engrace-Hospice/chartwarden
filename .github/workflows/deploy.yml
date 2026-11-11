@@ -206,6 +206,27 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_SHA }}
+      # ADR-0049 / ADR-0088 — the demo may serve per-tenant subdomains (`<slug>.chartwarden.cloud`). The base domain is baked
+      # into the web bundle, so it is a build input. It comes from the repository variable DEMO_TENANT_BASE_DOMAIN (Settings ->
+      # Secrets and variables -> Actions -> Variables); set it only AFTER the demo's DNS, wildcard certificate, edge and backend
+      # settings are live (deploy/production/TENANT_EDGE.md, "Demo"). Unset or empty = single-host: both build args stay empty,
+      # the Dockerfile defaults, so the web image behaves as before. Not a trigger: it changes what the next main-branch build
+      # bakes, nothing else. It runs first, right after checkout: a malformed value fails here, before any image is built.
+      - name: Resolve demo tenant-domain build args
+        id: demo_tenant
+        env:
+          DEMO_TENANT_BASE_DOMAIN: ${{ vars.DEMO_TENANT_BASE_DOMAIN }}
+        run: |
+          base="$DEMO_TENANT_BASE_DOMAIN"
+          storage=""
+          case "$base" in
+            "") ;;
+            *[!a-z0-9.-]* | .* | *. | *..* | -*) echo "DEMO_TENANT_BASE_DOMAIN must be a bare lowercase domain (no scheme, port or wildcard)" >&2; exit 1 ;;
+            *.*) storage="https://storage.${base}" ;;
+            *) echo "DEMO_TENANT_BASE_DOMAIN must have at least two labels, e.g. chartwarden.cloud" >&2; exit 1 ;;
+          esac
+          echo "base_domain=$base" >> "$GITHUB_OUTPUT"
+          echo "storage_origin=$storage" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Log in to GHCR
@@ -240,6 +261,11 @@ jobs:
           push: true
           tags: ghcr.io/engrace-hospice/chartwarden-web:sha-${{ env.RELEASE_SHA }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # VITE_TENANT_BASE_DOMAIN shows the "find my organization" landing at app.<base>; CSP_STORAGE_ORIGIN pins img-src and
+          # frame-src to https://storage.<base> instead of any https: (see Dockerfile.web). Both empty on a single-host demo.
+          build-args: |
+            VITE_TENANT_BASE_DOMAIN=${{ steps.demo_tenant.outputs.base_domain }}
+            CSP_STORAGE_ORIGIN=${{ steps.demo_tenant.outputs.storage_origin }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       # GAP-138 — the DocLens docling-worker image. Production compose had no such service, so DOCLING_WORKER_URL

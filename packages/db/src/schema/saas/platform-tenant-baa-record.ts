@@ -26,7 +26,15 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { organizations } from "../organizations";
+
+// One record per (tenant, addendum version): a concurrent duplicate reads as a 409 (the service's own check is racy). Declared
+// outside `pgTable`'s lazily-invoked config callback so the registration runs on import.
+const BAA_ADDENDUM_IDX = businessRule(
+  "platform_tenant_baa_unique",
+  "A BAA record for this addendum version already exists for this tenant.",
+);
 
 export const platformTenantBaaStatus = pgEnum("platform_tenant_baa_status", [
   "executed",
@@ -56,12 +64,13 @@ export const platformTenantBaaRecord = pgTable(
     complianceOfficerAttestationMembershipId: uuid("compliance_officer_attestation_membership_id"),
     attestedAt: timestamp("attested_at", { withTimezone: true }),
     documentId: uuid("document_id"), // M22 — the executed PDF
+    // Migration 1332: who filed the record and who last changed it (plain user uuids, no SQL FK). Go-live approval refuses an
+    // approver who wrote the governing record. NULL on rows written before the migration.
+    recordedByUserId: uuid("recorded_by_user_id"),
+    updatedByUserId: uuid("updated_by_user_id"),
   },
   (t) => ({
-    tenantAddendumUnique: uniqueIndex("platform_tenant_baa_unique").on(
-      t.tenantAccountId,
-      t.addendumVersion,
-    ),
+    tenantAddendumUnique: uniqueIndex(BAA_ADDENDUM_IDX).on(t.tenantAccountId, t.addendumVersion),
     tenantStatusIdx: index("platform_tenant_baa_tenant_status_idx").on(
       t.tenantAccountId,
       t.baaStatus,
@@ -76,6 +85,27 @@ export const platformTenantBaaRecord = pgTable(
     ),
   }),
 );
+
+/**
+ * The columns the platform carrier may INSERT (migration 1332's column-level grant), as a narrower table object over the same
+ * table. Drizzle lists EVERY column of the table it inserts into (`values (default, $1, default, ...)`) and `DEFAULT` still
+ * needs INSERT privilege on its column, so a column-level grant is only usable through an insert that names just these:
+ * not the subcontractor disclosure set, not the tenant compliance officer's attestation, not `id` (it has a default).
+ */
+export const platformTenantBaaRecordCreate = pgTable("platform_tenant_baa_record", {
+  organizationId: uuid("organization_id").notNull(),
+  tenantAccountId: uuid("tenant_account_id").notNull(),
+  addendumVersion: text("addendum_version").notNull(),
+  baaStatus: platformTenantBaaStatus("baa_status").notNull(),
+  executedOn: date("executed_on"),
+  effectiveOn: date("effective_on"),
+  expiresOn: date("expires_on"),
+  breachNotificationContactEmail: text("breach_notification_contact_email"),
+  breachNotificationContactPhone: text("breach_notification_contact_phone"),
+  documentId: uuid("document_id"),
+  recordedByUserId: uuid("recorded_by_user_id"),
+});
+export type NewPlatformTenantBaaRecordCreate = typeof platformTenantBaaRecordCreate.$inferInsert;
 
 export type PlatformTenantBaaRecord = typeof platformTenantBaaRecord.$inferSelect;
 export type NewPlatformTenantBaaRecord = typeof platformTenantBaaRecord.$inferInsert;

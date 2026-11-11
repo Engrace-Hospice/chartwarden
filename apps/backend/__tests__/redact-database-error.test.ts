@@ -301,3 +301,92 @@ describe("every sink that formats a database error is wired to safeErrorMessage"
     for (const value of PHI) expect(wire).not.toContain(value);
   });
 });
+
+/**
+ * Review fix (security M1): M34's best-effort paths (the wizard's post-change advance, the activation after approval, the
+ * superseded-attestation void, the BAA register's advance, the sweeps) used to log `error.message`, which for a Drizzle
+ * wrapper IS `Failed query: ... params: ...`. They now hand the error object to the composition root's `warn` under `err`,
+ * the key Pino's redacting serializer is registered for, so M34 needs no bootstrap import and no value reaches a log line.
+ */
+describe("M34 best-effort warn sinks log a database error through the redacting serializer", () => {
+  const M34_SOURCES = [
+    "src/modules/34-saas-tenant-platform/onboarding/wizard-service.ts",
+    "src/modules/34-saas-tenant-platform/onboarding/wizard-go-live.ts",
+    "src/modules/34-saas-tenant-platform/routes/platform/service-drizzle.ts",
+    "src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker.ts",
+  ];
+
+  it.each(M34_SOURCES)("%s formats no error message by hand", async (relative) => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(__dirname, "..", relative), "utf8");
+    expect(src).not.toMatch(/error\s+instanceof\s+Error\s*\?\s*error\.message/);
+  });
+
+  it("a failing advance after a wizard change logs no bound parameter", async () => {
+    const { createOnboardingWizard } = await import(
+      "../src/modules/34-saas-tenant-platform/onboarding/wizard-service"
+    );
+    const {
+      createMemoryOrgProfile,
+      createMemoryWizardRunner,
+      createMemoryWizardState,
+      memoryTask,
+    } = await import("../src/modules/34-saas-tenant-platform/onboarding/wizard-store-memory");
+    const lines: string[] = [];
+    const logger = Fastify({
+      logger: {
+        ...buildLoggerOptions(),
+        level: "trace",
+        stream: { write: (chunk: string) => void lines.push(chunk) },
+      },
+    }).log;
+    const state = createMemoryWizardState({
+      tenants: [
+        {
+          tenantAccountId: "t-1",
+          organizationId: "o-1",
+          orgSlug: "acme",
+          status: "onboarding",
+          legalBusinessName: "Acme",
+          complianceOfficerMembershipId: null,
+        },
+      ],
+      templates: [
+        {
+          key: "organisation",
+          title: "organisation",
+          description: "",
+          sequence: 1,
+          owner: "platform_ops",
+          completionMode: "attestation",
+          optional: false,
+          canonical: true,
+        },
+      ],
+      tasks: [memoryTask("t-1", "organisation")],
+    });
+    const wizard = createOnboardingWizard({
+      activateOrganization: async () => undefined,
+      runner: createMemoryWizardRunner(state),
+      orgProfile: createMemoryOrgProfile(state),
+      advance: async () => {
+        throw wrapped();
+      },
+      // The same wrapper the composition root wires (apps/backend/src/index.ts).
+      warn: (message, context) => logger.warn(context, message),
+    });
+    const taskId = (state.tasks[0] as { id: string }).id;
+    await wizard.attestPlatform(
+      "acme",
+      taskId,
+      { kind: "platform", membershipId: "ops-m", userId: "ops-u" },
+      { evidenceNote: "signed order form on file", reason: "customer confirmed by phone" },
+    );
+
+    const line = lines.find((l) => l.includes("advance after change failed")) ?? "";
+    expect(line).toBeTruthy();
+    for (const value of PHI) expect(line).not.toContain(value);
+    expect(line).toContain("23505"); // still diagnosable
+  });
+});

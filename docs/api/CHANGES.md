@@ -6,6 +6,193 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-09 — More operator free-text fields refuse a patient identifier (`422 EVIDENCE_LOOKS_LIKE_PHI`)
+
+**Why.** Text typed by an operator and stored on a row a tenant can read, or copied into the audit trail, is no place for a patient.
+Some fields were screened and some were not.
+
+- These fields are now refused with `422 EVIDENCE_LOOKS_LIKE_PHI` (the same code, status and envelope as the fields that were already
+  screened; the error names the field and never echoes the value) when they hold an SSN- or MBI-shaped value:
+  - platform: the tenant status-transition, offboard and shred `transitionReason`; the feature-flag `rationale` and every string
+    (and object key) inside the flag `value`; the signup-intent rejection `rejectionReason`; the oversized-export `approvalReason`;
+    the onboarding-template `title` and `description`; the provision `legalBusinessName` and `firstAdminFullName` and the qualify
+    `firstAdminFullName`; the onboarding-data `reason` (it is now screened as typed, before control characters are stripped);
+  - tenant: the support-consent grant `grantReason` and `revocationReason`, the tenant-export `justification`, the DSAR request
+    `requestorIdentityVerificationEvidence` and the DSAR denial `narrative`, the onboarding org-profile `displayName` (both surfaces);
+  - public: the self-serve signup `legalBusinessName`;
+  - M35: the refund `reasonDetail`, the refund-denial `reason`, and the plan `name` and `description` (create and update).
+  A flag `value` nested deeper than 8 levels, with more than 500 strings or more than 20,000 characters is refused with `422
+  VALIDATION_FAILED` rather than left partly unscreened.
+- Accepted and NOT stored, so not screened: the DEK-rotation `reason`, the support-session close `note` and the DSAR extension
+  `reason`. Closing a session is always permitted and is never refused for its note.
+- Wizard and onboarding text that is stored now has zero-width and bidi format characters removed (U+200B, U+200E/F, U+202A-E,
+  U+2060-4, U+2066-9, U+FEFF), as it already had control characters; U+200C and U+200D are kept.
+- The screen itself is stricter: a nine-digit value is no longer excused because a bare number sits near it ("SSN 900 123 456, 5 days"),
+  a long run of spaces between groups no longer hides it, and the refusal text now says to cite documents by title or ticket number and
+  that long ids and UUIDs can also trip the check. If a legitimate note is refused, cite the document by its title.
+- Not screened, on purpose: an unbroken run of ten to twelve digits (NPIs, phone numbers, ticket numbers).
+
+## 2026-11-09 — New error codes `IDEMPOTENCY_IN_FLIGHT` and `IDEMPOTENCY_KEY_STUCK`
+
+**Why.** A duplicate that arrived while the first request with the same `Idempotency-Key` was still running was answered as a
+plain `409` with code `CONFLICT`, the same code a business-rule refusal carries. A client that reads any 409 as "this key is
+spent, mint a new one" would then start a second write while the first was still in progress. And if the first request never
+finished (its process died after claiming the key), the same answer repeated for 24 hours.
+
+- `IDEMPOTENCY_IN_FLIGHT` replaces `CONFLICT` for that answer. The status is still `409`, the body is the standard error envelope
+  (`{ "error": { "code", "message", "correlationId", "documentationUrl" } }`) and the message is unchanged ("Idempotency-Key
+  request is still being processed"). Only the `code` value changed, from `CONFLICT`.
+- **How to handle it.** Treat it as "your first request is still running": keep the SAME `Idempotency-Key`, wait, and retry with
+  the same key and body. Do not mint a new key. Once the first request finishes the retry replays its stored response (or, if
+  that request failed before committing anything, runs again). Do this for at most 15 minutes.
+- `IDEMPOTENCY_KEY_STUCK` (new, `409`, same envelope) is what a duplicate gets once the first request has been pending for more
+  than 15 minutes. Its outcome is UNKNOWN: it may have been applied. **Do not retry with this key, and do not assume it failed.**
+  Read the resource to see whether the change is there; use a new key only if it is not. The server never reclaims or re-runs
+  the stuck row.
+- The other idempotency 409 is unchanged: `IDEMPOTENCY_CONFLICT` is the same key sent with a different body (a client bug; do
+  not retry). A business-rule `409 CONFLICT` still means the request itself was refused.
+- Clients that matched on `409` + `CONFLICT` for the in-flight situation must match `IDEMPOTENCY_IN_FLIGHT` instead.
+
+## 2026-11-09 — `Idempotency-Key`: a failed request frees its key only when it committed nothing
+
+**Why.** A `5xx`, or the retryable `409 CONCURRENT_UPDATE`, used to be stored as the key's response and replayed for 24 hours,
+so a same-key retry never ran the write.
+
+- A `5xx` or `409 CONCURRENT_UPDATE` that provably committed nothing (the request failed before anything became durable) no
+  longer consumes the key: retrying with the SAME `Idempotency-Key` runs the request again.
+- If any write of the request had already committed, or may have, or was still in progress when the response was built (a
+  post-commit step threw, a response failed to serialize, a second transaction deadlocked after the first committed, a
+  transaction was still running when a sibling failed), the response is stored and replayed exactly as before: the retry
+  answers the same failure and does not write twice. Read the failure, check the resource, and use a new key for a new attempt.
+- The `409 CONCURRENT_UPDATE` text no longer says "nothing was saved". It now reads "This step conflicted with another change in
+  progress and was not applied. An earlier step of the same request may have been applied: check the current state before
+  retrying." The code and the status are unchanged. A request can run several transactions; only the one the database aborted is
+  known not to have applied, so check the resource before you retry.
+- While the idempotency store is unreachable (the usual companion of a database outage) the key cannot be freed; it stays
+  `pending`: a retry answers `409 IDEMPOTENCY_IN_FLIGHT` for up to 15 minutes and `409 IDEMPOTENCY_KEY_STUCK` after that (read the
+  resource; do not retry with the key), until the key's 24-hour record expires.
+- Not tracked: an effect outside Postgres made directly in a route (an outbound call, a queue or object-store write). Those
+  belong behind the outbox (after the commit) by the platform's convention; a route that makes one directly is not covered.
+
+## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
+
+**Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong
+from-status.
+
+- `POST /api/v1/platform/tenants/{orgSlug}/status` and `POST /api/v1/platform/tenants/{orgSlug}/offboard` answer
+  `409 TENANT_STATUS_CHANGED` when another transition changed the tenant's status while the request was waiting. Nothing is
+  written; reload the tenant and retry.
+
+## 2026-11-05 — Onboarding wizard v2, pre-PR review fixes (go-live integrity)
+
+**Why.** The pre-PR review found ways one operator could open a tenant, or approve a go-live on data nobody had checked. These
+change what the existing routes refuse.
+
+- `POST /api/v1/platform/organizations/{organizationId}/status` with `event: "activate"` is refused
+  `409 GO_LIVE_TWO_PARTY_REQUIRED` while the organization's tenant is provisioning or onboarding. The organization opens only
+  through go-live approval; once the tenant is `active` the same call (a manual retry) is accepted.
+- `POST /api/v1/platform/tenants/{orgSlug}/go-live/approve` is **repeatable**: once the tenant is active with an approved
+  attestation, repeating it skips the guards and only finishes the organization's activation. A failed first activation now
+  answers `503 ORGANIZATION_ACTIVATION_FAILED` (it was a 500) and says to repeat the approval; the daily onboarding sweep also
+  opens any organization still `created` whose tenant is active. `409 GO_LIVE_APPROVER_WROTE_BAA` refuses an approver who
+  recorded or last changed the governing BAA record.
+- **Platform staff cannot be the compliance officer or the go-live attester.** `PUT .../compliance-officer` (both surfaces) and
+  `POST /api/v1/tenant/go-live/attest` answer `422 COMPLIANCE_OFFICER_PLATFORM_STAFF` for a member whose user is the acting
+  operator, is bound to `platform_alert_audience` in the tenant, or holds a platform role at home; an attestation whose attester
+  became staff is `409 GO_LIVE_ATTESTATION_STALE` with detail `attester_platform_staff` at approval.
+- **A pending attestation does not survive a data change.** Any write to the onboarding data (provider entities, locations, MAC
+  and Medicaid credentials, the org profile, the platform BAA register) revokes a pending go-live attestation in the same
+  transaction (`revokeReason`: "onboarding data changed after attestation"); the go-live step returns to pending and the officer
+  attests again.
+- `POST /api/v1/platform/baa-register` takes an optional `documentId`; an `executed` BAA needs one on create and on update
+  (`422 BAA_DOCUMENT_REQUIRED`). A duplicate attestation or duplicate (tenant, addendum) BAA record is `409`, not `500`.
+- The platform operator's `reason` on onboarding-data writes is screened for patient identifiers like every wizard free text
+  (`422 EVIDENCE_LOOKS_LIKE_PHI`), and a write now runs the onboarding advance after it commits.
+- `PATCH /api/v1/orgs/{id}` (the organization's display and legal name) and `POST .../admin/billing/npi-verifications/{id}/verify`
+  and `/revoke` (the `ccn_registered` step's data) also revoke a pending go-live attestation in the same transaction, like every
+  other write to the onboarding data. An operator's void records their user (a membership is recorded only when it is the
+  user's own active membership of that organization).
+- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE`, not a 500. (Its text was reworded on
+  2026-11-09: see the `Idempotency-Key` note above.)
+- Go-live approval takes the exclusive onboarding lock before it reads anything and judges the attestation as it is under that
+  lock; activation re-checks that the attester is still the assigned officer (`409 GO_LIVE_ATTESTATION_STALE`).
+- A session on an organization that is not `active` (created, suspended, closed or unknown) is confined to an exact list of
+  onboarding routes; every other route answers `403 ORGANIZATION_ONBOARDING`, including the tenant DSAR / export downloads,
+  support-consent grants, the care-team staff list, member credentials and direct user provisioning.
+
+---
+
+## 2026-11-05 — Onboarding wizard v2: ordered steps, attestation with evidence, two-party go-live
+
+**Why.** Tenant onboarding is now an ordered wizard that the server enforces. A step can only be started, completed, attested
+or skipped when every earlier required step is done or skipped (`409 ONBOARDING_STEP_OUT_OF_ORDER`). A human marks a step done
+by attesting with evidence. Going live takes two people: the tenant's compliance officer attests readiness, then a platform
+operator approves; the daily sweep no longer activates a tenant. The Xero and payroll steps are retired.
+
+### 1. `GET /api/v1/platform/tenants/{orgSlug}/onboarding` and `GET /api/v1/tenant/onboarding` — new fields
+
+Both return `steps` (ordered): `key`, `title`, `owner` (`platform_ops` | `org_admin` | `compliance_officer` | `either`),
+`sequence`, `optional`, `status`, `locked` and `lockedBy`, `completionMode` (`auto` | `attestation` | `either`), `evidence`
+(`note`, `ref`), `attestedBy` (`membershipId`, `actorKind`, `label`, `at`), the due/started/completed times; plus `currentStepKey`,
+`goLive` (`state`: `not_ready` | `awaiting_attestation` | `awaiting_approval` | `live` | `closed`, the latest `attestation`
+with `expiresAt` while pending, `failedGuards`, `complianceOfficerMembershipId`) and `orgProfile` (`displayName`, `orgTimezone`).
+**The tenant read never carries a ChartWarden operator's id.** Where an operator attested a step, approved the go-live or
+revoked an attestation, the tenant sees `membershipId: null` / `approvedByMembershipId: null` and a label
+(`attestedBy.label`, `approvedByLabel`, `revokedByLabel`: `"ChartWarden operations"`) with the time; reasons are kept. A
+revocation by the tenant's own org_admin (see below) keeps its membership id. The platform read is unchanged
+(`label` is null there). The tenant read is audited (`onboarding_task` list read). The older names stay as
+aliases: `tasks` and `currentStep` (platform), `items`, `nextCursor` and `hasMore` (tenant; the whole wizard is one page).
+
+### 2. New routes
+
+| Route | Who | Guards |
+|---|---|---|
+| `POST /api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/attest` | platform ops | `onboarding.manage_platform`, step-up, no AI actor; body `evidenceNote`, `evidenceRef?`, `reason` |
+| `POST /api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/reopen` | platform ops | same; body `reason` |
+| `PATCH /api/v1/platform/tenants/{orgSlug}/org-profile` | platform ops | same; body `displayName?`, `orgTimezone?` (IANA) |
+| `PUT /api/v1/platform/tenants/{orgSlug}/compliance-officer` | platform ops | same; body `membershipId` (an active member of that organization holding `compliance_officer`) and `reason` (8 to 500 characters; recorded with the operator in the audit trail) |
+| `POST /api/v1/platform/tenants/{orgSlug}/go-live/approve` and `.../revoke` | platform ops | `go_live.approve_platform`, step-up, no AI actor; body `reason` |
+| `POST /api/v1/tenant/onboarding/{taskId}/attest` and `/reopen` | the step's owner role | `onboarding.update`; no AI actor; `/reopen` body `reason` (8 to 1000 characters) is now **required** |
+| `PATCH /api/v1/tenant/org-profile` | org_admin | `onboarding.manage_own` |
+| `PUT /api/v1/tenant/compliance-officer` | org_admin | `onboarding.manage_own`, step-up |
+| `POST /api/v1/tenant/go-live/attest` | compliance officer | `go_live.attest`, step-up; body `attestationConfirmed: true` |
+
+`POST /api/v1/tenant/onboarding/{taskId}/complete` is now a deprecated alias of `/attest`: `evidenceNote` is required
+(`422 ONBOARDING_EVIDENCE_REQUIRED`) and `completionEvidence` is ignored. `.../skip` now also refuses out of sequence and refuses
+the go-live step.
+
+`POST /api/v1/tenant/onboarding/{taskId}/start` and `/block` now also refuse an AI principal.
+
+### 3. Changed behaviour
+
+- **Go-live is two people, not two memberships.** The approver must be a different *person* than the attester: a platform
+  operator who is also invited into the tenant as its compliance officer holds two memberships and is still one user, so
+  the approval is refused `409 GO_LIVE_SAME_PERSON`. The database enforces it too (both user ids and both membership ids
+  differ on an approved row).
+- **An attestation must still stand at approval.** Approval is refused `409 GO_LIVE_ATTESTATION_STALE` (the `details` code is
+  `attester_not_active`, `attester_not_compliance_officer` or `attester_not_assigned_officer`) when the attester is no longer an
+  active member, no longer holds `compliance_officer`, or is no longer the assigned officer; and `409 GO_LIVE_ATTESTATION_EXPIRED`
+  once it is more than 14 days old (a new attestation is refused the same way until platform operations revoke the old one).
+  Reassigning the compliance officer voids a pending attestation by another officer automatically.
+- **Compliance officer assignment** (both surfaces): the member must hold the `compliance_officer` role
+  (`422 COMPLIANCE_OFFICER_LACKS_ROLE`); the officer can be changed while the tenant is `onboarding` or `active`, not while it is
+  suspended or closing (`409 COMPLIANCE_OFFICER_LOCKED`).
+- **Free text** (evidence note and reference, reasons, skip rationale, blocker reason, go-live note) is cleaned: a NUL character is
+  `422 ONBOARDING_TEXT_INVALID`, other control characters except tab and newline are stripped, and text that looks like a Social
+  Security or Medicare number is `422 EVIDENCE_LOOKS_LIKE_PHI` (the value is never echoed).
+
+- `POST /api/v1/platform/tenants/{orgSlug}/status` with `toStatus: "active"` from `onboarding` is refused
+  `409 GO_LIVE_TWO_PARTY_REQUIRED`. Approval refuses `409 GO_LIVE_NOT_ATTESTED` without a pending attestation and
+  `409 ACTIVATION_GUARDS_FAILED` (the failed guards are in `details`) when a guard fails at approval time.
+- `POST` and `PATCH /api/v1/platform/baa-register` now need `platform_tenant_baa.write_platform` and a fresh step-up.
+- Typed refusals: `ONBOARDING_STEP_OUT_OF_ORDER`, `ONBOARDING_STEP_OWNER_MISMATCH` (403), `ONBOARDING_STEP_NOT_ATTESTABLE`,
+  `ONBOARDING_STEP_ALREADY_SETTLED`, `ONBOARDING_EVIDENCE_REQUIRED` / `ONBOARDING_EVIDENCE_INVALID`, `TENANT_NOT_ONBOARDING`,
+  `GO_LIVE_ALREADY_ATTESTED`, `GO_LIVE_NOT_ASSIGNED_OFFICER` (403), `GO_LIVE_SAME_PERSON`, `GO_LIVE_ATTESTATION_STALE`,
+  `GO_LIVE_ATTESTATION_EXPIRED`, `GO_LIVE_PENDING`,
+  `INVALID_ORG_TIMEZONE`, `COMPLIANCE_OFFICER_NOT_A_MEMBER`.
+
+---
+
 ## 2026-10-06 — Discharge details the Medicare claim needs (place of death, receiving care setting)
 
 **Why.** A Medicare hospice claim must report the patient discharge status (UB-04 FL 17 / 837I CL103,

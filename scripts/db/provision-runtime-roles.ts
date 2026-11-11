@@ -78,6 +78,8 @@ for (const [name, pw] of [
 const PLATFORM_READ_TABLES = [
   // M1/M2 spine — the enumerators (active orgs; the M36 D9 sole-tenant membership read).
   "organization",
+  // ADR-0049 D3: retired slugs are never reused, so the New tenant form's availability check reads them (names only, no PHI).
+  "organization_slug_alias",
   "membership",
   "patient",
   // M1 feature flags - the M34 platform + tenant flag admin reads every tenant's flag rows (GAP-164).
@@ -93,6 +95,7 @@ const PLATFORM_READ_TABLES = [
   "tenant_invitation",
   "onboarding_task",
   "onboarding_task_template",
+  "tenant_go_live_attestation",
   "support_consent_grant",
   "support_session",
   "support_session_event",
@@ -119,6 +122,16 @@ const PLATFORM_READ_TABLES = [
   "usage_period_aggregate",
   "patient_active_period",
   "user_active_period",
+  // ADR-0110 — the claims-billing add-on catalog and the per-org add-on rows (admin console list + usage).
+  "addon",
+  "subscription_addon",
+  // Slice 2 (tenant pricing) — the census bands of a plan, the signed contract, the daily census and the monthly statement.
+  "plan_census_band",
+  "subscription_contract",
+  "subscription_contract_mode",
+  "patient_census_daily",
+  "subscription_statement",
+  "subscription_statement_review",
   // WX-PR-025 — M33 §2.4 nightly MV refresh source tables (see MV_REFRESH_MATERIALIZED_VIEWS below):
   // the refresh's re-executed defining query needs a real SELECT grant on each MV's source table,
   // independent of (in addition to) the owner-role BYPASSRLS that lets it see every tenant's rows.
@@ -172,6 +185,10 @@ const PLATFORM_WRITER_FUNCTIONS = [
   "audit_archive_candidates(int)",
   "audit_archive_read_batch(text, uuid, int)",
   "audit_archive_detach(text, bigint, boolean)",
+  // M34 onboarding wizard: is this user ChartWarden platform staff? The compliance officer and the go-live attester must not
+  // be (migration 1097's SECURITY DEFINER holder reader; user ids only, platform-owned roles only). The platform pool reads it
+  // when approval re-checks the attester, the tenant pool already holds EXECUTE from the migration.
+  "m34_platform_role_holders(text[])",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no chartwarden_app grant): full write. */
@@ -186,6 +203,12 @@ const PLATFORM_WRITE_TABLES = [
 
 /** The §5.2 admin ACTIONS' mutation surface (refunds / dunning / promos) — INSERT+UPDATE only. */
 const PLATFORM_MUTATE_TABLES = [
+  // Slice 2 — the daily census snapshot and the monthly statement (a final row is frozen by its trigger). Tenants hold SELECT only.
+  // `plan` and `plan_census_band` are NOT here: their grants are narrower than INSERT + table-wide UPDATE (see PLAN_PLATFORM_UPDATE_COLUMNS).
+  "patient_census_daily",
+  "subscription_statement",
+  // ADR-0110 — platform-only grant/cancel of the claims-billing add-on (tenants hold SELECT only).
+  "subscription_addon",
   "refund",
   "dunning_state",
   "promo_code",
@@ -208,6 +231,12 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   // GAP-164: `FeatureFlagAdmin.upsert` runs on the platform pool (a NULL-org global flag is unwritable from a tenant
   // connection by design); without these two grants every platform / tenant flag write was a 42501.
   "feature_flag",
+  // Slice 2 — onboarding step 2 creates the tenant's subscription (INSERT; its UPDATE is by column only, see SUBSCRIPTION_PLATFORM_UPDATE_COLUMNS) and its signed contract.
+  "subscription",
+  "subscription_state_history",
+  "subscription_contract",
+  "subscription_contract_mode",
+  "subscription_statement_review",
 ] as const;
 
 const PLATFORM_PROVISION_UPDATE_TABLES = [
@@ -219,6 +248,49 @@ const PLATFORM_PROVISION_UPDATE_TABLES = [
   "onboarding_task",
   "support_session",
   "feature_flag",
+] as const;
+
+/**
+ * The `subscription` columns the platform carrier may UPDATE: exactly what the admin pause / resume / cancel write
+ * (`adminPauseSubscription`, `adminResumeSubscription`, `adminCancelSubscription`, which run on this carrier through
+ * `m35PlatformRunner`). Deliberately NOT here: `organization_id`, `plan_id` (a carrier that could re-point a subscription would move a
+ * tenant's contract onto another plan or organisation), the billing period, trial, dunning and Stripe columns.
+ */
+const SUBSCRIPTION_PLATFORM_UPDATE_COLUMNS = [
+  "status",
+  "paused_at",
+  "paused_until",
+  "canceled_at",
+  "cancel_at_period_end",
+  "updated_at",
+] as const;
+
+/**
+ * The `plan` columns the platform carrier may UPDATE (slice 2 plan editor + the legacy flat-tier editor). Deliberately NOT here: `id`,
+ * `slug`, `tier`, `cadence`, `family_slug`, `version`, `supersedes_plan_id`, `created_at`. A published version's freeze keys on its
+ * tier, so a carrier that could change `tier` could un-freeze a plan the database is meant to hold still; identity and lineage columns
+ * are set at INSERT and never rewritten. The guard triggers (migration 1411) refuse the same changes even to a superuser.
+ */
+const PLAN_PLATFORM_UPDATE_COLUMNS = [
+  "name",
+  "description",
+  "currency_code",
+  "base_price_cents",
+  "trial_period_days",
+  "is_active",
+  "valid_from",
+  "valid_to",
+  "deprecated_at",
+  "stripe_product_id",
+  "stripe_price_id",
+  "per_user_price_cents",
+  "billing_software_bps",
+  "managed_billing_bps",
+  "contract_term_months",
+  "implementation_fee_cents",
+  "minimum_monthly_cents",
+  "published_at",
+  "updated_at",
 ] as const;
 
 /** The destruction_certificate columns the platform carrier may update: the same set as the app role (migration 1159), never the spend columns or data_class. */
@@ -263,10 +335,6 @@ async function main(): Promise<void> {
         END IF;
       END $$;`);
       await run("GRANT USAGE ON SCHEMA public TO chartwarden_platform;");
-      // BIL-5.5: central Claim.MD readers run on DATABASE_PLATFORM_URL. The capture carrier owns
-      // the narrowly enumerated central inbox grants; migrations cannot reliably grant it to the
-      // platform carrier because this operator-provisioned role may not exist during migration.
-      await run("GRANT claimmd_capture TO chartwarden_platform;");
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO chartwarden_platform;`);
       }
@@ -288,6 +356,79 @@ async function main(): Promise<void> {
       await run('GRANT SELECT ON "ai_model_backend" TO chartwarden_platform;');
       await run(
         'GRANT UPDATE (last_health_status, last_health_check_at) ON "ai_model_backend" TO chartwarden_platform;',
+      );
+      // M23 Claim.MD webhook (migration 1322): the receipt table is platform-only (the route stores, the sweep settles; no
+      // DELETE: retention clears the cipher column). The sweep resolves a tenant from two COLUMN grants only: the
+      // platform-unique provider NPI and the platform-unique live control number.
+      // UPDATE is COLUMN-level: only what the sweep settles and the retention pass clears, never the stored receipt
+      // (usage, ids, event_type/time, payload_sha256). REVOKE first so a re-provision takes back an older table grant.
+      await run('GRANT SELECT, INSERT ON "claimmd_webhook_event" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "claimmd_webhook_event" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("derived_organization_id", "derived_provider_entity_id", "last_error_class", "processing_outcome", "entitlement_checked_at", "processed_at", "attempt_count", "payload_cipher", "payload_key_ref", "payload_cleared_at") ON "claimmd_webhook_event" TO chartwarden_platform;',
+      );
+      // The NPI-verification admin list (migration 1326) also names the entity: legal_name joins that column grant.
+      await run(
+        'GRANT SELECT ("id", "organization_id", "npi", "legal_name") ON "provider_entity" TO chartwarden_platform;',
+      );
+      // Migration 1326: platform staff verify / revoke NPI ownership; the sweep routes only on a live verification.
+      // No DELETE: a revoked row stays as evidence. UPDATE is COLUMN-level (revocation only): a verified npi or its
+      // evidence can never be rewritten. REVOKE first so a re-provision takes back an older table grant.
+      await run('GRANT SELECT, INSERT ON "provider_npi_verification" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "provider_npi_verification" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("revoked_at", "revoked_by_membership_id", "updated_at") ON "provider_npi_verification" TO chartwarden_platform;',
+      );
+      // Migration 1328: the platform operator approves or revokes a go-live attestation the tenant's compliance officer
+      // filed. No INSERT (the tenant files it) and no DELETE (it is history); UPDATE is COLUMN-level, approve / revoke only,
+      // so the attester, the time and the note can never be rewritten. REVOKE first so a re-provision takes back a table grant.
+      // Migration 1332: the platform BAA register. INSERT and UPDATE are COLUMN-level: INSERT names what the create route
+      // writes (not the subcontractor set or the tenant officer's attestation), UPDATE (status, dates, breach contacts,
+      // document link, last writer), so a record's tenant / organisation / addendum version, who filed it and the tenant
+      // compliance officer's attestation can never be rewritten from the platform side. SELECT and DELETE come from the
+      // lists above.
+      await run('REVOKE INSERT, UPDATE ON "platform_tenant_baa_record" FROM chartwarden_platform;');
+      await run(
+        'GRANT INSERT ("organization_id", "tenant_account_id", "addendum_version", "baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "recorded_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+      );
+      // subscription_contract and subscription_contract_mode: INSERT above and never UPDATE (a signed contract does not change; the mode
+      // history is append-only). REVOKE so a re-provision takes back any older table-wide or column grant.
+      await run('REVOKE UPDATE ON "subscription_contract" FROM chartwarden_platform;');
+      await run('REVOKE UPDATE ON "subscription_contract_mode" FROM chartwarden_platform;');
+      // subscription: INSERT above (onboarding step 2), UPDATE by COLUMN only (the admin pause / resume / cancel). REVOKE first so a
+      // re-provision takes back any older table-wide grant.
+      await run('REVOKE UPDATE ON "subscription" FROM chartwarden_platform;');
+      await run(
+        `GRANT UPDATE (${SUBSCRIPTION_PLATFORM_UPDATE_COLUMNS.map((c) => `"${c}"`).join(", ")}) ON "subscription" TO chartwarden_platform;`,
+      );
+      // plan (slice 2): the editor INSERTs a draft and UPDATEs by COLUMN (never tier, slug, family, version, cadence, lineage,
+      // created_at); the bands of a draft are only ever inserted and deleted, never updated in place. REVOKE first so a
+      // re-provision takes back an older table-wide grant.
+      await run('GRANT INSERT ON "plan" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "plan" FROM chartwarden_platform;');
+      await run(
+        `GRANT UPDATE (${PLAN_PLATFORM_UPDATE_COLUMNS.map((c) => `"${c}"`).join(", ")}) ON "plan" TO chartwarden_platform;`,
+      );
+      await run('GRANT INSERT, DELETE ON "plan_census_band" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "plan_census_band" FROM chartwarden_platform;');
+      await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
+      );
+      // Approval re-checks the attester against the membership as it is NOW (still active, still holds compliance_officer).
+      // Role grants are not a platform-wide read: COLUMN grants on exactly the columns that question needs (membership
+      // itself is already in PLATFORM_READ_TABLES), never the role scope, grantor or permission rows.
+      await run(
+        'GRANT SELECT ("membership_id", "role_id", "organization_id", "expires_at") ON "membership_role" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT SELECT ("id", "key", "enabled", "organization_id") ON "role" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
       );
       for (const t of PLATFORM_WRITE_TABLES) {
         await run(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO chartwarden_platform;`);

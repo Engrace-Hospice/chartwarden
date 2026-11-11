@@ -11,7 +11,11 @@
  *   - a taken slug, a former (aliased) slug and a slug the label rules refuse are all 409 TENANT_SLUG_UNAVAILABLE, and
  *     a refused request leaves no tenant account behind;
  *   - a re-provision naming a DIFFERENT slug is 409 (never a silent ignore); naming the same one is accepted;
- *   - no slug still yields a valid generated label.
+ *   - no slug still yields a valid generated label;
+ *   - the availability read (`isTenantSlugTaken`, behind GET /platform/tenant-slugs/:slug/availability) sees a live slug AND a
+ *     retired alias on the same platform login: the alias table is a platform-carrier SELECT grant, so a missing one fails here;
+ *   - that read is AUDITED through the real `m34PlatformBypassAuditor` (not a stub): one `platform.bypass_invoked` row per probe,
+ *     severity `warn` (it reads no tenant data), and it writes nothing else.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… (SUPERUSER, THROWAWAY db) bun run test:m34:tenant-slug:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -26,6 +30,7 @@ import { validateTenantSlug } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { m34PlatformBypassAuditor } from "../src/index";
 import { createTenantOrgCreationProvider } from "../src/modules/02-identity/tenant-org-creation-provider";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
@@ -119,7 +124,7 @@ describe.skipIf(!DB_URL)("M34 tenant slug provisioning — LIVE Postgres, real p
       legalHoldClear: async () => true,
       invitationDelivery: { acceptBaseUrl: "http://localhost/tenant-invite", send: unused },
       provisionJobs: { status: unused, retry: unused },
-      auditBypass: async () => {},
+      auditBypass: m34PlatformBypassAuditor,
       outbox: {
         publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m34" } as never),
       },
@@ -270,5 +275,51 @@ describe.skipIf(!DB_URL)("M34 tenant slug provisioning — LIVE Postgres, real p
     expect(rows).toHaveLength(1);
     expect(validateTenantSlug(rows[0].slug).ok).toBe(true);
     expect(rows[0].slug).toMatch(/^maple-pine-hospice-inc-[0-9a-f]{8}$/);
+  });
+
+  it("the availability read sees a live slug and a retired alias, and a free slug is free", async () => {
+    const id = nextId();
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'avail-before','A','A')",
+      [id],
+    );
+    await admin.query("UPDATE organization SET slug = 'avail-after' WHERE id = $1", [id]);
+
+    const taken = async (slug: string) => service().isTenantSlugTaken(slug);
+
+    expect(await taken("avail-after")).toBe(true);
+    expect(await taken("avail-before")).toBe(true);
+    expect(await taken("avail-never-used")).toBe(false);
+  });
+
+  it("each availability probe writes one audited platform entry at warn severity, through the real auditor", async () => {
+    const probeAudits = async () =>
+      (
+        await admin.query(
+          `SELECT severity, outcome, resource_kind, organization_id, context
+             FROM audit_event
+            WHERE event_type = 'platform.bypass_invoked'
+              AND context->>'jobId' = $1
+              AND context->>'reason' = 'platform-ops tenant slug availability'`,
+          [PLATFORM_JOB_ID],
+        )
+      ).rows;
+    const before = (await probeAudits()).length;
+
+    await service().isTenantSlugTaken("audited-probe-one");
+    await service().isTenantSlugTaken("audited-probe-two");
+
+    const written = await probeAudits();
+    expect(written).toHaveLength(before + 2);
+    for (const row of written) {
+      expect(row).toMatchObject({
+        severity: "warn",
+        outcome: "success",
+        resource_kind: "tenant",
+        organization_id: null,
+      });
+      // The probed label is not in the audit context (no per-keystroke text lands in the ledger).
+      expect(JSON.stringify(row.context)).not.toContain("audited-probe");
+    }
   });
 });

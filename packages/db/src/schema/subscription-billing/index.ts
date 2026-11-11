@@ -1,5 +1,6 @@
 // @chartwarden/db — Module 35 (Subscription Billing) schema barrel: the twenty-one `ownedTables`
-// `architecture/module-manifest.ts` gives M35 (§3.3).
+// `architecture/module-manifest.ts` gives M35 (§3.3), plus ADR-0110's `addon` (platform catalog) and
+// `subscription_addon` (tenant-scoped, SELECT-only to the app role).
 //
 // TENANT-SCOPED (twelve) — organization_id NOT NULL, RLS keyed ONLY on canonical app.org_id (§3.5):
 //   subscription · subscription_state_history · payment_method · invoice · invoice_line ·
@@ -19,13 +20,16 @@
 // NONE OF THE M35 TABLES IS PHI-BEARING BY THE TENANCY GATE'S HEURISTIC: patient/user activity is stored
 // only as a 32-hex HMAC pseudonym (W-SB-08), never a raw patient_id. Enums land in `packages/db/src/enums.ts`
 // (M35-T02); tables in migrations 0140–0142; RLS/grants + the M4 write-audit triggers in 0143.
+export * from "./addon";
 export * from "./dunning-state";
 export * from "./invoice";
 export * from "./invoice-line";
 export * from "./patient-active-period";
+export * from "./patient-census-daily";
 export * from "./patient-pseudonym-key";
 export * from "./payment-method";
 export * from "./plan";
+export * from "./plan-census-band";
 export * from "./plan-meter";
 export * from "./platform-retained-invoice";
 export * from "./platform-retained-invoice-line";
@@ -36,7 +40,11 @@ export * from "./revenue-recognition-snapshot";
 export * from "./stripe-api-call-audit";
 export * from "./stripe-webhook-event";
 export * from "./subscription";
+export * from "./subscription-addon";
+export * from "./subscription-contract";
 export * from "./subscription-state-history";
+export * from "./subscription-statement";
+export * from "./subscription-statement-review";
 export * from "./usage-event";
 export * from "./usage-period-aggregate";
 export * from "./user-active-period";

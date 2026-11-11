@@ -13,6 +13,11 @@ import {
 } from "@chartwarden/auth";
 import { ChartWardenError, type OrgScope, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
+import {
+  type OrganizationStageReader,
+  organizationOnboardingRefusal,
+  preActivationMayCall,
+} from "../onboarding-org-gate";
 import { stepUpFreshFor } from "../step-up";
 
 /** Matches the bootstrap `AuthenticateHook` shape without importing it (avoids an index↔plugin cycle). */
@@ -129,6 +134,14 @@ export interface SessionAuthenticateDeps {
       roleKeys: readonly string[];
     }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
   };
+  /**
+   * A new tenant's first admin signs in while the organization is still `created` (go-live not yet approved). For an org-bound
+   * session on any organization that is not `active` ONLY the exact METHOD + route-template pairs of onboarding-org-gate.ts may be
+   * called; every other route answers 403 ORGANIZATION_ONBOARDING. A read that throws fails the request (closed). REQUIRED: a
+   * hook built without it would silently skip the gate, so a caller that does not exercise the gate says so explicitly (tests
+   * pass `liveOrganizationStage` from `__tests__/_live-organization-stage.ts`).
+   */
+  organizationStage: OrganizationStageReader;
 }
 
 /** Constant-time header/secret comparison (mirrors the M12/M19/M20/M13 witness-token precedent). */
@@ -268,6 +281,16 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
           );
         }
       }
+    }
+    if (
+      (await deps.organizationStage.isConfined(actor.organizationId)) &&
+      !preActivationMayCall({
+        method: request.method,
+        routeTemplate: request.routeOptions?.url,
+        rawUrl: request.url,
+      })
+    ) {
+      throw organizationOnboardingRefusal();
     }
     request.context.organizationId = actor.organizationId;
     request.context.roles = [...actor.roles];

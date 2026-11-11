@@ -83,10 +83,7 @@ export {
 export { type ScheduleProbe, createScheduleProbe } from "./jobs/schedule-probe";
 export { M41_CRON_QUEUES, M41_PLATFORM_JOB_ID, wireM41Tenancy } from "./jobs/queues";
 export { buildCommercialRenderPorts } from "./services/render-ports";
-export {
-  readM41HistoricalEraCandidates,
-  type M41HistoricalEraAttemptCandidate,
-} from "./services/historical-era-candidates";
+export { readM41HistoricalEraCandidates, type M41HistoricalEraAttemptCandidate } from "./services/historical-era-candidates";
 export { buildCommercial837iRenderer } from "./services/render-837i";
 export type {
   CommercialRenderParties,
@@ -147,3 +144,13 @@ export {
   type CommercialBillingEraseStore,
   createDrizzleCommercialBillingEraseStore,
 } from "./erasers/commercial-billing-eraser";
+export {
+  buildEnrollmentReportService,
+  recordEnrollmentReport,
+} from "./services/enrollment-report-service";
+export type { EnrollmentReportService } from "./services/enrollment-report-service";
+export {
+  CLEARINGHOUSE_ENROLLMENT_ALERT,
+  M41_ENROLLMENT_REPORT_EVENT,
+  buildM41EnrollmentReportConsumer,
+} from "./outbox-consumers/m23-enrollment-reported";

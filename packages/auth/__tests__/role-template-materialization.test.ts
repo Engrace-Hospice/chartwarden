@@ -11,7 +11,10 @@ import {
   isTenantRoleReserved,
   planRoleTemplateMaterialization,
 } from "../src";
-import { FULL_CATALOG_EXCLUDED_KEYS } from "../src/roles/template-materialization";
+import {
+  ADMINISTRATOR_EXCLUDED_KEYS,
+  FULL_CATALOG_EXCLUDED_KEYS,
+} from "../src/roles/template-materialization";
 
 const MIRROR = allPermissionMirrorRows().map((r) => ({ key: r.key, category: r.category }));
 const plan = (existing: string[] = [], mirror = MIRROR) =>
@@ -52,8 +55,9 @@ describe("planRoleTemplateMaterialization", () => {
       MIRROR.length - platformKeys.length - FULL_CATALOG_EXCLUDED_KEYS.size,
     );
     for (const key of platformKeys) expect(orgAdmin?.permissionKeys).not.toContain(key);
+    // administrator holds the same catalog less the keys its role-keyed ABAC predicate never admits (a dead grant).
     expect(plan().find((r) => r.key === "administrator")?.permissionKeys).toEqual(
-      orgAdmin?.permissionKeys,
+      orgAdmin?.permissionKeys.filter((k) => !ADMINISTRATOR_EXCLUDED_KEYS.has(k)),
     );
   });
 

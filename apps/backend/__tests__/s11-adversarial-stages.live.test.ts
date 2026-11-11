@@ -1,38 +1,3 @@
-/**
- * Over the 800-line soft ceiling on purpose: one table-driven matrix (8 stages x the adversarial cases) shares a single seeded fixture, so it stays together.
- *
- * S11 (Clinical Workflow Audit 2026-10-28, section 5) — cross-tenant, unauthorized-clinician, revoked-membership
- * and break-glass adversarial cases across EACH clinical stage, against real Postgres.
- *
- * Stages (one read + one write each, table-driven, through the REAL module route mounts):
- *   patient (M5) · admission (M6) · encounter (M8) · order (M11) · eMAR (M13) · HOPE (M10) · IDG (M14) · discharge (M6)
- *
- * What is real here, deliberately: every request is authenticated by a real Better Auth session cookie through the
- * production `createSessionAuthenticate` hook, the real session store + actor enrichment, the real DB RBAC
- * resolver (`wireModuleSeams` with a db), the real ABAC registry, the real Drizzle route services under
- * `withOrgContext`, and the real M3 break-glass routes/store. Everything runs as the NOBYPASSRLS `chartwarden_app`
- * role (`_live-app-role.ts` asserts it); the superuser connection only seeds and inspects.
- *
- * What it asserts, per stage:
- *   1. CONTROL      an authorised, in-scope clinician reaches the row (so every denial below is meaningful);
- *   2. CROSS-TENANT org A's clinician naming org B's id gets the SAME typed 404 as a never-existing id (no
- *                   existence leak) on the read and the write, and org B's row is byte-identical afterwards;
- *   3. UNAUTHORISED a same-org clinician without the permission gets 403 on read and write; row unchanged;
- *   4. REVOKED      revoking the membership refuses the very next read and write; deleting the session likewise;
- *   5. BREAK-GLASS  a clinician outside the caseload is refused (404, non-leaking), then admitted by an invoked
- *                   glass — which leaves `m3.breakglass.invoked` (actor/reason/patient) and a critical
- *                   `m3.breakglass.access` audit row; revoking/expiring the glass closes it again.
- * Plus: break-glass needs its permission AND a >=10-char justification AND a named patient; a glass is
- * org-scoped; a co-sign-required tenant's glass grants nothing until a DISTINCT co-signer approves; and an
- * auditor ENROLMENT-stage session reaches only the five enrolment routes (every clinical stage answers
- * AUDITOR_ENROLMENT_REQUIRED), while an ACTIVE auditor session is read-only.
- *
- * Seeded rows are synthetic: patients use invented names and no SSN/MBI; clinical rows are filled with a
- * schema-driven generic filler (NOT NULL columns only) under `session_replication_role = replica`.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:s11:adversarial-stages:live
- * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
- */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -68,6 +33,42 @@ import { M13_OUTBOX_EVENTS, mountEmarRoutes } from "../src/modules/13-emar/index
 import { M14_OUTBOX_EVENTS, mountIdgRoutes } from "../src/modules/14-idg/index";
 import { enrolFirstTime } from "./_auditor-enrol-helper";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
+/**
+ * Over the 800-line soft ceiling on purpose: one table-driven matrix (8 stages x the adversarial cases) shares a single seeded fixture, so it stays together.
+ *
+ * S11 (Clinical Workflow Audit 2026-10-28, section 5) — cross-tenant, unauthorized-clinician, revoked-membership
+ * and break-glass adversarial cases across EACH clinical stage, against real Postgres.
+ *
+ * Stages (one read + one write each, table-driven, through the REAL module route mounts):
+ *   patient (M5) · admission (M6) · encounter (M8) · order (M11) · eMAR (M13) · HOPE (M10) · IDG (M14) · discharge (M6)
+ *
+ * What is real here, deliberately: every request is authenticated by a real Better Auth session cookie through the
+ * production `createSessionAuthenticate` hook, the real session store + actor enrichment, the real DB RBAC
+ * resolver (`wireModuleSeams` with a db), the real ABAC registry, the real Drizzle route services under
+ * `withOrgContext`, and the real M3 break-glass routes/store. Everything runs as the NOBYPASSRLS `chartwarden_app`
+ * role (`_live-app-role.ts` asserts it); the superuser connection only seeds and inspects.
+ *
+ * What it asserts, per stage:
+ *   1. CONTROL      an authorised, in-scope clinician reaches the row (so every denial below is meaningful);
+ *   2. CROSS-TENANT org A's clinician naming org B's id gets the SAME typed 404 as a never-existing id (no
+ *                   existence leak) on the read and the write, and org B's row is byte-identical afterwards;
+ *   3. UNAUTHORISED a same-org clinician without the permission gets 403 on read and write; row unchanged;
+ *   4. REVOKED      revoking the membership refuses the very next read and write; deleting the session likewise;
+ *   5. BREAK-GLASS  a clinician outside the caseload is refused (404, non-leaking), then admitted by an invoked
+ *                   glass — which leaves `m3.breakglass.invoked` (actor/reason/patient) and a critical
+ *                   `m3.breakglass.access` audit row; revoking/expiring the glass closes it again.
+ * Plus: break-glass needs its permission AND a >=10-char justification AND a named patient; a glass is
+ * org-scoped; a co-sign-required tenant's glass grants nothing until a DISTINCT co-signer approves; and an
+ * auditor ENROLMENT-stage session reaches only the five enrolment routes (every clinical stage answers
+ * AUDITOR_ENROLMENT_REQUIRED), while an ACTIVE auditor session is read-only.
+ *
+ * Seeded rows are synthetic: patients use invented names and no SSN/MBI; clinical rows are filled with a
+ * schema-driven generic filler (NOT NULL columns only) under `session_replication_role = replica`.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:s11:adversarial-stages:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -574,6 +575,7 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
       createDbActorEnrichmentReader(handle.db),
     );
     const authenticate = createSessionAuthenticate({
+      organizationStage: liveOrganizationStage,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

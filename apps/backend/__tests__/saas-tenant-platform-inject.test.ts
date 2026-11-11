@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // apps/backend/__tests__/saas-tenant-platform-inject.test.ts — M34 (SaaS Tenant Platform) §4.1 route-
 // inventory HTTP-layer smoke test (TASK-050A / TEST-001). Before this file, M34 had zero `app.inject()`
 // coverage — the module is the largest fan-out in this remediation effort: fifteen `register*Routes`
@@ -54,14 +56,25 @@ import {
 } from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import {
+  type RouteRateLimit,
+  TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "../src/bootstrap/plugins/route-rate-limit";
 import {
   type TenantPlatformAbacResolver,
   type TenantPlatformRouteSeed,
   buildTenantPlatformAbacPredicates,
   createInMemoryTenantBackend,
   createInMemoryTenantPlatformBackend,
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+  createOnboardingWizard,
+  memoryTask,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
 // `TenantRouteSeed` is only exported from the tenant-routes barrel, not re-exported at the module root
@@ -135,6 +148,7 @@ const PLATFORM_OPS_PERMISSIONS = [
   "signup_intent.qualify",
   "tenant_export.list_platform",
   "platform_tenant_baa.read_platform",
+  "platform_tenant_baa.write_platform",
   "feature_flag.read_platform",
   "feature_flag.write_platform",
   "feature_flag.kill_switch",
@@ -193,7 +207,9 @@ function buildTestAbacResolver(): TenantPlatformAbacResolver {
   };
 }
 
-function makeServer() {
+function makeServer(
+  options: { tenantBaseDomain?: string | null; slugAvailabilityRateLimit?: RouteRateLimit } = {},
+) {
   const platformSeed: TenantPlatformRouteSeed = {
     // GAP-098 — one HELD bundle and one already-released job, so the `?held=true` filter has something
     // to include AND something to exclude (a filter proven only against an all-held set proves nothing).
@@ -225,10 +241,6 @@ function makeServer() {
     ],
   };
   const tenantSeed: TenantRouteSeed = {
-    onboardingTasks: [
-      { id: TASK_START_ID, organizationId: ORG, templateKey: "account_created", status: "pending" },
-      { id: TASK_BLOCK_ID, organizationId: ORG, templateKey: "verify_email", status: "pending" },
-    ],
     baaRecords: [
       {
         id: BAA_TENANT_ID,
@@ -250,6 +262,38 @@ function makeServer() {
 
   const platform = createInMemoryTenantPlatformBackend(platformSeed);
   const tenant = createInMemoryTenantBackend(tenantSeed);
+  // The onboarding wizard (tenant surface): two org_admin-owned steps in sequence.
+  const wizardState = createMemoryWizardState({
+    tenants: [
+      {
+        tenantAccountId: TENANT_ACME_ID,
+        organizationId: ORG,
+        orgSlug: "acme",
+        status: "onboarding",
+        legalBusinessName: "Acme Hospice",
+        complianceOfficerMembershipId: null,
+      },
+    ],
+    templates: ["account_created", "verify_email"].map((key, i) => ({
+      key,
+      title: key,
+      description: "",
+      sequence: i + 1,
+      owner: "org_admin" as const,
+      completionMode: "attestation" as const,
+      optional: false,
+      canonical: true,
+    })),
+    tasks: [
+      memoryTask(TENANT_ACME_ID, "account_created", "pending", { id: TASK_START_ID }),
+      memoryTask(TENANT_ACME_ID, "verify_email", "pending", { id: TASK_BLOCK_ID }),
+    ],
+  });
+  const wizard = createOnboardingWizard({
+    activateOrganization: async () => undefined,
+    runner: createMemoryWizardRunner(wizardState),
+    orgProfile: createMemoryOrgProfile(wizardState),
+  });
 
   const grantStore = createInMemoryEffectivePermissionStore([
     {
@@ -269,6 +313,18 @@ function makeServer() {
       userId: "org_admin_1",
       grants: [
         { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ORG_ADMIN_PERMISSIONS },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "reader_without_role_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: ["tenant.read_platform"],
+        },
       ],
     },
     {
@@ -298,6 +354,19 @@ function makeServer() {
   mountTenantPlatformRoutes(app, STUB_DB, {
     platform: { service: platform.service },
     tenant: { service: tenant.service },
+    onboarding: { wizard },
+    ...(options.tenantBaseDomain !== undefined
+      ? { tenantBaseDomain: options.tenantBaseDomain }
+      : {}),
+    ...(options.slugAvailabilityRateLimit
+      ? {
+          slugAvailabilityRateLimit: createRouteRateLimit({
+            store: createInMemoryRateLimitStore(),
+            limit: options.slugAvailabilityRateLimit,
+            keyPrefix: "m34-slug-availability-test",
+          }),
+        }
+      : {}),
   });
   return { app, platform, tenant };
 }
@@ -320,6 +389,13 @@ const ORG_ADMIN = {
 };
 const ORG_ADMIN_STEPUP = { ...ORG_ADMIN, "x-step-up": "fresh" };
 const NOPERM = { "x-test-user": "noperm_1", "x-test-org": ORG, "x-test-roles": "none" };
+// Holds `tenant.read_platform` (RBAC passes) but not the `platform_ops` role, so only the ABAC predicate can refuse it.
+const READER_WITHOUT_ROLE = {
+  "x-test-user": "reader_without_role_1",
+  "x-test-org": ORG,
+  "x-test-roles": "none",
+  "x-test-membership": MEMBER_PLATFORM_OPS,
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -399,6 +475,169 @@ describe("M34-saas-tenant-platform-inject — provisioning slug (POST /api/v1/pl
 
   it("accepts a valid slug", async () => {
     expect((await post("sunrise")).statusCode).toBe(202);
+  });
+});
+
+// ── slug availability (GET /api/v1/platform/tenant-slugs/:slug/availability) ─────────────────────────
+describe("M34-saas-tenant-platform-inject — tenant slug availability", () => {
+  const check = async (
+    slug: string,
+    opts: { headers?: Record<string, string>; tenantBaseDomain?: string | null } = {},
+  ) => {
+    const { app } = makeServer(
+      opts.tenantBaseDomain === undefined ? {} : { tenantBaseDomain: opts.tenantBaseDomain },
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+      headers: opts.headers ?? PLATFORM_OPS,
+    });
+    await app.close();
+    return res;
+  };
+
+  it("401 without a session and 403 without tenant.read_platform", async () => {
+    expect((await check("sunrise", { headers: {} })).statusCode).toBe(401);
+    expect((await check("sunrise", { headers: NOPERM })).statusCode).toBe(403);
+  });
+
+  it("403 when the permission is held but the tenant_lifecycle_platform_ops ABAC predicate denies (no platform_ops role)", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+      headers: READER_WITHOUT_ROLE,
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(403);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("a free, valid slug is available and carries its address when a base domain is set", async () => {
+    const res = await check("sunrise", { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      slug: "sunrise",
+      valid: true,
+      available: true,
+      url: "https://sunrise.chartwarden.cloud",
+    });
+  });
+
+  it("answers without a url in single-host mode (no base domain)", async () => {
+    const res = await check("sunrise");
+
+    expect(res.json()).toEqual({ slug: "sunrise", valid: true, available: true });
+  });
+
+  it("a slug an organization already holds is valid but not available", async () => {
+    const res = await check("acme");
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      slug: "acme",
+      valid: true,
+      available: false,
+      reason: "taken",
+    });
+  });
+
+  it.each([
+    ["admin", "reserved"],
+    ["app", "reserved"],
+    ["ab", "format"],
+    ["Sunrise", "format"],
+    ["sun_rise", "format"],
+    ["xn--sunrise", "punycode"],
+    ["x".repeat(64), "format"],
+  ])("refuses %s as invalid (%s) without consulting the data", async (slug, reason) => {
+    const res = await check(slug, { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ slug, valid: false, available: false, reason });
+  });
+
+  it("never calls the taken-lookup for a reserved, malformed or punycode slug, but does for a valid one", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+    const probe = (slug: string) =>
+      app.inject({
+        method: "GET",
+        url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+        headers: PLATFORM_OPS,
+      });
+
+    for (const refused of ["admin", "wardenx", "ab", "Sunrise", "sun_rise", "xn--sunrise"]) {
+      expect((await probe(refused)).json().valid).toBe(false);
+    }
+    expect(lookup).not.toHaveBeenCalled();
+
+    expect((await probe("sunrise")).json().valid).toBe(true);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith("sunrise");
+    await app.close();
+  });
+
+  describe("per-route rate limit (a probe is an audited platform read)", () => {
+    const TWO_PER_MINUTE: RouteRateLimit = {
+      perUser: 2,
+      perOrg: 100,
+      windowMs: 60_000,
+      failMode: "open",
+    };
+    const probe = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) =>
+      app.inject({
+        method: "GET",
+        url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+        headers,
+      });
+
+    it("answers 429 RATE_LIMITED with Retry-After once a user is over the cap", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      const first = await probe(app, PLATFORM_OPS);
+      const second = await probe(app, PLATFORM_OPS);
+      const third = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
+      expect(third.statusCode).toBe(429);
+      expect(third.json().error.code).toBe("RATE_LIMITED");
+      expect(third.headers["retry-after"]).toBe("60");
+    });
+
+    it("is not spent by callers the permission or ABAC gate refuses", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      for (let i = 0; i < 5; i++) {
+        expect((await probe(app, READER_WITHOUT_ROLE)).statusCode).toBe(403);
+        expect((await probe(app, NOPERM)).statusCode).toBe(403);
+      }
+      const allowed = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect(allowed.statusCode).toBe(200);
+    });
+
+    it("the composition root builds the limiter from the shipped budget and mounts it on the platform routes", () => {
+      const root = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+
+      expect(root).toMatch(
+        /slugAvailabilityRateLimit: createRouteRateLimit\(\{[^}]*limit: TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT/s,
+      );
+    });
+
+    it("the shipped budget is 30 per minute per user and fails open (an availability control, not a probing oracle)", () => {
+      expect(TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT).toMatchObject({
+        perUser: 30,
+        windowMs: 60_000,
+        failMode: "open",
+      });
+    });
   });
 });
 
@@ -656,23 +895,66 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     });
     expect(list0.statusCode).toBe(200);
 
+    // A register WRITE is a decision: it needs the write key AND a fresh step-up (the read key alone is not enough).
+    const payload = {
+      tenantAccountId: TENANT_ACME_ID,
+      addendumVersion: "v2",
+      baaStatus: "pending",
+    };
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/platform/baa-register",
+          headers: PLATFORM_OPS,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/platform/baa-register",
-      headers: PLATFORM_OPS,
-      payload: { tenantAccountId: TENANT_ACME_ID, addendumVersion: "v2", baaStatus: "pending" },
+      headers: PLATFORM_OPS_STEPUP,
+      payload,
     });
     expect(create.statusCode).toBe(201);
     const baaId = create.json().id as string;
 
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/v1/platform/baa-register/${baaId}`,
+          headers: PLATFORM_OPS,
+          payload: { baaStatus: "executed" },
+        })
+      ).statusCode,
+    ).toBe(403);
+    // An executed BAA must point at its executed document (422 BAA_DOCUMENT_REQUIRED), on create and on update.
+    const noDocument = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/platform/baa-register/${baaId}`,
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { baaStatus: "executed" },
+    });
+    expect(noDocument.statusCode).toBe(422);
+    expect(noDocument.json().error.code).toBe("BAA_DOCUMENT_REQUIRED");
+    const createExecutedNoDocument = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/baa-register",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { ...payload, addendumVersion: "v-doc-less", baaStatus: "executed" },
+    });
+    expect(createExecutedNoDocument.statusCode).toBe(422);
     const update = await app.inject({
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
-      headers: PLATFORM_OPS,
-      payload: { baaStatus: "executed" },
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { baaStatus: "executed", documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004" },
     });
     expect(update.statusCode).toBe(200);
     expect(update.json().baaStatus).toBe("executed");
+    expect(update.json().documentId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004");
 
     await app.close();
   });
@@ -1044,11 +1326,19 @@ describe("M34-saas-tenant-platform-inject — tenant onboarding checklist (D3)",
     expect(start.statusCode).toBe(200);
     expect(start.json().status).toBe("in_progress");
 
-    const complete = await app.inject({
+    // The deprecated /complete is the attest route: evidence is required.
+    const noEvidence = await app.inject({
       method: "POST",
       url: `/api/v1/tenant/onboarding/${TASK_START_ID}/complete`,
       headers: ORG_ADMIN,
       payload: {},
+    });
+    expect(noEvidence.statusCode).toBe(422);
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/v1/tenant/onboarding/${TASK_START_ID}/complete`,
+      headers: ORG_ADMIN,
+      payload: { evidenceNote: "administrator confirmed the account details" },
     });
     expect(complete.statusCode).toBe(200);
     expect(complete.json().status).toBe("done");

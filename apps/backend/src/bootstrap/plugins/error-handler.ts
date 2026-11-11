@@ -9,11 +9,19 @@
 // full and returned as a generic INTERNAL_ERROR — internal details are NEVER leaked. The
 // correlationId is read off request.context (applyRequestContext) so a client can quote it
 // to support and ops can stitch the request across logs/audit/outbox.
-import { classifyDatabaseError } from "@chartwarden/db";
+import { classifyDatabaseError, classifyRetryableDatabaseError } from "@chartwarden/db";
 import { ChartWardenError, ConflictError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 const DOCS_BASE = "https://docs.chartwarden.app/errors";
+
+/**
+ * The 409 CONCURRENT_UPDATE text. It is true of the transaction the database aborted (it was rolled back, "not applied") and says
+ * nothing stronger: a request can run several transactions, and an earlier one may already have committed, so the operator is
+ * told to check the current state before retrying. (It used to say "nothing was saved", which is not always so.)
+ */
+export const CONCURRENT_UPDATE_MESSAGE =
+  "This step conflicted with another change in progress and was not applied. An earlier step of the same request may have been applied: check the current state before retrying.";
 
 /**
  * A Fastify framework error (malformed JSON, an oversized body, an unsupported content-type) — built
@@ -128,6 +136,27 @@ export function applyErrorHandler(app: FastifyInstance): void {
             : {}),
           correlationId,
           documentationUrl: `${DOCS_BASE}/${conflict.code}`,
+        },
+      });
+    }
+
+    // A deadlock or serialization failure: the database aborted THIS transaction because a concurrent one got in its way, so
+    // nothing it did was kept, and running it again is the remedy. An earlier transaction of the same request may already have
+    // committed, so CONCURRENT_UPDATE_MESSAGE says this step "was not applied" and that an earlier step "may have been applied",
+    // never that nothing was saved. A retryable 409, not a 500 beside the genuine faults. As above, the raw error is not logged
+    // (its message embeds the query and its bound parameters).
+    const retryable = classifyRetryableDatabaseError(err);
+    if (retryable) {
+      request.log.info(
+        { errCode: "CONCURRENT_UPDATE", statusCode: 409, sqlstate: retryable.sqlstate },
+        "handled error",
+      );
+      return reply.code(409).send({
+        error: {
+          code: "CONCURRENT_UPDATE",
+          message: CONCURRENT_UPDATE_MESSAGE,
+          correlationId,
+          documentationUrl: `${DOCS_BASE}/CONCURRENT_UPDATE`,
         },
       });
     }

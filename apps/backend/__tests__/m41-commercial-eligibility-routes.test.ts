@@ -190,6 +190,13 @@ function makeServer() {
       log: (e) => logs.push(e),
     }),
     admin: createCommercialAdminService(store),
+    // Not exercised here (m41-enrollment-reports.live.test.ts covers these routes).
+    reports: {
+      list: async () => [],
+      resolve: async () => {
+        throw new Error("not used in this suite");
+      },
+    },
   });
   return { app, store };
 }

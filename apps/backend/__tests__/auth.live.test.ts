@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // sendResetPassword seam → resetPassword → credential rotation). Passkey enrollment is out of scope
 // (a browser WebAuthn ceremony — not CI-testable without a virtual authenticator).
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
@@ -1349,6 +1350,7 @@ describe.skipIf(!DB_URL)(
         ),
       );
       const authenticate = createSessionAuthenticate({
+        organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       });

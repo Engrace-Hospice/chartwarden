@@ -1,6 +1,6 @@
 // GAP-143 — the MAC jurisdiction lister is the union of the orgs' configured credentials, not 'ngs_j6'.
 import { describe, expect, it } from "vitest";
-import { buildMacJurisdictionLister } from "./mac-jurisdictions";
+import { buildMacFeedConfiguredReader, buildMacJurisdictionLister } from "./mac-jurisdictions";
 
 const orgs = (...ids: string[]) => ({
   listActiveOrgs: async () => ids.map((organizationId) => ({ organizationId })),
@@ -52,5 +52,23 @@ describe("buildMacJurisdictionLister", () => {
       readOrg: async () => [],
     });
     await expect(lister.listJurisdictions()).rejects.toThrow("platform pool unavailable");
+  });
+});
+
+// The onboarding `mac_configured` step settles itself from this fact.
+describe("buildMacFeedConfiguredReader", () => {
+  it("is true when the org has a MAC credential and false when it has none", async () => {
+    const reader = buildMacFeedConfiguredReader(async (id) =>
+      id === "configured" ? ["ngs_j6"] : [],
+    );
+    expect(await reader("configured")).toBe(true);
+    expect(await reader("bare")).toBe(false);
+  });
+
+  it("propagates a read failure rather than reporting unconfigured", async () => {
+    const reader = buildMacFeedConfiguredReader(async () => {
+      throw new Error("rls read failed");
+    });
+    await expect(reader("o")).rejects.toThrow("rls read failed");
   });
 });

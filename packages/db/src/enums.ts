@@ -3619,7 +3619,13 @@ export const telehealthVendor = pgEnum("telehealth_vendor", [
 // emit the matching `CREATE TYPE`s; RLS/grants + the M4 write-audit triggers land in 0143.
 
 /** `plan_tier` — the pricing tier a plan belongs to (§2.1). */
-export const planTier = pgEnum("plan_tier", ["starter", "professional", "enterprise"]);
+export const planTier = pgEnum("plan_tier", [
+  "starter",
+  "professional",
+  "enterprise",
+  // Slice 2 pricing (migration 1410): the contracted census-banded model; the three above are retired.
+  "census_banded",
+]);
 
 /** `billing_cadence` — monthly vs annual billing period. */
 export const billingCadence = pgEnum("billing_cadence", ["monthly", "annual"]);
@@ -3703,6 +3709,7 @@ export const usageEventType = pgEnum("usage_event_type", [
   "fhir_egress_request",
   "hl7_message_inbound",
   "hl7_message_outbound",
+  "billing_addon_patient", // ADR-0110 (migration 1320): the claims-billing add-on monthly census
 ]);
 
 /** `usage_event_source_module` — which ChartWarden module emitted a usage event. */

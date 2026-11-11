@@ -10,10 +10,14 @@
  * → admin/owner ONLY, disjoint from `refund.request` so §4.8 four-eyes stays assignable).
  */
 import {
+  M34_PLATFORM_OPS_ONBOARDING_KEYS,
   M35_BILLING_ADMIN_READ_KEYS,
   M35_BILLING_ADMIN_WRITE_KEYS,
   M35_CONTRIBUTED_PERMISSIONS,
+  M35_PLATFORM_OPS_ONBOARDING_KEYS,
+  M35_PRICING_READ_KEY,
   M35_REFUND_APPROVE_KEY,
+  PLATFORM_ONBOARDING_DATA_KEYS,
   PLATFORM_OPS_ROLE_GRANTS,
   PLATFORM_OPS_ROLE_KEYS,
   ROLE_TEMPLATES,
@@ -55,11 +59,45 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     }
   });
 
-  it("the union of all platform-ops grants is the `billing_admin.*` keys plus user lifecycle", () => {
+  it("the union of all platform-ops grants includes billing, lifecycle and both M34 onboarding permission sets", () => {
     const granted = new Set(Object.values(PLATFORM_OPS_ROLE_GRANTS).flat());
     expect([...granted].sort()).toEqual(
-      [...BILLING_ADMIN_KEYS, "user.deactivate", "user.password.reset"].sort(),
+      [
+        ...BILLING_ADMIN_KEYS,
+        "user.deactivate",
+        "user.password.reset",
+        ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+        ...M35_PLATFORM_OPS_ONBOARDING_KEYS,
+        M35_PRICING_READ_KEY,
+        ...PLATFORM_ONBOARDING_DATA_KEYS,
+      ].sort(),
     );
+  });
+
+  it("the M34 onboarding write keys (BAA write, go-live approval, platform onboarding) bind to platform_ops alone", () => {
+    for (const key of M34_PLATFORM_OPS_ONBOARDING_KEYS) {
+      expect(rolesForPermission(key)).toEqual(["platform_ops"]);
+    }
+  });
+
+  it("slice 2: the onboarding contract key binds to platform_ops alone; the pricing read key to platform_ops and the three billing roles", () => {
+    for (const key of M35_PLATFORM_OPS_ONBOARDING_KEYS) {
+      expect([...rolesForPermission(key)]).toEqual(["platform_ops"]);
+    }
+    expect([...rolesForPermission(M35_PRICING_READ_KEY)].sort()).toEqual(
+      ["platform_admin", "platform_billing_admin", "platform_ops", "platform_owner"].sort(),
+    );
+    // a role whose predicate would deny the key never carries it
+    expect(PLATFORM_OPS_ROLE_GRANTS.platform_support_t2).not.toContain(M35_PRICING_READ_KEY);
+    expect(PLATFORM_OPS_ROLE_GRANTS.platform_sales).not.toContain(M35_PRICING_READ_KEY);
+  });
+
+  it("the platform onboarding-data pair binds only to platform_ops, matching the ABAC predicate", () => {
+    for (const key of PLATFORM_ONBOARDING_DATA_KEYS) {
+      expect([...rolesForPermission(key)]).toEqual(["platform_ops"]);
+    }
+    expect(PLATFORM_OPS_ROLE_GRANTS.platform_admin).not.toContain(PLATFORM_ONBOARDING_DATA_KEYS[0]);
+    expect(PLATFORM_OPS_ROLE_GRANTS.platform_owner).not.toContain(PLATFORM_ONBOARDING_DATA_KEYS[1]);
   });
 
   it("GAP-001: `user.deactivate` binds to platform_ops/admin/owner — the platform deactivate route's roles", () => {
@@ -105,6 +143,10 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     expect(PLATFORM_OPS_ROLE_GRANTS.platform_ops).toEqual([
       "user.deactivate",
       "user.password.reset",
+      ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+      ...M35_PLATFORM_OPS_ONBOARDING_KEYS,
+      M35_PRICING_READ_KEY,
+      ...PLATFORM_ONBOARDING_DATA_KEYS,
     ]);
   });
 });
@@ -116,9 +158,15 @@ describe("ADMIN-T02 platform-ops grant seed", () => {
     expect(rows.length).toBe(expected);
     for (const row of rows) {
       expect(PLATFORM_OPS_ROLE_KEYS).toContain(row.roleKey);
-      expect([...BILLING_ADMIN_KEYS, "user.deactivate", "user.password.reset"]).toContain(
-        row.permissionKey,
-      );
+      expect([
+        ...BILLING_ADMIN_KEYS,
+        "user.deactivate",
+        "user.password.reset",
+        ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+        ...M35_PLATFORM_OPS_ONBOARDING_KEYS,
+        M35_PRICING_READ_KEY,
+        ...PLATFORM_ONBOARDING_DATA_KEYS,
+      ]).toContain(row.permissionKey);
     }
   });
 });

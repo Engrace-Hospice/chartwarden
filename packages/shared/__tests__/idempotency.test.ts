@@ -5,10 +5,13 @@
  * the different-body conflict (SEC-025), and the concurrent-duplicate `pending` race.
  * Storage is an in-memory fake of the injected IdempotencyStore port.
  */
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
+  IDEMPOTENCY_PENDING_MAX_AGE_MS,
   IdempotencyConflictError,
   IdempotencyInFlightError,
+  IdempotencyKeyStuckError,
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
@@ -27,6 +30,9 @@ function memoryStore(seed?: IdempotencyRecord): IdempotencyStore {
     },
     complete: async (_o, _k, response) => {
       rec = rec ? { state: "complete", requestHash: rec.requestHash, response } : rec;
+    },
+    release: async (_o, _k, requestHash) => {
+      if (rec?.state === "pending" && rec.requestHash === requestHash) rec = null;
     },
   };
 }
@@ -103,11 +109,21 @@ describe("runIdempotent", () => {
       load: async () => loads.shift() ?? null,
       putPending: async () => false,
       complete: vi.fn(async () => undefined),
+      release: async () => undefined,
     };
     const handler = vi.fn(async () => ({ status: "500", body: null }));
     await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).resolves.toEqual(ok);
     expect(handler).not.toHaveBeenCalled();
     expect(store.complete).not.toHaveBeenCalled();
+  });
+
+  it("the in-flight error carries its own code (IDEMPOTENCY_IN_FLIGHT, still a 409) and the same message", () => {
+    const error = new IdempotencyInFlightError("k1");
+    expect(error.code).toBe("IDEMPOTENCY_IN_FLIGHT");
+    expect(error.statusCode).toBe(409);
+    expect(error.message).toBe("Idempotency-Key request is still being processed");
+    expect(error.key).toBe("k1");
+    expect(error).toBeInstanceOf(ChartWardenError);
   });
 
   it("reports in-flight when the claim is lost to a still-pending winner", async () => {
@@ -117,11 +133,81 @@ describe("runIdempotent", () => {
       load: async () => loads.shift() ?? null,
       putPending: async () => false,
       complete: async () => undefined,
+      release: async () => undefined,
     };
     const handler = vi.fn(async () => ok);
     await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(
       IdempotencyInFlightError,
     );
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("a claim that stays pending past the bound is stuck, not in flight", () => {
+  const ok: IdempotentResponse = { status: "201", body: { id: 1 } };
+  const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+  const pendingFor = (pendingForMs?: number): IdempotencyRecord => ({
+    state: "pending",
+    requestHash: hash,
+    ...(pendingForMs === undefined ? {} : { pendingForMs }),
+  });
+  const claim = (record: IdempotencyRecord) =>
+    runIdempotent(
+      memoryStore(record),
+      ORG,
+      "k1",
+      { a: 1 },
+      vi.fn(async () => ok),
+    );
+
+  it("is its own code (IDEMPOTENCY_KEY_STUCK, still a 409) with a message that says the outcome is unknown and not to retry with the key", () => {
+    const error = new IdempotencyKeyStuckError("k1");
+    expect(error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(error.statusCode).toBe(409);
+    expect(error.message).toMatch(/outcome is unknown/);
+    expect(error.message).toMatch(/do not retry with this key/i);
+    expect(error.message).toMatch(/read the resource/i);
+    expect(error).toBeInstanceOf(ChartWardenError);
+    expect(error).not.toBeInstanceOf(IdempotencyInFlightError);
+  });
+
+  it("a pending claim younger than the bound, or of unknown age, is still in flight", async () => {
+    await expect(claim(pendingFor(0))).rejects.toBeInstanceOf(IdempotencyInFlightError);
+    await expect(claim(pendingFor(IDEMPOTENCY_PENDING_MAX_AGE_MS))).rejects.toBeInstanceOf(
+      IdempotencyInFlightError,
+    );
+    await expect(claim(pendingFor(undefined))).rejects.toBeInstanceOf(IdempotencyInFlightError);
+  });
+
+  it("a pending claim older than the bound is stuck, and the handler never runs", async () => {
+    const handler = vi.fn(async () => ok);
+    const store = memoryStore(pendingFor(IDEMPOTENCY_PENDING_MAX_AGE_MS + 1));
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(
+      IdempotencyKeyStuckError,
+    );
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("a different body is still IDEMPOTENCY_CONFLICT, whatever the age", async () => {
+    const store = memoryStore(pendingFor(IDEMPOTENCY_PENDING_MAX_AGE_MS * 10));
+    await expect(runIdempotent(store, ORG, "k1", { a: 2 }, async () => ok)).rejects.toBeInstanceOf(
+      IdempotencyConflictError,
+    );
+  });
+
+  it("the age is read when the claim is lost to a winner too", async () => {
+    const loads: Array<IdempotencyRecord | null> = [
+      null,
+      pendingFor(IDEMPOTENCY_PENDING_MAX_AGE_MS + 1),
+    ];
+    const store: IdempotencyStore = {
+      load: async () => loads.shift() ?? null,
+      putPending: async () => false,
+      complete: async () => undefined,
+      release: async () => undefined,
+    };
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, async () => ok)).rejects.toBeInstanceOf(
+      IdempotencyKeyStuckError,
+    );
   });
 });

@@ -15,6 +15,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
@@ -117,6 +118,44 @@ export const commercialPayerEnrollment = pgTable(
       t.providerEntityId,
       t.payerId,
       t.clearinghouseKey,
+    ),
+  }),
+);
+
+// Migration 1323: an ADVISORY enrollment status a clearinghouse reported (Claim.MD `enroll` webhook). Staff confirm it through the
+// enrollments routes; nothing here changes a send gate. No PHI, no free text.
+export const commercialEnrollmentReport = pgTable(
+  "commercial_enrollment_report",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id").notNull(),
+    payerId: uuid("payer_id"),
+    clearinghouseKey: text("clearinghouse_key").notNull(),
+    clearinghousePayerId: text("clearinghouse_payer_id"),
+    enrollType: text("enroll_type").notNull(),
+    vendorStatus: text("vendor_status").notNull(),
+    suggestedStatus: text("suggested_status"),
+    vendorEnrollId: text("vendor_enroll_id"),
+    sourceEventKey: text("source_event_key").notNull(),
+    reportedAt: timestamp("reported_at", { withTimezone: true }).notNull(),
+    state: text("state").notNull().default("open"),
+    resolvedByUserId: uuid("resolved_by_user_id"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    bySource: unique("commercial_enrollment_report_source_uq").on(
+      t.organizationId,
+      t.sourceEventKey,
+    ),
+    byOpen: index("commercial_enrollment_report_open_ix").on(
+      t.organizationId,
+      t.providerEntityId,
+      t.state,
     ),
   }),
 );
