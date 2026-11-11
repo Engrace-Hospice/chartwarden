@@ -1,0 +1,5 @@
+# Provider, tenant and caseload boundary
+
+M23 applies the same server-derived provider scope used by its claim list and additionally requires the submission provider to equal the joined claim provider. M41 applies the existing route-level provider ABAC, service-level provider scope and patient caseload seam; a failed caseload check is filtered as not visible, while a failed seam propagates as an error. Tenant predicates are explicit and execute inside `withOrgContext`, so RLS remains active under the restricted app role.
+
+The M41 live HTTP test covers an actual other-tenant submission, same-provider out-of-caseload submission, unauthorized provider query, guessed detail read, and a cursor signed for another organization. The M23 live tests cover organization/provider scoping under the app role; the integrated route test also calls the M23 owner route and rejects a foreign-organization cursor. Both owner readers query only their module's attributed submission records. Neither reads the central Claim.MD inbox or quarantine.

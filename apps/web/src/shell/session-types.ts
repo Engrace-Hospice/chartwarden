@@ -34,6 +34,8 @@ export interface Session {
   membershipId?: string;
   /** The actor's M3-resolved role keys in the bound org. */
   roles?: string[];
+  /** Server-derived provider scope for selector options; backend routes remain authoritative. */
+  providerEntityIds?: string[];
   /** Server-derived location memberships used only to narrow selectors; backend ABAC remains authoritative. */
   locationIds?: string[];
   /** The shared authorization decision for org-wide patient scope. */

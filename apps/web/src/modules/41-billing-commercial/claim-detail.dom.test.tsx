@@ -146,6 +146,56 @@ describe("CommercialClaimDetail", () => {
     await screen.findByText("Vance, Ada", { exact: false });
   });
 
+  it("distinguishes payer-reported payments from M25 posted effects without inventing A/R", async () => {
+    mount(
+      () => ({ body: view() }),
+      {
+        [`GET /api/v1/billing/commercial/claims/${CLAIM_ID}/payment-reconciliation`]: () => ({
+          body: {
+            claim: {
+              id: CLAIM_ID,
+              claimControlNumber: "CCN-0001",
+              providerEntityId: "22222222-2222-4222-8222-222222222222",
+              payerId: PAYER_ID,
+              payerName: "Synthetic PPO",
+              state: "partially_paid",
+              serviceFrom: "2026-03-01",
+              serviceTo: "2026-03-31",
+              currentChargeCents: 620000,
+              originalSubmittedChargeCents: null,
+            },
+            payments: {
+              items: [
+                {
+                  remittanceAdviceId: "99999999-9999-4999-8999-999999999999",
+                  remittanceLineId: "88888888-8888-4888-8888-888888888888",
+                  payerReportedPaymentCents: "7000",
+                  m25PostedPaymentCents: "7000",
+                  adviceStatus: "partial_posted",
+                  lineMatchState: "posted",
+                  receivedAt: "2026-04-01T12:00:00.000Z",
+                },
+              ],
+              payerReportedPaymentCents: "7000",
+              m25PostedPaymentCents: "7000",
+              completeness: "exact_for_matched_m25_remittance_lines",
+              historyRecordCount: 1,
+              detailTruncated: false,
+            },
+          },
+        }),
+      },
+      ["commercial_billing.read", "remittance.read"],
+    );
+
+    expect((await screen.findAllByText("$70.00")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/no canonical receivable ledger/i)).toBeTruthy();
+    expect(screen.getByText("Partially posted advice")).toBeTruthy();
+    expect(
+      screen.getByText(/immutable submitted amount is not present in this source contract/i),
+    ).toBeTruthy();
+  });
+
   it("warns that a required authorization is missing and never shows an authorization number", async () => {
     mount(() => ({ body: view() }));
     const rail = await screen.findByRole("complementary", { name: /Payer, authorization/ });

@@ -88,6 +88,7 @@ import {
   m25ContentDigestOf,
 } from "../src/modules/25-remittance/ingest/service-drizzle";
 import { registerClaimMdEraReviewRoutes } from "../src/modules/25-remittance/routes/claimmd-era-review.routes";
+import { registerRemittanceRoutes } from "../src/modules/25-remittance/routes/remittance.routes";
 import type { WriteOutboxPort } from "../src/modules/25-remittance/routes/write-service";
 import { M41_OUTBOX_EVENTS } from "../src/modules/41-billing-commercial/events-by-m41";
 import { buildM41RemittanceConsumer } from "../src/modules/41-billing-commercial/outbox-consumers/m25-remittance";
@@ -2076,6 +2077,34 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       await expect(
         ingestService.postAdvice({ organizationId: ORG_A }, legacyReceived.adviceId),
       ).resolves.toMatchObject({ outcome: "posted" });
+
+      // Owner-to-owner reconciliation consumes the persisted M25 line through M25's reader,
+      // using this real M41 claim identity and the exact tenant/provider/payer scope.
+      const commercialPaymentFacts = await buildDrizzleM25ReadService(
+        handle.db,
+      ).commercialClaimPaymentFacts(
+        {
+          organizationId: ORG_A,
+          userId: crypto.randomUUID(),
+          roles: [],
+          providerEntityScope: [PE_A],
+        },
+        { claimId, providerEntityId: PE_A, payerId },
+      );
+      expect(commercialPaymentFacts).toMatchObject({
+        payerReportedPaymentCents: "4200",
+        m25PostedPaymentCents: "4200",
+        historyRecordCount: 1,
+        detailTruncated: false,
+      });
+      expect(commercialPaymentFacts.items).toEqual([
+        expect.objectContaining({
+          payerReportedPaymentCents: "4200",
+          m25PostedPaymentCents: "4200",
+          adviceStatus: "posted",
+          lineMatchState: "posted",
+        }),
+      ]);
 
       const cipher = createClaimMdProtectedPayloadCipher(
         {
@@ -4425,6 +4454,184 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
 
       expect(await cursors.get({ ...base, organizationId: ORG_A })).toBe("7");
       expect(await cursors.get({ ...base, organizationId: ORG_B })).toBeNull();
+    });
+
+    it("serves an authenticated, provider-scoped Revenue Cycle M25 report from PostgreSQL without mutation", async () => {
+      const providerEntityId = crypto.randomUUID();
+      const claimControlNumber = `SYNTHETIC-REPORT-CCN-${crypto.randomUUID().slice(0, 8)}`;
+      const payerIcn = `SYNTHETIC-REPORT-ICN-${crypto.randomUUID().slice(0, 8)}`;
+      const claimId = await seedClaim({
+        organizationId: ORG_A,
+        providerEntityId,
+        patientId: crypto.randomUUID(),
+        claimControlNumber,
+        payerClaimControlNumber: payerIcn,
+      });
+      const rawKey = `minio/revenue-cycle-report-${crypto.randomUUID()}.835`;
+      const raw = buildRawEdi("000000991", "0991");
+      const parsed: ParsedRemittanceAdvice = {
+        payerProgram: "medicare",
+        payer: { name: "Synthetic Reporting Payer", id: PAYER },
+        payee: { name: "Synthetic Hospice", idQualifier: "XX", id: "1999999999" },
+        interchangeControlNumber: "000000991",
+        transactionSetControlNumber: "0991",
+        checkOrEftTraceNumber: `RPT-${crypto.randomUUID().replaceAll("-", "").slice(0, 32)}`,
+        paymentMethod: "eft",
+        totalPaymentAmount: 42,
+        productionDate: "2026-03-01",
+        claims: [
+          {
+            patientControlNumber: claimControlNumber,
+            payerIcn,
+            statusCode: 1,
+            totalCharge: 42,
+            totalPayment: 42,
+            patientResponsibility: 0,
+            adjustments: [],
+            remarks: [],
+            serviceLines: [],
+          },
+          {
+            patientControlNumber: `SYNTHETIC-REPORT-UNMATCHED-${crypto.randomUUID().slice(0, 8)}`,
+            payerIcn: `UNMATCHED-ICN-${crypto.randomUUID().slice(0, 8)}`,
+            statusCode: 1,
+            totalCharge: 10,
+            totalPayment: 0,
+            patientResponsibility: 0,
+            adjustments: [],
+            remarks: [],
+            serviceLines: [],
+          },
+        ],
+      };
+      const reportPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M25_OUTBOX_EVENTS]));
+      const reportOutbox: WriteOutboxPort = {
+        publish: (tx, emission) =>
+          reportPublisher.publish(tx as never, { ...emission, callerModule: "m25" }),
+      };
+      const ingest = buildDrizzleM25IngestService(handle.db, {
+        client: fakeClient(new Map([[rawKey, parsed]])),
+        payeeNpi: PAYEE_UNCHECKED,
+        claims: {
+          medicare: fakeClaims({ [payerIcn]: [{ claimId, payerIcn, claimControlNumber }] }, {}),
+        },
+        outbox: reportOutbox,
+      });
+      const received = await ingest.receiveAdvice(
+        { organizationId: ORG_A },
+        {
+          providerEntityId,
+          payerId: PAYER,
+          payerKind: "medicare",
+          minioObjectKey: rawKey,
+          fileSha256: sha256Hex(raw),
+          rawEdi: raw,
+        },
+      );
+      if (received.outcome !== "queued") throw new Error("expected queued report fixture");
+      const posted = await ingest.postAdvice({ organizationId: ORG_A }, received.adviceId);
+      expect(posted, JSON.stringify(posted)).toMatchObject({
+        outcome: "partial_posted",
+        postedLineCount: 1,
+        unmatchedLineCount: 1,
+      });
+
+      const reads = buildDrizzleM25ReadService(handle.db);
+      const actorMap = new Map([
+        [
+          "tenant-a",
+          {
+            userId: "66666666-6666-4666-8666-666666666661",
+            organizationId: ORG_A,
+            providerEntityIds: [providerEntityId],
+          },
+        ],
+        [
+          "tenant-b",
+          {
+            userId: "66666666-6666-4666-8666-666666666662",
+            organizationId: ORG_B,
+            providerEntityIds: [PE_B],
+          },
+        ],
+      ]);
+      const http = Fastify();
+      http.addHook("onRequest", async (request) => {
+        const principal = request.headers["x-test-principal"];
+        const actor = typeof principal === "string" ? actorMap.get(principal) : undefined;
+        if (!actor) return;
+        request.context = {
+          correlationId: crypto.randomUUID(),
+          userId: actor.userId,
+          organizationId: actor.organizationId,
+          providerEntityIds: actor.providerEntityIds,
+          locationIds: [],
+          roles: [],
+          attributes: { membershipId: actor.userId, sessionId: actor.userId },
+          ip: "127.0.0.1",
+          userAgent: "synthetic-revenue-cycle-test",
+          startTime: Date.now(),
+        };
+      });
+      setEffectivePermissionResolver(() => Promise.resolve(new Set(["remittance.read"])));
+      const authz = createPredicateRegistry();
+      registerAbacRegistry(authz);
+      registerRemittanceRoutes(http, { readService: reads, writeService: {} as never });
+      try {
+        const toDate = new Date().toISOString().slice(0, 10);
+        const fromDate = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+        const before = await admin.query(
+          "SELECT (SELECT count(*) FROM remittance_advice WHERE organization_id=$1)::int AS advice, (SELECT count(*) FROM remittance_line WHERE organization_id=$1)::int AS lines, (SELECT count(*) FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm25.remittance.claim_%')::int AS events",
+          [ORG_A],
+        );
+        const request = (principal: string, provider: string) =>
+          http.inject({
+            method: "GET",
+            url: `/api/v1/remittance/revenue-cycle-summary?providerEntityId=${provider}&fromDate=${fromDate}&toDate=${toDate}`,
+            headers: { "x-test-principal": principal },
+          });
+        const allowed = await request("tenant-a", providerEntityId);
+        expect(allowed.statusCode, allowed.body).toBe(200);
+        expect(allowed.json()).toMatchObject({
+          providerEntityId,
+          dateBasis: "era_received_at_utc",
+          completeness: "exact_for_m25_remittance_advice",
+          receivedAdviceCount: 1,
+          reportedAdviceCount: 1,
+          reportedEraPaymentCents: "4200",
+          reportedClaimPaymentCents: "4200",
+          fullyPostedClaimPaymentCents: "0",
+          postedClaimPaymentCents: "4200",
+          fullyPostedAdviceCount: 0,
+          partialPostedAdviceCount: 1,
+          authoritativeAr: {
+            status: "unavailable",
+            reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER",
+          },
+        });
+        const foreignProvider = await request("tenant-a", PE_B);
+        expect(foreignProvider.statusCode).toBe(200);
+        expect(foreignProvider.json()).toMatchObject({
+          receivedAdviceCount: 0,
+          reportedEraPaymentCents: "0",
+          fullyPostedClaimPaymentCents: "0",
+        });
+        const foreignTenant = await request("tenant-b", providerEntityId);
+        expect(foreignTenant.statusCode).toBe(200);
+        expect(foreignTenant.json()).toMatchObject({
+          receivedAdviceCount: 0,
+          reportedEraPaymentCents: "0",
+          fullyPostedClaimPaymentCents: "0",
+        });
+        const after = await admin.query(
+          "SELECT (SELECT count(*) FROM remittance_advice WHERE organization_id=$1)::int AS advice, (SELECT count(*) FROM remittance_line WHERE organization_id=$1)::int AS lines, (SELECT count(*) FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm25.remittance.claim_%')::int AS events",
+          [ORG_A],
+        );
+        expect(after.rows[0]).toEqual(before.rows[0]);
+      } finally {
+        await http.close();
+        resetAuthorizationContract();
+      }
     });
   });
 });

@@ -35,7 +35,10 @@ import {
   AssembleCommercialClaimBodySchema,
   AuthorizationListQuerySchema,
   ClaimListQuerySchema,
+  CommercialPaymentReconciliationResponseSchema,
   IdParamsSchema,
+  InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema,
   OverrideBodySchema,
   OverrideParamsSchema,
   PlanListQuerySchema,
@@ -88,6 +91,7 @@ const readActor = (request: FastifyRequest) => ({
 });
 
 const READ = requirePermission("commercial_billing.read") as PreHandler;
+const REMITTANCE_READ = requirePermission("remittance.read") as PreHandler;
 const WRITE = requirePermission("commercial_billing.write") as PreHandler;
 const OVERRIDE = requirePermission("commercial_billing.override_validation") as PreHandler;
 const SCOPE = (key: string, getTarget: (r: Req) => Target): PreHandler =>
@@ -169,6 +173,22 @@ export function registerCommercialBillingRoutes(
     },
   );
 
+  app.get(
+    "/api/v1/billing/commercial/submissions/in-doubt",
+    {
+      preHandler: [READ, SCOPE("commercial_billing.read", providerFromQuery)],
+      schema: {
+        querystring: InDoubtSubmissionListQuerySchema,
+        response: { 200: InDoubtSubmissionListResponseSchema },
+      },
+      config: { auditRead: { resourceKind: "commercial_claim", list: true } },
+    },
+    async (request) => {
+      const q = parse(InDoubtSubmissionListQuerySchema, request.query);
+      return reads.listInDoubtSubmissions(readActor(request), q);
+    },
+  );
+
   // Supported payers: the tenant's commercial plans with payer state and clearinghouse routes. No patient data.
   app.get(
     "/api/v1/billing/commercial/payer-plans",
@@ -201,6 +221,24 @@ export function registerCommercialBillingRoutes(
     async (request) => {
       const { id } = parse(IdParamsSchema, request.params);
       return reads.getClaim(readActor(request), id);
+    },
+  );
+
+  app.get(
+    "/api/v1/billing/commercial/claims/:id/payment-reconciliation",
+    {
+      preHandler: [READ, REMITTANCE_READ, CASELOAD("commercial_billing.read")],
+      schema: { response: { 200: CommercialPaymentReconciliationResponseSchema } },
+      config: {
+        auditRead: {
+          resourceKind: "commercial_claim",
+          resourceIdParam: "id",
+        },
+      },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return reads.getPaymentReconciliation(readActor(request), id);
     },
   );
 

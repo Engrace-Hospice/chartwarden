@@ -6290,6 +6290,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claims/in-doubt-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission-first, tenant/provider-scoped M23 transport uncertainty queue. Each row is an actual durable claim submission attempt with outcome in doubt; the request may have reached the payer. Lower-bound counts describe the loaded page only; no retry is offered. */
+        get: operations["getApiV1BillingClaimsIndoubtsubmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/clearinghouse-attempts/resolve": {
         parameters: {
             query?: never;
@@ -6455,6 +6472,23 @@ export interface paths {
         put?: never;
         /** Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract. */
         post: operations["postApiV1BillingCommercialClaimsByIdCorrectionsClearinghouserejection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/payment-reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** M41-caseload-authorized commercial claim and exact M25 remittance line payment facts; distinguishes payer-reported and actually posted amounts. Original submitted charge and canonical A/R remain unavailable when not preserved by authoritative sources. */
+        get: operations["getApiV1BillingCommercialClaimsByIdPaymentreconciliation"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6732,6 +6766,23 @@ export interface paths {
         head?: never;
         /** Set what stale or missing eligibility does for a plan: `warn` (default) or `block`, and how many days (1 to 365; default 30) make a check stale (commercial_billing.manage_enrollment + a fresh step-up, because relaxing it weakens a billing control; Idempotency-Key required) */
         patch: operations["patchApiV1BillingCommercialPayerplansByIdEligibilitypolicy"];
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/submissions/in-doubt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission-first M41 transport uncertainty queue. Enforces provider and patient caseload scope; the request may have reached the payer. Lower-bound counts describe loaded authorized rows only; no retry is offered. */
+        get: operations["getApiV1BillingCommercialSubmissionsIndoubt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/billing/dde-items": {
@@ -7119,6 +7170,109 @@ export interface paths {
         };
         /** Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38) */
         get: operations["getApiV1BillingMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tenant/provider-authorized M23/M41 operational investigations with per-owner source revalidation and lower-bound page counts */
+        get: operations["getApiV1BillingOperationsInvestigations"];
+        put?: never;
+        /** Open an audited read-only investigation for an exact authorized M23/M41 in-doubt submission attempt */
+        post: operations["postApiV1BillingOperationsInvestigations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one tenant/provider-scoped investigation, revalidated against its M23/M41 source, notes, and append-only history */
+        get: operations["getApiV1BillingOperationsInvestigationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign or unassign an eligible investigator using an optimistic version and audited reason */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdAssignment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a bounded non-source-mutating operational investigation note */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdNotes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append an audited operational status transition; resolution requires its separate permission and never resolves source submission uncertainty */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdTransitions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/investigators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active, provider-authorized investigators with Billing Operations triage permission */
+        get: operations["getApiV1BillingOperationsInvestigationsInvestigators"];
         put?: never;
         post?: never;
         delete?: never;
@@ -19375,6 +19529,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Repeat the server-authoritative recovery assessment without changing source, cursor, attribution, delivery, or financial state */
+        post: operations["postApiV1OpsClaimmdErasByInboxIdRecoverydryrun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assess one exact durable Claim.MD ERA source for recovery readiness without mutation */
+        get: operations["getApiV1OpsClaimmdErasByInboxIdRecoverypreflight"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/claimmd/observability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform-only durable Claim.MD polling and backlog evidence without account identifiers, cursor tokens, or payloads */
+        get: operations["getApiV1OpsClaimmdObservability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ops/outbox": {
         parameters: {
             query?: never;
@@ -24882,6 +25087,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remittance/claimmd-operational-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant-safe attributed Claim.MD ERA staging health without central account metadata */
+        get: operations["getApiV1RemittanceClaimmdoperationalhealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remittance/lines": {
         parameters: {
             query?: never;
@@ -24927,6 +25149,23 @@ export interface paths {
         put?: never;
         /** Manually match a remittance line to a claim (§4.1) */
         post: operations["postApiV1RemittanceLinesByIdManualmatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/revenue-cycle-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source-backed M25 Revenue Cycle payment and adjustment totals; authoritative A/R unavailable */
+        get: operations["getApiV1RemittanceRevenuecyclesummary"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -42379,6 +42618,7 @@ export interface operations {
                         membershipId: string | null;
                         displayName: string | null;
                         roles: string[];
+                        providerEntityIds: string[];
                         locationIds: string[];
                         orgWidePatientScope: boolean;
                         isAdmin: boolean;
@@ -48263,6 +48503,57 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingClaimsIndoubtsubmissions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            submissionId: string;
+                            attemptIndex: number;
+                            /** Format: uuid */
+                            claimId: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** @constant */
+                            status: "in_doubt";
+                            /** @constant */
+                            payer: "Medicare";
+                        }[];
+                        hasMore: boolean;
+                        nextCursor: string | null;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BillingClearinghouseattemptsResolve: {
         parameters: {
             query?: never;
@@ -48751,6 +49042,67 @@ export interface operations {
                         claimId: string;
                         parentClaimId: string;
                         replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialClaimsByIdPaymentreconciliation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claim: {
+                            /** Format: uuid */
+                            id: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            payerId: string;
+                            payerName: string;
+                            state: string;
+                            /** Format: date */
+                            serviceFrom: string;
+                            /** Format: date */
+                            serviceTo: string;
+                            currentChargeCents: number;
+                            originalSubmittedChargeCents: null;
+                        };
+                        payments: {
+                            items: {
+                                /** Format: uuid */
+                                remittanceAdviceId: string;
+                                /** Format: uuid */
+                                remittanceLineId: string;
+                                payerReportedPaymentCents: string;
+                                m25PostedPaymentCents: string | null;
+                                adviceStatus: "parsed" | "posted" | "partial_posted";
+                                lineMatchState: string;
+                                /** Format: date-time */
+                                receivedAt: string;
+                            }[];
+                            payerReportedPaymentCents: string;
+                            m25PostedPaymentCents: string;
+                            /** @constant */
+                            completeness: "exact_for_matched_m25_remittance_lines";
+                            historyRecordCount: number;
+                            detailTruncated: boolean;
+                        };
                     };
                 };
             };
@@ -49527,6 +49879,56 @@ export interface operations {
                         payerId: string;
                         eligibilityStalenessPolicy: "warn" | "block";
                         eligibilityMaxAgeDays: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialSubmissionsIndoubt: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            submissionId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            attemptCount: number;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** @constant */
+                            status: "in_doubt";
+                            payer: string;
+                        }[];
+                        hasMore: boolean;
+                        nextCursor: string | null;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
                     };
                 };
             };
@@ -51088,6 +51490,422 @@ export interface operations {
                             key: string;
                             count: number;
                             amountCents: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigations: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+                status?: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                assigned?: "me" | "unassigned";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            sourceRecordId: string;
+                            /** Format: uuid */
+                            sourceAttemptId: string;
+                            sourceIdentity: string;
+                            sourceReasonCode: string | null;
+                            /** Format: date-time */
+                            sourceOccurredAt: string;
+                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                            resolutionOutcome: string | null;
+                            assignedToMembershipId: string | null;
+                            /** Format: uuid */
+                            createdByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                            closedAt: string | null;
+                            version: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
+                        /** @constant */
+                        countScope: "authorized loaded cases";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    sourceModule: "M23" | "M41";
+                    /** Format: uuid */
+                    submissionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        investigation: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            sourceRecordId: string;
+                            /** Format: uuid */
+                            sourceAttemptId: string;
+                            sourceIdentity: string;
+                            sourceReasonCode: string | null;
+                            /** Format: date-time */
+                            sourceOccurredAt: string;
+                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                            resolutionOutcome: string | null;
+                            assignedToMembershipId: string | null;
+                            /** Format: uuid */
+                            createdByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                            closedAt: string | null;
+                            version: number;
+                        };
+                        source: {
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            submissionId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            attempt: number;
+                            reference: string;
+                            payer: string;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            currentStatus: string;
+                            sourceHref: string;
+                        };
+                        history: {
+                            event_type: string;
+                            /** Format: uuid */
+                            actor_membership_id: string;
+                            previous_status: string | null;
+                            new_status: string | null;
+                            from_assignee_membership_id: string | null;
+                            to_assignee_membership_id: string | null;
+                            reason: string | null;
+                            correlation_id: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                        }[];
+                        notes: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            authorMembershipId: string;
+                            body: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdAssignment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assignedToMembershipId: string | null;
+                    version: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdNotes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        body: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdTransitions: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "investigating" | "waiting_external" | "resolved" | "closed";
+                    version: number;
+                    reason: string;
+                    outcome?: "verified_no_action_required" | "referred_to_source_workflow" | "waiting_for_external_confirmation" | "duplicate_investigation" | "unable_to_resolve";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigationsInvestigators: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                sourceModule: "M23" | "M41";
+                submissionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            membershipId: string;
+                            displayName: string;
                         }[];
                     };
                 };
@@ -87755,6 +88573,188 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1OpsClaimmdErasByInboxIdRecoverydryrun: {
+        parameters: {
+            query: {
+                usage: "test" | "production";
+                stage: "capture" | "ownership_resolution" | "m25_delivery";
+            };
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        inboxId: string;
+                        usage: "test" | "production";
+                        stage: "capture" | "ownership_resolution" | "m25_delivery";
+                        currentState: string;
+                        currentVersion: number;
+                        sourceDigestPresent: boolean;
+                        tenantAttribution: "verified" | "unattributed";
+                        leaseActive: boolean;
+                        priorRecoveryAttempts: number;
+                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
+                        blockers: string[];
+                        financialEffects: {
+                            /** @constant */
+                            status: "not_evaluated";
+                            /** @constant */
+                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
+                        };
+                        simulation: {
+                            available: boolean;
+                            /** @constant */
+                            mutatesSource: false;
+                            /** @constant */
+                            callsVendor: false;
+                            /** @constant */
+                            authorizesExecution: false;
+                        };
+                        /** Format: date-time */
+                        assessedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsClaimmdErasByInboxIdRecoverypreflight: {
+        parameters: {
+            query: {
+                usage: "test" | "production";
+                stage: "capture" | "ownership_resolution" | "m25_delivery";
+            };
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        inboxId: string;
+                        usage: "test" | "production";
+                        stage: "capture" | "ownership_resolution" | "m25_delivery";
+                        currentState: string;
+                        currentVersion: number;
+                        sourceDigestPresent: boolean;
+                        tenantAttribution: "verified" | "unattributed";
+                        leaseActive: boolean;
+                        priorRecoveryAttempts: number;
+                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
+                        blockers: string[];
+                        financialEffects: {
+                            /** @constant */
+                            status: "not_evaluated";
+                            /** @constant */
+                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
+                        };
+                        simulation: {
+                            available: boolean;
+                            /** @constant */
+                            mutatesSource: false;
+                            /** @constant */
+                            callsVendor: false;
+                            /** @constant */
+                            authorizesExecution: false;
+                        };
+                        /** Format: date-time */
+                        assessedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsClaimmdObservability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        scope: "central_claimmd_account";
+                        /** @constant */
+                        accountReferenceExposed: false;
+                        usage: "test" | "production";
+                        responses: {
+                            cursor: {
+                                present: boolean;
+                                /** @constant */
+                                valueExposed: false;
+                            };
+                            lastAttemptAt: string | null;
+                            lastSuccessAt: string | null;
+                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
+                            backlog: {
+                                [key: string]: number;
+                            };
+                        };
+                        eras: {
+                            cursor: {
+                                present: boolean;
+                                /** @constant */
+                                valueExposed: false;
+                            };
+                            lastAttemptAt: string | null;
+                            lastSuccessAt: string | null;
+                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
+                            backlog: {
+                                [key: string]: number;
+                            };
+                        };
+                        requestBudget: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
+                        };
+                        workerHeartbeat: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_WORKER_HEARTBEAT";
+                        };
+                        /** Format: date-time */
+                        sampledAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1OpsOutbox: {
         parameters: {
             query?: {
@@ -102381,6 +103381,7 @@ export interface operations {
         parameters: {
             query?: {
                 providerEntityId?: string;
+                locationId?: string;
                 state?: string;
                 payer?: string;
                 fromDate?: string;
@@ -103070,6 +104071,58 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1RemittanceClaimmdoperationalhealth: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        scope: "tenant_attributed_m25_stages";
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** @constant */
+                        completeness: "exact_for_authorized_provider_stages";
+                        stageCount: number;
+                        states: {
+                            [key: string]: number;
+                        };
+                        exceptionCount: number;
+                        oldestExceptionAt: string | null;
+                        latestStageAt: string | null;
+                        centralCapture: {
+                            /** @constant */
+                            status: "restricted";
+                            /** @constant */
+                            reasonCode: "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE";
+                        };
+                        requestBudget: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
+                        };
+                        /** Format: date-time */
+                        sampledAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1RemittanceLines: {
         parameters: {
             query?: {
@@ -103186,6 +104239,68 @@ export interface operations {
                     "application/json": {
                         id: string;
                         matchState: "posted" | "reversed" | "manual_matched";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceRevenuecyclesummary: {
+        parameters: {
+            query: {
+                providerEntityId?: string;
+                fromDate: string;
+                toDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        dateBasis: "era_received_at_utc";
+                        /** Format: date */
+                        fromDate: string;
+                        /** Format: date */
+                        toDate: string;
+                        providerEntityId: string | null;
+                        /** @constant */
+                        completeness: "exact_for_m25_remittance_advice";
+                        receivedAdviceCount: number;
+                        reportedAdviceCount: number;
+                        reportedEraPaymentCents: string;
+                        reportedClaimPaymentCents: string;
+                        fullyPostedClaimPaymentCents: string;
+                        postedClaimPaymentCents: string;
+                        fullyPostedAdviceCount: number;
+                        partialPostedAdviceCount: number;
+                        reportedAdjustmentsByGroup: {
+                            CO: string;
+                            CR: string;
+                            OA: string;
+                            PI: string;
+                            PR: string;
+                        };
+                        reportedPlbCents: string;
+                        unmatchedLineCount: number;
+                        latestReceivedAt: string | null;
+                        /** @constant */
+                        claimMdStagesIncluded: false;
+                        authoritativeAr: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER";
+                        };
                     };
                 };
             };

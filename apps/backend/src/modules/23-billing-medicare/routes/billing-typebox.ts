@@ -195,6 +195,28 @@ export const ClaimListQuerySchema = Type.Object({
     }),
   ),
 });
+export const InDoubtSubmissionListQuerySchema = Type.Object({
+  ...pageQuery({ max: 100 }),
+  providerEntityId: Type.Optional(uuid()),
+});
+export const InDoubtSubmissionListResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      submissionId: uuid(),
+      attemptIndex: Type.Integer(),
+      claimId: uuid(),
+      claimControlNumber: Type.String(),
+      providerEntityId: uuid(),
+      reasonCode: Type.Union([Type.String(), Type.Null()]),
+      occurredAt: Type.String({ format: "date-time" }),
+      status: Type.Literal("in_doubt"),
+      payer: Type.Literal("Medicare"),
+    }),
+  ),
+  hasMore: Type.Boolean(),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  count: Type.Object({ kind: Type.Literal("lower_bound"), value: Type.Integer({ minimum: 0 }) }),
+});
 
 /**
  * One assembled `claim_line` the DRAFT-edit (re-assembly) body carries — mirrors the write-service

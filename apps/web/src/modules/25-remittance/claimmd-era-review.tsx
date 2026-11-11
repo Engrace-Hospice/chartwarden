@@ -11,7 +11,7 @@ import {
 import type { paths } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, RefObject } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { formatDay, humanize, money, toneOf } from "./remittance-status";
@@ -42,6 +42,7 @@ const REVIEW_STATE_TONE: Record<string, "neutral" | "progress" | "success" | "wa
 export function ClaimMdEraReview(): JSX.Element {
   const client = useApiClient();
   const session = useSession();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<ReviewSummary[]>([]);
   const [selected, setSelected] = useState<ReviewItem | null>(null);
   const [matchReview, setMatchReview] = useState<MatchReview | null>(null);
@@ -133,6 +134,14 @@ export function ClaimMdEraReview(): JSX.Element {
 
   const openItem = async (item: ReviewSummary) => {
     detailIdRef.current = item.id;
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("stage", item.id);
+        return next;
+      },
+      { replace: true },
+    );
     setSelected(null);
     setMatchReview(null);
     setCandidatePages({});
@@ -165,6 +174,14 @@ export function ClaimMdEraReview(): JSX.Element {
       setDetailLoading(false);
     }
   };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: openItem is a local action closure; detailIdRef prevents duplicate opens for the same URL stage.
+  useEffect(() => {
+    const stageId = searchParams.get("stage");
+    if (!stageId || loading || detailIdRef.current === stageId) return;
+    const item = items.find((candidate) => candidate.id === stageId);
+    if (item) void openItem(item);
+  }, [items, loading, searchParams]);
 
   const canResolveIdentity = session?.permissions?.includes("remittance.match_review") ?? false;
   const canFinancialReview = session?.permissions?.includes("remittance.financial_review") ?? false;
@@ -1136,7 +1153,9 @@ function ReviewDetail({
                             (claim.patientControlNumber ?? "Unmatched claim")
                           )}
                           {claim.payerIcn ? (
-                            <small style={{ display: "block", color: "#667085" }}>
+                            <small
+                              style={{ display: "block", color: "var(--color-on-surface-variant)" }}
+                            >
                               Payer ref: {claim.payerIcn}
                             </small>
                           ) : null}
@@ -1146,7 +1165,9 @@ function ReviewDetail({
                         <td>{centsMoney(claim.patientResponsibilityCents)}</td>
                         <td>
                           {claim.adjustments.some((adjustment) => adjustment.groupCode === "PR") ? (
-                            <small style={{ display: "block", color: "#667085" }}>
+                            <small
+                              style={{ display: "block", color: "var(--color-on-surface-variant)" }}
+                            >
                               CLP05 is the reported total; PR CAS entries explain that amount and
                               are not added a second time.
                             </small>
@@ -1178,7 +1199,9 @@ function ReviewDetail({
                             "No reported CAS adjustment"
                           )}
                           {claim.unresolvedCents ? (
-                            <small style={{ display: "block", color: "#667085" }}>
+                            <small
+                              style={{ display: "block", color: "var(--color-on-surface-variant)" }}
+                            >
                               Unresolved amount: {centsMoney(claim.unresolvedCents)}
                             </small>
                           ) : null}

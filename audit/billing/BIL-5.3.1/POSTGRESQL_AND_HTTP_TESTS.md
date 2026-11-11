@@ -1,0 +1,9 @@
+# PostgreSQL and HTTP tests
+
+The repository-approved `scripts/test-m25-835-ingestion-private.sh` completed successfully using its fresh, disposable `chartwarden-postgres:dev` container and restricted application role. It ran 7 live suites: M25 ingestion/reporting 51/51, M25 golden posting 21/21, M24 feedback 7/7, CAP consumer 4/4, M25 clearinghouse pull 15/15, M41 authenticated routes 16/16, and M23 source reader 6/6. Total: 120 checks passed. No shared or production database was used.
+
+The M25 HTTP report fixture posts one matched paid CLP and retains one unmatched zero-payment CLP. It verifies the `partial_posted` advice is excluded from the fully-posted measure while its persisted posted line contributes 4,200 cents to `postedClaimPaymentCents`; reported BPR/CLP facts remain separate. Requests use a synthetic authenticated test principal and the restricted database role. Tenant B and an out-of-scope provider receive zero scoped totals, and before/after advice, line and outbox counts are unchanged by the GET.
+
+The M41 HTTP fixture assembles a synthetic M41 claim, posts a matching ERA through real M25 `receiveAdvice`/`postAdvice`, then reads the registered M41 reconciliation route. It verifies claim identity, payer/provider, current mutable charge, 620,000 reported and posted cents, and one persisted advice line. Read-side snapshots verify advice, line, claim-paid event count and M41 claim state do not change. The M25 owner reader is also exercised against a real persisted M41 claim in the legacy-first test.
+
+The HTTP suites exercise registered Fastify routes, server authorization hooks, source-owner code, and PostgreSQL RLS using the restricted role. The test harness supplies synthetic principals; deployment-specific identity-provider/session certification is not claimed. The targeted Node test-source TypeScript program for the two changed live suites passes. DOM tests are separately documented in `STATIC_CHECKS_AND_LINT.md`.

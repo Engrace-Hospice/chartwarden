@@ -18,6 +18,11 @@ import {
   ReadyResponseSchema as M1ReadyResponseSchema,
   VersionResponseSchema as M1VersionResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/health";
+import { ClaimMdOperationalObservabilityResponseSchema as OpsClaimMdOperationalObservabilityResponseSchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-observability";
+import {
+  ClaimMdRecoveryReadinessQuerySchema as OpsClaimMdRecoveryReadinessQuerySchema,
+  ClaimMdRecoveryReadinessResponseSchema as OpsClaimMdRecoveryReadinessResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/ops-claimmd-recovery-readiness";
 import {
   FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
@@ -499,6 +504,8 @@ import {
   CreateRuleConfigBodySchema,
   HospicePeriodsQuerySchema as M23HospicePeriodsQuerySchema,
   HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
+  InDoubtSubmissionListQuerySchema as M23InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M23InDoubtSubmissionListResponseSchema,
   RhcCarryOverSchema as M23RhcCarryOverSchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
@@ -681,6 +688,19 @@ import {
   BeneficiaryAppealViewSchema as M25BeneficiaryAppealViewSchema,
   ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
+import {
+  BillingOperationsInvestigationAssignmentSchema as M25BillingInvestigationAssignmentSchema,
+  BillingOperationsInvestigationDetailSchema as M25BillingInvestigationDetailSchema,
+  BillingOperationsInvestigationListQuerySchema as M25BillingInvestigationListQuerySchema,
+  BillingOperationsInvestigationListSchema as M25BillingInvestigationListSchema,
+  BillingOperationsInvestigationNoteResultSchema as M25BillingInvestigationNoteResultSchema,
+  BillingOperationsInvestigationNoteSchema as M25BillingInvestigationNoteSchema,
+  BillingOperationsInvestigationSchema as M25BillingInvestigationSchema,
+  BillingOperationsInvestigationSourceSchema as M25BillingInvestigationSourceSchema,
+  BillingOperationsInvestigationTransitionSchema as M25BillingInvestigationTransitionSchema,
+  BillingOperationsInvestigatorQuerySchema as M25BillingInvestigatorQuerySchema,
+  BillingOperationsInvestigatorsSchema as M25BillingInvestigatorsSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/billing-operations-investigations";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import { DenialCaseViewSchema as M25DenialCaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
@@ -699,6 +719,10 @@ import {
   ClaimMdEraReviewPageSchema as M25ClaimMdEraReviewPageSchema,
   ClaimMdEraReviewQuerySchema as M25ClaimMdEraReviewQuerySchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/claimmd-era-review.schemas";
+import {
+  ClaimMdTenantOperationalHealthQuerySchema as M25ClaimMdTenantOperationalHealthQuerySchema,
+  ClaimMdTenantOperationalHealthResponseSchema as M25ClaimMdTenantOperationalHealthResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/claimmd-operational-health.schemas";
 import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
@@ -778,6 +802,10 @@ import {
   RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
   RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
+import {
+  RevenueCycleSummaryQuerySchema as M25RevenueCycleSummaryQuerySchema,
+  RevenueCycleSummaryResponseSchema as M25RevenueCycleSummaryResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/revenue-cycle-reporting.schemas";
 import {
   SubmissionCancelRequestSchema as M25SubmissionCancelRequestSchema,
   SubmissionReceiptRequestSchema as M25SubmissionReceiptRequestSchema,
@@ -997,6 +1025,9 @@ import {
   ClaimListQuerySchema as M41ClaimListQuerySchema,
   ClaimListResponseSchema as M41ClaimListResponseSchema,
   CommercialClaimViewSchema as M41ClaimViewSchema,
+  CommercialPaymentReconciliationResponseSchema as M41CommercialPaymentReconciliationSchema,
+  InDoubtSubmissionListQuerySchema as M41InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M41InDoubtSubmissionListResponseSchema,
   OverrideBodySchema as M41OverrideBodySchema,
   OverrideResponseSchema as M41OverrideResponseSchema,
   PayerPlanListResponseSchema as M41PayerPlanListResponseSchema,
@@ -9046,6 +9077,51 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // M25 Remittance & Denials — FULL enrichment (all 31 routes). Later Object.assign wins, so this
 // supersedes the earlier partial M25 block and drives the module's unenriched deficit to 0.
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/billing/operations/investigations": {
+    summary:
+      "List tenant/provider-authorized M23/M41 operational investigations with per-owner source revalidation and lower-bound page counts",
+    query: M25BillingInvestigationListQuerySchema,
+    response: M25BillingInvestigationListSchema,
+  },
+  "POST /api/v1/billing/operations/investigations": {
+    summary:
+      "Open an audited read-only investigation for an exact authorized M23/M41 in-doubt submission attempt",
+    body: M25BillingInvestigationSourceSchema,
+    response: M25BillingInvestigationSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "GET /api/v1/billing/operations/investigations/investigators": {
+    summary:
+      "List active, provider-authorized investigators with Billing Operations triage permission",
+    query: M25BillingInvestigatorQuerySchema,
+    response: M25BillingInvestigatorsSchema,
+  },
+  "GET /api/v1/billing/operations/investigations/:id": {
+    summary:
+      "Read one tenant/provider-scoped investigation, revalidated against its M23/M41 source, notes, and append-only history",
+    response: M25BillingInvestigationDetailSchema,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/assignment": {
+    summary:
+      "Assign or unassign an eligible investigator using an optimistic version and audited reason",
+    body: M25BillingInvestigationAssignmentSchema,
+    response: M25BillingInvestigationSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/notes": {
+    summary: "Append a bounded non-source-mutating operational investigation note",
+    body: M25BillingInvestigationNoteSchema,
+    response: M25BillingInvestigationNoteResultSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/transitions": {
+    summary:
+      "Append an audited operational status transition; resolution requires its separate permission and never resolves source submission uncertainty",
+    body: M25BillingInvestigationTransitionSchema,
+    response: M25BillingInvestigationSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
   "GET /api/v1/remittance/claimmd-era": {
     summary:
       "Tenant- and provider-scoped aggregate list of Claim.MD ERA stages for nonposting review",
@@ -9099,6 +9175,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25ClaimMdEraPostingActionResultSchema,
   },
   // ── remittance.routes.ts (§4.1 routes 1-8) ────────────────────────────────────────────────────
+  "GET /api/v1/remittance/revenue-cycle-summary": {
+    summary:
+      "Source-backed M25 Revenue Cycle payment and adjustment totals; authoritative A/R unavailable",
+    query: M25RevenueCycleSummaryQuerySchema,
+    response: M25RevenueCycleSummaryResponseSchema,
+  },
+  "GET /api/v1/remittance/claimmd-operational-health": {
+    summary: "Tenant-safe attributed Claim.MD ERA staging health without central account metadata",
+    query: M25ClaimMdTenantOperationalHealthQuerySchema,
+    response: M25ClaimMdTenantOperationalHealthResponseSchema,
+  },
   "GET /api/v1/remittance/advices": {
     summary: "Remittance advices (835 headers, cursor-paginated, §4.12)",
     query: M25ListQuerySchema,
@@ -13660,6 +13747,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: ClaimListQuerySchema,
     response: M23ClaimListResponse,
   },
+  "GET /api/v1/billing/claims/in-doubt-submissions": {
+    summary:
+      "Submission-first, tenant/provider-scoped M23 transport uncertainty queue. Each row is an actual durable claim submission attempt with outcome in doubt; the request may have reached the payer. Lower-bound counts describe the loaded page only; no retry is offered.",
+    query: M23InDoubtSubmissionListQuerySchema,
+    response: M23InDoubtSubmissionListResponseSchema,
+  },
   "GET /api/v1/billing/claims/:id": {
     summary:
       "Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3)",
@@ -15458,11 +15551,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "A commercial claim with its lines and the latest validation run (rule, severity, overridable, overridden, blocking, actionable message). Read-audited",
     response: M41ClaimViewSchema,
   },
+  "GET /api/v1/billing/commercial/claims/:id/payment-reconciliation": {
+    summary:
+      "M41-caseload-authorized commercial claim and exact M25 remittance line payment facts; distinguishes payer-reported and actually posted amounts. Original submitted charge and canonical A/R remain unavailable when not preserved by authoritative sources.",
+    response: M41CommercialPaymentReconciliationSchema,
+  },
   "GET /api/v1/billing/commercial/claims": {
     summary:
       "The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). Keyset paging: `limit` (default 50, max 100) and an opaque `cursor`; `nextCursor` is null on the last page. A page may hold fewer than `limit` rows (and even none) when claims outside the caseload were skipped; keep following `nextCursor`. Ids, dates, plan name and money only",
     query: M41ClaimListQuerySchema,
     response: M41ClaimListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/submissions/in-doubt": {
+    summary:
+      "Submission-first M41 transport uncertainty queue. Enforces provider and patient caseload scope; the request may have reached the payer. Lower-bound counts describe loaded authorized rows only; no retry is offered.",
+    query: M41InDoubtSubmissionListQuerySchema,
+    response: M41InDoubtSubmissionListResponseSchema,
   },
   "GET /api/v1/billing/commercial/payer-plans": {
     summary:
@@ -15640,6 +15744,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
 import { ClaimMdEraRecoveryBodySchema as M25ClaimMdEraRecoveryBodySchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-era-recovery";
 
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/ops/claimmd/observability": {
+    summary:
+      "Platform-only durable Claim.MD polling and backlog evidence without account identifiers, cursor tokens, or payloads",
+    response: OpsClaimMdOperationalObservabilityResponseSchema,
+  },
+  "GET /api/v1/ops/claimmd/eras/:inboxId/recovery-preflight": {
+    summary: "Assess one exact durable Claim.MD ERA source for recovery readiness without mutation",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
+  "POST /api/v1/ops/claimmd/eras/:inboxId/recovery-dry-run": {
+    summary:
+      "Repeat the server-authoritative recovery assessment without changing source, cursor, attribution, delivery, or financial state",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
   "POST /api/v1/ops/claimmd/eras/:inboxId/recovery": {
     summary:
       "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",

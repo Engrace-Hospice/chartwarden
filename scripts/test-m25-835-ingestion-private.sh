@@ -34,6 +34,23 @@ PORT="$(docker port "$NAME" 5432/tcp | sed 's#.*:##')"
 export CHARTWARDEN_TEST_DATABASE_URL="postgresql://postgres:${PASSWORD}@127.0.0.1:${PORT}/wardenx_m25_posting_core_test"
 cd "$ROOT"
 
+if [[ "${BIL_TEST_ONLY:-}" == "m41" ]]; then
+  bunx vitest run apps/backend/__tests__/m41-commercial-routes.live.test.ts
+  exit 0
+fi
+if [[ "${BIL_TEST_ONLY:-}" == "m23" ]]; then
+  bunx vitest run apps/backend/__tests__/m23-claim-validation-overview.live.test.ts
+  exit 0
+fi
+if [[ "${BIL_TEST_ONLY:-}" == "rls" ]]; then
+  bunx vitest run packages/db/migrations/__tests__/m25-rls-isolation.live.test.ts
+  exit 0
+fi
+if [[ "${BIL_TEST_ONLY:-}" == "claimmd-ops" ]]; then
+  bunx vitest run apps/backend/__tests__/claimmd-ops-recovery-readiness.live.test.ts
+  exit 0
+fi
+
 # The suite resets public and drops its application roles. This cluster is disposable and private.
 bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
 # Exercise the legacy manual 835 parser, receiveAdvice/postAdvice financial path and its real dispatcher.
@@ -44,5 +61,9 @@ bunx vitest run apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts
 bunx vitest run apps/backend/__tests__/gap-038-cap-day-backfill.live.test.ts
 # Exercise the supported clearinghouse/SFTP pull adapter with synthetic transport data (no live vendor call).
 bunx vitest run apps/backend/__tests__/m25-clearinghouse-pull.test.ts
+# M41 owner-route contract, including the submission-first in-doubt HTTP page, on the same private cluster.
+bunx vitest run apps/backend/__tests__/m41-commercial-routes.live.test.ts
+# M23 source-owned claim/submission reader RLS contract (old in-doubt attempts are selected independently).
+bunx vitest run apps/backend/__tests__/m23-claim-validation-overview.live.test.ts
 
 echo "Private M25 835 ingestion and transaction-core suite completed."

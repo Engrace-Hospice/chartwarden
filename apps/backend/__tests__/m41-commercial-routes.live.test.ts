@@ -24,8 +24,18 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
+  resolveActorPermissions,
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
+import { encodeCursor } from "@chartwarden/shared/route-kit";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
+import type {
+  ParsedRemittanceAdvice,
+  X12WorkerResult,
+  X12835WorkerClient,
+} from "@chartwarden/x12-835-client";
+import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -33,6 +43,18 @@ import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildM41OverrideAuditPort } from "../src/m41-override-audit";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
+import { registerClaimsRoutes } from "../src/modules/23-billing-medicare/routes/claims.routes";
+import { buildDrizzleM23ReadService } from "../src/modules/23-billing-medicare/routes/read-service-drizzle";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/events-by-m25";
+import {
+  PAYEE_UNCHECKED,
+  buildDrizzleM25IngestService,
+} from "../src/modules/25-remittance/ingest/service-drizzle";
+import {
+  BillingOperationsInvestigationService,
+  registerBillingOperationsInvestigationRoutes,
+} from "../src/modules/25-remittance/routes/billing-operations-investigations";
+import { buildDrizzleM25ReadService } from "../src/modules/25-remittance/routes/read-service-drizzle";
 import {
   type CommercialClaimSeams,
   M41_OUTBOX_EVENTS,
@@ -44,6 +66,7 @@ import {
   buildCommercialSubmissionService,
   registerCommercialBillingRoutes,
 } from "../src/modules/41-billing-commercial/index";
+import { buildRawEdi, sha256Hex } from "./_edi835-fixture";
 import {
   LIVE_APP_ROLE_PASSWORD,
   appRoleUrl,
@@ -57,14 +80,21 @@ const ORG = "00000000-0000-4000-8000-0000000043a1";
 const USER = "00000000-0000-4000-8000-0000000043c1";
 const OTHER_USER = "00000000-0000-4000-8000-0000000043c2";
 const NOCASE = "00000000-0000-4000-8000-0000000043c3";
+const SCOPED_USER = "00000000-0000-4000-8000-0000000043c4";
 const REASON =
   "The payer confirmed by telephone that no authorization is needed for this hospice plan.";
 const BASE = "/api/v1/billing/commercial";
 const KEYS = [
+  "billing.claim.read",
   "commercial_billing.read",
   "commercial_billing.write",
   "commercial_billing.submit",
   "commercial_billing.override_validation",
+  "billing.operations.read",
+  "billing.operations.triage",
+  "billing.operations.assign",
+  "billing.operations.resolve",
+  "remittance.read",
 ];
 
 describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => {
@@ -77,16 +107,31 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
   const servers: FastifyInstance[] = [];
   let idem = 0;
   let otherProviderEntityId: string;
+  let caseloadPatientAllowlist: Set<string> | null = null;
   // when set, the fake admission reports this provider entity instead of providerEntityId
   let admissionProvider: string | undefined;
 
   function headerAuth(request: FastifyRequest): void {
     const who = request.headers["x-test-user"];
     if (typeof who !== "string") return;
-    request.context.userId = who === "plain" ? OTHER_USER : who === "nocase" ? NOCASE : USER;
+    request.context.userId =
+      who === "plain"
+        ? OTHER_USER
+        : who === "nocase"
+          ? NOCASE
+          : who.startsWith("scoped")
+            ? SCOPED_USER
+            : USER;
     request.context.organizationId = ORG;
-    request.context.roles = who === "ineligible" ? ["scheduler"] : ["billing_manager"];
-    request.context.providerEntityIds = [who === "pe2" ? otherProviderEntityId : providerEntityId];
+    request.context.roles =
+      who === "ineligible"
+        ? ["scheduler"]
+        : who.startsWith("scoped")
+          ? ["billing_specialist"]
+          : ["billing_manager"];
+    request.context.providerEntityIds = [
+      who === "pe2" || who === "scoped-pe2" ? otherProviderEntityId : providerEntityId,
+    ];
     request.context.attributes.membershipId = membershipId;
     request.context.attributes.stepUpRecent = request.headers["x-test-stepup"] === "yes";
     request.context.attributes.actorKind = who === "ai" ? "ai_agent" : "user";
@@ -145,6 +190,11 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
           userId: NOCASE,
           grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: KEYS }],
         },
+        {
+          orgId: ORG,
+          userId: SCOPED_USER,
+          grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: KEYS }],
+        },
         { orgId: ORG, userId: OTHER_USER, grants: [] },
       ]).store,
     );
@@ -152,7 +202,9 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     for (const [name, predicate] of Object.entries(
       buildCommercialAbacPredicates({
         db: handle.db,
-        isInCaseload: async ({ userId }) => userId === USER,
+        isInCaseload: async ({ userId, patientId }) =>
+          (userId === USER || userId === SCOPED_USER) &&
+          (!caseloadPatientAllowlist || caseloadPatientAllowlist.has(patientId)),
       }),
     )) {
       reg.register(name, predicate);
@@ -163,7 +215,11 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     const seams: CommercialClaimSeams = {
       coverage: buildPatientCoverageReader(handle.db),
       // the per-patient axis: only USER has the patients on their caseload
-      caseload: { isInCaseload: async ({ userId }) => userId === USER },
+      caseload: {
+        isInCaseload: async ({ userId, patientId }) =>
+          (userId === USER || userId === SCOPED_USER) &&
+          (!caseloadPatientAllowlist || caseloadPatientAllowlist.has(patientId)),
+      },
       admission: {
         resolveForRange: async () => ({
           admissionId,
@@ -236,12 +292,130 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       security: { rateLimitEnabled: false },
       db: handle.db,
     });
+    const m25PaymentReads = buildDrizzleM25ReadService(handle.db);
+    const commercialReads = buildCommercialClaimReadService(handle.db, seams, {
+      readForClaim: (query) =>
+        m25PaymentReads.commercialClaimPaymentFacts(
+          {
+            organizationId: query.organizationId,
+            userId: query.userId,
+            roles: [],
+            providerEntityScope: query.providerEntityScope,
+          },
+          {
+            claimId: query.claimId,
+            providerEntityId: query.providerEntityId,
+            payerId: query.payerId,
+          },
+        ),
+    });
+    const m23Reads = buildDrizzleM23ReadService(handle.db);
     registerCommercialBillingRoutes(app, {
       assembly: buildCommercialClaimAssemblyService(handle.db, seams),
       lifecycle: buildCommercialClaimLifecycleService(handle.db, seams),
       authorizations: buildCommercialAuthorizationService(handle.db, seams),
-      reads: buildCommercialClaimReadService(handle.db, seams),
+      reads: commercialReads,
       submissions: buildCommercialSubmissionService(handle.db, seams, { vendor: null }),
+    });
+    registerBillingOperationsInvestigationRoutes(
+      app,
+      new BillingOperationsInvestigationService(handle.db, {
+        sourceReader: {
+          async read(actor, sourceModule, submissionId) {
+            if (sourceModule === "M23") {
+              const permissions = await resolveActorPermissions({
+                organizationId: actor.organizationId,
+                userId: actor.userId,
+              });
+              if (!permissions.has("billing.claim.read"))
+                throw new NotFoundError("billing source record not found");
+              const source = await m23Reads.getSubmissionForInvestigation(
+                {
+                  organizationId: actor.organizationId,
+                  userId: actor.userId,
+                  roles: [],
+                  providerEntityScope: actor.providerEntityScope,
+                },
+                submissionId,
+              );
+              return {
+                sourceModule: "M23",
+                submissionId: source.submissionId,
+                claimId: source.claimId,
+                providerEntityId: source.providerEntityId,
+                attempt: source.attemptIndex,
+                reference: source.claimControlNumber,
+                payer: source.payer,
+                reasonCode: source.reasonCode,
+                occurredAt: source.occurredAt,
+                currentStatus: source.status,
+                sourceHref: `/billing/claims/${source.claimId}`,
+              };
+            }
+            const source = await commercialReads.getSubmissionForInvestigation(
+              {
+                organizationId: actor.organizationId,
+                userId: actor.userId,
+                billingScope:
+                  actor.providerEntityScope === undefined
+                    ? { all: true, providerEntityIds: [] }
+                    : { all: false, providerEntityIds: actor.providerEntityScope },
+              },
+              submissionId,
+            );
+            return {
+              sourceModule: "M41",
+              submissionId: source.submissionId,
+              claimId: source.claimId,
+              providerEntityId: source.providerEntityId,
+              attempt: source.attemptCount,
+              reference: source.claimControlNumber,
+              payer: source.payer,
+              reasonCode: source.reasonCode,
+              occurredAt: source.occurredAt,
+              currentStatus: source.status,
+              sourceHref: `/commercial/billing/claims/${source.claimId}`,
+            };
+          },
+        },
+        eligibleInvestigators: async (_organizationId, scopedProvider, sourceModule) =>
+          scopedProvider === providerEntityId && (sourceModule === "M41" || sourceModule === "M23")
+            ? [{ membershipId, displayName: "Synthetic Investigator" }]
+            : [],
+        investigatorEligible: async (_actor, candidateMembershipId, source) => {
+          if (candidateMembershipId !== membershipId) return false;
+          try {
+            const current =
+              source.sourceModule === "M41"
+                ? await commercialReads.getSubmissionForInvestigation(
+                    {
+                      organizationId: ORG,
+                      userId: USER,
+                      billingScope: { all: false, providerEntityIds: [source.providerEntityId] },
+                    },
+                    source.submissionId,
+                  )
+                : await m23Reads.getSubmissionForInvestigation(
+                    {
+                      organizationId: ORG,
+                      userId: USER,
+                      roles: [],
+                      providerEntityScope: [source.providerEntityId],
+                    },
+                    source.submissionId,
+                  );
+            return current.claimId === source.claimId;
+          } catch {
+            return false;
+          }
+        },
+      }),
+    );
+    registerClaimsRoutes(app, {
+      readService: m23Reads,
+      writeService: {} as never,
+      assemblyService: {} as never,
+      payerRouteStatus: async () => ({ status: "not_applicable" }),
     });
     servers.push(app);
     return app;
@@ -291,7 +465,10 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       `INSERT INTO "user" (id,email) VALUES ($1,'m41r-a@x.test'),($2,'m41r-b@x.test')`,
       [USER, OTHER_USER],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m41r-c@x.test')`, [NOCASE]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'m41r-c@x.test'),($2,'m41-scoped@x.test')`,
+      [NOCASE, SCOPED_USER],
+    );
     providerEntityId = (
       await admin.query(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
@@ -327,12 +504,14 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
   }, 600_000);
 
   beforeEach(() => {
+    caseloadPatientAllowlist = null;
     resetAuthorizationContract();
     resetRbacEngine();
     resetAbacRegistry();
   });
   afterEach(async () => {
     admissionProvider = undefined;
+    caseloadPatientAllowlist = null;
     await Promise.all(servers.splice(0).map((s) => s.close()));
     resetAuthorizationContract();
     resetRbacEngine();
@@ -412,6 +591,139 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect(ready.statusCode).toBe(200);
     expect(ready.json().state).toBe("ready");
     expect((await call(app, "POST", `${BASE}/claims/${claimId}/void`)).json().state).toBe("void");
+  });
+
+  it("reconciles a persisted M25 posted CLP through the authenticated M41 claim route", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    const created = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(s.patientId),
+    });
+    expect(created.statusCode).toBe(201);
+    const claimId = created.json().claimId as string;
+    const claimDetail = await call(app, "GET", `${BASE}/claims/${claimId}`);
+    expect(claimDetail.statusCode).toBe(200);
+    const claimControlNumber = claimDetail.json().claim.claimControlNumber as string;
+    const chargeCents = created.json().totalChargeCents as number;
+    const payerId = (
+      await admin.query("SELECT payer_id FROM commercial_payer_plan WHERE id=$1", [s.planId])
+    ).rows[0].payer_id as string;
+    const payerIcn = `SYNTHETIC-M41-REMIT-${randomUUID().slice(0, 8)}`;
+    const rawKey = `m41-reconciliation-${randomUUID()}.835`;
+    const raw = buildRawEdi("000009341", "9341");
+    const parsed: ParsedRemittanceAdvice = {
+      payerProgram: "commercial",
+      payer: { name: "Synthetic PPO", id: payerId },
+      interchangeControlNumber: "000009341",
+      transactionSetControlNumber: "9341",
+      checkOrEftTraceNumber: `M41-${randomUUID().replaceAll("-", "").slice(0, 32)}`,
+      paymentMethod: "eft",
+      totalPaymentAmount: chargeCents / 100,
+      productionDate: "2026-03-31",
+      claims: [
+        {
+          patientControlNumber: claimControlNumber,
+          payerIcn,
+          statusCode: 1,
+          totalCharge: chargeCents / 100,
+          totalPayment: chargeCents / 100,
+          patientResponsibility: 0,
+          serviceFrom: "2026-03-01",
+          serviceTo: "2026-03-31",
+          adjustments: [],
+          remarks: [],
+          serviceLines: [],
+        },
+      ],
+    };
+    const parser: X12835WorkerClient = {
+      async parse835(): Promise<X12WorkerResult<ParsedRemittanceAdvice>> {
+        return { ok: true, value: parsed };
+      },
+      async parse277ca() {
+        throw new Error("277CA is outside the payment reconciliation fixture");
+      },
+    };
+    const m25Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M25_OUTBOX_EVENTS]));
+    const ingest = buildDrizzleM25IngestService(handle.db, {
+      client: parser,
+      payeeNpi: PAYEE_UNCHECKED,
+      claims: {
+        commercial: {
+          async candidatesForLine() {
+            return [{ claimId, payerIcn, claimControlNumber }];
+          },
+          async patientIdForClaim() {
+            return s.patientId;
+          },
+        },
+      },
+      outbox: {
+        publish: (tx, emission) =>
+          m25Publisher.publish(tx as never, { ...emission, callerModule: "m25" }),
+      },
+    });
+    const received = await ingest.receiveAdvice(
+      { organizationId: ORG },
+      {
+        providerEntityId,
+        payerId,
+        payerKind: "commercial",
+        minioObjectKey: rawKey,
+        fileSha256: sha256Hex(raw),
+        rawEdi: raw,
+      },
+    );
+    expect(received.outcome).toBe("queued");
+    if (received.outcome !== "queued") throw new Error("expected queued synthetic ERA");
+    await expect(
+      ingest.postAdvice({ organizationId: ORG }, received.adviceId),
+    ).resolves.toMatchObject({ outcome: "posted" });
+
+    const beforeRead = await admin.query(
+      `SELECT
+         (SELECT count(*)::int FROM remittance_advice WHERE organization_id=$1 AND id=$2) AS advices,
+         (SELECT count(*)::int FROM remittance_line WHERE organization_id=$1 AND remittance_advice_id=$2) AS lines,
+         (SELECT count(*)::int FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm25.remittance.claim_%') AS events,
+         (SELECT state FROM commercial_claim WHERE organization_id=$1 AND id=$3) AS claim_state`,
+      [ORG, received.adviceId, claimId],
+    );
+
+    const response = await call(app, "GET", `${BASE}/claims/${claimId}/payment-reconciliation`);
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      claim: {
+        id: claimId,
+        claimControlNumber,
+        providerEntityId,
+        payerId,
+        currentChargeCents: chargeCents,
+        originalSubmittedChargeCents: null,
+      },
+      payments: {
+        payerReportedPaymentCents: String(chargeCents),
+        m25PostedPaymentCents: String(chargeCents),
+        historyRecordCount: 1,
+        items: [
+          expect.objectContaining({
+            remittanceAdviceId: received.adviceId,
+            payerReportedPaymentCents: String(chargeCents),
+            m25PostedPaymentCents: String(chargeCents),
+            adviceStatus: "posted",
+            lineMatchState: "posted",
+          }),
+        ],
+      },
+    });
+    const afterRead = await admin.query(
+      `SELECT
+         (SELECT count(*)::int FROM remittance_advice WHERE organization_id=$1 AND id=$2) AS advices,
+         (SELECT count(*)::int FROM remittance_line WHERE organization_id=$1 AND remittance_advice_id=$2) AS lines,
+         (SELECT count(*)::int FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm25.remittance.claim_%') AS events,
+         (SELECT state FROM commercial_claim WHERE organization_id=$1 AND id=$3) AS claim_state`,
+      [ORG, received.adviceId, claimId],
+    );
+    expect(afterRead.rows[0]).toEqual(beforeRead.rows[0]);
   });
 
   it("serves the work queue, the supported-payers view and the claim detail (plan, authorization, COB) without PHI (#726)", async () => {
@@ -1011,5 +1323,856 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [originalId])).rows[0]
         .state,
     ).toBe("rejected");
+  });
+  it("finds an older in-doubt submission directly from the submission queue, outside the first claim page", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    const assembled = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(s.patientId),
+    });
+    expect(assembled.statusCode).toBe(201);
+    const claimId = assembled.json().claimId as string;
+    const claim = (await admin.query("SELECT * FROM commercial_claim WHERE id=$1", [claimId]))
+      .rows[0];
+    await admin.query("UPDATE commercial_claim SET updated_at='2025-01-01T00:00:00Z' WHERE id=$1", [
+      claimId,
+    ]);
+    const oldAttempt = await admin.query(
+      `INSERT INTO commercial_submission (organization_id,provider_entity_id,claim_id,idempotency_key,control_number,
+        clearinghouse_key,clearinghouse_payer_id,status,attempt_count,last_failure_code,requested_by_membership_id,updated_at)
+       VALUES ($1,$2,$3,$4,$5,'stedi','SYNTH01','in_doubt',1,'TRANSPORT_OUTCOME_UNKNOWN',$6,'2025-01-01T00:00:00Z') RETURNING id`,
+      [
+        ORG,
+        providerEntityId,
+        claimId,
+        `old-${randomUUID()}`,
+        claim.claim_control_number,
+        membershipId,
+      ],
+    );
+    const secondSeed = await seed("not_required");
+    const secondClaimResponse = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(secondSeed.patientId),
+    });
+    expect(secondClaimResponse.statusCode).toBe(201);
+    const secondClaimId = secondClaimResponse.json().claimId as string;
+    const secondClaim = (
+      await admin.query("SELECT claim_control_number FROM commercial_claim WHERE id=$1", [
+        secondClaimId,
+      ])
+    ).rows[0];
+    const secondAttempt = await admin.query(
+      `INSERT INTO commercial_submission (organization_id,provider_entity_id,claim_id,idempotency_key,control_number,
+        clearinghouse_key,clearinghouse_payer_id,status,attempt_count,last_failure_code,requested_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,'stedi','SYNTH01','in_doubt',2,'TRANSPORT_OUTCOME_UNKNOWN',$6) RETURNING id`,
+      [
+        ORG,
+        providerEntityId,
+        secondClaimId,
+        `recent-${randomUUID()}`,
+        secondClaim.claim_control_number,
+        membershipId,
+      ],
+    );
+    await admin.query(
+      "UPDATE commercial_submission SET updated_at='2025-01-01T00:00:00Z' WHERE id=$1",
+      [secondAttempt.rows[0].id],
+    );
+    await admin.query(
+      `INSERT INTO commercial_claim (organization_id,provider_entity_id,patient_id,admission_id,plan_id,primary_patient_payer_id,
+        claim_filing_indicator,tob,frequency_code,service_from,service_to,admission_date,patient_status_code,claim_control_number,
+        total_charge_cents,expected_payment_cents,state,created_by_membership_id,created_at,updated_at)
+       SELECT organization_id,provider_entity_id,patient_id,admission_id,plan_id,primary_patient_payer_id,claim_filing_indicator,
+        tob,frequency_code,date '2026-04-01' + (n - 1) * interval '1 month',date '2026-04-01' + n * interval '1 month' - interval '1 day',date '2026-04-01' + (n - 1) * interval '1 month',patient_status_code,claim_control_number || '-bulk-' || n,
+        total_charge_cents,expected_payment_cents,'draft',created_by_membership_id,now(),now() + n * interval '1 second'
+       FROM commercial_claim CROSS JOIN generate_series(1,60) AS n WHERE id=$1`,
+      [claimId],
+    );
+    const normal = await call(
+      app,
+      "GET",
+      `${BASE}/claims?providerEntityId=${providerEntityId}&limit=1`,
+    );
+    expect(normal.statusCode).toBe(200);
+    expect(normal.json().items.some((row: { id: string }) => row.id === claimId)).toBe(false);
+    const feed = await call(
+      app,
+      "GET",
+      `${BASE}/submissions/in-doubt?providerEntityId=${providerEntityId}&limit=1`,
+    );
+    expect(feed.statusCode).toBe(200);
+    const firstIds = feed.json().items.map((row: { submissionId: string }) => row.submissionId);
+    expect(firstIds).toHaveLength(1);
+    expect(feed.json().hasMore).toBe(true);
+    expect(feed.json().count).toEqual({ kind: "lower_bound", value: 1 });
+    const secondPage = await call(
+      app,
+      "GET",
+      `${BASE}/submissions/in-doubt?providerEntityId=${providerEntityId}&limit=1&cursor=${encodeURIComponent(feed.json().nextCursor)}`,
+    );
+    expect(secondPage.statusCode).toBe(200);
+    const allIds = [
+      ...firstIds,
+      ...secondPage.json().items.map((row: { submissionId: string }) => row.submissionId),
+    ];
+    expect(new Set(allIds).size).toBe(allIds.length);
+    expect(allIds).toContain(oldAttempt.rows[0].id);
+    const deniedProvider = await call(
+      app,
+      "GET",
+      `${BASE}/submissions/in-doubt?providerEntityId=${otherProviderEntityId}`,
+    );
+    expect(deniedProvider.statusCode).toBe(404);
+  });
+
+  it("completes the M41 investigation lifecycle over authenticated HTTP and restricted PostgreSQL", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    const assembled = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(s.patientId),
+    });
+    expect(assembled.statusCode).toBe(201);
+    const claimId = assembled.json().claimId as string;
+    const claim = (
+      await admin.query("SELECT claim_control_number FROM commercial_claim WHERE id=$1", [claimId])
+    ).rows[0];
+    const submissionId = randomUUID();
+    await admin.query(
+      `INSERT INTO commercial_submission (id,organization_id,provider_entity_id,claim_id,idempotency_key,control_number,
+        clearinghouse_key,clearinghouse_payer_id,status,attempt_count,last_failure_code,requested_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'stedi','SYNTH01','in_doubt',3,'TRANSPORT_OUTCOME_UNKNOWN',$7)`,
+      [
+        submissionId,
+        ORG,
+        providerEntityId,
+        claimId,
+        `investigation-${randomUUID()}`,
+        claim.claim_control_number,
+        membershipId,
+      ],
+    );
+    const remittancesBefore = Number(
+      (await admin.query("SELECT count(*)::int AS n FROM remittance_advice")).rows[0].n,
+    );
+    const openKey = `investigation-open-${randomUUID()}`;
+    const created = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M41", submissionId },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      sourceModule: "M41",
+      sourceAttemptId: submissionId,
+      providerEntityId,
+    });
+    const id = created.json().id as string;
+    const detail = await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`);
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().source).toMatchObject({
+      submissionId,
+      claimId,
+      sourceModule: "M41",
+      currentStatus: "in_doubt",
+    });
+    const list = await call(app, "GET", "/api/v1/billing/operations/investigations?limit=1");
+    expect(list.statusCode).toBe(200);
+    expect(list.json().items.some((item: { id: string }) => item.id === id)).toBe(true);
+    expect(
+      (await call(app, "GET", "/api/v1/billing/operations/investigations", { user: "plain" }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`, {
+          user: "scoped-pe2",
+        })
+      ).statusCode,
+    ).toBe(404);
+    const repeatedOpen = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M41", submissionId },
+    });
+    expect(repeatedOpen.statusCode).toBe(201);
+    expect(repeatedOpen.json().id).toBe(id);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM billing_operations_investigation_event WHERE investigation_id=$1 AND event_type='created'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+
+    const investigators = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations/investigators?providerEntityId=${providerEntityId}&sourceModule=M41&submissionId=${submissionId}`,
+    );
+    expect(investigators.statusCode).toBe(200);
+    expect(investigators.json().items).toEqual([
+      { membershipId, displayName: "Synthetic Investigator" },
+    ]);
+    const ineligibleAssignment = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        key: `investigation-assign-ineligible-${randomUUID()}`,
+        payload: {
+          assignedToMembershipId: randomUUID(),
+          version: 1,
+          reason: "Reject an ineligible investigator",
+        },
+      },
+    );
+    expect(ineligibleAssignment.statusCode).toBe(404);
+    const assignmentKey = `investigation-assign-${randomUUID()}`;
+    const assigned = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        key: assignmentKey,
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 1,
+          reason: "Assign synthetic investigator",
+        },
+      },
+    );
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json().assignedToMembershipId).toBe(membershipId);
+    const assignmentRetry = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        key: assignmentKey,
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 1,
+          reason: "Assign synthetic investigator",
+        },
+      },
+    );
+    expect(assignmentRetry.statusCode).toBe(200);
+    const concurrentAssignments = await Promise.all([
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/assignment`, {
+        key: `assignment-race-${randomUUID()}`,
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 2,
+          reason: "Keep assigned investigator",
+        },
+      }),
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/assignment`, {
+        key: `assignment-race-${randomUUID()}`,
+        payload: { assignedToMembershipId: null, version: 2, reason: "Unassign competing request" },
+      }),
+    ]);
+    expect(concurrentAssignments.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    caseloadPatientAllowlist = new Set();
+    expect(
+      (
+        await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`, {
+          user: "scoped",
+        })
+      ).statusCode,
+    ).toBe(404);
+    const hiddenFromList = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations?providerEntityId=${providerEntityId}`,
+      { user: "scoped" },
+    );
+    expect(hiddenFromList.statusCode).toBe(200);
+    expect(hiddenFromList.json().items.some((item: { id: string }) => item.id === id)).toBe(false);
+    expect(hiddenFromList.json().count).toEqual({ kind: "lower_bound", value: 0 });
+    const inaccessibleInvestigators = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations/investigators?providerEntityId=${providerEntityId}&sourceModule=M41&submissionId=${submissionId}`,
+    );
+    expect(inaccessibleInvestigators.statusCode).toBe(200);
+    expect(inaccessibleInvestigators.json().items).toEqual([]);
+    caseloadPatientAllowlist = new Set([s.patientId]);
+
+    const noteKey = `investigation-note-${randomUUID()}`;
+    const noteBody = { body: "Synthetic follow-up confirmed with payer operations." };
+    const note = await call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+      key: noteKey,
+      payload: noteBody,
+    });
+    expect(note.statusCode).toBe(200);
+    expect(note.json()).toMatchObject({ authorMembershipId: membershipId, body: noteBody.body });
+    const noteRetry = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/notes`,
+      { key: noteKey, payload: noteBody },
+    );
+    expect(noteRetry.statusCode).toBe(200);
+    expect(noteRetry.json().id).toBe(note.json().id);
+    const conflictingNoteRetry = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/notes`,
+      {
+        key: noteKey,
+        payload: { body: "Different content under the existing idempotency key" },
+      },
+    );
+    expect(conflictingNoteRetry.statusCode).toBe(409);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM billing_operations_investigation_note WHERE investigation_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+          payload: { body: " " },
+        })
+      ).statusCode,
+    ).toBeGreaterThanOrEqual(400);
+    const spoofAttempt = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/notes`,
+      { payload: { body: "forged", authorMembershipId: OTHER_USER } },
+    );
+    expect(spoofAttempt.statusCode).toBe(200);
+    expect(spoofAttempt.json().authorMembershipId).toBe(membershipId);
+    const competingNotes = await Promise.all([
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+        key: `note-race-${randomUUID()}`,
+        payload: { body: "Concurrent synthetic note one." },
+      }),
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+        key: `note-race-${randomUUID()}`,
+        payload: { body: "Concurrent synthetic note two." },
+      }),
+    ]);
+    expect(competingNotes.map((response) => response.statusCode)).toEqual([200, 200]);
+
+    const transition = async (status: string, version: number, key: string, outcome?: string) =>
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/transitions`, {
+        key,
+        payload: {
+          status,
+          version,
+          reason: `Synthetic ${status} transition`,
+          ...(outcome ? { outcome } : {}),
+        },
+      });
+    const started = await transition("investigating", 7, `status-${randomUUID()}`);
+    expect(started.statusCode).toBe(200);
+    const stale = await transition("waiting_external", 7, `status-${randomUUID()}`);
+    expect(stale.statusCode).toBe(409);
+    const waiting = await transition("waiting_external", 8, `status-${randomUUID()}`);
+    expect(waiting.statusCode).toBe(200);
+    const resolved = await transition(
+      "resolved",
+      9,
+      `status-${randomUUID()}`,
+      "referred_to_source_workflow",
+    );
+    expect(resolved.statusCode).toBe(200);
+    const closed = await transition("closed", 10, `status-${randomUUID()}`);
+    expect(closed.statusCode).toBe(200);
+    const reopened = await transition("investigating", 11, `status-${randomUUID()}`);
+    expect(reopened.statusCode).toBe(200);
+    const concurrent = await Promise.all([
+      transition("waiting_external", 12, `status-${randomUUID()}`),
+      transition("resolved", 12, `status-${randomUUID()}`, "referred_to_source_workflow"),
+    ]);
+    expect(concurrent.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+
+    await admin.query(
+      "UPDATE commercial_submission SET status='sent', sent_at=now(), last_failure_code=NULL WHERE id=$1",
+      [submissionId],
+    );
+    const historical = await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`);
+    expect(historical.statusCode).toBe(200);
+    expect(historical.json().source.currentStatus).toBe("sent");
+    const delayedOpenRetry = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M41", submissionId },
+    });
+    expect(delayedOpenRetry.statusCode).toBe(201);
+    expect(delayedOpenRetry.json().id).toBe(id);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM billing_operations_investigation_event WHERE investigation_id=$1 AND event_type='created'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(["waiting_external", "resolved"]).toContain(historical.json().investigation.status);
+    expect(historical.json().notes).toHaveLength(4);
+    const historicalList = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations?providerEntityId=${providerEntityId}`,
+    );
+    expect(historicalList.statusCode).toBe(200);
+    expect(historicalList.json().items.some((item: { id: string }) => item.id === id)).toBe(true);
+    expect(
+      historical.json().history.map((entry: { event_type: string }) => entry.event_type),
+    ).toEqual(
+      expect.arrayContaining([
+        "created",
+        "assigned",
+        "note_added",
+        "status_changed",
+        "resolved",
+        "reopened",
+      ]),
+    );
+    const statusAfterInvestigation = (
+      await admin.query("SELECT status FROM commercial_submission WHERE id=$1", [submissionId])
+    ).rows[0].status;
+    expect(statusAfterInvestigation).toBe("sent");
+    expect(
+      Number((await admin.query("SELECT count(*)::int AS n FROM remittance_advice")).rows[0].n),
+    ).toBe(remittancesBefore);
+
+    const orgB = randomUUID();
+    const foreignId = randomUUID();
+    const foreignAttemptId = randomUUID();
+    const foreignClaimId = randomUUID();
+    const foreignProviderId = randomUUID();
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,$2,'Foreign','Foreign','active')",
+      [orgB, `ops-${orgB.slice(0, 8)}`],
+    );
+    await admin.query(
+      `INSERT INTO billing_operations_investigation (
+        id,organization_id,provider_entity_id,source_module,source_record_id,
+        source_attempt_id,source_identity,source_occurred_at,created_by_membership_id
+      ) VALUES ($1,$2,$3,'M41',$4,$5,$6,now(),$7)`,
+      [
+        foreignId,
+        orgB,
+        foreignProviderId,
+        foreignClaimId,
+        foreignAttemptId,
+        `M41:submission:${foreignAttemptId}`,
+        membershipId,
+      ],
+    );
+    const eventKeyHash = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    const eventFingerprint = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    const noteKeyHash = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    const noteFingerprint = randomUUID().replaceAll("-", "").padEnd(64, "0");
+    await admin.query(
+      `INSERT INTO billing_operations_investigation_event
+        (organization_id,investigation_id,event_type,actor_membership_id,reason,idempotency_key_hash,request_fingerprint)
+       VALUES ($1,$2,'created',$3,'Synthetic foreign case',$4,$5)`,
+      [orgB, foreignId, membershipId, eventKeyHash, eventFingerprint],
+    );
+    await admin.query(
+      `INSERT INTO billing_operations_investigation_note
+        (organization_id,investigation_id,author_membership_id,body,idempotency_key_hash,request_fingerprint)
+       VALUES ($1,$2,$3,'Synthetic foreign note',$4,$5)`,
+      [orgB, foreignId, membershipId, noteKeyHash, noteFingerprint],
+    );
+    const foreignDetail = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations/${foreignId}`,
+    );
+    expect(foreignDetail.statusCode).toBe(404);
+    const visible = await withOrgContext(
+      handle.db,
+      { organizationId: ORG, userId: USER },
+      async (tx) => {
+        const [cases, events, notes] = await Promise.all([
+          tx.execute(
+            sql`SELECT id FROM billing_operations_investigation WHERE id=${foreignId}::uuid`,
+          ),
+          tx.execute(
+            sql`SELECT id FROM billing_operations_investigation_event WHERE investigation_id=${foreignId}::uuid`,
+          ),
+          tx.execute(
+            sql`SELECT id FROM billing_operations_investigation_note WHERE investigation_id=${foreignId}::uuid`,
+          ),
+        ]);
+        return [cases.rows.length, events.rows.length, notes.rows.length];
+      },
+    );
+    expect(visible).toEqual([0, 0, 0]);
+    expect((await admin.query("SELECT count(*)::int AS n FROM remittance_advice")).rows[0].n).toBe(
+      remittancesBefore,
+    );
+  });
+
+  it("completes the M23 investigation lifecycle and retains authorized history after dispatch resolution", async () => {
+    const app = server(randomUUID());
+    const claimId = randomUUID();
+    const submissionId = randomUUID();
+    const controlNumber = `M23-${randomUUID().slice(0, 8)}`;
+    await admin.query(
+      `INSERT INTO claim (id,organization_id,provider_entity_id,patient_id,admission_id,election_period_id_from,
+        election_period_id_to,patient_payer_id,tob,service_from,service_to,state,claim_control_number,mac_jurisdiction,
+        sequestration_applied_pct,sequestration_policy_id,created_by_membership_id)
+       VALUES ($1,$2,$3,$4,$4,$4,$4,$4,'811','2026-09-01','2026-09-30','READY',$5,'cgs_j15','2.00',$4,$6)`,
+      [claimId, ORG, providerEntityId, randomUUID(), controlNumber, membershipId],
+    );
+    await admin.query(
+      `INSERT INTO claim_submission (id,organization_id,provider_entity_id,kind,claim_id,claim_control_number,attempt_index,
+        dispatch_state,dispatch_token,dispatch_started_at,dispatch_reason_code)
+       VALUES ($1,$2,$3,'claim_837i',$4,$5,1,'in_doubt',$6,now(),'TRANSPORT_OUTCOME_UNKNOWN')`,
+      [submissionId, ORG, providerEntityId, claimId, controlNumber, randomUUID()],
+    );
+    const openKey = `m23-open-${randomUUID()}`;
+    const opened = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M23", submissionId },
+    });
+    expect(opened.statusCode).toBe(201);
+    const id = opened.json().id as string;
+    const openedAgain = await call(app, "POST", "/api/v1/billing/operations/investigations", {
+      key: openKey,
+      payload: { sourceModule: "M23", submissionId },
+    });
+    expect(openedAgain.statusCode).toBe(201);
+    expect(openedAgain.json().id).toBe(id);
+    const targetList = await call(
+      app,
+      "GET",
+      `/api/v1/billing/operations/investigations/investigators?providerEntityId=${providerEntityId}&sourceModule=M23&submissionId=${submissionId}`,
+    );
+    expect(targetList.statusCode).toBe(200);
+    expect(targetList.json().items).toContainEqual({
+      membershipId,
+      displayName: "Synthetic Investigator",
+    });
+    const assigned = await call(
+      app,
+      "POST",
+      `/api/v1/billing/operations/investigations/${id}/assignment`,
+      {
+        payload: {
+          assignedToMembershipId: membershipId,
+          version: 1,
+          reason: "Assign synthetic M23 investigator",
+        },
+      },
+    );
+    expect(assigned.statusCode).toBe(200);
+    const notePayload = { body: "Synthetic M23 investigation note." };
+    const note = await call(app, "POST", `/api/v1/billing/operations/investigations/${id}/notes`, {
+      payload: notePayload,
+    });
+    expect(note.statusCode).toBe(200);
+    const transition = (status: string, version: number, outcome?: string) =>
+      call(app, "POST", `/api/v1/billing/operations/investigations/${id}/transitions`, {
+        payload: {
+          status,
+          version,
+          reason: `Synthetic M23 ${status}`,
+          ...(outcome ? { outcome } : {}),
+        },
+      });
+    expect((await transition("investigating", 3)).statusCode).toBe(200);
+    expect((await transition("waiting_external", 4)).statusCode).toBe(200);
+    expect((await transition("resolved", 5, "verified_no_action_required")).statusCode).toBe(200);
+    expect((await transition("closed", 6)).statusCode).toBe(200);
+    expect((await transition("investigating", 7)).statusCode).toBe(200);
+    await admin.query(
+      `UPDATE claim_submission SET dispatch_state='finished',outcome='submitted',generated_file_uri='synthetic://m23/claim.837i',
+        submitted_at=now(),worker_correlation_id=$2 WHERE id=$1`,
+      [submissionId, `synthetic-worker-${randomUUID()}`],
+    );
+    const historical = await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`);
+    expect(historical.statusCode).toBe(200);
+    expect(historical.json().source.currentStatus).toBe("finished");
+    expect(historical.json().investigation.status).toBe("investigating");
+    expect(historical.json().notes).toHaveLength(1);
+    expect(
+      historical.json().history.map((entry: { event_type: string }) => entry.event_type),
+    ).toEqual(
+      expect.arrayContaining(["created", "assigned", "note_added", "resolved", "reopened"]),
+    );
+    expect(
+      (await admin.query("SELECT dispatch_state FROM claim_submission WHERE id=$1", [submissionId]))
+        .rows[0].dispatch_state,
+    ).toBe("finished");
+    expect(
+      (
+        await call(app, "GET", `/api/v1/billing/operations/investigations/${id}`, {
+          user: "scoped-pe2",
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+
+  it("keeps another tenant's in-doubt submission out of scoped HTTP results and guessed detail reads", async () => {
+    const s = await seed("not_required");
+    const outOfCaseload = await seed("not_required");
+    caseloadPatientAllowlist = new Set([s.patientId]);
+    const app = server(s.admissionId);
+    const orgB = randomUUID();
+    const providerB = randomUUID();
+    const userB = randomUUID();
+    const membershipB = randomUUID();
+    const planB = randomUUID();
+    const patientB = randomUUID();
+    const patientPayerB = randomUUID();
+    const claimB = randomUUID();
+    const submissionB = randomUUID();
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,$2,'B','B','active')",
+      [orgB, `m41-b-${orgB.slice(0, 8)}`],
+    );
+    await admin.query('INSERT INTO "user" (id,email) VALUES ($1,$2)', [userB, `${userB}@x.test`]);
+    await admin.query(
+      "INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end) VALUES ($1,$2,'778899','B Provider','1678912345','\\x00','12-31')",
+      [providerB, orgB],
+    );
+    await admin.query(
+      "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
+      [membershipB, userB, orgB],
+    );
+    await admin.query(
+      "INSERT INTO commercial_payer_plan (id,organization_id,payer_id,plan_name,claim_filing_indicator,authorization_requirement,effective_from) VALUES ($1,$2,$3,'B Plan','CI','not_required','2026-01-01')",
+      [planB, orgB, commercialPayer],
+    );
+    await admin.query(
+      "INSERT INTO patient (id,organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status) VALUES ($1,$2,$3,'Pat','B','1950-01-01','female','active')",
+      [patientB, orgB, `b-${orgB.slice(0, 8)}`],
+    );
+    await admin.query(
+      "INSERT INTO patient_payer (id,patient_id,organization_id,payer_id,rank,coverage_kind,subscriber_id,effective_from) VALUES ($1,$2,$3,$4,1,'commercial','SYN-B','2026-01-01')",
+      [patientPayerB, patientB, orgB, commercialPayer],
+    );
+    await admin.query(
+      `INSERT INTO commercial_claim (id,organization_id,provider_entity_id,patient_id,admission_id,plan_id,primary_patient_payer_id,
+        claim_filing_indicator,tob,frequency_code,service_from,service_to,admission_date,patient_status_code,claim_control_number,
+        total_charge_cents,state,created_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'CI','811','1','2026-03-01','2026-03-31','2026-03-01','01',$8,1000,'draft',$9)`,
+      [
+        claimB,
+        orgB,
+        providerB,
+        patientB,
+        randomUUID(),
+        planB,
+        patientPayerB,
+        `B-${claimB}`,
+        membershipB,
+      ],
+    );
+    await admin.query(
+      `INSERT INTO commercial_submission (id,organization_id,provider_entity_id,claim_id,idempotency_key,control_number,
+        clearinghouse_key,clearinghouse_payer_id,status,attempt_count,last_failure_code,requested_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'stedi','SYN-B','in_doubt',1,'TRANSPORT_OUTCOME_UNKNOWN',$7)`,
+      [submissionB, orgB, providerB, claimB, `b-${submissionB}`, `b-${claimB}`, membershipB],
+    );
+    const patientPayerOutOfCaseload = (
+      await admin.query("SELECT id FROM patient_payer WHERE patient_id=$1", [
+        outOfCaseload.patientId,
+      ])
+    ).rows[0].id as string;
+    const claimOutOfCaseload = randomUUID();
+    const submissionOutOfCaseload = randomUUID();
+    await admin.query(
+      `INSERT INTO commercial_claim (id,organization_id,provider_entity_id,patient_id,admission_id,plan_id,primary_patient_payer_id,
+        claim_filing_indicator,tob,frequency_code,service_from,service_to,admission_date,patient_status_code,claim_control_number,
+        total_charge_cents,state,created_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'CI','811','1','2026-03-01','2026-03-31','2026-03-01','01',$8,1000,'draft',$9)`,
+      [
+        claimOutOfCaseload,
+        ORG,
+        providerEntityId,
+        outOfCaseload.patientId,
+        outOfCaseload.admissionId,
+        outOfCaseload.planId,
+        patientPayerOutOfCaseload,
+        `OC-${claimOutOfCaseload.slice(0, 8)}`,
+        membershipId,
+      ],
+    );
+    await admin.query(
+      `INSERT INTO commercial_submission (id,organization_id,provider_entity_id,claim_id,idempotency_key,control_number,
+        clearinghouse_key,clearinghouse_payer_id,status,attempt_count,last_failure_code,requested_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'stedi','SYNTH01','in_doubt',1,'TRANSPORT_OUTCOME_UNKNOWN',$7)`,
+      [
+        submissionOutOfCaseload,
+        ORG,
+        providerEntityId,
+        claimOutOfCaseload,
+        `caseload-${submissionOutOfCaseload}`,
+        `OC-${claimOutOfCaseload.slice(0, 8)}`,
+        membershipId,
+      ],
+    );
+    const m23PatientPayerA = (
+      await admin.query("SELECT id FROM patient_payer WHERE patient_id=$1", [s.patientId])
+    ).rows[0].id as string;
+    const m23ClaimA = randomUUID();
+    const m23ClaimB = randomUUID();
+    const m23AttemptA = randomUUID();
+    const m23AttemptB = randomUUID();
+    const addM23Attempt = async (input: {
+      org: string;
+      provider: string;
+      claim: string;
+      patientPayer: string;
+      membership: string;
+      attempt: string;
+      prefix: string;
+    }) => {
+      const controlNumber = `${input.prefix}-${input.claim}`;
+      await admin.query(
+        `INSERT INTO claim (id,organization_id,provider_entity_id,patient_id,admission_id,election_period_id_from,election_period_id_to,
+          patient_payer_id,tob,service_from,service_to,state,claim_control_number,mac_jurisdiction,total_expected_payment_cents,
+          sequestration_applied_pct,sequestration_policy_id,created_by_membership_id,patient_status_code)
+         VALUES ($1,$2,$3,$4,$5,$5,$5,$6,'811','2026-03-01','2026-03-31','READY',$7,'cgs_j15',10000,'2.00',$5,$8,'01')`,
+        [
+          input.claim,
+          input.org,
+          input.provider,
+          randomUUID(),
+          randomUUID(),
+          input.patientPayer,
+          controlNumber,
+          input.membership,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO claim_submission (id,organization_id,provider_entity_id,kind,claim_id,claim_control_number,attempt_index,
+          dispatch_state,dispatch_token,dispatch_started_at,dispatch_reason_code)
+         VALUES ($1,$2,$3,'claim_837i',$4,$5,1,'in_doubt',$6,'2025-01-01T00:00:00Z','TRANSPORT_OUTCOME_UNKNOWN')`,
+        [input.attempt, input.org, input.provider, input.claim, controlNumber, randomUUID()],
+      );
+    };
+    await addM23Attempt({
+      org: ORG,
+      provider: providerEntityId,
+      claim: m23ClaimA,
+      patientPayer: m23PatientPayerA,
+      membership: membershipId,
+      attempt: m23AttemptA,
+      prefix: "M23-A",
+    });
+    await addM23Attempt({
+      org: orgB,
+      provider: providerB,
+      claim: m23ClaimB,
+      patientPayer: patientPayerB,
+      membership: membershipB,
+      attempt: m23AttemptB,
+      prefix: "M23-B",
+    });
+    const remittanceCountBefore = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE organization_id=$1",
+        [ORG],
+      )
+    ).rows[0].n;
+    const m23Own = await call(
+      app,
+      "GET",
+      `/api/v1/billing/claims/in-doubt-submissions?providerEntityId=${providerEntityId}`,
+    );
+    expect(m23Own.statusCode).toBe(200);
+    expect(m23Own.json().items.map((row: { submissionId: string }) => row.submissionId)).toContain(
+      m23AttemptA,
+    );
+    expect(
+      m23Own.json().items.map((row: { submissionId: string }) => row.submissionId),
+    ).not.toContain(m23AttemptB);
+    expect(m23Own.json().count.value).toBe(m23Own.json().items.length);
+    expect(
+      (
+        await call(
+          app,
+          "GET",
+          `/api/v1/billing/claims/in-doubt-submissions?providerEntityId=${providerEntityId}`,
+          { user: "plain" },
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await call(
+          app,
+          "GET",
+          `/api/v1/billing/claims/in-doubt-submissions?providerEntityId=${providerB}`,
+        )
+      ).statusCode,
+    ).toBe(404);
+    const foreignM23Cursor = encodeCursor(orgB, {
+      a: "2025-01-01T00:00:00.000Z",
+      id: m23AttemptB,
+    });
+    expect(
+      (
+        await call(
+          app,
+          "GET",
+          `/api/v1/billing/claims/in-doubt-submissions?providerEntityId=${providerEntityId}&cursor=${encodeURIComponent(foreignM23Cursor)}`,
+        )
+      ).statusCode,
+    ).toBe(422);
+    expect((await call(app, "GET", `/api/v1/billing/claims/${m23ClaimB}`)).statusCode).toBe(404);
+    const own = await call(
+      app,
+      "GET",
+      `${BASE}/submissions/in-doubt?providerEntityId=${providerEntityId}`,
+    );
+    expect(own.statusCode).toBe(200);
+    expect(
+      own.json().items.some((row: { submissionId: string }) => row.submissionId === submissionB),
+    ).toBe(false);
+    expect(
+      own
+        .json()
+        .items.some(
+          (row: { submissionId: string }) => row.submissionId === submissionOutOfCaseload,
+        ),
+    ).toBe(false);
+    expect(own.json().count).toEqual({ kind: "lower_bound", value: own.json().items.length });
+    expect(
+      (
+        await call(
+          app,
+          "GET",
+          `${BASE}/submissions/in-doubt?providerEntityId=${providerEntityId}`,
+          { user: "plain" },
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (await call(app, "GET", `${BASE}/submissions/in-doubt?providerEntityId=${providerB}`))
+        .statusCode,
+    ).toBe(404);
+    const foreignM41Cursor = encodeCursor(orgB, {
+      ts: "2025-01-01 00:00:00+00",
+      id: submissionB,
+    });
+    expect(
+      (
+        await call(
+          app,
+          "GET",
+          `${BASE}/submissions/in-doubt?providerEntityId=${providerEntityId}&cursor=${encodeURIComponent(foreignM41Cursor)}`,
+        )
+      ).statusCode,
+    ).toBe(422);
+    expect((await call(app, "GET", `${BASE}/claims/${claimB}`)).statusCode).toBe(404);
+    const remittanceCountAfter = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE organization_id=$1",
+        [ORG],
+      )
+    ).rows[0].n;
+    expect(remittanceCountAfter).toBe(remittanceCountBefore);
   });
 });

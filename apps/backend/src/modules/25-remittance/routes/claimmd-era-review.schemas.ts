@@ -63,6 +63,7 @@ const FinancialBalance = Type.Union([
 export const ClaimMdEraReviewQuerySchema = Type.Object(
   {
     providerEntityId: Type.Optional(Type.String({ format: "uuid" })),
+    locationId: Type.Optional(Type.String({ format: "uuid" })),
     state: Type.Optional(Type.String({ minLength: 1, maxLength: 64, pattern: "^[a-z_]+$" })),
     payer: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
     fromDate: Type.Optional(Type.String({ format: "date" })),

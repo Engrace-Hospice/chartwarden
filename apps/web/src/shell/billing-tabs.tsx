@@ -11,6 +11,7 @@ const AREAS: NavArea[] = [
   {
     label: "Work Queue",
     views: [
+      { to: "/billing/operations", label: "Operations", match: ["/billing/operations"] },
       { to: "/billing/queue", label: "All work", match: ["/billing/queue"] },
       { to: "/billing/noe", label: "NOE / NOTR", match: ["/billing/noe", "/billing/notr"] },
       { to: "/billing/transfer-notices", label: "Transfers", match: ["/billing/transfer-notices"] },

@@ -566,6 +566,11 @@ export interface ClaimListFilter {
    */
   readonly providerEntityScope?: readonly string[];
 }
+
+export interface InDoubtSubmissionFilter {
+  readonly providerEntityId?: string;
+  readonly providerEntityScope?: readonly string[];
+}
 export interface NoeListFilter {
   readonly providerEntityId?: string;
   readonly patientId?: string;
@@ -604,6 +609,23 @@ export interface M23ReadRouteService {
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<ClaimSummaryView>>;
+  listInDoubtSubmissions(
+    actor: M23ReadActor,
+    filter: InDoubtSubmissionFilter,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<
+    CursorPage<InDoubtSubmissionView> & {
+      readonly count: { readonly kind: "lower_bound"; readonly value: number };
+    }
+  >;
+  /** Current source-owner authorization read used by Billing Operations; status may have left in_doubt. */
+  getSubmissionForInvestigation(
+    actor: M23ReadActor,
+    submissionId: string,
+  ): Promise<InDoubtSubmissionView & { readonly status: string }>;
+  /** Compatibility read for worklists that require the current in_doubt state. */
+  getInDoubtSubmission(actor: M23ReadActor, submissionId: string): Promise<InDoubtSubmissionView>;
   getClaim(actor: M23ReadActor, claimId: string): Promise<ClaimDetailView>;
   listClaimLines(actor: M23ReadActor, claimId: string): Promise<readonly ClaimLineView[]>;
   listClaimStateHistory(
@@ -699,4 +721,16 @@ export interface M23ReadRouteService {
     actor: M23ReadActor,
     scope: { readonly providerEntityScope?: readonly string[] },
   ): Promise<ClaimValidationOverviewView>;
+}
+
+export interface InDoubtSubmissionView {
+  readonly submissionId: string;
+  readonly attemptIndex: number;
+  readonly claimId: string;
+  readonly claimControlNumber: string;
+  readonly providerEntityId: string;
+  readonly reasonCode: string | null;
+  readonly occurredAt: string;
+  readonly status: string;
+  readonly payer: "Medicare";
 }
