@@ -58,6 +58,7 @@ describe("funeral link delivery", () => {
   it("puts the token in the URL FRAGMENT (never the query), names no patient, and sends once", async () => {
     const sent: { to: string; subject: string; text: string }[] = [];
     const delivery = createLinkDelivery({
+      maxDeliveryDurationMs: 40_000,
       transport: { send: async (m) => void sent.push(m) },
       baseUrl: "https://portal.test/",
     });
@@ -85,6 +86,7 @@ describe("funeral link delivery", () => {
   it("lands on the organization's own portal base when one is resolved, else the global base", async () => {
     const sent: { to: string; subject: string; text: string }[] = [];
     const delivery = createLinkDelivery({
+      maxDeliveryDurationMs: 40_000,
       transport: { send: async (m) => void sent.push(m) },
       baseUrl: "https://portal.test/",
       baseUrlFor: async (orgId) =>
@@ -148,6 +150,7 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
     consume: CollaboratorLinkStore["consume"];
     minter?: IdentityRouteDeps["linkSessions"];
     stillDeceased?: boolean;
+    baa?: () => Promise<boolean>;
   }) {
     const released: string[] = [];
     const audited: string[] = [];
@@ -172,9 +175,11 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
         create: async () => ({ linkId: "l", expiresAt: "x" }),
         consume: over.consume,
         release: async ({ linkId }: { linkId: string }) => void released.push(linkId),
+        revoke: async () => undefined,
       },
       sessions: { revokeAllForUser: async () => 0 },
       deceasedPatients: { isDeceased: async () => over.stillDeceased ?? true },
+      funeralHomeBaaActive: over.baa ?? (async () => true),
       audit: {
         insert: () => ({
           values: (row: { eventType?: string }) => {
@@ -194,6 +199,7 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
     linkId: "33333333-3333-4333-8333-333333333333",
     principalUserId: "44444444-4444-4444-8444-444444444444",
     sessionTtlSec: 3600,
+    funeralHomeEntityId: "55555555-5555-4555-8555-555555555555",
     useCount: 1,
   };
   const call = (app: ReturnType<typeof build>["app"], body: unknown = { token: "t" }) =>
@@ -246,6 +252,52 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
     expect(minted).toBe(0);
     expect(released).toEqual([scope.linkId]);
     expect(audited).toContain("m2.link.redemption_refused");
+  });
+
+  it.each([
+    ["the BAA has lapsed", async () => false],
+    ["the BAA lookup throws", async () => Promise.reject(new Error("mdm down"))],
+  ])(
+    "re-checks the BAA at redemption for a link bound to a funeral home: %s => 410, use handed back, no session",
+    async (_n, baa) => {
+      let minted = 0;
+      const { app, released, audited } = build({
+        consume: async () => ({
+          ...scope,
+          funeralHomeEntityId: "55555555-5555-4555-8555-555555555555",
+        }),
+        baa,
+        minter: {
+          mint: async () => {
+            minted += 1;
+            return { sessionId: "s", setCookies: ["a=b"] };
+          },
+        },
+      });
+      expect((await call(app)).statusCode).toBe(410);
+      expect(minted).toBe(0);
+      expect(released).toEqual([scope.linkId]);
+      expect(audited).toContain("m2.link.redemption_refused");
+    },
+  );
+
+  it("a funeral link bound to a funeral home with the BAA still in force redeems; a legacy unbound link fails closed", async () => {
+    const mint = { mint: async () => ({ sessionId: "s", setCookies: ["a=b"] }) };
+    const bound = build({
+      consume: async () => ({
+        ...scope,
+        funeralHomeEntityId: "55555555-5555-4555-8555-555555555555",
+      }),
+      baa: async () => true,
+      minter: mint,
+    });
+    expect((await call(bound.app)).statusCode).toBe(200);
+    const legacy = build({
+      consume: async () => ({ ...scope, funeralHomeEntityId: undefined }),
+      baa: async () => true,
+      minter: mint,
+    });
+    expect((await call(legacy.app)).statusCode).toBe(410);
   });
 
   it("a minter that throws gives the use back; success sets the cookie and returns no token and no session id", async () => {

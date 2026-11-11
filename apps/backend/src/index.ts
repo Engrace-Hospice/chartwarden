@@ -347,6 +347,8 @@ import {
 } from "@chartwarden/x12-837-client";
 import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-holders";
 import { createClaimMdProtectedPayloadCipher } from "./bootstrap/claimmd-payload-cipher";
+import { executedBaaGate } from "./bootstrap/death-notification-baa-gate";
+import { buildFuneralLinkPort } from "./bootstrap/death-notification-funeral-link";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -376,13 +378,16 @@ import { buildCriticalLabDeps, buildCriticalLabEscalate } from "./critical-lab-w
 import { buildM36ExportBinding } from "./m36-export-binding";
 import { buildM41OverrideAuditPort } from "./m41-override-audit";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
+import { FUNERAL_LINK_TTL_SEC } from "./modules/02-identity/identity-ports";
 import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
   createAuditorEnrolment,
   createAuditorLinkEmailDelivery,
+  createDbCollaboratorLinkStore,
   createDbPublicTenantLookups,
   createDrizzleIdentityEraserStore,
+  createFuneralDisclosureRecorder,
   createLinkDelivery,
   createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
@@ -1683,6 +1688,9 @@ import {
 } from "./modules/36-messaging/body-legacy-key-check";
 import { buildCareTeamReviewRouter } from "./modules/36-messaging/care-team-sync/binding";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import { createDbDeathBoardStore } from "./modules/36-messaging/death-board/death-board-store";
+import { withBoardOpenedEvent } from "./modules/36-messaging/death-notification/death-board-opened-store";
+import { ringRecipientHasher } from "./modules/36-messaging/death-notification/recipient-hash";
 import { sweepEmergenciesForOrg } from "./modules/36-messaging/emergency/emergency-sweep";
 import {
   registerM36EmergencySweepWorker,
@@ -1709,6 +1717,7 @@ import {
   buildAiDeps,
   buildClinicalLinkDeps,
   buildDeathBoardDeps,
+  buildDeathNotificationDeps,
   buildEscalationBinding,
   buildHandoffDeps,
   buildIdgAlertConsumers,
@@ -1796,6 +1805,7 @@ import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36CriticalLabAlertConsumers } from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
+import { buildM36DeathNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/death-notifications";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36EmergencyNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/emergency-notifications";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
@@ -5314,7 +5324,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     (linkLandingBaseUrl || (parseTenantBaseDomain() && portalOriginFor)) &&
     emailBinding.linkDeliveryAvailable
       ? createLinkDelivery({
-          transport: emailTransport,
+          transport: linkEmailTransport,
+          maxDeliveryDurationMs: emailBinding.linkDeliveryMaxDurationMs,
           ...(linkLandingBaseUrl ? { baseUrl: linkLandingBaseUrl } : {}),
           ...(portalOriginFor ? { baseUrlFor: portalOriginFor } : {}),
         })
@@ -5497,8 +5508,52 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         patientLabels: (organizationId, patientIds) =>
           patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
         warn: (message, context) => console.warn(message, context),
+        // Creating a NEW board publishes `m36.death_board.opened` in the same transaction (the death-notification cascade's trigger).
+        overrides: { store: withBoardOpenedEvent(createDbDeathBoardStore(), m36OutboxPublisher) },
       })
     : undefined;
+  // M36 death-notification cascade (flag `messaging.death_notifications`, which also needs `messaging.death_board`). Internal notices are fixed-text
+  // in-app alerts acknowledged explicitly. The funeral home is sent only when staff select it AND a BAA is on file (M40 BaaStatusProvider, fail closed),
+  // through the existing M2 funeral magic link. Pharmacy / DME vendor notices have no transport yet (follow-up).
+  const m36DeathNotifications =
+    dbHandle && m36DeathBoard
+      ? buildDeathNotificationDeps({
+          db: dbHandle.db,
+          flags: featureFlagReader,
+          alerts: {
+            emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
+          },
+          outbox: m36OutboxPublisher,
+          deathBoard: m36DeathBoard.service,
+          attendingUserId: (orgId, patientId) =>
+            getSeam("CareTeamProvider").attendingUserId({ organizationId: orgId, patientId }),
+          roleKeysForUser: (orgId, userId) =>
+            buildF2fClinicianRoleReader(dbHandle.db).roleKeysForUser(orgId, userId),
+          isBaaActive: executedBaaGate(() => createDbBaaStore(dbHandle.db)),
+          // The funeral-home registry is M40's BAA register: a funeral home exists for the tenant when it has a record there (any status).
+          isKnownFuneralHome: async (orgId, entityId) =>
+            (await createDbBaaStore(dbHandle.db).baaRecords(orgId, "funeral_home", entityId))
+              .length > 0,
+          // HMAC under the tenant ring key: no key, no funeral-home send (fail closed, before a link is minted).
+          recipientHash: ringRecipientHasher(m36SearchKeys),
+          funeralLinks: buildFuneralLinkPort({
+            recorder: createFuneralDisclosureRecorder(dbHandle.db, m2OutboxPublisher),
+            db: dbHandle.db,
+            collaborators: createDbCollaboratorLinkStore(dbHandle.db, {
+              site: {
+                siteForPatient: (organizationId, patientId) =>
+                  patientSiteForOrg(dbHandle.db, organizationId, patientId),
+              },
+            }),
+            delivery: linkDelivery,
+            isDeceased: (organizationId, patientId) =>
+              patientIsDeceasedForOrg(dbHandle.db, organizationId, patientId),
+            isBaaActive: executedBaaGate(() => createDbBaaStore(dbHandle.db)),
+            sessionTtlSec: FUNERAL_LINK_TTL_SEC,
+          }),
+          warn: (message, context) => console.warn(message, context),
+        })
+      : undefined;
   // WP 6.5 (ADR-0095, PROPOSED) - AI thread summaries and reply drafts. Off by default per tenant (`messaging.ai.enabled`) and answers "AI unavailable"
   // until M32's governed pipeline is bound to the port below (a configured model backend, the prompt registry, and - inside the pipeline - ai.full, the
   // capability lifecycle, tenant opt-in, kill switch and BAA/ZDR routing). The port is resolved lazily: wireModuleSeams runs after this mount.
@@ -5890,6 +5945,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               isDeceased: (organizationId, patientId) =>
                 patientIsDeceasedForOrg(dbHandle.db, organizationId, patientId),
             },
+            // The executed-BAA rule shared with the M36 death notice (bootstrap/death-notification-baa-gate.ts).
+            funeralHomeBaaActive: (organizationId, funeralHomeId, asOf) =>
+              executedBaaGate(() => createDbBaaStore(dbHandle.db))(
+                organizationId,
+                "funeral_home",
+                funeralHomeId,
+                asOf,
+              ),
             // GAP-115 follow-up - the DURABLE collaborator / funeral link store (migration 0521): M6's siting of the
             // patient (the ARCH-011 columns), the server-only Better Auth session mint a redemption ends in, the
             // delivery channel (UNBOUND in production until the email provider is - see above), the redemption
@@ -6448,6 +6511,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       store: rateLimitStore ?? createInMemoryRateLimitStore(),
                       limit: DEATH_BOARD_ROUTE_RATE_LIMIT,
                       keyPrefix: "m36-death-board",
+                    }),
+                  },
+                }
+              : {}),
+            ...(m36DeathNotifications
+              ? {
+                  deathNotifications: {
+                    ...m36DeathNotifications,
+                    rateLimit: createRouteRateLimit({
+                      store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                      limit: DEATH_BOARD_ROUTE_RATE_LIMIT,
+                      keyPrefix: "m36-death-notifications",
                     }),
                   },
                 }
@@ -11945,7 +12020,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     if (platformDbHandle && m36DeathBoard) {
       const m36DeathBoardStallWorkers = registerM36DeathBoardStallWorker({
         connection: queueConnection,
-        flagStalledForOrg: m36DeathBoard.service.flagStalledForOrg,
+        // The same hourly tick also escalates unacknowledged death notices (flag-gated inside). Both run; a failure of either fails the tick.
+        flagStalledForOrg: async (orgId) => {
+          const [board, notices, stranded] = await Promise.allSettled([
+            m36DeathBoard.service.flagStalledForOrg(orgId),
+            m36DeathNotifications?.service.flagUnackedForOrg(orgId) ?? Promise.resolve(undefined),
+            // Funeral-home sends stuck in `sending` past the timeout: revoke any orphan link, free the row for a re-send, alert the supervisors.
+            m36DeathNotifications?.service.reconcileStrandedSendsForOrg(orgId) ??
+              Promise.resolve(undefined),
+          ]);
+          if (board.status === "rejected") throw board.reason;
+          if (notices.status === "rejected") throw notices.reason;
+          if (stranded.status === "rejected") throw stranded.reason;
+          return board.value;
+        },
         activeOrgs: buildActiveOrgEnumerator({
           platformDb: platformDbHandle.db,
           auditBypass: m34PlatformBypassAuditor,
@@ -13664,6 +13752,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   isFlagOn: m36DeathBoard.isEnabled,
                 }),
               ]
+            : []),
+          // Death-notification cascade: fans out the internal notices when a NEW board opens (`m36.death_board.opened`). Flag-gated in the service.
+          ...(m36DeathNotifications
+            ? [buildM36DeathNotificationsConsumer({ service: m36DeathNotifications.service })]
             : []),
           ...(m36Review
             ? [

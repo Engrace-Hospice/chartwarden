@@ -1,3 +1,5 @@
+import { DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES } from "@chartwarden/types";
+
 // apps/backend/src/modules/02-identity/link-delivery.ts — delivers a collaborator / funeral-home link by email.
 //
 // The platform's transactional email transport is M36's (`selectTransactionalEmailTransport`), injected here
@@ -21,6 +23,24 @@ const SUBJECT = {
   funeral_home: "Your secure link from the hospice care team",
   external_collaborator: "Your secure link from the hospice care team",
 } as const;
+const ORIGIN_RESOLUTION_TIMEOUT_MS = 10_000;
+
+async function resolveWithTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("tenant landing origin lookup timed out")),
+          ORIGIN_RESOLUTION_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export function createLinkDelivery(input: {
   readonly transport: LinkEmailTransport;
@@ -28,10 +48,23 @@ export function createLinkDelivery(input: {
   readonly baseUrl?: string;
   /** Per-organization landing origin (tenant host + `/portal`); wins over `baseUrl` when it answers. */
   readonly baseUrlFor?: (organizationId: string) => Promise<string | undefined>;
+  /** Provider-enforced wall-time ceiling including retries/backoff. */
+  readonly maxDeliveryDurationMs: number;
 }): LinkDeliveryPort {
+  if (
+    input.maxDeliveryDurationMs + ORIGIN_RESOLUTION_TIMEOUT_MS >=
+    DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES * 60_000
+  ) {
+    throw new Error(
+      "link delivery duration must be shorter than the death-notification reconciliation lease",
+    );
+  }
   return {
     async deliver({ kind, organizationId, email, token, expiresAt }) {
-      const resolved = (await input.baseUrlFor?.(organizationId)) ?? input.baseUrl;
+      const tenantBase = input.baseUrlFor
+        ? await resolveWithTimeout(input.baseUrlFor(organizationId))
+        : undefined;
+      const resolved = tenantBase ?? input.baseUrl;
       // Better a typed failure (the invite route maps it to its delivery-failed answer) than a link to nowhere.
       if (!resolved)
         throw new Error(

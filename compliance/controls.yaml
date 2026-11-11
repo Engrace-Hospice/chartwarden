@@ -474,6 +474,23 @@ controls:
       - script: test:m30:phi-scope:live
       - script: test:m32:kill-switch-role-key:live
 
+  - id: CW-DD-01
+    title: Death notifications — external disclosure gated on a BAA (service check, delivery-boundary check, link redemption, and every funeral-home session read), explicit selection, caseload check (refusal audit is best-effort), atomic single-send claim with fenced stranded-send reconciliation, audit events for invite attempts and best-effort revocations, a keyed recipient digest and database-enforced disclosure-record integrity (not a BAA gate); internal notices fixed-text and explicitly acknowledged
+    hipaa: ["164.502(e)", "164.308(b)(1)", "164.312(b)"]
+    soc2: ["CC6.7", "CC9.2"]
+    status: implemented
+    evidence:
+      - script: test:m36:death-notifications:live
+      - script: arch:outbox-bindings
+      - file: apps/backend/src/modules/36-messaging/death-notification/death-notification-service.ts
+      - file: apps/backend/src/bootstrap/death-notification-funeral-link.ts
+      - file: apps/backend/src/bootstrap/death-notification-baa-gate.ts
+      - file: apps/backend/src/modules/02-identity/routes/link-routes.ts
+      - file: packages/db/migrations/1455_m36_death_notification_funeral_send.sql
+      - file: packages/db/migrations/1456_m36_death_notification_disclosure_integrity.sql
+      - file: apps/backend/src/modules/36-messaging/death-notification/recipient-hash.ts
+      - script: test:m2:link-redemption:live
+
   # ---------------------------------------------------------------- M16 bereavement program (ADR-0109, PR 1)
   - id: CW-BR-01
     title: Bereavement physician condolence letter — a human holding a bereavement oversight role (clinical_supervisor, director_of_nursing, bereavement_coordinator, compliance_officer) approves it before anything is disclosed; the recipient (intake-resolved attending or the reviewer's pick) must be an ACTIVE member of this organization on every approve; the reviewer's note is sealed with the tenant DEK and never placed on the outbox (the render request carries the death date only and M22 pulls the note at render time through an org-explicit port); a decline reason is scrubbed from the audit trail; the letter is not delivered to the attending — it is an internal document readable only by oversight and the scope-bypass roles. The role-key fix (bereavement_coordinator, the key migration 1234 grants, replacing the spec's bereavement_program_coordinator that matched no role) now gives that role M16 oversight and M39 post-mortem access

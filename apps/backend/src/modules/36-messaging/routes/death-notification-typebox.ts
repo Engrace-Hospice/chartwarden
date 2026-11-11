@@ -1,0 +1,54 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
+// apps/backend/src/modules/36-messaging/routes/death-notification-typebox.ts - schemas for the death-notification routes. Wire keys are snake_case
+// (packages/types/src/messaging-death-notification.ts). Ids, enums and instants only; the one address in a request body is the funeral home's contact,
+// is never stored and never echoed back.
+import { DEATH_NOTIFICATION_KINDS, DEATH_NOTIFICATION_STATES } from "@chartwarden/types";
+import { type TSchema, Type } from "@sinclair/typebox";
+
+const UuidSchema = Uuid();
+const Instant = Type.String({ format: "date-time" });
+const literals = <T extends string>(values: readonly T[]) =>
+  Type.Union(values.map((v) => Type.Literal(v)));
+const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
+
+export const DeathNotificationBoardParamsSchema = Type.Object({ boardId: UuidSchema });
+export const DeathNotificationParamsSchema = Type.Object({ notificationId: UuidSchema });
+
+export const SendFuneralHomeBodySchema = Type.Object(
+  {
+    funeral_home_entity_id: UuidSchema,
+    recipient_email: Type.String({
+      minLength: 3,
+      maxLength: 254,
+      pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+    }),
+  },
+  { additionalProperties: false },
+);
+
+export const DeathNotificationSchema = Type.Object({
+  id: UuidSchema,
+  board_id: UuidSchema,
+  recipient_kind: literals(DEATH_NOTIFICATION_KINDS),
+  state: literals(DEATH_NOTIFICATION_STATES),
+  created_at: Instant,
+  acked_at: nullable(Instant),
+  acked_by: nullable(UuidSchema),
+  can_ack: Type.Boolean(),
+});
+
+export const DeathNotificationListResponseSchema = Type.Object({
+  enabled: Type.Boolean(),
+  patient_id: Type.Optional(UuidSchema),
+  notifications: Type.Array(DeathNotificationSchema),
+});
+export const DeathNotificationResponseSchema = Type.Object({
+  notification: DeathNotificationSchema,
+});
+/** The funeral-home send: the same `notification`, plus `outcome` ONLY when nothing was sent now (absent = the existing shape). */
+export const FuneralHomeSendResponseSchema = Type.Object({
+  notification: DeathNotificationSchema,
+  outcome: Type.Optional(
+    Type.Union([Type.Literal("in_flight"), Type.Literal("recipient_changed_not_sent")]),
+  ),
+});

@@ -200,6 +200,8 @@ export const MeSessionResponseSchema = Type.Object({
 
 export const FuneralInviteRequestSchema = Type.Object({
   patientId: Type.String({ minLength: 1 }),
+  /** The funeral home the link is for. An executed, unexpired BAA must be on file for it (409 `FUNERAL_HOME_BAA_REQUIRED` otherwise). */
+  funeralHomeId: Type.String({ format: "uuid" }),
   /**
    * Where the one-time link is emailed. REQUIRED on a durable deployment (422 without it): the token is never returned in a
    * response, so a link with no recipient could never be redeemed. Refused 503 `LINK_DELIVERY_UNAVAILABLE` while the

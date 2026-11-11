@@ -10,9 +10,20 @@ const msg = {
 };
 
 describe("createLinkDelivery", () => {
+  it("refuses a provider whose wall-time can outlive the death-notification reconciliation lease", () => {
+    expect(() =>
+      createLinkDelivery({
+        transport: { send: async () => undefined },
+        baseUrl: "https://p.test",
+        maxDeliveryDurationMs: 15 * 60_000,
+      }),
+    ).toThrow(/shorter than/);
+  });
+
   it("sends with only a per-tenant origin (no global baseUrl)", async () => {
     const sent: { text: string }[] = [];
     const d = createLinkDelivery({
+      maxDeliveryDurationMs: 40_000,
       transport: { send: async (m) => void sent.push(m) },
       baseUrlFor: async () => "https://acme.chartwarden.com/portal",
     });
@@ -24,13 +35,18 @@ describe("createLinkDelivery", () => {
     const sent: { text: string }[] = [];
     const transport = { send: async (m: { text: string }) => void sent.push(m) };
     await createLinkDelivery({
+      maxDeliveryDurationMs: 40_000,
       transport,
       baseUrl: "https://p.test/",
       baseUrlFor: async () => undefined,
     }).deliver(msg);
     expect(sent[0]?.text).toContain("https://p.test/funeral/redeem#token=tok");
     await expect(
-      createLinkDelivery({ transport, baseUrlFor: async () => undefined }).deliver(msg),
+      createLinkDelivery({
+        transport,
+        maxDeliveryDurationMs: 40_000,
+        baseUrlFor: async () => undefined,
+      }).deliver(msg),
     ).rejects.toThrow(/no landing origin/);
     expect(sent).toHaveLength(1);
   });

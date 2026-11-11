@@ -2,8 +2,8 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1958,
-    "coveredRoutes": 1958,
+    "routes": 1961,
+    "coveredRoutes": 1961,
     "directRoutesReferenced": 1780
   },
   "modules": [
@@ -39,6 +39,7 @@
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
@@ -573,7 +574,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 212,
+      "routes": 215,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -600,6 +601,7 @@
         "apps/backend/__tests__/m36-clinical-link.live.test.ts",
         "apps/backend/__tests__/m36-death-board-routes.test.ts",
         "apps/backend/__tests__/m36-death-board.live.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-delivery-target.live.test.ts",
         "apps/backend/__tests__/m36-delivery-target.test.ts",
@@ -713,7 +715,9 @@
       "routes": 25,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
         "apps/backend/__tests__/mdm-routes.test.ts"
       ],

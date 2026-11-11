@@ -116,7 +116,18 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "m2.session.step_up_policy_override.removed",
     "A tenant step-up policy override was removed (the platform floor applies again).",
   ),
-  compliance("m2.funeral.invited", "A per-deceased funeral-home magic-link was issued."),
+  compliance(
+    "m2.funeral.invited",
+    "A per-deceased funeral-home magic-link was minted and its delivery ATTEMPTED (a later m2.funeral.invite_revoked says it did not complete).",
+  ),
+  compliance(
+    "m2.funeral.invite_refused",
+    "A funeral-home disclosure was refused (unknown funeral home, no executed BAA in force, a changed recipient after a send, or a caseload refusal); nothing was sent.",
+  ),
+  compliance(
+    "m2.funeral.invite_revoked",
+    "A funeral-home link was minted but could not be delivered and was revoked: the disclosure did not complete.",
+  ),
   // GAP-115 follow-up — redemption of a collaborator / funeral-home link, and portal invitee sign-in. Ids only: the
   // token, the hash and the invitee's address never enter a payload.
   compliance("m2.link.redeemed", "A collaborator / funeral-home link was redeemed into a scoped session."),

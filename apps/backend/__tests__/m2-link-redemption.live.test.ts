@@ -48,7 +48,8 @@ import {
 import { createDbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { executedBaaGate } from "../src/bootstrap/death-notification-baa-gate";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -74,12 +75,16 @@ import {
 import { funeralCaseForOrg } from "../src/modules/05-patient/seams/funeral-case-for-org";
 import { patientIsDeceasedForOrg } from "../src/modules/05-patient/seams/patient-deceased-for-org";
 import { patientSiteForOrg } from "../src/modules/06-admission/seams/patient-site-for-org";
+import { createDbBaaStore } from "../src/modules/40-mdm/mdm-store-db";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-4111-8111-111111121001";
+// The funeral home every invite names: an executed BAA is seeded for it in each org; FH_NO_BAA has none.
+const FH = "5f5f5f5f-5f5f-45f5-85f5-5f5f5f5f5f01";
+const FH_NO_BAA = "5f5f5f5f-5f5f-45f5-85f5-5f5f5f5f5f02";
 const ORG_B = "22222222-2222-4222-8222-222222221002";
 const ORIGIN = "http://localhost:3000";
 const FUNERAL_CASE_SECONDS = 72 * 3600;
@@ -200,7 +205,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
         "x-csrf-token": staff.csrf,
         "idempotency-key": randomUUID(),
       },
-      payload: body,
+      payload: { funeralHomeId: FH, ...body },
     });
 
   const redeem = (token: unknown, target: FastifyInstance = app) =>
@@ -268,6 +273,13 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
         [key],
       );
     }
+    for (const org of [ORG_A, ORG_B]) {
+      await admin.query(
+        `INSERT INTO mdm_baa_record (organization_id, entity_kind, canonical_id, baa_status, executed_on)
+         VALUES ($1,'funeral_home',$2,'executed','2026-01-01')`,
+        [org, FH],
+      );
+    }
     deceasedA.id = await seedPatient(ORG_A, "deceased", "Lovelace");
     deceasedA2 = await seedPatient(ORG_A, "deceased", "Babbage");
     livingA = await seedPatient(ORG_A, "active", "Living");
@@ -310,6 +322,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       publish: (tx, input) => m2Publisher.publish(tx, { ...input, callerModule: "m2" } as never),
     });
     const delivery = createLinkDelivery({
+      maxDeliveryDurationMs: 40_000,
       transport: {
         async send(message) {
           if (failNextSend) {
@@ -370,6 +383,13 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
           isDeceased: (org: string, patient: string) =>
             patientIsDeceasedForOrg(handle.db, org, patient),
         },
+        funeralHomeBaaActive: (org: string, funeralHomeId: string, asOf: Date) =>
+          executedBaaGate(() => createDbBaaStore(handle.db))(
+            org,
+            "funeral_home",
+            funeralHomeId,
+            asOf,
+          ),
         audit: createOrgScopedAuditExecutor(handle.db),
         outbox,
         linkRecipientRequired: true,
@@ -403,6 +423,15 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     resetAbacRegistry();
     await handle?.close();
     await admin?.end();
+  });
+
+  beforeEach(async () => {
+    // Tests deliberately reuse the same decedent and funeral home. Keep each case
+    // isolated from the durable one-live-credential fence while leaving the
+    // dedicated fence test below to exercise the conflict within one test.
+    await admin.query(
+      "UPDATE collaborator_link SET revoked_at=COALESCE(revoked_at, now()) WHERE kind='funeral_home' AND revoked_at IS NULL AND use_count < max_uses",
+    );
   });
 
   it("harness bites: a bare chartwarden_app read of collaborator_link with no tenant returns nothing", async () => {
@@ -700,6 +729,102 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     expect(refused.rows[0].r).toBe("not_eligible");
   });
 
+  it("a funeral link is bound to its funeral home, and a BAA that lapses before redemption blocks it (410, use handed back)", async () => {
+    const patient = await seedPatient(ORG_A, "deceased", "Lapsed");
+    const token = await issue(patient);
+    const row = await linkRow(token);
+    expect(row.funeral_home_entity_id).toBe(FH);
+    await admin.query(
+      "UPDATE mdm_baa_record SET expires_on='2020-01-01' WHERE organization_id=$1 AND canonical_id=$2",
+      [ORG_A, FH],
+    );
+    try {
+      const res = await redeem(token);
+      expect(res.statusCode).toBe(410);
+      expect((await linkRow(token)).use_count).toBe(0);
+    } finally {
+      await admin.query(
+        "UPDATE mdm_baa_record SET expires_on=NULL WHERE organization_id=$1 AND canonical_id=$2",
+        [ORG_A, FH],
+      );
+    }
+    expect((await redeem(token)).statusCode).toBe(200); // BAA back in force: the same, unspent link redeems
+  });
+
+  it("a funeral-home SESSION does not outlive the BAA: the case read answers 410 and is audited while the BAA is lapsed", async () => {
+    const patient = await seedPatient(ORG_A, "deceased", "Outlived");
+    const token = await issue(patient);
+    const session = await redeem(token);
+    expect(session.statusCode).toBe(200);
+    const read = () =>
+      app.inject({
+        method: "GET",
+        url: "/api/v1/funeral/case",
+        headers: { cookie: cookieOf(session) },
+      });
+    expect((await read()).statusCode).toBe(200);
+    await admin.query(
+      "UPDATE mdm_baa_record SET expires_on='2020-01-01' WHERE organization_id=$1 AND canonical_id=$2",
+      [ORG_A, FH],
+    );
+    try {
+      const lapsed = await read();
+      expect(lapsed.statusCode).toBe(410);
+      const row = await linkRow(token);
+      const refused = await admin.query(
+        "SELECT context->>'reason' r FROM audit_event WHERE event_type='m2.link.redemption_refused' AND resource_id=$1",
+        [row.id],
+      );
+      expect(refused.rows.map((r) => r.r)).toContain("not_eligible");
+    } finally {
+      await admin.query(
+        "UPDATE mdm_baa_record SET expires_on=NULL WHERE organization_id=$1 AND canonical_id=$2",
+        [ORG_A, FH],
+      );
+    }
+    expect((await read()).statusCode).toBe(200); // BAA back in force: the same session reads again
+    const row = await linkRow(token);
+    await admin.query("UPDATE collaborator_link SET revoked_at=now() WHERE id=$1", [row.id]);
+    expect((await read()).statusCode).toBe(410); // an already-minted session cannot outlive explicit link revocation
+  });
+
+  it("legacy funeral links without an immutable funeral-home binding fail closed at redemption", async () => {
+    const store = createDbCollaboratorLinkStore(handle.db, {
+      site: { siteForPatient: (o, p) => patientSiteForOrg(handle.db, o, p) },
+    });
+    const created = await store.create({
+      organizationId: ORG_A,
+      patientId: deceasedA.id,
+      invitedByMembershipId: staffA.membershipId,
+      kind: "funeral_home",
+    });
+    expect((await redeem(created.token as string)).statusCode).toBe(410);
+  });
+
+  it("permits only one unspent live funeral credential per patient and home", async () => {
+    const patient = await seedPatient(ORG_A, "deceased", "One live credential");
+    const store = createDbCollaboratorLinkStore(handle.db, {
+      site: { siteForPatient: (o, p) => patientSiteForOrg(handle.db, o, p) },
+    });
+    const input = {
+      organizationId: ORG_A,
+      patientId: patient,
+      invitedByMembershipId: staffA.membershipId,
+      kind: "funeral_home" as const,
+      funeralHomeEntityId: FH,
+    };
+    const first = await store.create(input);
+    await expect(store.create(input)).rejects.toMatchObject({
+      code: "FUNERAL_LINK_ALREADY_ACTIVE",
+      statusCode: 409,
+    });
+    await admin.query(
+      "UPDATE collaborator_link SET expires_at=now() - interval '1 minute' WHERE id=$1",
+      [first.linkId],
+    );
+    await expect(store.create(input)).resolves.toMatchObject({ linkId: expect.any(String) });
+  });
+
   it("a failed session mint hands the use back: the link is NOT burned and a retry succeeds", async () => {
     const token = await issue(deceasedA.id);
     failNextMint = true;
@@ -723,6 +848,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       patientId: deceasedA.id,
       invitedByMembershipId: staffA.membershipId,
       kind: "funeral_home",
+      funeralHomeEntityId: FH,
       maxUses: 2,
     });
     const token = created.token as string;
@@ -790,6 +916,17 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
         ])
       ).rows[0].n,
     ).toBe(0);
+
+    // No executed BAA for the named funeral home: refused with the stable code, no link row, no email.
+    const baseBeforeBaa = await count();
+    const noBaa = await invite(staffA, {
+      patientId: deceasedA.id,
+      funeralHomeId: FH_NO_BAA,
+      recipientEmail: "a@b.test",
+    });
+    expect(noBaa.statusCode).toBe(409);
+    expect(noBaa.json().error.code).toBe("FUNERAL_HOME_BAA_REQUIRED");
+    expect(await count()).toBe(baseBeforeBaa);
 
     const noRecipient = await invite(staffA, { patientId: deceasedA.id });
     expect(noRecipient.statusCode).toBe(422);

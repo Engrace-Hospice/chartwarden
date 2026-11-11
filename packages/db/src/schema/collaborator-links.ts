@@ -44,6 +44,10 @@ export const collaboratorLinks = pgTable(
     firstRedeemedAt: timestamp("first_redeemed_at", { withTimezone: true }),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** Funeral-home links (migration 1455): the MDM funeral_home entity whose BAA is re-checked. Null only on revoked legacy links. */
+    funeralHomeEntityId: uuid("funeral_home_entity_id"),
+    /** M36 notification attempt that minted this link; no FK so M2 stays independently destructible. */
+    disclosureAttemptId: uuid("disclosure_attempt_id"),
     principalUserId: uuid("principal_user_id").references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -52,6 +56,14 @@ export const collaboratorLinks = pgTable(
     orgPatientIdx: index("collaborator_link_org_patient_idx").on(t.organizationId, t.patientId),
     providerEntityIdx: index("collaborator_link_provider_entity_idx").on(t.providerEntityId),
     locationIdx: index("collaborator_link_location_idx").on(t.locationId),
+    disclosureAttemptUnique: uniqueIndex("collaborator_link_disclosure_attempt_uq")
+      .on(t.organizationId, t.disclosureAttemptId)
+      .where(sql`${t.disclosureAttemptId} IS NOT NULL`),
+    oneLiveFuneralCredential: uniqueIndex("collaborator_link_one_live_funeral_credential_uq")
+      .on(t.organizationId, t.patientId, t.funeralHomeEntityId)
+      .where(
+        sql`${t.kind} = 'funeral_home' AND ${t.funeralHomeEntityId} IS NOT NULL AND ${t.revokedAt} IS NULL AND ${t.consumedAt} IS NULL`,
+      ),
     kindChk: check(
       "collaborator_link_kind_chk",
       sql`${t.kind} IN ('external_collaborator','funeral_home')`,
