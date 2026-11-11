@@ -5,17 +5,18 @@ import { DEATH_NOTIFICATION_KINDS, DEATH_NOTIFICATION_STATES } from "@chartwarde
 import { Uuid } from "@chartwarden/shared/route-kit";
 import { type TSchema, Type } from "@sinclair/typebox";
 
+const UuidSchema = Uuid();
 const Instant = Type.String({ format: "date-time" });
 const literals = <T extends string>(values: readonly T[]) =>
   Type.Union(values.map((v) => Type.Literal(v)));
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 
-export const DeathNotificationBoardParamsSchema = Type.Object({ boardId: Uuid });
-export const DeathNotificationParamsSchema = Type.Object({ notificationId: Uuid });
+export const DeathNotificationBoardParamsSchema = Type.Object({ boardId: UuidSchema });
+export const DeathNotificationParamsSchema = Type.Object({ notificationId: UuidSchema });
 
 export const SendFuneralHomeBodySchema = Type.Object(
   {
-    funeral_home_entity_id: Uuid,
+    funeral_home_entity_id: UuidSchema,
     recipient_email: Type.String({
       minLength: 3,
       maxLength: 254,
@@ -26,19 +27,19 @@ export const SendFuneralHomeBodySchema = Type.Object(
 );
 
 export const DeathNotificationSchema = Type.Object({
-  id: Uuid,
-  board_id: Uuid,
+  id: UuidSchema,
+  board_id: UuidSchema,
   recipient_kind: literals(DEATH_NOTIFICATION_KINDS),
   state: literals(DEATH_NOTIFICATION_STATES),
   created_at: Instant,
   acked_at: nullable(Instant),
-  acked_by: nullable(Uuid),
+  acked_by: nullable(UuidSchema),
   can_ack: Type.Boolean(),
 });
 
 export const DeathNotificationListResponseSchema = Type.Object({
   enabled: Type.Boolean(),
-  patient_id: Type.Optional(Uuid),
+  patient_id: Type.Optional(UuidSchema),
   notifications: Type.Array(DeathNotificationSchema),
 });
 export const DeathNotificationResponseSchema = Type.Object({

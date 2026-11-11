@@ -80945,6 +80945,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
+                    funeral_home_entity_id: string;
                     recipient_email: string;
                 };
             };
@@ -80958,12 +80960,16 @@ export interface operations {
                 content: {
                     "application/json": {
                         notification: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            board_id: string;
                             recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
                             state: "pending" | "sent" | "acked" | "sending" | "failed" | "blocked_no_baa" | "not_applicable";
                             /** Format: date-time */
                             created_at: string;
                             acked_at: string | null;
-                            acked_by: never | null;
+                            acked_by: string | null;
                             can_ack: boolean;
                         };
                     };
@@ -80992,14 +80998,19 @@ export interface operations {
                 content: {
                     "application/json": {
                         enabled: boolean;
-                        patient_id?: unknown;
+                        /** Format: uuid */
+                        patient_id?: string;
                         notifications: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            board_id: string;
                             recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
                             state: "pending" | "sent" | "acked" | "sending" | "failed" | "blocked_no_baa" | "not_applicable";
                             /** Format: date-time */
                             created_at: string;
                             acked_at: string | null;
-                            acked_by: never | null;
+                            acked_by: string | null;
                             can_ack: boolean;
                         }[];
                     };
@@ -81028,12 +81039,16 @@ export interface operations {
                 content: {
                     "application/json": {
                         notification: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            board_id: string;
                             recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
                             state: "pending" | "sent" | "acked" | "sending" | "failed" | "blocked_no_baa" | "not_applicable";
                             /** Format: date-time */
                             created_at: string;
                             acked_at: string | null;
-                            acked_by: never | null;
+                            acked_by: string | null;
                             can_ack: boolean;
                         };
                     };

@@ -209410,6 +209410,14 @@
                         "can_ack"
                       ],
                       "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "board_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
                         "recipient_kind": {
                           "anyOf": [
                             {
@@ -209499,7 +209507,10 @@
                         },
                         "acked_by": {
                           "anyOf": [
-                            null,
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
                             {
                               "type": "null"
                             }
@@ -209534,6 +209545,10 @@
                   "recipient_email"
                 ],
                 "properties": {
+                  "funeral_home_entity_id": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "recipient_email": {
                     "minLength": 3,
                     "maxLength": 254,
@@ -209579,7 +209594,10 @@
                     "enabled": {
                       "type": "boolean"
                     },
-                    "patient_id": {},
+                    "patient_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
                     "notifications": {
                       "type": "array",
                       "items": {
@@ -209595,6 +209613,14 @@
                           "can_ack"
                         ],
                         "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "board_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
                           "recipient_kind": {
                             "anyOf": [
                               {
@@ -209684,7 +209710,10 @@
                           },
                           "acked_by": {
                             "anyOf": [
-                              null,
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
                               {
                                 "type": "null"
                               }
@@ -209751,6 +209780,14 @@
                         "can_ack"
                       ],
                       "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "board_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
                         "recipient_kind": {
                           "anyOf": [
                             {
@@ -209840,7 +209877,10 @@
                         },
                         "acked_by": {
                           "anyOf": [
-                            null,
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
                             {
                               "type": "null"
                             }

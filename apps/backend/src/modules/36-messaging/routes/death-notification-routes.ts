@@ -14,7 +14,7 @@ import { requireAbac, requirePermission } from "@chartwarden/auth";
 import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { DeathNotificationService } from "../death-notification/death-notification-service";
-import { actorOf } from "./death-board-routes";
+import { deathBoardActorOf } from "./death-board-routes";
 import {
   DeathNotificationBoardParamsSchema,
   DeathNotificationListResponseSchema,
@@ -73,7 +73,7 @@ export function registerDeathNotificationRoutes(
     async (request, reply) => {
       if (!(await flagOn(request))) return { enabled: false, notifications: [] };
       const { boardId } = parse(DeathNotificationBoardParamsSchema, request.params);
-      const actor = await actorOf(request, reply);
+      const actor = await deathBoardActorOf(request, reply);
       return noStore(reply).send({ enabled: true, ...(await service.list(actor, boardId)) });
     },
   );
@@ -87,7 +87,7 @@ export function registerDeathNotificationRoutes(
     async (request, reply) => {
       const { notificationId } = parse(DeathNotificationParamsSchema, request.params);
       return noStore(reply).send({
-        notification: await service.ack(await actorOf(request, reply), notificationId),
+        notification: await service.ack(await deathBoardActorOf(request, reply), notificationId),
       });
     },
   );
@@ -108,13 +108,15 @@ export function registerDeathNotificationRoutes(
     async (request, reply) => {
       const { boardId } = parse(DeathNotificationBoardParamsSchema, request.params);
       const body = parse(SendFuneralHomeBodySchema, request.body);
-      const actor = await actorOf(request, reply);
+      const actor = await deathBoardActorOf(request, reply);
       // The same caseload ABAC as M2's `POST /funeral/invite`: the actor must have the decedent on their caseload. The patient comes from the board
       // (never the body), after the board's own visibility check.
       const patientId = await service.patientOf(actor, boardId);
       const funeralHomeEntityId = body.funeral_home_entity_id.toLowerCase();
       try {
-        await requireAbac("funeral.invite", "caseload_membership", { getTarget: () => ({ patientId }) })(request);
+        await requireAbac("funeral.invite", "caseload_membership", {
+          getTarget: () => ({ patientId }),
+        })(request);
       } catch (err) {
         // A caseload refusal is a refused disclosure attempt (patient + funeral home ids only); it is audited, then re-thrown unchanged.
         await service.auditCaseloadDenied(actor, {
