@@ -6,7 +6,10 @@ import type { M23WriteActor } from "../routes/actor";
 import type { ClearinghouseAuditPort } from "./audit-port";
 import { accountInUse } from "./credential-reservation";
 import type { TenantClearinghouseService } from "./service";
-import { buildDrizzleTenantClearinghouseRouteService } from "./tenant-service";
+import {
+  type TenantClearinghouseRouteService,
+  buildDrizzleTenantClearinghouseRouteService,
+} from "./tenant-service";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const ACTOR: M23WriteActor = {
@@ -201,4 +204,36 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (
 
     await expect(route.activate(ACTOR)).resolves.toMatchObject({ status: "active" });
   });
+
+  it.each([
+    ["put", (r: TenantClearinghouseRouteService) => r.put(ACTOR, BODY, 1)],
+    [
+      "recordBaa",
+      (r: TenantClearinghouseRouteService) =>
+        r.recordBaa(ACTOR, {
+          heldBy: "tenant",
+          effectiveDate: "2026-01-02",
+          documentRef: "BAA folder",
+        }),
+    ],
+  ] as const)(
+    "%s does not void when the service reports no changed fields",
+    async (_name, write) => {
+      const calls: unknown[] = [];
+      const unchanged = {
+        put: async () => ({ created: false, view: { status: "draft" }, changedFields: [] }),
+        recordBaa: async () => ({ view: { status: "draft" }, changedFields: [] }),
+      } as unknown as TenantClearinghouseService;
+      const route = buildDrizzleTenantClearinghouseRouteService({
+        db: rowDb().db,
+        service: unchanged,
+        audit: { record: async () => undefined },
+        onOnboardingDataChanged: async (_tx, change) => void calls.push(change),
+      });
+
+      await write(route);
+
+      expect(calls).toEqual([]);
+    },
+  );
 });

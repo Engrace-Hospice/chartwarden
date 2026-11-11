@@ -180,7 +180,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
             status: done.view.status ?? "none",
           });
         }
-        await dataChanged(tx, actor);
+        if (done.changedFields.length > 0) await dataChanged(tx, actor);
         return { created: done.created, view: done.view };
       }).catch(async (err: unknown) => {
         throw await refused(actor, err, body.vendor);
@@ -196,7 +196,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
             status: done.view.status ?? "none",
           });
         }
-        await dataChanged(tx, actor);
+        if (done.changedFields.length > 0) await dataChanged(tx, actor);
         return done.view;
       }).catch(async (err: unknown) => {
         throw await refused(actor, err);

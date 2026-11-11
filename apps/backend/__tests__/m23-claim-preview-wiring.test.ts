@@ -55,6 +55,7 @@ describe("claim preview parties under a per-organization clearinghouse", () => {
     attempts: {} as never,
     platformBinding: UNBOUND_BINDING,
     fallbackOrgIds: new Set(),
+    isOrganizationLive: async () => true,
   });
 
   it("the tenant runtime's top-level vendor names no route, so it cannot key the EDI profile", async () => {
@@ -94,5 +95,18 @@ describe("the composition root builds every clearinghouse port from the per-org 
   it("the claim payer-route readiness is the binding-driven builder, not an env vendor check", () => {
     expect(index).toMatch(/payerRouteStatus:\s*buildClaimPayerRouteStatus\(/);
     expect(index).not.toMatch(/CLEARINGHOUSE_VENDOR\?\.trim\(\) !== "claimmd"/);
+  });
+
+  it("uses the same lifecycle-invalidated organization-stage reader to gate every worker transport", () => {
+    expect(index).toMatch(
+      /const organizationStage = dbHandle\s*\?\s*createOrganizationStageReader\(createOrganizationStatusReader\(dbHandle\.db\)\)/,
+    );
+    expect(index).toMatch(
+      /createTenantClearinghouseRuntime\(\{[\s\S]*?isOrganizationLive: async \(organizationId: string\) => \{[\s\S]*?organizationStage\.isConfined\(organizationId\)/,
+    );
+    expect(index).not.toContain("clearinghouseOrganizationStage");
+    expect(
+      index.match(/organizationStage\?\.invalidate\(organizationId\)/g)?.length,
+    ).toBeGreaterThan(0);
   });
 });

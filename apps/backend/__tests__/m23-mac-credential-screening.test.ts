@@ -113,7 +113,9 @@ describe("the MAC credential upsert screens baaRecordRef", () => {
 
   it.each([
     ["an SSN shape", SSN_REF, ["900-11-2222", "900112222"]],
+    ["a full-width SSN shape", "BAA folder ９００-１１-２２２２", ["９００-１１-２２２２"]],
     ["an MBI shape", MBI_REF, ["1EG4TE5MK73"]],
+    ["a full-width MBI shape", "see １EG４TE５MK７３", ["１EG４TE５MK７３"]],
   ])(
     "%s is a 422 EVIDENCE_LOOKS_LIKE_PHI that never echoes it, and nothing is read or written",
     async (_name, ref, secrets) => {

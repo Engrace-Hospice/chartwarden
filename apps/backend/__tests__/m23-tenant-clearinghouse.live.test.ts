@@ -1184,6 +1184,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       attempts: new InMemoryAttemptStore(),
       platformBinding,
       fallbackOrgIds: new Set([ORG_E]),
+      isOrganizationLive: async () => true,
     });
     const forOrg = runtime.binding.forOrg;
     expect((await forOrg?.(ORG_A))?.transport.vendor).toBe("claimmd");
@@ -1245,6 +1246,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       attempts: new InMemoryAttemptStore(),
       platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
       fallbackOrgIds: new Set(),
+      isOrganizationLive: async () => true,
     });
     const moved: number[] = [];
     await expect(

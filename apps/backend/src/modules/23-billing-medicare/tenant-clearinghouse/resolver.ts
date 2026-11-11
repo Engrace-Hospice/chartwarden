@@ -76,9 +76,9 @@ export interface TenantBindingDeps {
    * Is the organization LIVE (its status `active`, past go-live approval)? Asked on every resolution; the composition root binds it to a
    * cached organization-status reader. Not live (created, suspended, closed): the binding is `UNBOUND_NOT_ACTIVE`, the platform env
    * fallback included, and a cached transport is dropped. A read that throws propagates: the job fails and retries, never sends.
-   * Absent (slice boots, unit tests): every organization is treated as live, exactly as before.
+   * Required: losing this binding must fail at compile/boot time rather than silently restoring pre-go-live transmission.
    */
-  readonly isOrganizationLive?: (organizationId: string) => Promise<boolean>;
+  readonly isOrganizationLive: (organizationId: string) => Promise<boolean>;
   /** Test seam: replaces the RLS-scoped Drizzle read of the org's row. */
   readonly readRow?: (organizationId: string) => Promise<ConfigRow | null>;
 }
@@ -172,12 +172,8 @@ export function createTenantClearinghouseRuntime(
     };
   }
 
-  /** True unless a bound reader says the organization is not live. */
-  const organizationIsLive = async (organizationId: string): Promise<boolean> =>
-    deps.isOrganizationLive ? deps.isOrganizationLive(organizationId) : true;
-
   async function forOrg(organizationId: string): Promise<ClearinghouseBinding> {
-    if (!(await organizationIsLive(organizationId))) {
+    if (!(await deps.isOrganizationLive(organizationId))) {
       built.delete(organizationId);
       return UNBOUND_NOT_ACTIVE;
     }
@@ -213,7 +209,7 @@ export function createTenantClearinghouseRuntime(
     // The top level is deliberately unbound: only `forOrg` names an organization's transport.
     binding: { vendor: null, transport: NOT_WIRED_TRANSPORT, forOrg },
     async usageFor(organizationId) {
-      if (!(await organizationIsLive(organizationId))) return null;
+      if (!(await deps.isOrganizationLive(organizationId))) return null;
       return liveModeOf(await readRow(organizationId));
     },
   };

@@ -3707,6 +3707,8 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     const ORG_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a703";
     const T_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a704";
     const PE_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a705";
+    const PE_REFUSED = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a706";
+    const PE_ROLLBACK = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a707";
     let adminH: TenantActor;
     let officerH: TenantActor;
     let adminI: TenantActor;
@@ -3817,8 +3819,10 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       ({ orgAdmin: adminI } = await readyTenant(ORG_I, T_I, "wiz-i", "i"));
       await admin.query(
         `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
-         VALUES ($1,$2,'999701','Hotel Hospice','1234567893','sealed-elsewhere','1231')`,
-        [PE_H, ORG_H],
+         VALUES ($1,$2,'999701','Hotel Hospice','1234567893','sealed-elsewhere','1231'),
+                ($3,$2,'999702','Hotel Hospice Two','1234567893','sealed-elsewhere','1231'),
+                ($4,$2,'999703','Hotel Hospice Three','1234567893','sealed-elsewhere','1231')`,
+        [PE_H, ORG_H, PE_REFUSED, PE_ROLLBACK],
       );
     }, 60_000);
 
@@ -3868,15 +3872,49 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     });
 
     it("a refused write changes nothing: the attestation stays pending (the void rolls back with the write)", async () => {
+      await macCredentials().upsertMacCredential(writeActor(adminH, ORG_H), {
+        ...MAC_ARGS,
+        providerEntityId: PE_REFUSED,
+      });
       await attestPending();
       await expect(
         // the credential row is bound to one MAC jurisdiction: a different one is a 409 before anything is written
         macCredentials().upsertMacCredential(writeActor(adminH, ORG_H), {
           ...MAC_ARGS,
+          providerEntityId: PE_REFUSED,
           macJurisdiction: "ngs_j6",
           expectedVersion: 1,
         }),
       ).rejects.toMatchObject({ statusCode: 409 });
+      expect((await latestAttestation(ORG_H)).status).toBe("pending");
+    });
+
+    it("a void-hook failure rolls the MAC credential write back and leaves the attestation pending", async () => {
+      await attestPending();
+      const service = buildDrizzleM23WriteService(app.db, {
+        onOnboardingDataChanged: async () => {
+          throw new Error("synthetic void failure");
+        },
+        secretCipher: buildMacSecretCipherFromEnv({
+          M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 23).toString("base64"),
+        }),
+      });
+
+      await expect(
+        service.upsertMacCredential(writeActor(adminH, ORG_H), {
+          ...MAC_ARGS,
+          providerEntityId: PE_ROLLBACK,
+        }),
+      ).rejects.toThrow("synthetic void failure");
+
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM mac_submitter_credential WHERE provider_entity_id=$1",
+            [PE_ROLLBACK],
+          )
+        ).rows[0].n,
+      ).toBe(0);
       expect((await latestAttestation(ORG_H)).status).toBe("pending");
     });
 

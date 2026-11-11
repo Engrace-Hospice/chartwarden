@@ -528,6 +528,8 @@ export function buildDrizzleM23WriteService(
         clientId: args.clientId,
         clientSecretCipher: cipher,
         clientSecretDekVersion: dekVersion,
+        // A replacement secret has not been exercised. The portal-health stamp belongs to the prior credential version.
+        lastSandboxTestAt: null,
         ...(baaRecordRef !== undefined ? { baaRecordRef } : {}),
         ...(args.credentialExpiresAt !== undefined
           ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
@@ -1384,7 +1386,7 @@ export function buildDrizzleM23WriteService(
     // ── MAC credentials (step-up; secret encrypted at the boundary) ──
     async upsertMacCredential(actor, args: UpsertMacCredentialArgs): Promise<MacCredentialView> {
       requireStepUp(actor);
-      return mapUniqueViolation(
+      const saved = await mapUniqueViolation(
         "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",
       )(() =>
         inOrgCtx(actor, async (tx) => {
@@ -1398,6 +1400,12 @@ export function buildDrizzleM23WriteService(
           return saved;
         }),
       );
+      try {
+        await ports.onMacCredentialChanged?.(actor.organizationId);
+      } catch (cause) {
+        ports.logMacCredentialSettleError?.(cause, { organizationId: actor.organizationId });
+      }
+      return saved;
     },
 
     // The SAME upsert on the CALLER'S transaction: the platform onboarding route keeps the write, the tenant-status

@@ -25,6 +25,12 @@ describe("the composition root binds the go-live void on the M23 tenant-lane wri
     );
   });
 
+  it("settles the MAC credential onboarding step after the tenant write commits", () => {
+    expect(index).toMatch(
+      /onOnboardingDataChanged: voidGoLiveOnBillingWrite,\s*(\/\/[^\n]*\n\s*)*onMacCredentialChanged: settleOnboardingForOrg,\s*(\/\/[^\n]*\n\s*)*logMacCredentialSettleError:/,
+    );
+  });
+
   it("binds it nowhere else: the operator lane voids on its own transaction (a second void would only be noise)", () => {
     expect(index.match(/onOnboardingDataChanged:/g)).toHaveLength(2);
   });

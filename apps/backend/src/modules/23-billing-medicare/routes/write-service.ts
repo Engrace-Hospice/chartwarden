@@ -165,6 +165,13 @@ export interface M23WriteServicePorts {
    * its own transaction. Unbound, a tenant could save a credential under a pending attestation.
    */
   readonly onOnboardingDataChanged?: OnboardingDataChangedHook;
+  /** Post-commit, best-effort wizard settle after a tenant MAC credential save. */
+  readonly onMacCredentialChanged?: (organizationId: string) => Promise<void>;
+  /** The post-commit settle failed; the credential remains committed and the failure is logged without credential data. */
+  readonly logMacCredentialSettleError?: (
+    cause: unknown,
+    context: { readonly organizationId: string },
+  ) => void;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
 }
