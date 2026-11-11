@@ -4,7 +4,11 @@
 // transport cannot: ONE alert per scope, and a hold during which calls for that scope are answered without touching
 // the vendor, so a bad credential is not hammered by every BullMQ retry and ack-cron tick. State is per scope
 // (org + provider entity + usage), so one tenant's rejected credential never holds another tenant's calls.
-// ponytail: in-memory per process; a durable breaker only if several workers must share the hold.
+//
+// The holds live on the binding's TRANSPORT object, not on the deps object: with per-organization bindings
+// (`transportForOrg`) every call builds a fresh deps object around the resolver's cached binding, so only the transport is
+// stable. The resolver rebuilds the transport whenever the tenant changes its credential (a new `version`), so a re-entered
+// key starts with no hold. ponytail: in-memory per process; a durable breaker only if several workers must share the hold.
 import {
   CH,
   type ClearinghouseContext,
@@ -29,7 +33,8 @@ export interface CredentialAlertPort {
 }
 
 export interface CredentialGuardDeps {
-  readonly binding: { readonly vendor: string | null };
+  /** `transport` is the identity the holds hang on (stable per credential: one platform binding, or one org's cached binding). */
+  readonly binding: { readonly vendor: string | null; readonly transport: object };
   readonly alerts?: CredentialAlertPort;
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
   readonly now?: () => number;
@@ -37,11 +42,11 @@ export interface CredentialGuardDeps {
 
 const heldUntil = new WeakMap<object, Map<string, number>>();
 
-function holdsOf(deps: object): Map<string, number> {
-  const existing = heldUntil.get(deps);
+function holdsOf(transport: object): Map<string, number> {
+  const existing = heldUntil.get(transport);
   if (existing) return existing;
   const created = new Map<string, number>();
-  heldUntil.set(deps, created);
+  heldUntil.set(transport, created);
   return created;
 }
 
@@ -56,7 +61,7 @@ export async function withCredentialGuard<T>(
   call: () => Promise<X12WorkerResult<T>>,
 ): Promise<X12WorkerResult<T>> {
   const now = (deps.now ?? Date.now)();
-  const holds = holdsOf(deps);
+  const holds = holdsOf(deps.binding.transport);
   const key = scopeKey(ctx);
   if ((holds.get(key) ?? 0) > now) return degraded<T>(CH.NOT_WIRED, HELD_REASON);
 

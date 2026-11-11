@@ -4,6 +4,7 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  REASON_RULES,
   StatusPill,
   TextField,
   useApiClient,
@@ -19,11 +20,19 @@ import {
 // The redesign frame: a page head (identity + lifecycle pill + shred) over the five flat cards.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { InvitationCard } from "./invitation-card";
+import { ContractSummary, type PlatformContract } from "./onboarding/plan-contract-panel";
+import { RecordSaveDialog } from "./onboarding/record-save-dialog";
+import { useLoad } from "./onboarding/use-load";
+import { useOpsWrite } from "./onboarding/use-ops-write";
+import { GO_LIVE_STEP_KEY } from "./onboarding/wizard-model";
 import { ProvisioningCard } from "./provisioning-card";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
+import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
+import { type OnboardingProgressView, nextStepLabel, wordedKey } from "./tenant-progress";
 import { TenantTransitionDialog } from "./tenant-transition-dialog";
+import { useReveal } from "./use-reveal";
 
 interface StatusEvent {
   id: string;
@@ -47,17 +56,12 @@ interface TenantOverview {
     dekLastRotatedAt: string | null;
     destroyedAt: string | null;
   } | null;
+  /** Where the tenant is in the wizard (gating steps only); the older `onboarding` counts are the fallback. */
+  onboardingProgress: OnboardingProgressView | null;
   onboarding: { totalTasks: number; doneTasks: number; currentStep: string | null };
   baa: { status: string; expiresOn: string | null } | null;
   activeGrants: number;
   activeSessions: number;
-}
-
-// The screen reads :orgSlug from the route; until the Register phase wires routing, fall back to the
-// last path segment so the live-wired component renders against the real path it is mounted at.
-function orgSlugFromPath(): string {
-  const segs = window.location.pathname.split("/").filter(Boolean);
-  return segs[segs.length - 1] ?? "";
 }
 
 /** The route requires `destructionCertificateId` as `format: "uuid"`; "" is rejected with a 400. */
@@ -65,16 +69,27 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** `transitionReason` / `reason` both carry a minLength of 8 in the published contract. */
 const MIN_REASON = 8;
 
+/**
+ * The overview of the tenant in the address. Keyed by its slug: the router keeps this screen mounted when only the slug changes, and a
+ * tenant's state (its data, a contract revealed on request, a prompt) must never carry over to another tenant.
+ */
 export function TenantOverview(): JSX.Element {
+  const { orgSlug = "" } = useParams<{ orgSlug: string }>();
+  return <TenantOverviewFor key={orgSlug} />;
+}
+
+function TenantOverviewFor(): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
-  const [orgSlug] = useState(orgSlugFromPath);
+  const { orgSlug = "" } = useParams<{ orgSlug: string }>();
   const [tenant, setTenant] = useState<TenantOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const navigate = useNavigate();
   const [shredOpen, setShredOpen] = useState(false);
+  const [rotateOpen, setRotateOpen] = useState(false);
+  const rotateWrite = useOpsWrite();
   const [transitionOpen, setTransitionOpen] = useState(false);
   // The ceremony used to send `destructionCertificateId: ""` and a canned reason, then ignore the
   // result — so the shred failed validation every time and the console reported success anyway
@@ -120,24 +135,23 @@ export function TenantOverview(): JSX.Element {
     void load();
   }, [load]);
 
-  const rotateDek = useCallback(async () => {
-    const { error: err } = await client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
-      params: { path: { orgSlug } },
-      // TODO(M34 web, #29): still a canned reason — this should collect the operator's own
-      // justification, so the audit trail records why THIS rotation happened rather than a constant.
-      // Unlike the shred, this payload is valid (it clears the contract's minLength of 8) and the
-      // rotation does succeed, so it is left for the follow-up rather than fixed half-way here.
-      body: { reason: "Manual DEK rotation via platform console" },
-    });
-    if (err) {
-      // Previously `if (!err) void load()` — a refused rotation did nothing at all and said nothing,
-      // the same silent-failure shape as the shred (#29).
-      toast.show(errorMessage(err, "The DEK rotation was refused."), { tone: "error" });
-      return;
-    }
-    toast.show("DEK rotation enqueued.", { tone: "success" });
-    void load();
-  }, [client, orgSlug, load, toast]);
+  const rotateDek = useCallback(
+    async (reason: string) => {
+      const outcome = await rotateWrite.run(reason, (key) =>
+        client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
+          params: { path: { orgSlug } },
+          body: { reason },
+          // One key per attempt: a retry after no answer replays instead of enqueueing a second rotation job.
+          headers: { "Idempotency-Key": key },
+        }),
+      );
+      if (!outcome.ok) return; // the dialog stays open and says why
+      setRotateOpen(false);
+      toast.show("DEK rotation enqueued.", { tone: "success" });
+      void load();
+    },
+    [client, orgSlug, load, toast, rotateWrite],
+  );
 
   const confirmShred = useCallback(async () => {
     const cert = certId.trim();
@@ -191,7 +205,7 @@ export function TenantOverview(): JSX.Element {
     return (
       <div className="wx-list-drawer">
         <div className="wx-list-drawer-main">
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">{error ?? "No tenant."}</InlineAlert>
             {notFound ? null : (
               <Button tone="secondary" onClick={() => void load()}>
@@ -212,7 +226,7 @@ export function TenantOverview(): JSX.Element {
           <div>
             <h1>{tenant.legalBusinessName}</h1>
             <p>
-              <span className="wx-data-md">{tenant.orgSlug}</span> · {tenant.planLabel}
+              <span className="wx-data-md">{tenant.orgSlug}</span>
             </p>
           </div>
           <div className="wx-list-toolbar-end">
@@ -226,19 +240,42 @@ export function TenantOverview(): JSX.Element {
         </header>
 
         {tenant.status === "provisioning" ? (
-          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void load(true)} />
+          <ProvisioningCard
+            key={orgSlug}
+            orgSlug={orgSlug}
+            headingLevel="h2"
+            onChanged={() => void load(true)}
+          />
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="wx-card-grid">
           <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />
           <OnboardingCard
             tenant={tenant}
-            onOpen={() => navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding`)}
+            onOpen={(stepKey) =>
+              navigate(
+                `/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding${
+                  stepKey ? `/${encodeURIComponent(stepKey)}` : ""
+                }`,
+              )
+            }
           />
-          <KeyRingCard tenant={tenant} onRotate={() => void rotateDek()} />
+          <ContractCard orgSlug={orgSlug} />
+          <TenantClearinghouseCard
+            orgSlug={orgSlug}
+            tenantStatus={tenant.status}
+            headingLevel="h2"
+          />
+          <KeyRingCard
+            tenant={tenant}
+            onRotate={() => {
+              rotateWrite.clear();
+              setRotateOpen(true);
+            }}
+          />
           <SupportCard tenant={tenant} />
           <ExportsCard />
-          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} />
+          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} headingLevel="h2" />
         </div>
       </div>
 
@@ -248,11 +285,26 @@ export function TenantOverview(): JSX.Element {
         tenantName={tenant.legalBusinessName}
         fromStatus={tenant.status}
         onClose={() => setTransitionOpen(false)}
+        onOpenOnboarding={() =>
+          navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding`)
+        }
         onDone={() => {
           setTransitionOpen(false);
           toast.show("Tenant status updated.", { tone: "success" });
           void load(true);
         }}
+      />
+
+      <RecordSaveDialog
+        open={rotateOpen}
+        title="Rotate the data encryption key"
+        description={`A new key version is created for ${tenant.legalBusinessName}. Existing data is re-wrapped in the background.`}
+        rule={REASON_RULES.decision}
+        confirmLabel="Rotate"
+        write={rotateWrite}
+        orgSlug={orgSlug}
+        onConfirm={(reason) => void rotateDek(reason)}
+        onCancel={() => setRotateOpen(false)}
       />
 
       {/* §5.2 Card 1 / §6 D10 — the shred is irreversible: confirm-by-typing the legal business name. */}
@@ -261,13 +313,15 @@ export function TenantOverview(): JSX.Element {
         title="Cryptographic shred"
         epcs
         attestation={
-          <>
-            This permanently destroys the DEK for <strong>{tenant.legalBusinessName}</strong> (
-            <span className="wx-data-md">{tenant.orgSlug}</span>). All tenant PHI becomes
-            cryptographically irrecoverable. This cannot be undone.
+          <div className="wx-form-stack">
+            <p>
+              This permanently destroys the DEK for <strong>{tenant.legalBusinessName}</strong> (
+              <span className="wx-data-md">{tenant.orgSlug}</span>). All tenant PHI becomes
+              cryptographically irrecoverable. This cannot be undone.
+            </p>
             {/* The two values the route REQUIRES. They live in the attestation slot rather than in
                 CeremonyModal itself so the shared component (15 other call sites) is untouched. */}
-            <div className="mt-3 grid gap-3">
+            <div className="wx-form-stack">
               <TextField
                 id="shred-cert-id"
                 label="M4 destruction-certificate id"
@@ -289,7 +343,7 @@ export function TenantOverview(): JSX.Element {
               />
               {shredError ? <InlineAlert tone="error">{shredError}</InlineAlert> : null}
             </div>
-          </>
+          </div>
         }
         legalText="I confirm the retention period has elapsed, no legal hold is active, and the M4 destruction certificate is approved."
         signer={{ name: "Platform Operator", role: "platform_ops" }}
@@ -339,7 +393,7 @@ function Card({
   return (
     <section className="wx-drawer-card">
       <div className="wx-drawer-card-head">
-        <h3>{title}</h3>
+        <h2>{title}</h2>
         {cta}
       </div>
       {children}
@@ -385,39 +439,121 @@ function LifecycleCard({
   );
 }
 
-// ── Card 2 — Onboarding: eleven-step progress + Open onboarding CTA ───────────────────────────────────
+// ── Card 2 — Onboarding: where the tenant is in the wizard, and the one next thing to do ───────────────────────
 function OnboardingCard({
   tenant,
   onOpen,
-}: { tenant: TenantOverview; onOpen: () => void }): JSX.Element {
-  const { totalTasks, doneTasks, currentStep } = tenant.onboarding;
-  const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+}: { tenant: TenantOverview; onOpen: (stepKey?: string) => void }): JSX.Element {
+  const progress = tenant.onboardingProgress;
+  const done = progress?.doneCount ?? tenant.onboarding.doneTasks;
+  const total = progress?.totalCount ?? tenant.onboarding.totalTasks;
+  // The step's own title as the wizard shows it; the older counts carry only a key, which is worded.
+  const next =
+    (progress ? nextStepLabel(progress) : null) ??
+    (tenant.onboarding.currentStep ? wordedKey(tenant.onboarding.currentStep) : null);
+  const awaitingApproval = progress?.goLiveState === "awaiting_approval";
+  const inWizard = tenant.status === "onboarding" || tenant.status === "provisioning";
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
     <Card
       title="Onboarding"
       cta={
-        <Button tone="secondary" size="sm" onClick={onOpen}>
-          Open onboarding
+        inWizard ? (
+          awaitingApproval ? (
+            <Button size="sm" onClick={() => onOpen(GO_LIVE_STEP_KEY)}>
+              Review go-live
+            </Button>
+          ) : (
+            <Button tone="secondary" size="sm" onClick={() => onOpen()}>
+              Continue onboarding
+            </Button>
+          )
+        ) : undefined
+      }
+    >
+      {inWizard ? (
+        <>
+          <span className="wx-nums">
+            {done} of {total} steps done
+          </span>
+          <progress
+            className="wx-progress-bar"
+            value={pct}
+            max={100}
+            aria-label={`${pct}% complete`}
+          />
+          {awaitingApproval ? (
+            <InlineAlert tone="warning">
+              Waiting for your approval: the compliance officer has attested go-live readiness.
+            </InlineAlert>
+          ) : (
+            <span className="wx-row-sub">
+              {next ? `Next: ${next}` : total === 0 ? "Not started" : "All steps are done"}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="wx-row-sub">
+          {tenant.status === "active"
+            ? "Onboarding is complete."
+            : "Onboarding is closed for this tenant."}
+        </span>
+      )}
+    </Card>
+  );
+}
+
+// ── Contract and billing: read on request (each read of a tenant's pricing is audited), not on every visit ─────────
+function ContractCard({ orgSlug }: { orgSlug: string }): JSX.Element {
+  const reveal = useReveal();
+  return (
+    <Card
+      title="Contract and billing"
+      cta={
+        <Button tone="secondary" size="sm" {...reveal.toggleProps} onClick={reveal.onToggle}>
+          Show contract and billing
         </Button>
       }
     >
-      <span className="wx-nums text-sm">
-        {doneTasks} / {totalTasks} steps complete
-      </span>
-      <progress
-        value={pct}
-        max={100}
-        aria-label={`${pct}% complete`}
-        className="h-2 w-full appearance-none overflow-hidden rounded-full [&::-moz-progress-bar]:bg-[var(--color-primary)] [&::-webkit-progress-bar]:bg-[var(--color-surface-container)] [&::-webkit-progress-value]:bg-[var(--color-primary)]"
-      />
-      <span className="wx-row-sub">
-        {currentStep
-          ? `Current step: ${currentStep}`
-          : totalTasks === 0
-            ? "Not started"
-            : "All steps complete"}
-      </span>
+      {reveal.mounted ? (
+        <div id={reveal.sectionId} hidden={!reveal.open}>
+          <ContractBody orgSlug={orgSlug} />
+        </div>
+      ) : (
+        <span className="wx-row-sub">Reading the contract is recorded in the audit trail.</span>
+      )}
     </Card>
+  );
+}
+
+function ContractBody({ orgSlug }: { orgSlug: string }): JSX.Element {
+  const client = useApiClient();
+  const sub = useLoad<{ contract: PlatformContract | null }>(
+    `hub-contract:${orgSlug}`,
+    () =>
+      client.GET("/api/v1/platform/tenants/{orgSlug}/subscription", {
+        params: { path: { orgSlug } },
+      }) as Promise<{
+        data?: { contract: PlatformContract | null };
+        error?: unknown;
+        response?: { status: number };
+      }>,
+  );
+  if (sub.failure) {
+    return (
+      <>
+        <InlineAlert tone="error">Could not load the contract.</InlineAlert>
+        <Button tone="secondary" size="sm" onClick={() => void sub.reload()}>
+          Try again
+        </Button>
+      </>
+    );
+  }
+  if (!sub.data) return <LoadingSpinner label="Loading the contract…" />;
+  return sub.data.contract ? (
+    <ContractSummary contract={sub.data.contract} />
+  ) : (
+    <span>No contract is signed yet. It is signed at onboarding step 2.</span>
   );
 }
 
@@ -440,7 +576,7 @@ function KeyRingCard({
       }
     >
       {!kr ? (
-        <span className="text-sm">No key ring provisioned.</span>
+        <span>No key ring provisioned.</span>
       ) : destroyed ? (
         <p className="wx-source-line">
           <Glyph name="lock" size={16} label="DEK destroyed" />
@@ -488,7 +624,7 @@ function SupportCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
         <dt>BAA status</dt>
         <dd>
           {tenant.baa ? (
-            <span className="flex flex-wrap items-center gap-2">
+            <span className="wx-drawer-title-row">
               <StatusPill
                 label={cap(tenant.baa.status)}
                 tone={BAA_TONE[tenant.baa.status] ?? "neutral"}

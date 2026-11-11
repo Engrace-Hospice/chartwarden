@@ -1,4 +1,4 @@
-// Slice 2 (tenant pricing) — the two org-explicit seams (M25 NetCollectionsReader, M35 BillingServiceModeReader) refuse a call made inside
+// Slice 2 (tenant pricing) — the org-explicit seam (M25 NetCollectionsReader) refuses a call made inside
 // ANOTHER organisation's request. A worker (no ambient context) and the same organisation's own request pass. The database handle here is
 // a trap: if a guarded call ever reached it, the test would fail on the trap, not on the assertion, so "refused" means "refused BEFORE any read".
 import type { DbClient } from "@chartwarden/db";
@@ -7,7 +7,6 @@ import type { OrgId } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { refuseForeignAmbientOrg } from "../src/bootstrap/ambient-org-guard";
 import { buildNetCollectionsReader } from "../src/modules/25-remittance/net-collections-reader";
-import { readBillingServiceMode } from "../src/modules/35-subscription/pricing/contract-service";
 
 const ORG_A = "a1000000-0000-4000-8000-0000000000a1";
 const ORG_B = "b2000000-0000-4000-8000-0000000000b2";
@@ -31,14 +30,14 @@ describe("refuseForeignAmbientOrg", () => {
   it("refuses an ambient request of a different organisation with a 403 that names the seam", () => {
     const error = (() => {
       try {
-        inRequestOf(ORG_B, () => refuseForeignAmbientOrg(ORG_A, "BillingServiceModeReader"));
+        inRequestOf(ORG_B, () => refuseForeignAmbientOrg(ORG_A, "NetCollectionsReader"));
       } catch (e) {
         return e as { code: string; statusCode: number; message: string };
       }
       return null;
     })();
     expect(error).toMatchObject({ code: "SEAM_FOREIGN_ORGANIZATION", statusCode: 403 });
-    expect(error?.message).toContain("BillingServiceModeReader");
+    expect(error?.message).toContain("NetCollectionsReader");
   });
 
   it("passes with no ambient context (a worker) and with the same organisation's own request", () => {
@@ -54,14 +53,6 @@ describe("refuseForeignAmbientOrg", () => {
 });
 
 describe("the seam bodies refuse before they read", () => {
-  it("BillingServiceModeReader: tenant B's request cannot ask tenant A's mode", async () => {
-    await expect(
-      inRequestOf(ORG_B, () => readBillingServiceMode(trap, ORG_A)),
-    ).rejects.toMatchObject({
-      code: "SEAM_FOREIGN_ORGANIZATION",
-    });
-  });
-
   it("NetCollectionsReader: tenant B's request cannot read tenant A's collections, by period or by month", async () => {
     const reader = buildNetCollectionsReader(trap);
     await expect(
@@ -77,7 +68,6 @@ describe("the seam bodies refuse before they read", () => {
   });
 
   it("with no ambient context or the same organisation the guard steps aside (the call then reaches the database, which here is the trap)", async () => {
-    await expect(readBillingServiceMode(trap, ORG_A)).rejects.toThrow(REACHED_THE_DATABASE);
     await expect(
       inRequestOf(ORG_A, () =>
         buildNetCollectionsReader(trap).netCollectionsByMonth(ORG_A as OrgId, period),

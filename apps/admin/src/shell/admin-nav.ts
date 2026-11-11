@@ -28,9 +28,10 @@ const SECTIONS: readonly { label: string; screens: readonly Placement[] }[] = [
     screens: [
       { id: "saas.tenants", icon: "building" },
       { id: "saas.signups", icon: "user-plus" },
-      { id: "saas.onboarding-templates", icon: "clipboard-list" },
       { id: "saas.feature-flags", icon: "zap" },
       { id: "saas.support-sessions", icon: "message-square" },
+      // The wizard's own steps are fixed by the platform; this is the editor for a non-canonical catalog step (added by platform ops), so it sits last.
+      { id: "saas.onboarding-templates", icon: "clipboard-list" },
     ],
   },
   {
@@ -46,6 +47,7 @@ const SECTIONS: readonly { label: string; screens: readonly Placement[] }[] = [
     label: "Subscription billing",
     screens: [
       { id: "admin.plans", icon: "layout-grid" },
+      { id: "admin.pricing-plans", icon: "dollar" },
       { id: "admin.promos", icon: "target" },
       { id: "admin.subscriptions", icon: "receipt" },
       { id: "admin.refunds", icon: "rotate-ccw" },

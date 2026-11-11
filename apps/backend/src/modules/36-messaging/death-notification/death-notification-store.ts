@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/death-notification/death-notification-store.ts - the death_notification rows (migration 1454). Writes take
+// apps/backend/src/modules/36-messaging/death-notification/death-notification-store.ts - the death_notification rows (migration 1478). Writes take
 // the caller's `tx`; every statement names the organization on top of RLS. chartwarden_app has no DELETE. acked_at comes from the guard trigger.
 import { schema } from "@chartwarden/db";
 import type { DeathNotificationKind, DeathNotificationState } from "@chartwarden/types";

@@ -6,7 +6,7 @@
 // still boots infra-free — the unit suite never opens a connection. The pool is lazy: no connection
 // is established until the first query, so constructing a client is side-effect-free.
 import { type NodePgDatabase, drizzle } from "drizzle-orm/node-postgres";
-import { Pool, type PoolConfig } from "pg";
+import { Pool, type PoolClient, type PoolConfig } from "pg";
 import { instrumentPoolForCommits } from "./commit-tracker";
 import * as schema from "./schema/index";
 
@@ -22,6 +22,13 @@ export interface DbClientHandle {
   close(): Promise<void>;
 }
 
+/** The deliberately small, PHI-free connection-error shape exposed to the host logger. */
+export interface DbConnectionError {
+  readonly source: "pool" | "checked_out_client";
+  readonly sqlState: string | null;
+  readonly message: string;
+}
+
 export interface CreateDbClientOptions {
   /** Postgres connection string (DATABASE_URL). Required — fail-closed when absent. */
   connectionString: string;
@@ -29,6 +36,17 @@ export interface CreateDbClientOptions {
   max?: number;
   /** Extra pg pool config (TLS, statement/idle timeouts) for production. */
   pool?: Omit<PoolConfig, "connectionString" | "max">;
+  /** Structured connection-error sink. Sink failures are contained by the factory. */
+  onConnectionError?: (error: DbConnectionError) => void;
+}
+
+function connectionError(source: DbConnectionError["source"], error: Error): DbConnectionError {
+  const code = (error as Error & { readonly code?: unknown }).code;
+  return {
+    source,
+    sqlState: typeof code === "string" && code.length > 0 ? code : null,
+    message: error.message,
+  };
 }
 
 /**
@@ -61,6 +79,39 @@ export function createDbClient(opts: CreateDbClientOptions): DbClientHandle {
   // Every query of every pooled client feeds the ambient per-request commit tracker (commit-tracker.ts): the idempotency
   // middleware releases a retryable failure only when this request committed nothing. A no-op outside a tracked request.
   instrumentPoolForCommits(pool as unknown as Parameters<typeof instrumentPoolForCommits>[0]);
+  const report = (source: DbConnectionError["source"], error: Error): void => {
+    const safe = connectionError(source, error);
+    try {
+      if (opts.onConnectionError) opts.onConnectionError(safe);
+      else console.warn("Postgres connection error", safe);
+    } catch {
+      // An observability sink must never turn a recoverable connection loss back into an uncaught EventEmitter error.
+      try {
+        console.warn("Postgres connection error (configured sink failed)", safe);
+      } catch {
+        // There is deliberately no final throw: keeping the process alive is this handler's safety boundary.
+      }
+    }
+  };
+
+  // pg forwards errors from IDLE clients to the pool. Without this listener EventEmitter throws and terminates Node.
+  pool.on("error", (error) => report("pool", error));
+
+  // While a client is checked out pg removes its idle-error forwarder. Cover exactly that window, then remove our
+  // listener on release so an idle failure is reported once through the pool rather than twice.
+  const checkedOutListeners = new WeakMap<PoolClient, (error: Error) => void>();
+  pool.on("acquire", (client) => {
+    if (checkedOutListeners.has(client)) return;
+    const listener = (error: Error): void => report("checked_out_client", error);
+    checkedOutListeners.set(client, listener);
+    client.on("error", listener);
+  });
+  pool.on("release", (_error, client) => {
+    const listener = checkedOutListeners.get(client);
+    if (!listener) return;
+    client.off("error", listener);
+    checkedOutListeners.delete(client);
+  });
   const db = drizzle(pool, { schema });
   return { db, pool, close: () => pool.end() };
 }

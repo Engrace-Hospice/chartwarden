@@ -9,6 +9,7 @@ const canonical = ["account_created", "ccn_registered"];
 const executedBaa = (expiresOn: string | null) => ({
   baaStatus: "executed" as const,
   expiresOn,
+  documentFiled: true,
 });
 
 describe("evaluateActivationGuards", () => {
@@ -32,6 +33,41 @@ describe("evaluateActivationGuards", () => {
     });
   });
 
+  it("does not count an executed BAA whose document does not verify: the status rests on a link that proves nothing", () => {
+    const input = {
+      canonicalTemplateKeys: canonical,
+      tasks: [
+        { templateKey: "account_created", status: "done" },
+        { templateKey: "ccn_registered", status: "done" },
+      ],
+      today: TODAY,
+    };
+    const unverified = evaluateActivationGuards({
+      ...input,
+      latestBaa: { ...executedBaa("2027-12-31"), documentFiled: false },
+    });
+    expect(unverified).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
+    // a verified document is an executed BAA
+    expect(
+      evaluateActivationGuards({ ...input, latestBaa: executedBaa("2027-12-31") }),
+    ).toMatchObject({ baaExecuted: true, baaExpiryClearsNinetyDays: true });
+  });
+
+  it("an input that does not say whether the document verifies is not an executed BAA (fail closed, as the sweep does)", () => {
+    const { documentFiled: _omitted, ...unjudged } = executedBaa("2027-12-31");
+    const guards = evaluateActivationGuards({
+      canonicalTemplateKeys: canonical,
+      tasks: [
+        { templateKey: "account_created", status: "done" },
+        { templateKey: "ccn_registered", status: "done" },
+      ],
+      // the type requires the field; a caller that casts its way around it must still fail closed
+      latestBaa: unjudged as never,
+      today: TODAY,
+    });
+    expect(guards).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
+  });
+
   it("is incomplete while a canonical task is pending or has no row at all", () => {
     const pending = evaluateActivationGuards({
       canonicalTemplateKeys: canonical,
@@ -53,7 +89,7 @@ describe("evaluateActivationGuards", () => {
     expect(missingRow.canonicalTasksComplete).toBe(false);
   });
 
-  it("ignores non-canonical tenant-added tasks when judging completeness and counting", () => {
+  it("ignores the tasks of a non-canonical catalog step (added by platform ops) when judging completeness and counting", () => {
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: ["account_created"],
       tasks: [
@@ -73,7 +109,7 @@ describe("evaluateActivationGuards", () => {
     const pending = evaluateActivationGuards({
       canonicalTemplateKeys: [],
       tasks: [],
-      latestBaa: { baaStatus: "pending", expiresOn: null },
+      latestBaa: { baaStatus: "pending", expiresOn: null, documentFiled: true },
       today: TODAY,
     });
     const none = evaluateActivationGuards({
@@ -157,7 +193,7 @@ describe("activation guards fail closed", () => {
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: [],
       tasks: [],
-      latestBaa: { baaStatus: "executed", expiresOn: null },
+      latestBaa: { baaStatus: "executed", expiresOn: null, documentFiled: true },
       today: new Date("2026-10-13T00:00:00Z"),
     });
 

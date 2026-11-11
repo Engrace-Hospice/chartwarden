@@ -1,7 +1,7 @@
 // apps/backend/src/modules/34-saas-tenant-platform/onboarding/sequence.ts — the strict-sequence rule (pure).
 //
 // A step may only be started, completed, attested or skipped when every EARLIER gating step is done or skipped.
-// "Gating" = canonical and not optional: an optional step (sample data) and a tenant-added step (non-canonical, never
+// "Gating" = canonical and not optional: an optional step (sample data) and a non-canonical catalog step (added by platform ops; never
 // part of the activation guard) never lock a later step, but they are themselves subject to the lock. Retired
 // templates are never loaded, so they cannot gate. A gating step with no task row counts as unsettled.
 //
@@ -44,7 +44,7 @@ export function lockedByStep(
 /** The first gating step not yet settled (the wizard's "you are here"), or null when every one is. */
 export function currentStepKey(
   templates: readonly StepTemplate[],
-  tasks: readonly StepTask[],
+  tasks: readonly Pick<StepTask, "templateKey" | "status">[],
 ): string | null {
   const statusByKey = new Map(tasks.map((t) => [t.templateKey, t.status]));
   for (const t of orderedTemplates(templates)) {

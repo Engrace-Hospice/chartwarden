@@ -1,6 +1,7 @@
 import {
   type ClaimAssemblySeams,
   createDefaultBillingRegistry,
+  medicareReceiptDay,
   repositories,
 } from "@chartwarden/billing";
 import type * as schema from "@chartwarden/db/schema";
@@ -27,9 +28,6 @@ import {
 import type { ClaimValidationRunnerPort, JobEnqueuePort, NoticeWindowPort } from "./m23-jobs";
 import { M23_QUEUES, M23_QUEUE_PARAMS, m23JobId } from "./queues";
 
-/** `YYYY-MM-DD` — `window_breached_at` is a SQL `date`, not a timestamp. */
-const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
-
 /**
  * The §2.2 window-breach stamp: a same-state, version-checked patch of `window_breached_at` on the worker's
  * own tx (the append-only repositories expose no plain update). The cron emits the breach event + alert itself;
@@ -39,7 +37,8 @@ const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
 export function buildNoticeWindowPort(): NoticeWindowPort {
   return {
     async recordBreach({ tx, kind, noticeId, expectedVersion, breachedAt }) {
-      const patch = { windowBreachedAt: isoDay(breachedAt) };
+      // `window_breached_at` is a SQL `date`: the Eastern (CMS) day, like the window math that decides a breach.
+      const patch = { windowBreachedAt: medicareReceiptDay(breachedAt) };
       if (kind === "noe") {
         const repo = new repositories.NoeRepository(tx);
         const row = await repo.findById(noticeId);

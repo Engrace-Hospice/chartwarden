@@ -9,6 +9,7 @@
 // keep their safe fallbacks (the check is a no-op outside production).
 import { Buffer } from "node:buffer";
 import { rustBridgeEnvProblems } from "./rust-bridge/config";
+import { STRICT_KEY_LIST_PROBLEM, parseStrictKeyList } from "./strict-key-base64";
 
 /** Environment surface this validator reads — `process.env` in production, an injected map in tests. */
 export type EnvLike = Record<string, string | undefined>;
@@ -24,6 +25,24 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
   "direct_mac",
   "claimmd",
 ];
+
+/**
+ * ADR-0053 amendment 2026-11-06 - each TENANT chooses its clearinghouse (stedi | claimmd | outside) with its own credential.
+ * The platform's env binding above now serves ONLY the organizations named here (comma-separated organization uuids) when
+ * they have no tenant config of their own: the demo tenant. Unset = no organization is served by the platform env vendor.
+ * Naming organizations with no CLEARINGHOUSE_VENDOR bound is refused at boot.
+ */
+export const CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV = "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS";
+const ORG_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * True when the value is a comma-separated list of organization uuids: a blank value names no organization, but a blank ENTRY
+ * (`,,`, a trailing comma) is a typo and is refused. The one definition: boot parsing (`parseFallbackOrgIds`) uses it too.
+ */
+export function isOrgIdList(raw: string): boolean {
+  if (raw.trim().length === 0) return true;
+  return raw.split(",").every((id) => ORG_ID_SHAPE.test(id.trim()));
+}
 
 /** ADR-0110 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
 export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
@@ -50,6 +69,36 @@ export function claimMdWebhookEnabled(env: EnvLike): boolean {
   return env[CLAIMMD_WEBHOOK_ENABLED_ENV] === "true";
 }
 
+/** `tenant:<org id>` names a tenant's OWN Claim.MD account in the evidence tables; the platform's reference may never take it. */
+const TENANT_ACCOUNT_REFERENCE = /^tenant:/i;
+const TENANT_REFERENCE_PROBLEM =
+  "must not start with 'tenant:' (reserved for a tenant's own account)";
+
+/**
+ * The platform's Claim.MD account reference (trimmed), or undefined when unset. Throws on a `tenant:` value: the platform readers
+ * would otherwise match a tenant's own evidence rows. Every boot site reads it through here.
+ */
+export function platformClaimMdAccountReference(env: EnvLike): string | undefined {
+  const value = env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+  if (value && TENANT_ACCOUNT_REFERENCE.test(value))
+    throw new Error(`CLAIMMD_ACCOUNT_REFERENCE ${TENANT_REFERENCE_PROBLEM}`);
+  return value || undefined;
+}
+
+/**
+ * The cursor-signing key `buildServer` hands the route kit. Production fails closed when it is missing (the
+ * strength rule is `assertProductionEnv`'s); dev/test return undefined and the kit signs with a process-local
+ * random key.
+ */
+export function cursorSigningKeyFrom(env: EnvLike): string | undefined {
+  const key = env.CURSOR_SIGNING_KEY?.trim();
+  if (key) return key;
+  if (env.NODE_ENV === "production") {
+    throw new Error("CURSOR_SIGNING_KEY is required in production (pagination cursors are signed)");
+  }
+  return undefined;
+}
+
 /** One unmet production requirement. */
 export interface EnvProblem {
   readonly key: string;
@@ -72,10 +121,8 @@ interface Requirement {
 export const M23_LAUNCH_GATEWAY_ENABLED_ENV = "M23_LAUNCH_GATEWAY_ENABLED";
 export const M34_PROVISION_GATEWAY_ENABLED_ENV = "M34_PROVISION_GATEWAY_ENABLED";
 export const FHIR_TOKEN_ENDPOINT_ENABLED_ENV = "FHIR_TOKEN_ENDPOINT_ENABLED";
-/** GAP-146 — the M24 Oregon launch-gateway capability gate. Opt-OUT in production like the M23 switch (it was
- *  opt-in, so a production deploy that never set it silently built no Medicaid submit/poll workers). It is a
- *  capability gate only: every real endpoint comes from a provider entity's own trading-partner credential, so
- *  an enabled gate with no credential calls nothing. dev/test keep the unset-means-off default. */
+/** M24 Oregon gateway gate. Explicit opt-in in every environment; an unset value must never bind a state
+ * transport or start its workers. Configuration alone is not state certification. */
 export const M24_LAUNCH_GATEWAY_ENABLED_ENV = "M24_LAUNCH_GATEWAY_ENABLED";
 
 const INTEGRATION_SWITCHES = [
@@ -85,7 +132,7 @@ const INTEGRATION_SWITCHES = [
   M24_LAUNCH_GATEWAY_ENABLED_ENV,
 ] as const;
 
-/** Whether an opt-out production integration capability should be bound (defaults to true). */
+/** Whether a legacy opt-out production integration capability should be bound (defaults to true). */
 export function integrationEnabled(
   env: EnvLike,
   key: (typeof INTEGRATION_SWITCHES)[number],
@@ -93,14 +140,9 @@ export function integrationEnabled(
   return env[key]?.trim().toLowerCase() !== "false";
 }
 
-/**
- * GAP-146 — the env the M24 launch-gateway gate reads: in production an UNSET switch means enabled (an explicit
- * `false` still disables); outside production the value is passed through untouched, so dev/test/CI keep
- * "unset = nothing calls out by accident".
- */
+/** M24 is deliberately opt-in: preserve the environment as provided in all runtimes. */
 export function withM24LaunchGatewayDefault(env: EnvLike): EnvLike {
-  if (env.NODE_ENV !== "production" || env[M24_LAUNCH_GATEWAY_ENABLED_ENV]?.trim()) return env;
-  return { ...env, [M24_LAUNCH_GATEWAY_ENABLED_ENV]: "true" };
+  return env;
 }
 
 /**
@@ -201,6 +243,21 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
+    // M23 (migration 1436) — optional: the DERIVED fingerprint subkeys of earlier M24_CREDENTIAL_ENCRYPTION_KEY values (never a
+    // KEK; scripts/m23-derive-fingerprint-subkey.ts), read only to fingerprint clearinghouse credentials under the keys older
+    // reservations used. Set, every entry must be a strict 32-byte key (the cipher's own reader), and none the current KEK itself.
+    key: "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS",
+    when: (env) => Boolean(env.M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS?.trim()),
+    rule: (value, env) => {
+      const keys = parseStrictKeyList(value);
+      if (!keys) return STRICT_KEY_LIST_PROBLEM;
+      const current = env.M24_CREDENTIAL_ENCRYPTION_KEY?.trim();
+      if (current && keys.some((k) => k.toString("base64") === current))
+        return "must hold derived fingerprint subkeys, never the M24_CREDENTIAL_ENCRYPTION_KEY itself";
+      return null;
+    },
+  },
+  {
     key: "TWO_FACTOR_ENCRYPTION_KEY",
     rule: (v) => {
       try {
@@ -231,6 +288,34 @@ const REQUIREMENTS: readonly Requirement[] = [
   // ADR-0053 amendment 2026-11-04: the Claim.MD account key and which account it opens (test or production).
   {
     key: "CLAIMMD_ACCOUNT_KEY",
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_REFERENCE",
+    rule: (v) =>
+      TENANT_ACCOUNT_REFERENCE.test(v)
+        ? TENANT_REFERENCE_PROBLEM
+        : /^[A-Za-z0-9._:-]{1,128}$/.test(v)
+          ? null
+          : "must be a stable non-secret account reference",
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIM_PREVIEW_INTEGRITY_KEY",
+    rule: (v) => (v.length < 32 ? "must contain at least 32 characters" : null),
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_M23_PAYER_ROUTES",
+    rule: (v) => {
+      try {
+        return Array.isArray(JSON.parse(v)) && JSON.parse(v).length > 0
+          ? null
+          : "must be a non-empty JSON array of scoped effective-dated payer routes";
+      } catch {
+        return "must be valid JSON containing scoped effective-dated payer routes";
+      }
+    },
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {
@@ -393,12 +478,17 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
-    // TASK-010/SEC-005 — the shared cursor-signing secret M19/M20 concurrency.ts fall back to (each also
-    // accepts a module-specific M19_/M20_CURSOR_SIGNING_KEY override). Unset, cursors are signed with a
-    // process-local random key and stop verifying across a restart/redeploy — safe, but an avoidable
-    // re-page for every caller in production.
+    // TASK-010/SEC-005 — the secret every pagination cursor is HMAC-signed with (the route kit,
+    // `@chartwarden/shared/route-kit`, configured by `buildServer` via `cursorSigningKeyFrom`). Production
+    // refuses to boot without it; dev/test sign with a process-local random key instead.
     key: "CURSOR_SIGNING_KEY",
-    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+    // The .env.production.example placeholder is itself 32+ characters, so length alone would boot on a public key.
+    rule: (v) =>
+      v.length < 32
+        ? "must be at least 32 characters"
+        : /REPLACE_WITH/i.test(v)
+          ? "is still the .env.production.example placeholder"
+          : null,
   },
   {
     // TASK-010/OPS-010 — the trusted-proxy CIDR allowlist (bootstrap/index.ts parseTrustedProxies).
@@ -578,6 +668,20 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
       key: CLEARINGHOUSE_VENDOR_ENV,
       problem: `must be one of ${PRODUCTION_CLEARINGHOUSE_VENDORS.join(", ")} (or unset)`,
     });
+  }
+  const fallbackOrgIds = env[CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV]?.trim();
+  if (fallbackOrgIds) {
+    if (!isOrgIdList(fallbackOrgIds)) {
+      problems.push({
+        key: CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV,
+        problem: "must be a comma-separated list of organization uuids",
+      });
+    } else if (!clearinghouseVendor) {
+      problems.push({
+        key: CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV,
+        problem: `names organizations but ${CLEARINGHOUSE_VENDOR_ENV} is not set`,
+      });
+    }
   }
   for (const { key, rule, when } of REQUIREMENTS) {
     if (when && !when(env)) continue;

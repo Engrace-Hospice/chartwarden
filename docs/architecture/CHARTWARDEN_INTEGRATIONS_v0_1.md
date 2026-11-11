@@ -304,11 +304,11 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 - **Purpose:** Full-integration e-prescribing — patient sync, prescriber roster, NewRx, refills, RxBenefit, medication history; EPCS architecture in place (certification deferred per ADR-006). Custom native React prescribing UI over DoseSpot's 250+ APIs (not iframe).
 - **Direction & protocol:** Bidirectional REST + inbound webhooks.
 - **Operations:** Patient sync (on demographic change), prescriber roster management, NewRx, refill request inbox, RxBenefit, MedicationHistory.
-- **Credential model:** **Per-tenant** DoseSpot clinic registration; credentials vaulted in the M40 per-tenant secret store keyed by `organization_id` (architecture §8(4); the planned `packages/dosespot/credentials` path was never created). Per-prescriber DoseSpot identity linkage maintained in `DoseSpotPrescriber`.
+- **Credential model:** **Per-tenant** DoseSpot clinic registration; the clinic key is sealed under the tenant's M34 key ring in the tenant's own `dosespot_clinic_registration` row (ADR-0111; architecture §8(4); the planned `packages/dosespot/credentials` path was never created, and the M40 secret store is not used), registered through the API by the tenant or a platform operator. The environment is a name, never a URL. Per-prescriber DoseSpot identity linkage maintained in `DoseSpotPrescriber`.
 - **BAA / PHI:** PHI-bearing. BAA required (§5). EPCS adds DEA controlled-substance requirements — out of scope for prod until ADR-006 certification kickoff; data model and architecture ready.
 - **Sandbox vs prod:** DoseSpot staging clinic + sandbox prescribers; synthetic patients only. CI uses recorded fixtures.
 - **Webhooks (inbound):** Script status updates; refill requests. Signature-verified, idempotent (dedup on DoseSpot event/message ID), audited. PHI bodies never logged in clear.
-- **Retry/idempotency:** NewRx is non-idempotent — guarded by idempotency key on `(prescriber, patient, rx_business_key)`. Patient sync is idempotent (upsert). Webhook handlers idempotent.
+- **Retry/idempotency:** NewRx is non-idempotent — guarded by idempotency key on `(prescriber, patient, rx_business_key, order)` (the order is part of it: a replacement order, such as a retransmit or a refill, is its own prescription and never collides with the earlier order's). Patient sync is idempotent (upsert). Webhook handlers idempotent.
 - **Rate-limit posture:** Per-clinic limits — TBD confirm with DoseSpot; adapter paces and respects 429 with backoff. Bulk patient sync throttled.
 - **Failure handling:** `DegradedError` → prescribing UI shows "e-prescribe temporarily unavailable; orders can be drafted and queued." Drafts persist locally; submitted on recovery. Refill inbox shows last-synced state with staleness indicator. SEV-2 if sustained (DR_BCP).
 - **Onboarding:** Module 34 wizard step "DoseSpot certification kickoff" — clinic registration, prescriber enrollment, EPCS deferred toggle.
@@ -348,12 +348,18 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
   `M23_HETS_SUBMITTER_ID`, `M23_HETS_AUTH_TOKEN` or `M23_HETS_CLIENT_CERT_FILE` + `M23_HETS_CLIENT_KEY_FILE`,
   `M23_HETS_USAGE`, `M23_HETS_TIMEOUT_MS`. The `sandbox` transport answers with synthetic 271 fixtures and is
   refused when `NODE_ENV=production`.
-- **Clearinghouse binding (ADR-0053 D3):** the platform selects ONE `ClearinghouseTransport` (created and logged at boot; not yet injected into any
-  consumer, which is the Stedi-transport work) through the
-  `CLEARINGHOUSE_VENDOR` env var (`stedi` | `direct_mac`; `in_memory` is a test double refused in production).
-  Unset = unbound: every call answers `CH_NOT_WIRED`. A vendor with no adapter registered in the build throws at
-  boot, and `check:boot:platform` asserts the `Clearinghouse binding:` log line. The vendor credential lives in the
-  platform environment, never per tenant or per ProviderEntity.
+- **Clearinghouse binding (ADR-0053 D3, amended 2026-11-06):** the clearinghouse is a **per-tenant choice**, not one platform vendor.
+  Each tenant chooses `stedi`, `claimmd` or `outside` ("bills outside ChartWarden") and holds its OWN vendor account: its credential is
+  sealed in `tenant_clearinghouse_config` (AES-256-GCM under a per-tenant HKDF key derived from the existing M24 credential KEK, the AAD
+  binding organization, vendor and mode; write-only, audit-scrubbed, RLS FORCE, no DELETE), and the backend resolves a transport PER
+  ORGANIZATION (`ClearinghouseBinding.forOrg`), bound to that organization so a call naming another is refused. A tenant-held vendor
+  account needs the tenant's own vendor BAA, recorded by the tenant and verified by a platform operator, before it may go `active`.
+  The `CLEARINGHOUSE_VENDOR` env var (`stedi` | `claimmd` | `direct_mac`; `in_memory` is a test double refused in production) remains
+  as the platform's OWN account and serves ONLY the organizations named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (the demo tenants) while
+  they have no row of their own. An organization with no live clearinghouse resolves UNBOUND (`not_chosen`, `not_active` or `outside`):
+  nothing is sent for it and the legacy launch-gateway ports are never the fallback; its claim, NOE, NOTR and transfer-notice work is held (a held notice alerts critical) and its acknowledgment and 835 pulls skip until it finishes setup, in every claims-billing enforcement mode (ops runbook §8.6 has the cutover).
+  `check:boot:platform` asserts the `Clearinghouse binding:` log line. Platform-level: the X12 generation gateway, `CLEARINGHOUSE_PAYER_ID`
+  and the Claim.MD webhook intake (the PLATFORM account's HMAC key only: a tenant's own Claim.MD account does not deliver through it).
 - **Request (CG §7.3, Appendix A):** MBI + last name + first name + DOB in 2100C (no middle name/gender —
   those draw a 999), 2100B = the hospice NPI, `DTP*291` service date(s) within 4 years back / 4 months
   ahead, `EQ*30^45` (STC 45 is what makes HETS return the hospice section).

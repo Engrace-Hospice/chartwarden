@@ -41,11 +41,14 @@ export class BaaRegisterRepository {
   async listByTenantAccountId(
     tenantAccountId: string,
   ): Promise<readonly schema.PlatformTenantBaaRecord[]> {
-    return this.db
-      .select()
-      .from(B)
-      .where(eq(B.tenantAccountId, tenantAccountId))
-      .orderBy(desc(B.executedOn));
+    return (
+      this.db
+        .select()
+        .from(B)
+        .where(eq(B.tenantAccountId, tenantAccountId))
+        // `id` breaks ties (all-undated registers), so this order is the register list's and pickGoverningBaa's fallback is stable
+        .orderBy(desc(B.executedOn), desc(B.id))
+    );
   }
 
   /** BAA records by status (e.g. all `pending` awaiting execution). */

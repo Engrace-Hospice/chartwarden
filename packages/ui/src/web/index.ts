@@ -58,9 +58,14 @@ export { classifyRead, settleRead } from "./components/read-status";
 export type { NotFoundMeaning, ReadStatus } from "./components/read-status";
 export { LoadingSpinner } from "./components/loading-spinner";
 export type { LoadingSpinnerProps } from "./components/loading-spinner";
+export { TableScroll } from "./components/table-scroll";
 export { FormSection } from "./components/form-section";
 export type { FormSectionProps } from "./components/form-section";
 export { SelectField, TextAreaField, TextField } from "./components/fields";
+export { StatGrid } from "./components/stat-grid";
+export type { StatGridProps } from "./components/stat-grid";
+export { UnstyledList } from "./components/unstyled-list";
+export type { UnstyledListProps } from "./components/unstyled-list";
 export type {
   SelectFieldProps,
   SelectOption,
@@ -71,7 +76,12 @@ export { NavLink } from "./components/nav-link";
 export { CountBadge, FlagChip, InfoRows, Panel } from "./components/panel";
 export type { InfoRow, PanelProps } from "./components/panel";
 export type { NavLinkProps } from "./components/nav-link";
-export { StepUpCard, safeReturnTo } from "./components/step-up-card";
+export {
+  StepUpCard,
+  isStepUpReturn,
+  safeReturnTo,
+  STEP_UP_RETURN_STATE,
+} from "./components/step-up-card";
 export type { StepUpCardProps } from "./components/step-up-card";
 export {
   ReverifyLink,
@@ -86,11 +96,22 @@ export type { FieldErrors } from "./components/form-validation";
 export {
   STEP_UP_DRAFT_TTL_MS,
   discardStepUpDrafts,
+  peekStepUpDraft,
+  peekStepUpMemoryDraft,
   stashStepUpDraft,
+  stashStepUpMemoryDraft,
   useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "./components/step-up-draft";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";
+// Wizard kit (2026-11 tenant onboarding): the step rail, "what settles this step", and the prompt every platform write goes through
+export { StepRail } from "./components/step-rail";
+export type { StepRailItem, StepRailProps, StepRailState } from "./components/step-rail";
+export { FactList } from "./components/fact-list";
+export type { Fact, FactListProps, FactState } from "./components/fact-list";
+export { ReasonDialog } from "./components/reason-dialog";
+export type { ReasonDialogProps, ReasonDialogRecordLine } from "./components/reason-dialog";
 export { WorkflowStepper } from "./components/workflow-stepper";
 export type {
   WorkflowStep,
@@ -150,6 +171,7 @@ export type { ModalProps } from "./system/modal";
 export { interactiveRowProps } from "./system/interactive-row";
 export type { InteractiveRowProps } from "./system/interactive-row";
 export { ToastProvider, useOptionalToast, useToast } from "./system/toast";
+export { useRestoreFocus } from "./hooks/use-restore-focus";
 export { useDrawerA11y } from "./hooks/use-drawer-a11y";
 export type { DrawerA11yProps } from "./hooks/use-drawer-a11y";
 export { DEFAULT_DEBOUNCE_MS, useDebouncedValue } from "./hooks/use-debounced-value";
@@ -158,6 +180,8 @@ export type { OffCanvasNav } from "./hooks/use-off-canvas-nav";
 export { useDisclosureDismiss } from "./hooks/use-disclosure-dismiss";
 export { useRequestGuard } from "./hooks/use-request-guard";
 export { STALE_SELECTION_MESSAGE, useStaleSelection } from "./hooks/use-stale-selection";
+export { useSelectionParam } from "./hooks/use-selection-param";
+export type { SelectionParam } from "./hooks/use-selection-param";
 export type { StaleSelectionOptions } from "./hooks/use-stale-selection";
 export type { ToastContextValue, ToastOptions, ToastTone } from "./system/toast";
 

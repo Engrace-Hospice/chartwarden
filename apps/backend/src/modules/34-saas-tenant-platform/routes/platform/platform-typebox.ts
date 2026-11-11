@@ -13,8 +13,10 @@ import { ValidationError } from "@chartwarden/types";
 // `transitionReason`; provision/offboard/shred/dek-rotate carry the §4.2 inputs the worker job consumes.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { OnboardingReasonSchema } from "./onboarding-data-typebox";
 import type {
   BaaRecordView as ServiceBaaRecordView,
+  BaaRegisterListItem as ServiceBaaRegisterListItem,
   FeatureFlagView as ServiceFeatureFlagView,
   KeyRingMetadataView as ServiceKeyRingMetadataView,
   OnboardingTemplateView as ServiceOnboardingTemplateView,
@@ -104,7 +106,8 @@ export const ProvisionTenantRequest = Type.Object({
   breachNotificationContactEmail: Type.String({ format: "email" }),
   firstAdminEmail: Type.String({ format: "email" }),
   firstAdminFullName: Type.String({ minLength: 1, maxLength: 200 }),
-  planLabel: lit(PLAN_LABEL),
+  /** Retired flat tier. Optional: the real plan is a census-banded contract signed at onboarding step 2. */
+  planLabel: Type.Optional(lit(PLAN_LABEL)),
 });
 
 // §4.2 — POST /platform/tenants/:orgSlug/status. The eleven-state machine guards apply server-side.
@@ -151,6 +154,8 @@ export const UpsertOnboardingTemplateRequest = Type.Object({
   canonicalOrder: Type.Integer({ minimum: 0, maximum: 1000 }),
   // `is_canonical=true` is migration-only (§4.1); the route refuses to set it (literal false).
   isCanonical: Type.Optional(Type.Literal(false)),
+  // The step catalog is shown in EVERY tenant's wizard: a change to it names its operator and says why (screened for patient identifiers).
+  reason: OnboardingReasonSchema.properties.reason,
 });
 
 // §4.1 — support sessions (F01/D8/D16). Start references a consent grant (the actor + org are server-
@@ -241,6 +246,8 @@ export const TenantListQuerySchema = Type.Object({
 
 export const InvitationListQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ maxLength: 64 })),
+  /** Narrow to one tenant's invitations (the onboarding wizard's first-admin step). */
+  tenantAccountId: Type.Optional(Type.String({ format: "uuid" })),
   ...PageQuery,
 });
 
@@ -293,7 +300,28 @@ const CursorPageOf = <T extends TSchema>(item: T) =>
     hasMore: Type.Boolean(),
   });
 
-const TenantSummaryViewSchema = Type.Object({
+/** Where a tenant is in the wizard whatever its status: `live` for an active tenant, `closed` once it is past onboarding. */
+export const OnboardingProgressViewSchema = Type.Object({
+  doneCount: Type.Integer({ description: "Gating steps that are done or skipped." }),
+  totalCount: Type.Integer({
+    description:
+      "Gating steps in the wizard: canonical, not optional, not retired (the go-live step included).",
+  }),
+  currentStepKey: Type.Union([Type.String(), Type.Null()]),
+  currentStepTitle: Type.Union([Type.String(), Type.Null()], {
+    description:
+      "The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step.",
+  }),
+  goLiveState: Type.Union([
+    Type.Literal("not_ready"),
+    Type.Literal("awaiting_attestation"),
+    Type.Literal("awaiting_approval"),
+    Type.Literal("live"),
+    Type.Literal("closed"),
+  ]),
+});
+
+export const TenantSummaryViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   orgSlug: Type.String(),
@@ -302,6 +330,7 @@ const TenantSummaryViewSchema = Type.Object({
   planLabel: Type.String(),
   createdAt: Type.String({ format: "date-time" }),
   updatedAt: Type.String({ format: "date-time" }),
+  onboardingProgress: Type.Union([OnboardingProgressViewSchema, Type.Null()]),
 });
 export const TenantListResponseSchema = CursorPageOf(TenantSummaryViewSchema);
 
@@ -376,7 +405,19 @@ export const BaaRecordViewSchema = Type.Object({
   documentId: Type.Union([Type.String(), Type.Null()]),
   attestedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
 });
-export const BaaRegisterListResponseSchema = CursorPageOf(BaaRecordViewSchema);
+/** A register list row: the record plus what go-live judges of it (the governing record, and whether its document verifies). */
+export const BaaRegisterListItemSchema = Type.Object({
+  ...BaaRecordViewSchema.properties,
+  governing: Type.Boolean({
+    description:
+      "True on the record go-live and onboarding step 3 judge for its tenant (an undated termination, else the newest dated record).",
+  }),
+  documentFiled: Type.Union([Type.Boolean(), Type.Null()], {
+    description:
+      "On the governing record: whether its documentId is a signed BAA filed for this tenant (false with no link). Null on any other record.",
+  }),
+});
+export const BaaRegisterListResponseSchema = CursorPageOf(BaaRegisterListItemSchema);
 
 /**
  * A tenant-export job as the platform-ops list renders it (GAP-098). `heldForOversizedApproval` is
@@ -425,6 +466,7 @@ export const TenantOverviewViewSchema = Type.Object({
   planLabel: Type.String(),
   createdAt: Type.String({ format: "date-time" }),
   updatedAt: Type.String({ format: "date-time" }),
+  onboardingProgress: Type.Union([OnboardingProgressViewSchema, Type.Null()]),
   latestStatusEvent: Type.Union([
     Type.Object({
       id: Type.String(),
@@ -567,6 +609,7 @@ type _SessionEvent = Conforms<
 >;
 type _Intent = Conforms<Static<typeof SignupIntentViewSchema>, ServiceSignupIntentView>;
 type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
+type _BaaListItem = Conforms<Static<typeof BaaRegisterListItemSchema>, ServiceBaaRegisterListItem>;
 type _Flag = Conforms<Static<typeof FeatureFlagViewSchema>, ServiceFeatureFlagView>;
 type _ExportJob = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
 

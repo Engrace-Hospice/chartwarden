@@ -9,16 +9,15 @@ import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
 } from "../../../bootstrap/onboarding-credential-port";
-import type { M24WriteActor } from "./actor";
+import type { M24Actor } from "./actor";
 import { UpsertCredentialBody, parse } from "./m24-typebox";
 import type { M24ReadService } from "./read-service";
 import type { M24WriteService } from "./write-service";
 
-const actorFor = (scope: OnboardingWriteScope): M24WriteActor => ({
+const actorFor = (scope: OnboardingWriteScope): M24Actor => ({
   organizationId: scope.organizationId,
   userId: scope.operatorUserId,
   roles: scope.operatorRoles,
-  stepUpRecent: scope.stepUpRecent,
 });
 
 export function buildMedicaidOnboardingCredentialPort(deps: {

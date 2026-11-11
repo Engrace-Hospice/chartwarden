@@ -119,6 +119,27 @@ function setup(
   return { far, deps, cursors, ingest };
 }
 
+describe("pullRemittances and the payer route", () => {
+  it("asks for a context without the payer route (a remittance feed is not addressed to a payer)", async () => {
+    const { deps } = setup();
+    const asked: unknown[] = [];
+    await pullRemittances(
+      {
+        ...deps,
+        contexts: {
+          ...deps.contexts,
+          contextFor: async (_org: string, _pe: string, options?: unknown) => {
+            asked.push(options);
+            return ctx;
+          },
+        },
+      },
+      ORG,
+    );
+    expect(asked).toEqual([{ payerRoute: "skip" }]);
+  });
+});
+
 describe("pullRemittances", () => {
   it("pages the feed, stages every file through receiveAdvice and persists the cursor", async () => {
     const { far, deps, cursors, ingest } = setup();
@@ -381,5 +402,210 @@ describe("pullRemittances", () => {
 
     expect(result.failures).toHaveLength(1);
     expect(cursors.current()).toBe("0");
+  });
+});
+
+describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendment 2026-11-06)", () => {
+  const ORG_B = "00000000-0000-4000-8000-0000000000b2";
+  const scopeB = { ...DEFAULT_SCOPE, organizationId: ORG_B };
+
+  function perOrg(
+    bindings: Record<
+      string,
+      {
+        transport: InMemoryClearinghouse;
+        vendor: string | null;
+        account?: "tenant";
+        unboundReason?: string;
+      }
+    >,
+    onRevokedSkipped?: (organizationId: string) => Promise<void>,
+  ) {
+    const cursors = cursorStore();
+    const ingest = ingestDouble();
+    const resolved: string[] = [];
+    const deps = {
+      forOrg: async (organizationId: string) => {
+        resolved.push(organizationId);
+        const binding = bindings[organizationId];
+        if (!binding) throw new Error("no such organization");
+        return binding;
+      },
+      contexts: {
+        providerEntitiesFor: async () => [PE],
+        contextFor: async (organizationId: string) => ({ ...ctx, organizationId }),
+      },
+      payers: { medicarePayerId: async () => PAYER },
+      cursors: cursors.store,
+      ingest: ingest.ingest,
+      ...(onRevokedSkipped ? { onRevokedSkipped } : {}),
+    };
+    return { deps, ingest, cursors, resolved };
+  }
+
+  it("says so when it skips an organization whose BAA was revoked (responses may still be owed): once per call, and only for that reason", async () => {
+    const reported: string[] = [];
+    const idle = new InMemoryClearinghouse();
+    const { deps } = perOrg(
+      {
+        [ORG]: { transport: idle, vendor: null, unboundReason: "baa_revoked" },
+        [ORG_B]: { transport: idle, vendor: null, unboundReason: "not_active" },
+      },
+      async (organizationId) => void reported.push(organizationId),
+    );
+
+    const revoked = await pullRemittances(deps, ORG);
+    const draft = await pullRemittances(deps, ORG_B);
+
+    expect(revoked).toMatchObject({ queued: 0, failures: [] }); // still a skip, not a failure
+    expect(draft).toMatchObject({ queued: 0, failures: [] });
+    expect(reported).toEqual([ORG]); // a draft config is not reported: nothing was ever owed
+  });
+
+  it("a failing report never stops the pull or fails the tick", async () => {
+    const { deps } = perOrg(
+      {
+        [ORG]: {
+          transport: new InMemoryClearinghouse(),
+          vendor: null,
+          unboundReason: "baa_revoked",
+        },
+      },
+      async () => {
+        throw new Error("alert router down");
+      },
+    );
+
+    await expect(pullRemittances(deps, ORG)).resolves.toMatchObject({ failures: [] });
+  });
+
+  it("reads each organization's remittances from its OWN clearinghouse, under its own vendor", async () => {
+    const farA = new InMemoryClearinghouse();
+    const farB = new InMemoryClearinghouse();
+    await farA.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    await farB.control.deliverRemittance("ERA-B", buildRawEdi("2", "0001"), scopeB);
+    const { deps, ingest } = perOrg({
+      [ORG]: { transport: farA, vendor: "stedi" },
+      [ORG_B]: { transport: farB, vendor: "claimmd" },
+    });
+
+    const a = await pullRemittances(deps, ORG);
+    const b = await pullRemittances(deps, ORG_B);
+
+    expect(a).toMatchObject({ queued: 1, failures: [] });
+    expect(b).toMatchObject({ queued: 1, failures: [] });
+    expect(ingest.received.map((r) => r.minioObjectKey)).toEqual([
+      "clearinghouse/stedi/ERA-A",
+      "clearinghouse/claimmd/ERA-B",
+    ]);
+  });
+
+  it("keeps each organization's cursor under its own vendor", async () => {
+    const farA = new InMemoryClearinghouse();
+    const farB = new InMemoryClearinghouse();
+    await farA.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    await farB.control.deliverRemittance("ERA-B", buildRawEdi("2", "0001"), scopeB);
+    const { deps, cursors } = perOrg({
+      [ORG]: { transport: farA, vendor: "stedi" },
+      [ORG_B]: { transport: farB, vendor: "claimmd" },
+    });
+
+    await pullRemittances(deps, ORG);
+    await pullRemittances(deps, ORG_B);
+
+    const key = (organizationId: string, vendor: string): RemittanceCursorKey => ({
+      organizationId,
+      providerEntityId: PE,
+      vendor,
+      usage: "test",
+    });
+    expect(await cursors.store.get(key(ORG, "stedi"))).toBe("1");
+    expect(await cursors.store.get(key(ORG_B, "claimmd"))).toBe("1");
+    expect(await cursors.store.get(key(ORG, "claimmd"))).toBeNull();
+  });
+
+  // An org that moves from the platform's account to its OWN account of the same vendor must not reuse the platform's position
+  // (a different id space): a tenant account's cursor key is kept apart.
+  it("keeps a tenant account's cursor apart from the platform account's for the same vendor", async () => {
+    const far = new InMemoryClearinghouse();
+    await far.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    const { deps, cursors } = perOrg({
+      [ORG]: { transport: far, vendor: "claimmd", account: "tenant" },
+    });
+
+    await pullRemittances(deps, ORG);
+
+    const key = (vendor: string): RemittanceCursorKey => ({
+      organizationId: ORG,
+      providerEntityId: PE,
+      vendor,
+      usage: "test",
+    });
+    expect(await cursors.store.get(key("claimmd@tenant"))).toBe("1");
+    expect(await cursors.store.get(key("claimmd"))).toBeNull();
+  });
+
+  it("skips an organization with no clearinghouse (no call, no failure) while another still pulls", async () => {
+    const far = new InMemoryClearinghouse();
+    await far.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    let touched = 0;
+    const idle = new InMemoryClearinghouse();
+    const spy = new Proxy(idle, {
+      get: (target, prop, receiver) => {
+        touched += 1;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const { deps, ingest } = perOrg({
+      [ORG]: { transport: far, vendor: "stedi" },
+      [ORG_B]: { transport: spy, vendor: null },
+    });
+
+    const none = await pullRemittances(deps, ORG_B);
+    const bound = await pullRemittances(deps, ORG);
+
+    expect(none).toEqual({
+      queued: 0,
+      duplicates: 0,
+      unsupported: 0,
+      quarantined: [],
+      failures: [],
+    });
+    expect(touched).toBe(0);
+    expect(bound).toMatchObject({ queued: 1, failures: [] });
+    expect(ingest.received).toHaveLength(1);
+  });
+
+  it("reports an organization whose binding cannot be resolved as a failure, with the error CLASS (never its text), and does not throw", async () => {
+    const { deps } = perOrg({});
+
+    const result = await pullRemittances(deps, ORG);
+
+    // a plain failure names its class; the cause text (which could carry anything) is never copied
+    expect(result.failures).toEqual([
+      `org ${ORG}: clearinghouse binding could not be resolved (Error)`,
+    ]);
+  });
+
+  it("names the typed code when the resolver refused with one (an unreadable credential)", async () => {
+    const { ChartWardenError } = await import("@chartwarden/types");
+    const { deps } = perOrg({});
+    const typed = {
+      ...deps,
+      forOrg: async () => {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+          "secret-looking text sk_live_NOT_TO_LEAK",
+          503,
+        );
+      },
+    };
+
+    const result = await pullRemittances(typed as never, ORG);
+
+    expect(result.failures).toEqual([
+      `org ${ORG}: clearinghouse binding could not be resolved (CLEARINGHOUSE_CREDENTIAL_UNREADABLE)`,
+    ]);
+    expect(JSON.stringify(result)).not.toContain("sk_live");
   });
 });

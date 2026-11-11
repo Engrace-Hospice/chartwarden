@@ -433,7 +433,7 @@ export interface CollaboratorScope {
   readonly sessionTtlSec?: number;
   /** Redemptions spent including this one (durable store only). */
   readonly useCount?: number;
-  /** The funeral_home entity a funeral link was minted for (durable store; absent only on revoked legacy links before migration 1455). */
+  /** The funeral_home entity a funeral link was minted for (durable store; absent only on revoked legacy links before migration 1479). */
   readonly funeralHomeEntityId?: string;
 }
 
@@ -473,9 +473,15 @@ export interface CollaboratorLinkStore {
   release?(scope: { organizationId: string; linkId: string }): Promise<void>;
   /** Revoke ONE link (durable store only), e.g. when its token could not be delivered. Idempotent and org-scoped. */
   revoke(scope: { organizationId: string; linkId: string }): Promise<void>;
+  /** Revoke the live funeral credential minted by one M36 disclosure attempt, plus a pinned id when known. */
+  revokeForDisclosureAttempt?(scope: {
+    organizationId: string;
+    disclosureAttemptId: string;
+    linkId?: string;
+  }): Promise<number>;
   /**
    * The funeral link a redeemed session belongs to (durable store only): its id and the funeral home whose BAA was checked at mint (null on a
-   * revoked legacy link minted before migration 1455). Null when no such active link. Lets a funeral-home session read re-check the BAA.
+   * revoked legacy link minted before migration 1479). Null when no such active link. Lets a funeral-home session read re-check the BAA.
    */
   funeralLinkForPrincipal?(scope: {
     organizationId: string;

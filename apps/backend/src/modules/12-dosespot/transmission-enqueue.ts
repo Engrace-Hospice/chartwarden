@@ -2,8 +2,8 @@
 //
 // A signed order whose tenant has a BOUND DoseSpot adapter and that CAN be e-prescribed (an RxCUI and a structured
 // sig) is queued for transmission INSTEAD of being activated locally: the D8 idempotency key is computed, the
-// `medication_order_transmission` row is inserted (first-call-wins on `(organization_id, idempotency_key)`, so a
-// double-sign re-uses the existing row), the order moves to `queued_for_transmission` / `dosespot_send_state='queued'`
+// `medication_order_transmission` row is inserted (first-call-wins on `(organization_id, idempotency_key)`, and the key names the ORDER, so a
+// double-sign of the same order re-uses its row while a replacement order gets its own), the order moves to `queued_for_transmission` / `dosespot_send_state='queued'`
 // and `m12.medication_order.queued_for_transmission` is published, all in the caller's transaction. Returns `false`
 // (touching nothing) when the order is not transmittable, so the F-058 local activation runs unchanged.
 import { randomUUID } from "node:crypto";
@@ -53,6 +53,7 @@ export async function enqueueTransmissionIfBound(
     prescriberMembershipId: row.prescriberMembershipId,
     patientId: row.patientId,
     rxBusinessKey,
+    medicationOrderId: row.id,
   });
   transitionMedicationOrder("signed", { type: "enqueueTransmission", isSystemActor: true });
   const plan = planTransmissionEnqueue({
@@ -61,18 +62,34 @@ export async function enqueueTransmissionIfBound(
     rxBusinessKey,
     correlationId: randomUUID(),
   });
-  const inserted = await tx
-    .insert(MOT)
-    .values({ organizationId, ...plan.insert })
-    .onConflictDoNothing()
-    .returning({ id: MOT.id });
-  let transmissionId = inserted[0]?.id;
+  // The order's own row first, whatever key it carries now: a registration move replaces a waiting transmission's key, and a second sign that read the
+  // order before the first committed (the sign path reads it without a lock) would otherwise find no row under the deterministic key it computes and
+  // insert a second one for the same order. The unique index on the key still serialises two signs that both find none.
+  const [ofThisOrder] = await tx
+    .select({ id: MOT.id })
+    .from(MOT)
+    .where(and(eq(MOT.organizationId, organizationId), eq(MOT.medicationOrderId, row.id)))
+    .limit(1);
+  const inserted =
+    ofThisOrder === undefined
+      ? await tx
+          .insert(MOT)
+          .values({ organizationId, ...plan.insert })
+          .onConflictDoNothing()
+          .returning({ id: MOT.id })
+      : [];
+  let transmissionId = ofThisOrder?.id ?? inserted[0]?.id;
   if (transmissionId === undefined) {
     const [existing] = await tx
-      .select({ id: MOT.id })
+      .select({ id: MOT.id, medicationOrderId: MOT.medicationOrderId })
       .from(MOT)
       .where(and(eq(MOT.organizationId, organizationId), eq(MOT.idempotencyKey, idempotencyKey)))
       .limit(1);
+    // the key names this order, so a row under it is this order's (a racing second sign). A row that is another order's would leave this one
+    // queued with no row of its own, which the worker never picks up: refuse loudly instead of queuing it.
+    if (existing !== undefined && existing.medicationOrderId !== row.id) {
+      throw new Error("transmission row under this idempotency key belongs to another order");
+    }
     transmissionId = existing?.id;
   }
   if (transmissionId === undefined) throw new Error("transmission row missing after enqueue");

@@ -67,7 +67,7 @@ describe("the commit tracker survives a body that arrives in later socket chunks
       };
     });
     applyErrorHandler(app);
-    applyIdempotency(app, createInMemoryIdempotencyStore());
+    applyIdempotency(app, createInMemoryIdempotencyStore(), { hmacKey: "socket-test-key" });
     app.post("/write", async (req, reply) => {
       runs += 1;
       sawTracker.push(currentCommitTracker() !== undefined);

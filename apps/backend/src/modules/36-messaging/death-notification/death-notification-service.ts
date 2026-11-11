@@ -21,6 +21,7 @@ import {
   type DeathNotificationSendOutcome,
   NotFoundError,
 } from "@chartwarden/types";
+import { FuneralLinkIssueError } from "@chartwarden/types";
 import type { DeathBoardActor } from "../death-board/death-board-service";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
@@ -47,17 +48,7 @@ export type FuneralRefusalReason =
   /** The actor is not on the decedent's caseload (the route's ABAC refused before any send). */
   | "caseload_denied";
 
-/** Adapter failure classification: only a confirmed revocation makes the notification safely retryable. */
-export class FuneralLinkIssueError extends Error {
-  constructor(
-    message: string,
-    readonly revocationConfirmed: boolean,
-    readonly reason: "no_baa" | "other" = "other",
-  ) {
-    super(message);
-    this.name = "FuneralLinkIssueError";
-  }
-}
+export { FuneralLinkIssueError } from "@chartwarden/types";
 
 export interface FuneralLinkPort {
   /**

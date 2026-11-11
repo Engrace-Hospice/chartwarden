@@ -17,11 +17,13 @@ import {
 } from "@chartwarden/tenancy";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
+import { governingBaaDocumentFiled } from "../routes/platform/baa-guards";
 import {
   lockTenantOnboardingExclusive,
   lockTenantOnboardingShared,
 } from "../routes/platform/tenant-onboarding-lock";
 import { voidPendingGoLiveForDataChange as voidPendingGoLive } from "./go-live-void";
+import { SYSTEM_MEMBERSHIP_ID } from "./model";
 import type {
   CompletionMode,
   GoLiveAttestation,
@@ -56,7 +58,7 @@ const K = schema.onboardingTask;
 const G = schema.tenantGoLiveAttestation;
 const A = schema.tenantAccount;
 
-const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => ({
+export const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => ({
   key: row.key,
   title: row.displayLabel,
   description: row.description,
@@ -67,7 +69,7 @@ const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => ({
   canonical: row.isCanonical,
 });
 
-const toTask = (row: schema.OnboardingTask): StepTask => ({
+export const toTask = (row: schema.OnboardingTask): StepTask => ({
   id: row.id,
   templateKey: row.templateKey,
   status: row.status as TaskStatus,
@@ -87,9 +89,13 @@ const toTask = (row: schema.OnboardingTask): StepTask => ({
       ? ((row.completionEvidence as { skip?: { rationale?: string } } | null)?.skip?.rationale ??
         null)
       : null,
+  skippedBySystem:
+    row.status === "skipped" &&
+    (row.completionEvidence as { skip?: { skippedByMembershipId?: string } } | null)?.skip
+      ?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID,
 });
 
-const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
+export const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
   id: row.id,
   tenantAccountId: row.tenantAccountId,
   status: row.status,
@@ -111,8 +117,24 @@ const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
 const dateOnly = (v: string | Date | null): string | null =>
   v === null ? null : typeof v === "string" ? v : v.toISOString().slice(0, 10);
 
+/** M22's check that a document is a signed BAA filed for an organization, on the store's transaction. */
+export type BaaDocumentFiledCheck = (
+  tx: DbClient,
+  ref: { readonly organizationId: string; readonly documentId: string },
+) => Promise<boolean>;
+
+/** M22's read of who uploaded a filed signed BAA (the document's creator membership), on the store's transaction; null when it is not one. */
+export type BaaDocumentUploaderCheck = (
+  tx: DbClient,
+  ref: { readonly organizationId: string; readonly documentId: string },
+) => Promise<string | null>;
+
 export function createDrizzleWizardStore(
   tx: DbClient,
+  /** Required: go-live rests on the governing BAA's document, and a store without the check would judge the status alone. */
+  baaDocumentFiled: BaaDocumentFiledCheck,
+  /** Required: go-live approval is refused to the operator who uploaded the signed agreement, which only this read can tell. */
+  baaDocumentUploader: BaaDocumentUploaderCheck,
   activation?: WizardActivation,
   orgProfileFor?: OrgProfilePortFor,
 ): WizardStore {
@@ -221,15 +243,38 @@ export function createDrizzleWizardStore(
     async latestBaa(tenantAccountId) {
       const rows = await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId);
       const baa = pickGoverningBaa(rows);
-      return baa
-        ? {
-            baaStatus: baa.baaStatus,
-            expiresOn: dateOnly(baa.expiresOn),
-            documentId: baa.documentId,
-            recordedByUserId: baa.recordedByUserId,
-            updatedByUserId: baa.updatedByUserId,
-          }
-        : undefined;
+      // Go-live judges the governing BAA's document too: an executed status over a link that does not verify is not an executed BAA.
+      if (!baa) return undefined;
+      const documentFiled = await governingBaaDocumentFiled(baa, (ref) =>
+        baaDocumentFiled(tx, ref),
+      );
+      const documentUploadedByMembershipId =
+        documentFiled && baa.documentId !== null
+          ? await baaDocumentUploader(tx, {
+              organizationId: baa.organizationId,
+              documentId: baa.documentId,
+            })
+          : null;
+      // The user behind the uploader's membership, by id whatever its status (a revoked row still names its user). The platform carrier
+      // reads `membership` (table-wide SELECT); on a tenant connection the operator's home-org row is not visible and this is null.
+      const [uploader] =
+        documentUploadedByMembershipId === null
+          ? []
+          : await tx
+              .select({ userId: schema.memberships.userId })
+              .from(schema.memberships)
+              .where(eq(schema.memberships.id, documentUploadedByMembershipId))
+              .limit(1);
+      return {
+        baaStatus: baa.baaStatus,
+        expiresOn: dateOnly(baa.expiresOn),
+        documentId: baa.documentId,
+        documentFiled,
+        documentUploadedByMembershipId,
+        documentUploadedByUserId: uploader?.userId ?? null,
+        recordedByUserId: baa.recordedByUserId,
+        updatedByUserId: baa.updatedByUserId,
+      };
     },
     async setComplianceOfficer(tenantAccountId, membershipId) {
       await tx
@@ -330,13 +375,25 @@ export interface DrizzleWizardRunnerDeps {
   readonly activation: WizardActivation;
   /** The org-profile write, bound to the wizard's own transaction so the status check, the write and the void share it. */
   readonly orgProfileFor: OrgProfilePortFor;
+  /** M22's check of the governing BAA's document, on the wizard's own transaction (the go-live guard rests on it). REQUIRED. */
+  readonly baaDocumentFiled: BaaDocumentFiledCheck;
+  /** M22's read of who uploaded that document (the approver may not be them). REQUIRED. */
+  readonly baaDocumentUploader: BaaDocumentUploaderCheck;
 }
 
 export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): WizardRunner {
   return {
     inTenant: (actor, organizationId, fn) =>
       withOrgContext(deps.db, { organizationId, userId: actor.userId }, (tx) =>
-        fn(createDrizzleWizardStore(tx as unknown as DbClient, undefined, deps.orgProfileFor)),
+        fn(
+          createDrizzleWizardStore(
+            tx as unknown as DbClient,
+            deps.baaDocumentFiled,
+            deps.baaDocumentUploader,
+            undefined,
+            deps.orgProfileFor,
+          ),
+        ),
       ),
     inPlatform: <T>(reason: string, fn: (store: WizardStore) => Promise<T>, actorUserId?: string) =>
       withPlatformContext<DbClient, T>(
@@ -348,7 +405,14 @@ export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): Wizard
           // actor_user_id, so the operator who made them would be nameless in the trail.
           if (actorUserId)
             await tx.execute(sql`SELECT set_config('app.user_id', ${actorUserId}, true)`);
-          return fn(createDrizzleWizardStore(tx, deps.activation));
+          return fn(
+            createDrizzleWizardStore(
+              tx,
+              deps.baaDocumentFiled,
+              deps.baaDocumentUploader,
+              deps.activation,
+            ),
+          );
         },
       ),
   };

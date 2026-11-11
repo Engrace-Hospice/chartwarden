@@ -1310,6 +1310,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dosespot-prescribers/{membershipId}/dosespot-enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the prescriber must first have confirmed the linked record themself (409 DOSESPOT_PRACTITIONER_UNCONFIRMED); a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a registration move to another clinic while the vendor call ran is 409 DOSESPOT_REGISTRATION_MOVED (nothing is linked: enrol again under the new registration); a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dosespot-prescribers/{membershipId}/enroll": {
         parameters: {
             query?: never;
@@ -1319,7 +1336,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Enroll a prescriber into DoseSpot; Idempotency-Key required */
+        /** Put a member on the prescriber roster and link them to a physician record (externalPhysicianMdmId). The acting administrator is recorded as the link's asserter: the linked member cannot confirm a link they made themself (409 DOSESPOT_LINK_SELF_CONFIRM on the confirmation); re-saving a link that has no recorded maker records the acting administrator as its maker. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdEnroll"];
         delete?: never;
         options?: never;
@@ -1336,7 +1353,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a prescriber; Idempotency-Key required */
+        /** Revoke a prescriber from the roster (their link confirmation goes with it). prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdRevoke"];
         delete?: never;
         options?: never;
@@ -6497,6 +6514,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claims/in-doubt-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Medicare submissions whose transport outcome requires investigation */
+        get: operations["getApiV1BillingClaimsIndoubtsubmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/clearinghouse-attempts/resolve": {
         parameters: {
             query?: never;
@@ -6662,6 +6696,23 @@ export interface paths {
         put?: never;
         /** Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract. */
         post: operations["postApiV1BillingCommercialClaimsByIdCorrectionsClearinghouserejection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/payment-reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the commercial claim's remittance reconciliation within the caller's claim caseload */
+        get: operations["getApiV1BillingCommercialClaimsByIdPaymentreconciliation"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6973,6 +7024,23 @@ export interface paths {
         head?: never;
         /** Set what stale or missing eligibility does for a plan: `warn` (default) or `block`, and how many days (1 to 365; default 30) make a check stale (commercial_billing.manage_enrollment + a fresh step-up, because relaxing it weakens a billing control; Idempotency-Key required) */
         patch: operations["patchApiV1BillingCommercialPayerplansByIdEligibilitypolicy"];
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/submissions/in-doubt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List commercial submissions whose transport outcome requires investigation */
+        get: operations["getApiV1BillingCommercialSubmissionsIndoubt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/billing/dde-items": {
@@ -7360,6 +7428,109 @@ export interface paths {
         };
         /** Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38) */
         get: operations["getApiV1BillingMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List billing operations investigations within the caller's authorized provider-entity scope */
+        get: operations["getApiV1BillingOperationsInvestigations"];
+        put?: never;
+        /** Open a billing operations investigation for a durable submission attempt */
+        post: operations["postApiV1BillingOperationsInvestigations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a billing operations investigation and its source evidence */
+        get: operations["getApiV1BillingOperationsInvestigationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign or unassign a billing operations investigation */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdAssignment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add an operator note to a billing operations investigation */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdNotes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/{id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition a billing operations investigation */
+        post: operations["postApiV1BillingOperationsInvestigationsByIdTransitions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/operations/investigations/investigators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List eligible investigators for a billing submission */
+        get: operations["getApiV1BillingOperationsInvestigationsInvestigators"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15408,6 +15579,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/dosespot-prescriber-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in prescriber's OWN link: the physician record the prescriber roster linked them to, shown with its name and NPI (public provider data), and whether they have confirmed it. prescribing.sign; the session's membership selects the roster row */
+        get: operations["getApiV1MeDosespotprescriberlink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/dosespot-prescriber-link/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); a link the member made themself cannot be confirmed by them (409 DOSESPOT_LINK_SELF_CONFIRM: another roster administrator must link them), nor can a link whose maker was never recorded (409 DOSESPOT_LINK_MAKER_UNKNOWN: a roster administrator must link them again), and the enrolment refuses a link whose linker is its confirmer; 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1MeDosespotprescriberlinkConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/permissions": {
         parameters: {
             query?: never;
@@ -15987,6 +16192,23 @@ export interface paths {
         put?: never;
         /** Move a draft to pending_signature; Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdRequestsignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medication-orders/{id}/resolve-held-transmission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** An organization administrator resolves a medication order HELD because DoseSpot may have acted on its NewRx call but did not confirm the outcome (an unreadable or id-less 2xx, a lost send answer, or a send answered with a 5xx other than 503; the order is in flight and its transmission is marked unconfirmed_outcome; while it is held no worker fails, retries or re-sends it, though the slow original call's own late answer can still end the hold). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED, `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED, and an id another order of the organization already carries is 409 DOSESPOT_PRESCRIPTION_ID_IN_USE (webhooks bind by it); a reason that is under 10 characters once trimmed (it passed the request schema's length only because it was padded with whitespace) is 422 DOSESPOT_REASON_REQUIRED, while one under 10 characters as sent, or nothing but whitespace, is already a 400 from the request schema; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1MedicationordersByIdResolveheldtransmission"];
         delete?: never;
         options?: never;
         head?: never;
@@ -17327,6 +17549,57 @@ export interface paths {
         get: operations["getApiV1MessagingDeathboardsByBoardId"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-boards/{boardId}/funeral-home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send the selected funeral home a BAA-gated death notification */
+        post: operations["postApiV1MessagingDeathboardsByBoardIdFuneralhome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-boards/{boardId}/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the death notifications for a visible coordination board */
+        get: operations["getApiV1MessagingDeathboardsByBoardIdNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-notifications/{notificationId}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Explicitly acknowledge receipt of a death notification */
+        post: operations["postApiV1MessagingDeathnotificationsByNotificationIdAck"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19185,6 +19458,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/noe-records/{id}/record-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the date an organization that bills outside ChartWarden filed the NOE itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker */
+        post: operations["postApiV1NoerecordsByIdRecordexternalfiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/noe-records/{id}/submit": {
         parameters: {
             query?: never;
@@ -19334,6 +19624,23 @@ export interface paths {
         put?: never;
         /** File a corrected NOTR for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
         post: operations["postApiV1NotrrecordsByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notr-records/{id}/record-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the date an organization that bills outside ChartWarden filed the NOTR itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker */
+        post: operations["postApiV1NotrrecordsByIdRecordexternalfiling"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19559,6 +19866,57 @@ export interface paths {
         put?: never;
         /** Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409 */
         post: operations["postApiV1OpsClaimmdErasByInboxIdRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Simulate Claim.MD ERA recovery readiness without mutating source state */
+        post: operations["postApiV1OpsClaimmdErasByInboxIdRecoverydryrun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery-preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assess whether one Claim.MD ERA is eligible for a recovery simulation */
+        get: operations["getApiV1OpsClaimmdErasByInboxIdRecoverypreflight"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/claimmd/observability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read bounded central Claim.MD account operational evidence */
+        get: operations["getApiV1OpsClaimmdObservability"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -20619,6 +20977,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/payers/{payerRowId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void an unclaimed mistaken payer row as an audited empty window (step-up required) */
+        post: operations["postApiV1PatientsByIdPayersByPayerRowIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/privacy": {
         parameters: {
             query?: never;
@@ -21606,7 +21981,7 @@ export interface paths {
         /** Platform onboarding-template catalog (cursor-paginated) */
         get: operations["getApiV1PlatformOnboardingtemplates"];
         put?: never;
-        /** Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only) */
+        /** Add/edit a NON-canonical onboarding template (the step catalog every tenant's wizard shows): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing, and canonical is migration-only (the database refuses the platform credential a canonical row too). onboarding_template.write + the tenant_lifecycle_platform_ops predicate + a fresh step-up; an Idempotency-Key and a `reason` (8-500 characters, screened for patient identifiers) are required, an AI actor is refused. The audit trail names the operator: the row-level trail by actor, and one m34.onboarding_template.upserted event with the operator, the reason and the step */
         post: operations["postApiV1PlatformOnboardingtemplates"];
         delete?: never;
         options?: never;
@@ -21826,7 +22201,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Platform → first-admin invitations across tenants (cursor-paginated) */
+        /** Platform → first-admin invitations across tenants (cursor-paginated; ?tenantAccountId narrows the list to one tenant) */
         get: operations["getApiV1PlatformTenantinvitations"];
         put?: never;
         /** Issue a single-use first-admin invitation token (sent via M36; step-up) */
@@ -21881,7 +22256,7 @@ export interface paths {
         /** Platform tenant inventory (cross-tenant; status/plan/search filters) */
         get: operations["getApiV1PlatformTenants"];
         put?: never;
-        /** Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up) */
+        /** Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up). planLabel is optional: omitted, the tenant is stored as 'unassigned' until a census-banded contract is signed at onboarding step 2 */
         post: operations["postApiV1PlatformTenants"];
         delete?: never;
         options?: never;
@@ -21900,6 +22275,109 @@ export interface paths {
         get: operations["getApiV1PlatformTenantsByOrgSlug"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/baa-document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload the signed business associate agreement for a tenant that is onboarding (wizard step 3) or live (a renewal), through the documents module's own pipeline: size (10 MiB), type allowlist, magic bytes, the malware scan where one is bound, the tenant's bucket. The document is filed on the TENANT's RLS scope under the one kind this route files (tenant_baa); the body names no kind, patient or title, and nothing is read back or listed. The response carries the document id (what the BAA register row's `documentId` links) and the server-computed type, size and SHA-256. 409 TENANT_NOT_ONBOARDING unless the tenant is provisioning, onboarding, active, at risk or suspended (never once it is offboarding or later); 413 BAA_UPLOAD_TOO_LARGE past the size cap; 415 for a type or content mismatch, 422 for a size, bad base64 or a scanner verdict, 503 when no object store is configured. tenant_baa_document.upload_platform (its own key, not documents.upload) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the document id and digest) are required; an AI actor is refused. A successful upload voids a pending go-live attestation like any other onboarding data write */
+        post: operations["postApiV1PlatformTenantsByOrgSlugBaadocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned), and whether the tenant holds a pricing contract that is not canceled (hasContract: the server's answer to whether a switch out of outside also takes a billing mode) — platform ops; read is audited. 503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE when the contract cannot be read */
+        get: operations["getApiV1PlatformTenantsByOrgSlugClearinghouse"];
+        /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the route allows 10 saves a minute per operator and tenant, and answers 503 when its limiter is unavailable) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. Moving a tenant that has a contract OUT of outside to a vendor requires `billingServiceMode` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one write on this route accepted outside onboarding, and only while the tenant is provisioning, onboarding, active, at risk or suspended (409 TENANT_NOT_ONBOARDING for any other status: offboarding, final export pending, retained, being destroyed, destroyed, sign-up intent; the status is read before the billing mode is written, and a refusal that cannot be audited is 503 ONBOARDING_AUDIT_UNAVAILABLE); every other write on this route is onboarding-only. Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is asked for again (idempotent), and once more if that fails; if it still cannot be confirmed the answer carries billingModeConfirmed: false and the vendor change stands (read the contract and set the mode if it is not the one chosen). If the vendor's commit fails without a definite answer from the database the vendor is read again before the mode is undone: saved, the switch stands; not saved, the mode goes back to none; unreadable, the mode is left as set and the answer is 503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN (and a commit the server gave up on can still land after the read-back saw outside, leaving a vendor with the mode put back to none: after any failed switch, read the tenant's clearinghouse and contract). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise), except the switch out of outside that names a billing service mode (in the statuses named above); an AI actor is refused */
+        put: operations["putApiV1PlatformTenantsByOrgSlugClearinghouse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the vendor BAA the tenant recorded for its own clearinghouse account (the vendor ended it). In ONE transaction under the tenant's own scope the verification is voided, a live config leaves active (it becomes verified, as when a changed BAA is re-recorded), the audit row is written and the tenant is told (the outbox event m23.tenant_clearinghouse.baa_revoked becomes an alert to its billing, compliance and org administrators and a platform-ops notice, carrying ids, the closed code and counts of attempts still in flight or sent in the response window and of queued claims). Its claims, NOE, NOTR and transfer notices are then held and its acknowledgment (999/277CA) and 835 pulls skip, with a once-a-day alert while responses may still be owed, until the tenant records a new BAA, an operator verifies it and the tenant activates the config again; no new job or tick starts after the commit, and a job already past its pre-flight finishes (an M41 drain stops at the next row). While revoked, baa/verify and activate are refused with 409 CLEARINGHOUSE_BAA_REVOKED, the claims gate answers 402 clearinghouse_baa_revoked, and the tenant (never the operator) may change vendor or mode or switch to outside although production traffic is recent (it is not locked by 409 CLEARINGHOUSE_VENDOR_LOCKED); once it has left the revoked vendor, that vendor's attempts no longer lock the next one. The tenant clears the revocation by recording a new BAA or by leaving the vendor. NO free text: the body is a closed reasonCode (vendor_terminated, account_closed, baa_expired, other) and a ticketRef such as SEC-42; the audit row and the BAA record carry only those, and the tenant's own view shows the code and the time but never the ticket. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; 409 CLEARINGHOUSE_BAA_NOT_RECORDED when none was recorded, 409 CLEARINGHOUSE_BAA_REVOKED when it is already revoked, 422 CLEARINGHOUSE_BAA_NOT_APPLICABLE for outside, 503 CLEARINGHOUSE_OUTBOX_UNBOUND when the outbox is not bound. The write touches only the BAA and status columns, so it works whatever the state of the credential or the encryption key (a row sealed before migration 1434 loses its credential with the BAA). A revoke is not an expiry: nothing ends a BAA by itself and no vendor signal reaches ChartWarden. tenant_clearinghouse.revoke_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key, If-Match and a closed `reasonCode` plus a `ticketRef` (no free text exists on this route) are required. NOT limited to an onboarding tenant (a live tenant is the point); an AI actor is refused; 10 revokes per operator (across every tenant) and 20 in all per ten minutes, answering 429 beyond that (the limiter fails open) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseBaaRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). A record whose document is the one a platform operator revoked before (the platform view's baa.previousRevocation.sameDocument) is refused with 409 CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED unless the request carries acknowledgePreviousRevocation: true; the audit row then records the supersession and the earlier revocation's time; a BAA that is currently revoked is refused with 409 CLEARINGHOUSE_BAA_REVOKED. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseBaaVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release every clearinghouse credential the tenant still holds except its current one, so another organization may seal it (an account moved to a new organization, a key retired by a rotation). A credential stays reserved to the tenant through a switch to outside and a rotation until this runs; refused with 409 CLEARINGHOUSE_RESPONSES_PENDING while the tenant has a production submission in flight or sent one in the last 90 days, and 409 CLEARINGHOUSE_NOT_CONFIGURED when it never chose. The reason is recorded as given on the tenant's own audit trail, which the tenant can read: give a ticket reference only, never the name of the organization an account moved to. tenant_clearinghouse.release_credential_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and how many were released) are required. NOT limited to an onboarding tenant; an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseCredentialsRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21940,6 +22418,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's DoseSpot registration, masked (hasSecret; no credential is ever returned) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugDosespot"];
+        /** Register a tenant's DoseSpot clinic on its behalf: create (201) or version-checked change (200, If-Match). Platform support may set the clinic's own Subscription-Key; draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        put: operations["putApiV1PlatformTenantsByOrgSlugDosespot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` are required; an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's prescriber roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA number, no vendor id) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugDosespotPrescribers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers/{membershipId}/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; the NPI and legal name are derived from the physician record the roster links the member to and cross-checked against NPPES, never typed, so the body is the reason alone, and the prescriber must have confirmed that link themself (the roster list shows linkConfirmed; the operator cannot confirm for them): see the tenant route for the 409/422 codes; idempotent for a linked prescriber; never starts EPCS). tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a tenant's DoseSpot connection (a no-PHI token mint; a failed test is a 200 with the outcome); 6 requests/min per target tenant. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/go-live/approve": {
         parameters: {
             query?: never;
@@ -21949,7 +22513,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
+        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON) and must not have recorded, last changed or uploaded the signed agreement of the governing BAA (409 GO_LIVE_APPROVER_WROTE_BAA), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
         post: operations["postApiV1PlatformTenantsByOrgSlugGoliveApprove"];
         delete?: never;
         options?: never;
@@ -22044,6 +22608,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's ACTIVE staff, for assigning its compliance officer: membership id, display name, email and the role keys held (nothing else; read on the tenant's own RLS scope, audited; capped at 500). tenant_onboarding_data.read_platform + the platform_ops role */
+        get: operations["getApiV1PlatformTenantsByOrgSlugMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/noe-records/{id}/withdraw-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
+        post: operations["postApiV1PlatformTenantsByOrgSlugNoerecordsByIdWithdrawexternalfiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/notice-filings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope (the row names the operator and the count of NOEs and NOTRs shown, never which records), not gated on its onboarding status. A notice id with its dates identifies a patient's record, so this read takes the notice-filing key, not the generic onboarding read key: tenant_notice_filing.withdraw_platform + the platform_ops role */
+        get: operations["getApiV1PlatformTenantsByOrgSlugNoticefilings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/notr-records/{id}/withdraw-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
+        post: operations["postApiV1PlatformTenantsByOrgSlugNotrrecordsByIdWithdrawexternalfiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/offboard": {
         parameters: {
             query?: never;
@@ -22121,7 +22753,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence; go-live is not skippable) */
+        /** Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence). Only a non-canonical catalog step (added by platform ops) or a canonical step on the server's allowlist (MAC configuration, payer enrollment, DoseSpot kickoff, sample data) is skippable; any other, go-live included, is 409 ONBOARDING_STEP_NOT_SKIPPABLE */
         post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip"];
         delete?: never;
         options?: never;
@@ -22293,7 +22925,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet */
+        /** Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet. A tenant that bills outside ChartWarden stays on none: any other mode for it is a 409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE (the operator names the mode when switching it to a clearinghouse instead) */
         put: operations["putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode"];
         post?: never;
         delete?: never;
@@ -25349,6 +25981,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remittance/claimmd-operational-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read tenant-safe Claim.MD remittance staging health */
+        get: operations["getApiV1RemittanceClaimmdoperationalhealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remittance/lines": {
         parameters: {
             query?: never;
@@ -25394,6 +26043,23 @@ export interface paths {
         put?: never;
         /** Manually match a remittance line to a claim (§4.1) */
         post: operations["postApiV1RemittanceLinesByIdManualmatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/revenue-cycle-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the M25 source-backed revenue-cycle summary */
+        get: operations["getApiV1RemittanceRevenuecyclesummary"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -28064,6 +28730,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/clearinghouse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.read (org-level) */
+        get: operations["getApiV1TenantClearinghouse"];
+        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, except while a platform operator has revoked the vendor BAA (then the tenant may change vendor or mode or switch to outside, and the vendor it left no longer locks the next one), and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        put: operations["putApiV1TenantClearinghouse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA, 409 CLEARINGHOUSE_BAA_REVOKED while an operator's revocation of it stands; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantClearinghouseActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/baa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1TenantClearinghouseBaa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantClearinghouseVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/compliance-officer": {
         parameters: {
             query?: never;
@@ -28075,6 +28810,75 @@ export interface paths {
         /** Assign the compliance officer (an active member of this organization holding the compliance_officer role) who attests go-live readiness (org_admin; step-up). Allowed while the tenant is onboarding or active; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED */
         put: operations["putApiV1TenantComplianceofficer"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's DoseSpot registration, masked (hasSecret; no credential is ever returned; prescribersEnrolled and queuedTransmissions are shown, neither gates anything) — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.read (org-level) */
+        get: operations["getApiV1TenantDosespot"];
+        /** Save the DoseSpot registration: create (201) or version-checked change (200, If-Match). Complete input is `registered`, incomplete stays `draft` (save and resume); ANY change to the environment, clinic, clinician or a key sends the row back and clears the test and activation (a change of environment or clinic also drops the stored key). The environment is a name, never a URL. A tenant administrator cannot introduce a Subscription-Key (422 DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY) but may rotate one platform support set — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        put: operations["putApiV1TenantDosespot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a verified registration: e-prescribing then transmits for the organization (409 DOSESPOT_NOT_VERIFIED before a passed test; production only when the platform enabled it; idempotent once active). prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take an active registration out of service (back to verified; the credential is unchanged, so no new test is owed). Newly signed orders then activate locally and queued ones wait. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test the DoseSpot connection: one service-clinician token mint with the stored credential, no patient data. The probe runs with no transaction open (409 DOSESPOT_CHANGED_DURING_VERIFY if the registration moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome (credential_rejected or unreachable) and leaves the status where it was; production is refused (409 DOSESPOT_PRODUCTION_NOT_ENABLED) until the platform enables it. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -31832,6 +32636,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;
@@ -31907,6 +32713,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;
@@ -31969,6 +32777,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;
@@ -32031,6 +32841,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;
@@ -33804,10 +34616,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @constant */
+                        enrolledWithDoseSpot: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AdminDosespotprescribersByMembershipIdEnroll: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path: {
                 membershipId: string;
             };
@@ -33837,7 +34687,10 @@ export interface operations {
     postApiV1AdminDosespotprescribersByMembershipIdRevoke: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path: {
                 membershipId: string;
             };
@@ -43751,6 +44604,7 @@ export interface operations {
                         membershipId: string | null;
                         displayName: string | null;
                         roles: string[];
+                        providerEntityIds: string[];
                         locationIds: string[];
                         orgWidePatientScope: boolean;
                         isAdmin: boolean;
@@ -49635,6 +50489,57 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingClaimsIndoubtsubmissions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            submissionId: string;
+                            attemptIndex: number;
+                            /** Format: uuid */
+                            claimId: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** @constant */
+                            status: "in_doubt";
+                            /** @constant */
+                            payer: "Medicare";
+                        }[];
+                        hasMore: boolean;
+                        nextCursor: string | null;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BillingClearinghouseattemptsResolve: {
         parameters: {
             query?: never;
@@ -50123,6 +51028,67 @@ export interface operations {
                         claimId: string;
                         parentClaimId: string;
                         replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialClaimsByIdPaymentreconciliation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claim: {
+                            /** Format: uuid */
+                            id: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            payerId: string;
+                            payerName: string;
+                            state: string;
+                            /** Format: date */
+                            serviceFrom: string;
+                            /** Format: date */
+                            serviceTo: string;
+                            currentChargeCents: number;
+                            originalSubmittedChargeCents: null;
+                        };
+                        payments: {
+                            items: {
+                                /** Format: uuid */
+                                remittanceAdviceId: string;
+                                /** Format: uuid */
+                                remittanceLineId: string;
+                                payerReportedPaymentCents: string;
+                                m25PostedPaymentCents: string | null;
+                                adviceStatus: "parsed" | "posted" | "partial_posted";
+                                lineMatchState: string;
+                                /** Format: date-time */
+                                receivedAt: string;
+                            }[];
+                            payerReportedPaymentCents: string;
+                            m25PostedPaymentCents: string;
+                            /** @constant */
+                            completeness: "exact_for_matched_m25_remittance_lines";
+                            historyRecordCount: number;
+                            detailTruncated: boolean;
+                        };
                     };
                 };
             };
@@ -50983,6 +51949,56 @@ export interface operations {
                         payerId: string;
                         eligibilityStalenessPolicy: "warn" | "block";
                         eligibilityMaxAgeDays: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialSubmissionsIndoubt: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            submissionId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            claimControlNumber: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            attemptCount: number;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** @constant */
+                            status: "in_doubt";
+                            payer: string;
+                        }[];
+                        hasMore: boolean;
+                        nextCursor: string | null;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
                     };
                 };
             };
@@ -52552,6 +53568,422 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingOperationsInvestigations: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+                status?: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                assigned?: "me" | "unassigned";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            sourceRecordId: string;
+                            /** Format: uuid */
+                            sourceAttemptId: string;
+                            sourceIdentity: string;
+                            sourceReasonCode: string | null;
+                            /** Format: date-time */
+                            sourceOccurredAt: string;
+                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                            resolutionOutcome: string | null;
+                            assignedToMembershipId: string | null;
+                            /** Format: uuid */
+                            createdByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                            closedAt: string | null;
+                            version: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                        count: {
+                            /** @constant */
+                            kind: "lower_bound";
+                            value: number;
+                        };
+                        /** @constant */
+                        countScope: "authorized loaded cases";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    sourceModule: "M23" | "M41";
+                    /** Format: uuid */
+                    submissionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        investigation: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            sourceRecordId: string;
+                            /** Format: uuid */
+                            sourceAttemptId: string;
+                            sourceIdentity: string;
+                            sourceReasonCode: string | null;
+                            /** Format: date-time */
+                            sourceOccurredAt: string;
+                            status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                            resolutionOutcome: string | null;
+                            assignedToMembershipId: string | null;
+                            /** Format: uuid */
+                            createdByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                            closedAt: string | null;
+                            version: number;
+                        };
+                        source: {
+                            sourceModule: "M23" | "M41";
+                            /** Format: uuid */
+                            submissionId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            attempt: number;
+                            reference: string;
+                            payer: string;
+                            reasonCode: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            currentStatus: string;
+                            sourceHref: string;
+                        };
+                        history: {
+                            event_type: string;
+                            /** Format: uuid */
+                            actor_membership_id: string;
+                            previous_status: string | null;
+                            new_status: string | null;
+                            from_assignee_membership_id: string | null;
+                            to_assignee_membership_id: string | null;
+                            reason: string | null;
+                            correlation_id: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                        }[];
+                        notes: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            authorMembershipId: string;
+                            body: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdAssignment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assignedToMembershipId: string | null;
+                    version: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdNotes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        body: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingOperationsInvestigationsByIdTransitions: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "investigating" | "waiting_external" | "resolved" | "closed";
+                    version: number;
+                    reason: string;
+                    outcome?: "verified_no_action_required" | "referred_to_source_workflow" | "waiting_for_external_confirmation" | "duplicate_investigation" | "unable_to_resolve";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        sourceModule: "M23" | "M41";
+                        /** Format: uuid */
+                        sourceRecordId: string;
+                        /** Format: uuid */
+                        sourceAttemptId: string;
+                        sourceIdentity: string;
+                        sourceReasonCode: string | null;
+                        /** Format: date-time */
+                        sourceOccurredAt: string;
+                        status: "open" | "investigating" | "waiting_external" | "resolved" | "closed";
+                        resolutionOutcome: string | null;
+                        assignedToMembershipId: string | null;
+                        /** Format: uuid */
+                        createdByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        closedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingOperationsInvestigationsInvestigators: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                sourceModule: "M23" | "M41";
+                submissionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            membershipId: string;
+                            displayName: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingRatetables: {
         parameters: {
             query: {
@@ -53394,7 +54826,7 @@ export interface operations {
                         claimsBilling?: {
                             entitled: boolean;
                             status: "none" | "trialing" | "active" | "canceled";
-                            reason: ("never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
+                            reason: ("clearinghouse_not_chosen" | "clearinghouse_outside" | "clearinghouse_not_active" | "clearinghouse_baa_revoked" | "never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
                             trialEndsAt: string | null;
                             activePatientCount: number | null;
                             enforced: boolean;
@@ -67484,6 +68916,8 @@ export interface operations {
             content: {
                 "application/json": {
                     patientId: string;
+                    /** Format: uuid */
+                    funeralHomeId: string;
                     recipientEmail?: string;
                 };
             };
@@ -67748,6 +69182,7 @@ export interface operations {
                     ifVersion?: number;
                     /** Format: date-time */
                     targetDate: string;
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
                     authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     data: {
                         I?: {
@@ -67891,6 +69326,8 @@ export interface operations {
                 "application/json": {
                     reason: string;
                     ifVersion?: number;
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
+                    authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                 };
             };
         };
@@ -76092,6 +77529,89 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MeDosespotprescriberlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @description The member is on the prescriber roster (not revoked) and the roster links a physician record to them. */
+                        linked: boolean;
+                        externalPhysicianMdmId: string | null;
+                        physician: {
+                            firstName: string;
+                            lastName: string;
+                            npi: string;
+                        } | null;
+                        /** @description The prescriber has confirmed THIS link and the record's CURRENT NPI. The DoseSpot enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until they have. */
+                        confirmed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MeDosespotprescriberlinkConfirm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description The physician record the prescriber was shown (the link the roster held when they looked).
+                     */
+                    externalPhysicianMdmId: string;
+                    /** @description The NPI the prescriber was shown for that record. A link or NPI that has since changed is a 409. */
+                    npi: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @description The member is on the prescriber roster (not revoked) and the roster links a physician record to them. */
+                        linked: boolean;
+                        externalPhysicianMdmId: string | null;
+                        physician: {
+                            firstName: string;
+                            lastName: string;
+                            npi: string;
+                        } | null;
+                        /** @description The prescriber has confirmed THIS link and the record's CURRENT NPI. The DoseSpot enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until they have. */
+                        confirmed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MePermissions: {
         parameters: {
             query?: never;
@@ -78202,6 +79722,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicationordersByIdResolveheldtransmission: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description `sent`: the prescription IS in the prescriber's DoseSpot account (give its id). `not_sent`: it is NOT there; the order becomes transmission_failed and the prescriber retransmits it. Neither re-sends anything. */
+                    outcome: "sent" | "not_sent";
+                    /** @description What you checked and found. Kept on the transmission record (not in any audit image or event); do not put patient details in it. */
+                    reason: string;
+                    /** @description The DoseSpot prescription id you found. Required for `sent`; refused for `not_sent`. */
+                    dosespotPrescriptionId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orderId: string;
+                        outcome: "sent" | "not_sent";
+                        status: "transmitted" | "transmission_failed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -82384,6 +83946,132 @@ export interface operations {
                                 completed_by_user_id: string | null;
                                 actions: ("complete" | "reassign")[];
                             }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathboardsByBoardIdFuneralhome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                boardId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    funeral_home_entity_id: string;
+                    recipient_email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notification: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            board_id: string;
+                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
+                            state: "pending" | "sent" | "acked" | "sending" | "reconciling" | "failed" | "blocked_no_baa" | "not_applicable";
+                            /** Format: date-time */
+                            created_at: string;
+                            acked_at: string | null;
+                            acked_by: string | null;
+                            can_ack: boolean;
+                        };
+                        outcome?: "in_flight" | "recipient_changed_not_sent";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboardsByBoardIdNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                boardId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        /** Format: uuid */
+                        patient_id?: string;
+                        notifications: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            board_id: string;
+                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
+                            state: "pending" | "sent" | "acked" | "sending" | "reconciling" | "failed" | "blocked_no_baa" | "not_applicable";
+                            /** Format: date-time */
+                            created_at: string;
+                            acked_at: string | null;
+                            acked_by: string | null;
+                            can_ack: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathnotificationsByNotificationIdAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notification: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            board_id: string;
+                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
+                            state: "pending" | "sent" | "acked" | "sending" | "reconciling" | "failed" | "blocked_no_baa" | "not_applicable";
+                            /** Format: date-time */
+                            created_at: string;
+                            acked_at: string | null;
+                            acked_by: string | null;
+                            can_ack: boolean;
                         };
                     };
                 };
@@ -87762,6 +89450,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             noeId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -87819,6 +89512,11 @@ export interface operations {
                         correctedBy: {
                             noticeId: string;
                             state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
                         } | null;
                         noeId: string;
                         organizationId: string;
@@ -87915,6 +89613,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             noeId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -87934,6 +89637,76 @@ export interface operations {
                             createdAt: string;
                             updatedAt: string;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdRecordexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    filedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
+                        } | null;
+                        noeId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        admissionId: string;
+                        electionPeriodId: string;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        electionEffectiveDate: string;
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        noeControlNumber: string;
+                        payerNoeControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestAcknowledgmentId: string | null;
+                        confirmationDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };
@@ -88218,6 +89991,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             notrId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -88278,6 +90056,11 @@ export interface operations {
                         correctedBy: {
                             noticeId: string;
                             state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
                         } | null;
                         notrId: string;
                         organizationId: string;
@@ -88377,6 +90160,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             notrId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -88399,6 +90187,79 @@ export interface operations {
                             createdAt: string;
                             updatedAt: string;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NotrrecordsByIdRecordexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    filedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
+                        } | null;
+                        notrId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "revocation" | "transfer_out" | "discharge";
+                        revocationEventId: string | null;
+                        transferEventId: string | null;
+                        dischargeEventId: string | null;
+                        effectiveEndDate: string;
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        notrControlNumber: string;
+                        payerNotrControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestAcknowledgmentId: string | null;
+                        confirmationDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };
@@ -89084,6 +90945,188 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OpsClaimmdErasByInboxIdRecoverydryrun: {
+        parameters: {
+            query: {
+                usage: "test" | "production";
+                stage: "capture" | "ownership_resolution" | "m25_delivery";
+            };
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        inboxId: string;
+                        usage: "test" | "production";
+                        stage: "capture" | "ownership_resolution" | "m25_delivery";
+                        currentState: string;
+                        currentVersion: number;
+                        sourceDigestPresent: boolean;
+                        tenantAttribution: "verified" | "unattributed";
+                        leaseActive: boolean;
+                        priorRecoveryAttempts: number;
+                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
+                        blockers: string[];
+                        financialEffects: {
+                            /** @constant */
+                            status: "not_evaluated";
+                            /** @constant */
+                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
+                        };
+                        simulation: {
+                            available: boolean;
+                            /** @constant */
+                            mutatesSource: false;
+                            /** @constant */
+                            callsVendor: false;
+                            /** @constant */
+                            authorizesExecution: false;
+                        };
+                        /** Format: date-time */
+                        assessedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsClaimmdErasByInboxIdRecoverypreflight: {
+        parameters: {
+            query: {
+                usage: "test" | "production";
+                stage: "capture" | "ownership_resolution" | "m25_delivery";
+            };
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        inboxId: string;
+                        usage: "test" | "production";
+                        stage: "capture" | "ownership_resolution" | "m25_delivery";
+                        currentState: string;
+                        currentVersion: number;
+                        sourceDigestPresent: boolean;
+                        tenantAttribution: "verified" | "unattributed";
+                        leaseActive: boolean;
+                        priorRecoveryAttempts: number;
+                        disposition: "eligible_for_simulation" | "already_processed" | "blocked";
+                        blockers: string[];
+                        financialEffects: {
+                            /** @constant */
+                            status: "not_evaluated";
+                            /** @constant */
+                            reasonCode: "PREFLIGHT_DOES_NOT_AUTHORIZE_FINANCIAL_REPROCESSING";
+                        };
+                        simulation: {
+                            available: boolean;
+                            /** @constant */
+                            mutatesSource: false;
+                            /** @constant */
+                            callsVendor: false;
+                            /** @constant */
+                            authorizesExecution: false;
+                        };
+                        /** Format: date-time */
+                        assessedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsClaimmdObservability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        scope: "central_claimmd_account";
+                        /** @constant */
+                        accountReferenceExposed: false;
+                        usage: "test" | "production";
+                        responses: {
+                            cursor: {
+                                present: boolean;
+                                /** @constant */
+                                valueExposed: false;
+                            };
+                            lastAttemptAt: string | null;
+                            lastSuccessAt: string | null;
+                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
+                            backlog: {
+                                [key: string]: number;
+                            };
+                        };
+                        eras: {
+                            cursor: {
+                                present: boolean;
+                                /** @constant */
+                                valueExposed: false;
+                            };
+                            lastAttemptAt: string | null;
+                            lastSuccessAt: string | null;
+                            outcome: "failure_recorded" | "success_recorded" | "no_durable_attempt";
+                            backlog: {
+                                [key: string]: number;
+                            };
+                        };
+                        requestBudget: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
+                        };
+                        workerHeartbeat: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_WORKER_HEARTBEAT";
+                        };
+                        /** Format: date-time */
+                        sampledAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -92712,6 +94755,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1PatientsByIdPayersByPayerRowIdVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                payerRowId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "wrong_payer" | "wrong_coverage_kind" | "wrong_subscriber_id" | "wrong_effective_date" | "duplicate_entry";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        rank: number;
+                        coverageKind: string;
+                        subscriberId: string;
+                        groupNumber: string | null;
+                        binPcn: string | null;
+                        current: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByIdPrivacy: {
         parameters: {
             query?: never;
@@ -95167,6 +97252,10 @@ export interface operations {
                             expiresOn: string | null;
                             documentId: string | null;
                             attestedAt: string | null;
+                            /** @description True on the record go-live and onboarding step 3 judge for its tenant (an undated termination, else the newest dated record). */
+                            governing: boolean;
+                            /** @description On the governing record: whether its documentId is a signed BAA filed for this tenant (false with no link). Null on any other record. */
+                            documentFiled: boolean | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -95580,7 +97669,10 @@ export interface operations {
     postApiV1PlatformOnboardingtemplates: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -95593,6 +97685,8 @@ export interface operations {
                     canonicalOrder: number;
                     /** @constant */
                     isCanonical?: false;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
                 };
             };
         };
@@ -96151,6 +98245,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string;
+                tenantAccountId?: string;
                 cursor?: string;
                 limit?: number;
             };
@@ -96316,6 +98411,16 @@ export interface operations {
                             createdAt: string;
                             /** Format: date-time */
                             updatedAt: string;
+                            onboardingProgress: {
+                                /** @description Gating steps that are done or skipped. */
+                                doneCount: number;
+                                /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
+                                totalCount: number;
+                                currentStepKey: string | null;
+                                /** @description The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step. */
+                                currentStepTitle: string | null;
+                                goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            } | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -96347,7 +98452,7 @@ export interface operations {
                     /** Format: email */
                     firstAdminEmail: string;
                     firstAdminFullName: string;
-                    planLabel: "starter" | "standard" | "enterprise";
+                    planLabel?: "starter" | "standard" | "enterprise";
                 };
             };
         };
@@ -96396,6 +98501,16 @@ export interface operations {
                         createdAt: string;
                         /** Format: date-time */
                         updatedAt: string;
+                        onboardingProgress: {
+                            /** @description Gating steps that are done or skipped. */
+                            doneCount: number;
+                            /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
+                            totalCount: number;
+                            currentStepKey: string | null;
+                            /** @description The title of that step as the wizard shows it (the onboarding-step catalog's own label), so a list can name the next step. */
+                            currentStepTitle: string | null;
+                            goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                        } | null;
                         latestStatusEvent: {
                             id: string;
                             toStatus: string;
@@ -96419,6 +98534,574 @@ export interface operations {
                         } | null;
                         activeGrants: number;
                         activeSessions: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugBaadocument: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The signed agreement, base64 (at most 10 MiB decoded). The server checks the size, the type allowlist, the magic bytes and, where one is bound, the malware scan; it recomputes the digest. */
+                    contentBase64: string;
+                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        documentId: string;
+                        mimeType: string;
+                        /** @description The server-computed size, never the client's claim. */
+                        byteSize: number;
+                        /** @description The server-computed SHA-256 (lower-case hex). */
+                        sha256Hex: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugClearinghouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: ("vendor_terminated" | "account_closed" | "baa_expired" | "other") | null;
+                            /** @description The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedTicketRef?: string;
+                            previousRevocation?: {
+                                /** Format: date-time */
+                                at: string;
+                                /** @description True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation. */
+                                sameDocument: boolean;
+                            };
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                        /** @description The tenant holds a pricing contract that is not canceled (live or paused). Moving a tenant that bills outside ChartWarden to a vendor then also takes a billing service mode (billingServiceMode on the write); without a contract it takes none. */
+                        hasContract: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugClearinghouse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The config's current integer version; required to change an existing config, absent on a first choice. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendor: "stedi" | "claimmd" | "outside";
+                    mode?: "test" | "production";
+                    /** @description The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes. */
+                    secret?: string;
+                    /** @description The billing service mode the tenant's contract takes when it LEAVES `outside` for a vendor (a tenant that bills outside is on none, and only an operator may switch it). Required for exactly that switch while the tenant has a contract (422 BILLING_SERVICE_MODE_REQUIRED), set before the vendor and put back if the vendor change fails, dated like any mode change; `none` is the explicit choice to keep it. Refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. */
+                    billingServiceMode?: "none" | "billing_software" | "managed_billing";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: ("vendor_terminated" | "account_closed" | "baa_expired" | "other") | null;
+                            /** @description The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedTicketRef?: string;
+                            previousRevocation?: {
+                                /** Format: date-time */
+                                at: string;
+                                /** @description True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation. */
+                                sameDocument: boolean;
+                            };
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                        /**
+                         * @description Present (false) only when the vendor change committed but the billing service mode the write named could not be confirmed afterwards, even after one retry: the tenant has the vendor and its contract may not hold that mode. Read the contract and set the mode if it is not the one chosen.
+                         * @constant
+                         */
+                        billingModeConfirmed?: false;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseBaaRevoke: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reasonCode: "vendor_terminated" | "account_closed" | "baa_expired" | "other";
+                    /** @description The ticket the revoke was ordered under, such as SEC-42 (capital letters and digits, a dash, a number). Platform-only: the tenant's view never shows it, but the audit trail does. */
+                    ticketRef: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: ("vendor_terminated" | "account_closed" | "baa_expired" | "other") | null;
+                            /** @description The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedTicketRef?: string;
+                            previousRevocation?: {
+                                /** Format: date-time */
+                                at: string;
+                                /** @description True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation. */
+                                sameDocument: boolean;
+                            };
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseBaaVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                    /** @description Send true to verify a record whose document is the one a platform operator revoked before (the platform view's baa.previousRevocation.sameDocument says so). Without it the verify is refused with 409 CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED. The audit row records the supersession. */
+                    acknowledgePreviousRevocation?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: ("vendor_terminated" | "account_closed" | "baa_expired" | "other") | null;
+                            /** @description The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                            revokedTicketRef?: string;
+                            previousRevocation?: {
+                                /** Format: date-time */
+                                at: string;
+                                /** @description True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation. */
+                                sameDocument: boolean;
+                            };
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseCredentialsRelease: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description How many credentials the tenant held, other than its current one, were released. */
+                        released: number;
+                        config: {
+                            vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                            mode: ("test" | "production") | null;
+                            status: ("draft" | "verified" | "active") | null;
+                            source: "tenant" | "platform_env" | "none";
+                            /** @description The credential itself is never projected. */
+                            hasSecret: boolean;
+                            verifiableBy: ("connection_test" | "attestation") | null;
+                            verification: {
+                                kind: "connection_test" | "attested";
+                                evidence: string | null;
+                                /** Format: date-time */
+                                verifiedAt: string;
+                            } | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                            baaRequired: boolean;
+                            baa: {
+                                /** @constant */
+                                heldBy: "tenant";
+                                /** Format: date */
+                                effectiveDate: string;
+                                documentRef: string;
+                                /** Format: date-time */
+                                recordedAt: string;
+                                verified: {
+                                    /** Format: date-time */
+                                    at: string;
+                                } | null;
+                                /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor. */
+                                revoked: boolean;
+                                revokedAt: string | null;
+                                revokedReasonCode: ("vendor_terminated" | "account_closed" | "baa_expired" | "other") | null;
+                                /** @description The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                                revokedTicketRef?: string;
+                                previousRevocation?: {
+                                    /** Format: date-time */
+                                    at: string;
+                                    /** @description True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation. */
+                                    sameDocument: boolean;
+                                };
+                            } | null;
+                            activatedAt: string | null;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters; no patient information). */
+                    evidenceNote?: string;
+                    /** @description Required, and must be true, with an evidence note: the operator confirms the note names no patient information. */
+                    confirmNoPatientInformation?: boolean;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                            mode: ("test" | "production") | null;
+                            status: ("draft" | "verified" | "active") | null;
+                            source: "tenant" | "platform_env" | "none";
+                            /** @description The credential itself is never projected. */
+                            hasSecret: boolean;
+                            verifiableBy: ("connection_test" | "attestation") | null;
+                            verification: {
+                                kind: "connection_test" | "attested";
+                                evidence: string | null;
+                                /** Format: date-time */
+                                verifiedAt: string;
+                            } | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                            baaRequired: boolean;
+                            baa: {
+                                /** @constant */
+                                heldBy: "tenant";
+                                /** Format: date */
+                                effectiveDate: string;
+                                documentRef: string;
+                                /** Format: date-time */
+                                recordedAt: string;
+                                verified: {
+                                    /** Format: date-time */
+                                    at: string;
+                                } | null;
+                                /** @description True once a platform operator revoked this record (the vendor ended the BAA): it cannot be verified again and the config cannot go active until the tenant records a new BAA, or leaves the vendor. */
+                                revoked: boolean;
+                                revokedAt: string | null;
+                                revokedReasonCode: ("vendor_terminated" | "account_closed" | "baa_expired" | "other") | null;
+                                /** @description The ticket the revoke was ordered under. Carried on the platform lane's view only; the tenant's own view never has it (it is still on the tenant's audit trail). */
+                                revokedTicketRef?: string;
+                                previousRevocation?: {
+                                    /** Format: date-time */
+                                    at: string;
+                                    /** @description True when this record's document is the one that revoked BAA named: verifying it needs acknowledgePreviousRevocation. */
+                                    sameDocument: boolean;
+                                };
+                            } | null;
+                            activatedAt: string | null;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        } | null;
                     };
                 };
             };
@@ -96493,6 +99176,305 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugDosespot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugDosespot: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The registration's current integer version; required to change an existing registration, absent on a first save. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production needs the platform to have enabled it. */
+                    environment: "sandbox" | "production";
+                    clinicId?: string;
+                    serviceClinicianId?: string;
+                    /** @description Write-only: sealed under the tenant's own key and never returned. */
+                    clinicKey?: string;
+                    /** @description Write-only. Platform support may set the clinic's own Subscription-Key; a tenant administrator may only rotate one that was set. */
+                    subscriptionKey?: string;
+                    /** @description Attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone: the repair for a registration whose stored credential cannot be opened. Contradicts a subscriptionKey in the same call. */
+                    usePlatformSubscriptionKey?: boolean;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotDeactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugDosespotPrescribers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            membershipId: string;
+                            onRoster: boolean;
+                            enrolledWithDoseSpot: boolean;
+                            vendorEnrollmentRequestedAt: string | null;
+                            /** @description The prescriber has confirmed the physician record linked to them (from their own account; there is no operator route for it). An enrolment is refused 409 DOSESPOT_PRACTITIONER_UNCONFIRMED until they have. */
+                            linkConfirmed: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @constant */
+                        enrolledWithDoseSpot: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            source: "tenant" | "platform_env" | "none";
+                            status: ("draft" | "registered" | "verified" | "active") | null;
+                            environment: ("sandbox" | "production") | null;
+                            clinicId: string | null;
+                            serviceClinicianId: string | null;
+                            hasSecret: boolean;
+                            live: boolean;
+                            notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                            registeredAt: string | null;
+                            verifiedAt: string | null;
+                            activatedAt: string | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            prescribersEnrolled: number;
+                            queuedTransmissions: number;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugGoliveApprove: {
         parameters: {
             query?: never;
@@ -96550,6 +99532,10 @@ export interface operations {
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                            systemSkipped: boolean;
+                            /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -96641,6 +99627,10 @@ export interface operations {
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                            systemSkipped: boolean;
+                            /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -96988,6 +99978,178 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            membershipId: string;
+                            displayName: string | null;
+                            email: string | null;
+                            /** @description Enabled, unexpired roles the member holds in the tenant (compliance_officer first in a picker). */
+                            roleKeys: string[];
+                        }[];
+                        /** @description True when the tenant has more active staff than the 500 returned (the first 500 by name, then id). */
+                        truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugNoerecordsByIdWithdrawexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        noticeKind: "noe" | "notr";
+                        /** Format: uuid */
+                        noticeId: string;
+                        /** @description The notice's own state, unchanged by the withdrawal. */
+                        state: string;
+                        /** Format: date */
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        /** @description The record is gone: the notice is back to its pre-record state. */
+                        externalFiling: null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugNoticefilings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            noticeKind: "noe" | "notr";
+                            /** Format: uuid */
+                            noticeId: string;
+                            /** @description The notice's own state; a filing record never changes it. */
+                            state: string;
+                            /** Format: date */
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            filedOn: string | null;
+                            recordedAt: string | null;
+                            /** @description True when this record wrote the breach stamp itself (a late filing): a withdrawal clears it. A stamp the deadline watchdog set stays either way. */
+                            breachStampFromRecord: boolean;
+                        }[];
+                        /** @description True when the tenant recorded more than the 200 newest shown; older records exist that this list does not return. */
+                        truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugNotrrecordsByIdWithdrawexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        noticeKind: "noe" | "notr";
+                        /** Format: uuid */
+                        noticeId: string;
+                        /** @description The notice's own state, unchanged by the withdrawal. */
+                        state: string;
+                        /** Format: date */
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        /** @description The record is gone: the notice is back to its pre-record state. */
+                        externalFiling: null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugOffboard: {
         parameters: {
             query?: never;
@@ -97073,6 +100235,10 @@ export interface operations {
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                            systemSkipped: boolean;
+                            /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -97134,6 +100300,10 @@ export interface operations {
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                            systemSkipped: boolean;
+                            /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -97201,6 +100371,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -97265,6 +100439,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -97329,6 +100507,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -105147,6 +108329,7 @@ export interface operations {
         parameters: {
             query?: {
                 providerEntityId?: string;
+                locationId?: string;
                 state?: string;
                 payer?: string;
                 fromDate?: string;
@@ -105232,6 +108415,7 @@ export interface operations {
                         eraId: string;
                         fileIndex: number;
                         transactionSetControlNumber: string;
+                        sourceDigest: string;
                         state: string;
                         holdReason: string | null;
                         possibleDuplicate: boolean;
@@ -105297,6 +108481,17 @@ export interface operations {
                             reason: string | null;
                             reference: string | null;
                             amount: number | null;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            /** @constant */
+                            policyStatus: "not_configured";
+                            /** @constant */
+                            postingEligible: false;
                         }[];
                         claimOutcomes: {
                             claimId: string | null;
@@ -105564,8 +108759,7 @@ export interface operations {
                             submittedAt: string;
                             supportingEvidence: string[];
                             selectable: boolean;
-                            /** @constant */
-                            submittedLines: "unavailable";
+                            submittedLines: "available" | "unavailable";
                         }[];
                         /** @constant */
                         postingAuthorized: false;
@@ -105645,6 +108839,7 @@ export interface operations {
                         reason: string;
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                     }[];
                 };
             };
@@ -105679,6 +108874,60 @@ export interface operations {
                         providerEntityId: string;
                         payer: string | null;
                         paymentCents: number | null;
+                        billedCents: number | null;
+                        unresolvedCents: number | null;
+                        providerAdjustments: {
+                            sourceDigest: string;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            reason: string | null;
+                            reference: string | null;
+                            amountCents: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            policy: {
+                                /** @constant */
+                                status: "not_configured";
+                                version: null;
+                            };
+                            /** @constant */
+                            action: "none";
+                        }[];
+                        claims: {
+                            claimIndex: number;
+                            billingModule: "M23" | "M41" | null;
+                            patientControlNumber: string | null;
+                            payerIcn: string | null;
+                            claimId: string | null;
+                            payerId: string | null;
+                            submissionId: string | null;
+                            evidenceId: string | null;
+                            evidenceVersion: number;
+                            matching: "verified" | "human_confirmed_candidate" | "blocked";
+                            billedCents: number | null;
+                            paidCents: number | null;
+                            patientResponsibilityCents: number | null;
+                            adjustments: {
+                                /** @constant */
+                                scope: "claim";
+                                groupCode: "CO" | "PR" | "OA" | "PI" | "CR" | "unknown";
+                                reasonCode: string | null;
+                                amountCents: number | null;
+                                responsibility: "provider_reported" | "patient_reported" | "other_unallocated" | "payer_initiated_reported" | "correction_or_reversal_reported" | "unsupported";
+                                classification: "contractual_obligation_reported" | "patient_responsibility_reported" | "other_adjustment_unresolved" | "payer_initiated_reduction_reported" | "correction_or_reversal_reported" | "unsupported";
+                                accountingDisposition: "unresolved_review" | "policy_required";
+                                policyVersion: null;
+                                m25Action: "flagged_review" | "not_authorized";
+                            }[];
+                            unresolvedCents: number | null;
+                            financialStatus: "fully_paid" | "partial_paid" | "unsupported";
+                            duplicate: "none" | "potential";
+                            eligible: boolean;
+                            blockers: string[];
+                        }[];
                         claimId: string | null;
                         eligible: boolean;
                         status: "eligible" | "blocked" | "already_posted";
@@ -105761,7 +109010,60 @@ export interface operations {
                         outcome: "approved" | "already_approved" | "posted" | "already_posted";
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                         paymentCents: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmdoperationalhealth: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        scope: "tenant_attributed_m25_stages";
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** @constant */
+                        completeness: "exact_for_authorized_provider_stages";
+                        stageCount: number;
+                        states: {
+                            [key: string]: number;
+                        };
+                        exceptionCount: number;
+                        oldestExceptionAt: string | null;
+                        latestStageAt: string | null;
+                        centralCapture: {
+                            /** @constant */
+                            status: "restricted";
+                            /** @constant */
+                            reasonCode: "CENTRAL_ACCOUNT_METADATA_NOT_TENANT_VISIBLE";
+                        };
+                        requestBudget: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_DURABLE_REQUEST_BUDGET_OBSERVATION";
+                        };
+                        /** Format: date-time */
+                        sampledAt: string;
                     };
                 };
             };
@@ -105885,6 +109187,68 @@ export interface operations {
                     "application/json": {
                         id: string;
                         matchState: "posted" | "reversed" | "manual_matched";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceRevenuecyclesummary: {
+        parameters: {
+            query: {
+                providerEntityId?: string;
+                fromDate: string;
+                toDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        dateBasis: "era_received_at_utc";
+                        /** Format: date */
+                        fromDate: string;
+                        /** Format: date */
+                        toDate: string;
+                        providerEntityId: string | null;
+                        /** @constant */
+                        completeness: "exact_for_m25_remittance_advice";
+                        receivedAdviceCount: number;
+                        reportedAdviceCount: number;
+                        reportedEraPaymentCents: string;
+                        reportedClaimPaymentCents: string;
+                        fullyPostedClaimPaymentCents: string;
+                        postedClaimPaymentCents: string;
+                        fullyPostedAdviceCount: number;
+                        partialPostedAdviceCount: number;
+                        reportedAdjustmentsByGroup: {
+                            CO: string;
+                            CR: string;
+                            OA: string;
+                            PI: string;
+                            PR: string;
+                        };
+                        reportedPlbCents: string;
+                        unmatchedLineCount: number;
+                        latestReceivedAt: string | null;
+                        /** @constant */
+                        claimMdStagesIncluded: false;
+                        authoritativeAr: {
+                            /** @constant */
+                            status: "unavailable";
+                            /** @constant */
+                            reasonCode: "NO_CANONICAL_RECEIVABLE_LEDGER";
+                        };
                     };
                 };
             };
@@ -114779,6 +118143,370 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1TenantClearinghouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies, or leaves the vendor. The operator's ticket and revocation history are not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: "vendor_terminated" | "account_closed" | "baa_expired" | "other" | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TenantClearinghouse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The config's current integer version; required to change an existing config, absent on a first choice. */
+                "If-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendor: "stedi" | "claimmd" | "outside";
+                    mode?: "test" | "production";
+                    /** @description The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: it is sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes; omit it to keep the stored one. */
+                    secret?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies, or leaves the vendor. The operator's ticket and revocation history are not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: "vendor_terminated" | "account_closed" | "baa_expired" | "other" | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies, or leaves the vendor. The operator's ticket and revocation history are not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: "vendor_terminated" | "account_closed" | "baa_expired" | "other" | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseBaa: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Who holds the vendor BAA: the tenant itself (the account is the tenant's own).
+                     * @constant
+                     */
+                    heldBy: "tenant";
+                    /**
+                     * Format: date
+                     * @description The BAA's effective date (YYYY-MM-DD), not in the future.
+                     */
+                    effectiveDate: string;
+                    /** @description Where the signed BAA is kept (3-200 characters after whitespace is collapsed): a title, contract folder or document id. Never patient information. */
+                    documentRef: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies, or leaves the vendor. The operator's ticket and revocation history are not shown here. */
+                            revoked: boolean;
+                            revokedAt: string | null;
+                            revokedReasonCode: "vendor_terminated" | "account_closed" | "baa_expired" | "other" | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters after whitespace is collapsed; no patient information). Ignored where a connection test runs (Claim.MD). */
+                    evidenceNote?: string;
+                    /** @description Required, and must be true, with an evidence note: the person confirms the note names no patient information. Ignored where a connection test runs (Claim.MD). */
+                    confirmNoPatientInformation?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                            mode: ("test" | "production") | null;
+                            status: ("draft" | "verified" | "active") | null;
+                            source: "tenant" | "platform_env" | "none";
+                            hasSecret: boolean;
+                            verifiableBy: "connection_test" | "attestation" | null;
+                            verification: {
+                                kind: "connection_test" | "attested";
+                                evidence: string | null;
+                                /** Format: date-time */
+                                verifiedAt: string;
+                            } | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                            baaRequired: boolean;
+                            baa: {
+                                /** @constant */
+                                heldBy: "tenant";
+                                /** Format: date */
+                                effectiveDate: string;
+                                documentRef: string;
+                                /** Format: date-time */
+                                recordedAt: string;
+                                verified: {
+                                    /** Format: date-time */
+                                    at: string;
+                                } | null;
+                                /** @description True once a platform operator revoked this record (the vendor ended the BAA). The config is then out of service (claims, NOE, NOTR and transfer notices are held) and cannot go active until the tenant records a new BAA, which an operator verifies, or leaves the vendor. The operator's ticket and revocation history are not shown here. */
+                                revoked: boolean;
+                                revokedAt: string | null;
+                                revokedReasonCode: "vendor_terminated" | "account_closed" | "baa_expired" | "other" | null;
+                            } | null;
+                            activatedAt: string | null;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     putApiV1TenantComplianceofficer: {
         parameters: {
             query?: never;
@@ -114803,6 +118531,272 @@ export interface operations {
                 content: {
                     "application/json": {
                         complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantDosespot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TenantDosespot: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The registration's current integer version; required to change an existing registration, absent on a first save. */
+                "If-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Which DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production is available only when the platform has enabled it. */
+                    environment: "sandbox" | "production";
+                    /** @description The clinic id DoseSpot issued (1-64 letters, digits, dots, dashes or underscores). */
+                    clinicId?: string;
+                    /** @description The DoseSpot clinician the service token is minted for (patient sync, history, status polling). */
+                    serviceClinicianId?: string;
+                    /** @description The clinic key DoseSpot issued. Write-only: it is sealed under the tenant's own key and never returned. Omit it to keep the stored one. */
+                    clinicKey?: string;
+                    /** @description The DoseSpot Subscription-Key, when the clinic has its own. Write-only. Platform support may set it; a tenant administrator may only rotate one that platform support set. */
+                    subscriptionKey?: string;
+                    /** @description Platform support only: attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone, which is how a registration whose stored credential cannot be opened is repaired. Recorded on the audit row as a changed field; contradicts a subscriptionKey in the same call. */
+                    usePlatformSubscriptionKey?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotDeactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            source: "tenant" | "platform_env" | "none";
+                            status: ("draft" | "registered" | "verified" | "active") | null;
+                            environment: ("sandbox" | "production") | null;
+                            clinicId: string | null;
+                            serviceClinicianId: string | null;
+                            hasSecret: boolean;
+                            /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                            live: boolean;
+                            notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                            registeredAt: string | null;
+                            verifiedAt: string | null;
+                            activatedAt: string | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                            prescribersEnrolled: number;
+                            /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                            queuedTransmissions: number;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        };
                     };
                 };
             };
@@ -115191,6 +119185,10 @@ export interface operations {
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                            systemSkipped: boolean;
+                            /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -115277,6 +119275,10 @@ export interface operations {
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                            systemSkipped: boolean;
+                            /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -115337,6 +119339,10 @@ export interface operations {
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                            systemSkipped: boolean;
+                            /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -115404,6 +119410,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -115467,6 +119477,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -115534,6 +119548,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -115597,6 +119615,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -115658,6 +119680,10 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;

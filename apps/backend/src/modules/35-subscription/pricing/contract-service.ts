@@ -19,10 +19,10 @@
 // Which contract an org "has" is decided in ONE place (./contract-select.ts), not here.
 import { type DbClient, schema } from "@chartwarden/db";
 import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { BillingServiceMode } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { refuseForeignAmbientOrg } from "../../../bootstrap/ambient-org-guard";
 import { currentSubscriptionOrder } from "../routes/current-subscription";
 import type { M35WriteActor } from "../routes/service";
@@ -35,9 +35,22 @@ import {
   nextModeCreatedAt,
   pendingModeAfter,
 } from "./contract-mode";
-import { type ContractRecord, loadModeHistory, selectNewestContract } from "./contract-select";
-import { type PricingBandView, bandViews, loadBands } from "./plan-service";
+import { type ContractRecord, selectNewestContract } from "./contract-select";
 import {
+  type PlanRow,
+  type PlatformContractView,
+  type PlatformPricingView,
+  type TenantPricingView,
+  contractViewOf,
+  loadContract,
+  loadSignature,
+  lockSubscriptionAndReloadHistory,
+  platformViewOf,
+} from "./contract-view";
+import { SYSTEM_TRIGGER } from "./mode-trigger";
+import { loadBands } from "./plan-service";
+import {
+  type ModeTrigger,
   type OnboardingPricingPort,
   type OnboardingTenantFacts,
   PLAN_CONTRACT_STEP_KEY,
@@ -46,7 +59,15 @@ import {
   requireAuditPort,
   requireOnboardingPort,
 } from "./ports";
-import { type StatementView, toStatementView } from "./statement-view";
+import { toStatementView } from "./statement-view";
+
+export {
+  type ContractView,
+  type PlatformContractView,
+  type PlatformPricingView,
+  type TenantPricingView,
+  addMonthsIso,
+} from "./contract-view";
 import { normalizeOptionalRef, normalizeReason } from "./text";
 
 const PL = schema.plan;
@@ -60,53 +81,6 @@ const ORDER_REF_MAX = 500;
 const STATEMENTS_ON_PLATFORM_VIEW = 12;
 /** Tenant statuses in which a subscription may be created for it. */
 const SIGNABLE_TENANT_STATUSES: ReadonlySet<string> = new Set(["provisioning", "onboarding"]);
-
-export interface ContractView {
-  readonly subscriptionId: string;
-  readonly plan: {
-    readonly id: string;
-    readonly slug: string;
-    readonly name: string;
-    readonly version: number;
-    readonly currencyCode: string;
-  };
-  /** The mode in force today. */
-  readonly billingServiceMode: BillingServiceMode;
-  /** The rate in force for this subscription today: 0 when it bills outside ChartWarden. */
-  readonly billingBps: number;
-  /** A recorded change that has not taken effect yet (it takes effect from the 1st of the next month), else null. */
-  readonly pendingBillingServiceMode: {
-    readonly billingServiceMode: BillingServiceMode;
-    readonly effectiveOn: string;
-  } | null;
-  readonly contractStartOn: string;
-  readonly contractTermMonths: number;
-  readonly contractEndsOn: string;
-  readonly perUserPriceCents: number;
-  readonly bands: readonly PricingBandView[];
-  readonly billingSoftwareBps: number;
-  readonly managedBillingBps: number;
-  readonly implementationFeeCents: number;
-  readonly minimumMonthlyCents: number | null;
-}
-
-/** The platform's richer view: who signed, why, and the order form reference. Never on the tenant surface. */
-export interface PlatformContractView extends ContractView {
-  readonly signedByMembershipId: string;
-  readonly signedReason: string;
-  readonly orderFormRef: string | null;
-}
-
-export interface TenantPricingView {
-  readonly contract: ContractView | null;
-  /** The latest statement: the month in progress (`draft`) or the last closed one. Null before the first. */
-  readonly latestStatement: StatementView | null;
-}
-
-export interface PlatformPricingView {
-  readonly contract: PlatformContractView | null;
-  readonly statements: readonly StatementView[];
-}
 
 export interface PlanContractSettlement {
   /** settled = attested now; already_settled = it was done; pending = the subscription exists but the step is not settled yet. */
@@ -134,16 +108,41 @@ export interface ContractService {
     orgSlug: string,
     input: CreateContractInput,
   ): Promise<CreateContractResult>;
+  /**
+   * An operator's change of the billing service mode. A tenant that bills outside ChartWarden is on `none` and stays there (the
+   * invariant the system's outside-means-none sync and sweep rely on): any other mode for it is a 409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE,
+   * so a sweep can never silently undo what an operator set. The one exception is the operator's own switch OUT of outside, which sets
+   * the mode first, then the vendor (`opts.leavingOutside`, passed only by that flow).
+   */
   setBillingServiceMode(
     actor: M35WriteActor,
     orgSlug: string,
     mode: BillingServiceMode,
     reason: unknown,
+    opts?: { readonly leavingOutside?: boolean },
   ): Promise<PlatformContractView>;
+  /**
+   * Whether the org holds a contract that is not canceled (live or PAUSED), read on the tenant pool. A paused contract is still the
+   * tenant's: it bills again on resume, so the billing mode that must follow its clearinghouse choice is judged against it too. Where
+   * there is none, no billing mode is ever invented.
+   */
+  hasContract(organizationId: string): Promise<boolean>;
+  /**
+   * Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. Sets the org's billing service mode to `none` as a
+   * SYSTEM action (no operator), dated like any mode change: at once while the tenant is onboarding with nothing billed, else from
+   * the 1st of next month. Idempotent: `changed:false` when there is no contract, or when `none` is already in force or already
+   * pending. Audited with the reason and `trigger: clearinghouse_outside`; `trigger` says who set it off (the tenant's own request, a
+   * platform operator's, or a sweep) and joins the row to that request's correlation id. The mode is read on the tenant pool first, so
+   * a no-op (the common case: every settle asks) never enters the platform runner and never leaves a platform bypass audit row.
+   */
+  setModeNoneForOutsideBilling(
+    organizationId: string,
+    trigger?: ModeTrigger,
+  ): Promise<{ readonly changed: boolean }>;
   /** A platform operator's read of a tenant's contract and statements; it writes a structured read-audit row naming the operator. */
   platformView(actor: M35WriteActor, orgSlug: string): Promise<PlatformPricingView>;
   tenantView(organizationId: string, userId: string): Promise<TenantPricingView>;
-  /** The tenant's billing service mode in force today (null without a LIVE contract: never contracted, canceled or paused), on the tenant pool. The `BillingServiceModeReader` seam body. */
+  /** The current live billing-service mode on the tenant pool, or null without a live contract. */
   billingServiceModeForOrg(organizationId: string): Promise<BillingServiceMode | null>;
 }
 
@@ -153,140 +152,29 @@ export interface ContractServiceDeps {
   readonly outbox?: WriteOutboxPort;
   readonly audit?: PlatformAuditPort;
   readonly onboarding?: OnboardingPricingPort;
+  /**
+   * Whether the org's clearinghouse is `outside`, read lazily by the composition root over M23's choice. It guards the invariant "outside
+   * means billing mode none" (an operator's other mode is refused) and is re-asked INSIDE the write of the system's outside-means-none
+   * change, after the lock, so a switch to a vendor that landed meanwhile is never overwritten. Absent = nothing is checked.
+   */
+  readonly billsOutside?: (organizationId: string) => Promise<boolean>;
   readonly now?: () => Date;
   readonly log?: (message: string, detail: Record<string, unknown>) => void;
 }
 
-type PlanRow = typeof PL.$inferSelect;
-type Band = { readonly minAdc: number; readonly monthlyFeeCents: number };
+/** Who a system action is attributed to in the platform audit trail (no person acted). */
+const SYSTEM_OPERATOR = { userId: "system", membershipId: "system" } as const;
 
-/** `start` plus `months` calendar months, on the same day (clamped to the month's last day), as `YYYY-MM-DD` (UTC). */
-export function addMonthsIso(startIso: string, months: number): string {
-  const [y, m, d] = startIso.split("-").map(Number) as [number, number, number];
-  const target = new Date(Date.UTC(y, m - 1 + months, 1));
-  const lastDay = new Date(
-    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  target.setUTCDate(Math.min(d, lastDay));
-  return target.toISOString().slice(0, 10);
-}
-
-const rateOf = (plan: PlanRow, mode: BillingServiceMode): number =>
-  mode === "billing_software"
-    ? (plan.billingSoftwareBps ?? 0)
-    : mode === "managed_billing"
-      ? (plan.managedBillingBps ?? 0)
-      : 0;
-
-function contractViewOf(
-  { contract, plan }: Pick<ContractRecord, "contract" | "plan">,
-  bands: readonly Band[],
-  history: readonly ModeHistoryRow[],
-  today: string,
-): ContractView {
-  if (
-    plan.perUserPriceCents === null ||
-    plan.billingSoftwareBps === null ||
-    plan.managedBillingBps === null ||
-    plan.contractTermMonths === null ||
-    plan.implementationFeeCents === null
-  ) {
-    throw new ChartWardenError("PLAN_PRICING_INCOMPLETE", "the contracted plan has no prices", 500);
-  }
-  const mode = modeInForceOn(history, today);
-  if (mode === null) {
-    throw new ChartWardenError(
-      "CONTRACT_MODE_MISSING",
-      "the contract has no billing service mode",
-      500,
-    );
-  }
-  return {
-    subscriptionId: contract.subscriptionId,
-    plan: {
-      id: plan.id,
-      slug: plan.slug,
-      name: plan.name,
-      version: plan.version,
-      currencyCode: plan.currencyCode,
-    },
-    billingServiceMode: mode,
-    billingBps: rateOf(plan, mode),
-    pendingBillingServiceMode: pendingModeAfter(history, today),
-    contractStartOn: contract.contractStartOn,
-    contractTermMonths: plan.contractTermMonths,
-    contractEndsOn: addMonthsIso(contract.contractStartOn, plan.contractTermMonths),
-    perUserPriceCents: plan.perUserPriceCents,
-    bands: bandViews(bands),
-    billingSoftwareBps: plan.billingSoftwareBps,
-    managedBillingBps: plan.managedBillingBps,
-    implementationFeeCents: plan.implementationFeeCents,
-    minimumMonthlyCents: plan.minimumMonthlyCents,
-  };
-}
-
-/** Who signed, why, and the order form: the columns the tenant role cannot read. Platform transactions only. */
-interface Signature {
-  readonly signedByMembershipId: string;
-  readonly signedReason: string;
-  readonly orderFormRef: string | null;
-}
-
-async function loadSignature(tx: WriteTx, contractId: string): Promise<Signature> {
-  const [row] = await tx
-    .select({
-      signedByMembershipId: SC.signedByMembershipId,
-      signedReason: SC.signedReason,
-      orderFormRef: SC.orderFormRef,
-    })
-    .from(SC)
-    .where(eq(SC.id, contractId))
-    .limit(1);
-  if (!row) throw new ChartWardenError("PERSIST_FAILED", "the contract has no signature row", 500);
-  return row;
-}
-
-const platformViewOf = (
-  record: ContractRecord,
-  bands: readonly Band[],
-  history: readonly ModeHistoryRow[],
-  today: string,
-  signature: Signature,
-): PlatformContractView => ({
-  ...contractViewOf(record, bands, history, today),
-  signedByMembershipId: signature.signedByMembershipId,
-  signedReason: signature.signedReason,
-  orderFormRef: signature.orderFormRef,
-});
-
-interface LoadedContract {
-  readonly record: ContractRecord;
-  readonly bands: Band[];
-  readonly history: readonly ModeHistoryRow[];
-}
-
-/** The org's newest contract in the scope with its plan bands and mode history, on a tenant or a platform transaction. */
-async function loadContract(
+/** Whether the org has a contract that is not canceled (live or paused), on the given org-scoped or platform transaction. */
+export async function orgHasContract(
   tx: WriteTx,
-  scope: "live" | "latest",
-  at: Date,
   organizationId: string,
-): Promise<LoadedContract | null> {
-  const record = await selectNewestContract(tx, scope, at, organizationId);
-  if (!record) return null;
-  const history = (await loadModeHistory(tx, [record.contract.id])).get(record.contract.id) ?? [];
-  return { record, bands: await loadBands(tx, record.plan.id), history };
+  at: Date = new Date(),
+): Promise<boolean> {
+  return (await selectNewestContract(tx, "current", at, organizationId)) !== null;
 }
 
-/**
- * The billing service mode in force TODAY of the org's live contracted subscription (newest live contract), or null when it has none:
- * never contracted, canceled, or PAUSED (an open-ended or still-running pause; a lapsed one counts as live, whether or not the hourly
- * pause-resume sweep has stored it as `active` yet: contract-select.ts). A paused
- * org still HAS a contract and a mode, so null is not "uncontracted": the seam doc (BillingServiceModeReader) says so to its consumers.
- * Reads on the TENANT pool under `withOrgContext` (the contract tables are SELECT-only to the app role); no cache; a failed read throws
- * and the caller decides (slice 3 fails closed: an unread mode must never read as `none`). Refuses when it is called inside ANOTHER
- * organisation's request. This is the body of the `BillingServiceModeReader` seam.
- */
+/** The billing service mode in force today for the newest live contract, on the tenant pool. */
 export async function readBillingServiceMode(
   db: DbClient,
   organizationId: string,
@@ -600,7 +488,7 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
       };
     },
 
-    async setBillingServiceMode(actor, orgSlug, mode, reasonRaw) {
+    async setBillingServiceMode(actor, orgSlug, mode, reasonRaw, opts = {}) {
       const reason = normalizeReason(reasonRaw);
       const audit = requireAuditPort(deps.audit);
       const onboarding = requireOnboardingPort(deps.onboarding);
@@ -609,16 +497,29 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (!tenant) throw new NotFoundError("tenant");
         const at = now();
         const today = utcDateOf(at);
-        // Serialize mode changes for this tenant before reading its history. The platform carrier
-        // deliberately has no UPDATE privilege on the immutable contract table, so a row-level
-        // `FOR UPDATE` lock would be refused. A transaction-scoped advisory lock needs no broader
-        // table grant and is released automatically on commit/rollback.
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenant.organizationId}, 35))`,
+        // The switch out of outside names the mode for a PAUSED contract too (it is the tenant's, and bills again on resume); the
+        // ordinary mode route stays on a live one.
+        const loaded = await loadContract(
+          tx,
+          opts.leavingOutside ? "current" : "live",
+          at,
+          tenant.organizationId,
         );
-        const found = await loadContract(tx, "live", at, tenant.organizationId);
-        if (!found) throw new NotFoundError("this organization has no contracted subscription");
+        if (!loaded) throw new NotFoundError("this organization has no contracted subscription");
+        const found = await lockSubscriptionAndReloadHistory(tx, loaded);
         const { record } = found;
+        // "Outside means none" is the invariant: a billing mode on a tenant that bills outside would be undone by the next sync or sweep.
+        if (
+          mode !== "none" &&
+          !opts.leavingOutside &&
+          (await deps.billsOutside?.(tenant.organizationId))
+        ) {
+          throw new ChartWardenError(
+            "BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE",
+            "this tenant bills outside ChartWarden, so its billing service mode is none; switch its clearinghouse to a vendor first (the operator sets the mode in that same step)",
+            409,
+          );
+        }
         const current = modeInForceOn(found.history, today);
         const pending = pendingModeAfter(found.history, today);
         // A request for the mode that will be in force anyway is a no-op; anything else is a new dated row (it supersedes a pending one).
@@ -654,6 +555,82 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         ];
         return platformViewOf(record, found.bands, history, today, signature);
       });
+    },
+
+    async setModeNoneForOutsideBilling(organizationId, trigger = SYSTEM_TRIGGER) {
+      const audit = requireAuditPort(deps.audit);
+      const onboarding = requireOnboardingPort(deps.onboarding);
+      // Most calls change nothing (every clearinghouse settle asks): decide that on the tenant pool, where no platform bypass is recorded.
+      const at0 = now();
+      const needsChange = await withOrgContext(
+        deps.db,
+        systemOrgContext(organizationId),
+        async (scoped) => {
+          const seen = await loadContract(
+            scoped as unknown as WriteTx,
+            "current",
+            at0,
+            organizationId,
+          );
+          if (!seen) return false;
+          const today0 = utcDateOf(at0);
+          return (
+            (pendingModeAfter(seen.history, today0)?.billingServiceMode ??
+              modeInForceOn(seen.history, today0)) !== "none"
+          );
+        },
+      );
+      if (!needsChange) return { changed: false };
+      return platformRunner(async (tx) => {
+        const tenant = await onboarding.enterByOrg(tx, organizationId);
+        if (!tenant) return { changed: false };
+        const at = now();
+        const today = utcDateOf(at);
+        const loaded = await loadContract(tx, "current", at, tenant.organizationId);
+        if (!loaded) return { changed: false }; // a mode is never invented for a tenant that has no contract
+        const found = await lockSubscriptionAndReloadHistory(tx, loaded);
+        // Asked AGAIN here, after the lock: a switch to a vendor (with the operator's mode) that landed since the caller decided must
+        // never be overwritten with none.
+        if (deps.billsOutside && !(await deps.billsOutside(organizationId)))
+          return { changed: false };
+        const current = modeInForceOn(found.history, today);
+        const pending = pendingModeAfter(found.history, today);
+        if ((pending?.billingServiceMode ?? current) === "none") return { changed: false };
+        const { effectiveOn } = await insertModeChange(
+          tx,
+          tenant,
+          found.record,
+          "none",
+          at,
+          nextModeCreatedAt(at, found.history),
+        );
+        await audit.record(tx, {
+          eventType: "m35.subscription.billing_service_mode_changed",
+          resourceKind: "subscription",
+          resourceId: found.record.sub.id,
+          organizationId: tenant.organizationId,
+          operator: SYSTEM_OPERATOR,
+          reason: "the tenant bills outside ChartWarden, so it pays no billing percentage",
+          detail: {
+            from: current,
+            to: "none",
+            effectiveOn,
+            trigger: "clearinghouse_outside",
+            triggeredBy: trigger.kind,
+            triggeredByUserId: trigger.userId,
+            triggeredByMembershipId: trigger.membershipId,
+          },
+          ...(trigger.correlationId ? { correlationId: trigger.correlationId } : {}),
+        });
+        return { changed: true };
+      });
+    },
+
+    async hasContract(organizationId) {
+      const at = now();
+      return withOrgContext(deps.db, systemOrgContext(organizationId), (scoped) =>
+        orgHasContract(scoped as unknown as WriteTx, organizationId, at),
+      );
     },
 
     async platformView(actor, orgSlug) {

@@ -6,8 +6,16 @@ import { randomUUID } from "node:crypto";
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createClaimMdEvidenceCipher } from "../src/modules/23-billing-medicare/claimmd-evidence/cipher";
+import {
+  createTenantClaimMdEvidence,
+  tenantClaimMdAccountReference,
+} from "../src/modules/23-billing-medicare/claimmd-evidence/store";
+import { createClaimMdCandidateProvider } from "../src/modules/23-billing-medicare/claimmd-identity/candidate-provider";
+import { readClaimMdEraSubmissionFacts } from "../src/modules/23-billing-medicare/claimmd-identity/era-evidence-reader";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -154,5 +162,152 @@ describe.skipIf(!DB_URL)("M23 Claim.MD response inbox — LIVE Postgres", () => 
       Object.values(receipt),
     );
     expect(repeated.rowCount).toBe(0);
+  });
+
+  it("a tenant's own Claim.MD account files evidence under its own org and tenant:<org>, immutable, org-scoped, and never matched by the platform readers", async () => {
+    const orgs = await admin.query<{ id: string }>(
+      `INSERT INTO organization(id,slug,legal_name,display_name) VALUES
+       (gen_random_uuid(),'tenacct-'||gen_random_uuid()::text,'Synthetic Tenant','Synthetic Tenant'),
+       (gen_random_uuid(),'tenother-'||gen_random_uuid()::text,'Synthetic Other','Synthetic Other') RETURNING id`,
+    );
+    const orgA = orgs.rows[0]?.id;
+    const orgB = orgs.rows[1]?.id;
+    if (!orgA || !orgB) throw new Error("synthetic organizations were not created");
+    const key = Buffer.alloc(32, 7);
+    const cipher = createClaimMdEvidenceCipher({
+      dekForOrg: async () => ({ version: "1", key }),
+      dekForOrgVersion: async () => ({ version: "1", key }),
+    });
+    const appDb = createDbClient({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
+    const adminDb = createDbClient({ connectionString: DB_URL as string });
+    try {
+      // The real tenant store, on the real NOBYPASSRLS chartwarden_app pool (withOrgContext inside reserve()).
+      const evidenceId = await createTenantClaimMdEvidence({ db: appDb.db, cipher })
+        .submission(orgA, "test")
+        .reserve({
+          organizationId: orgA,
+          providerEntityId: randomUUID(),
+          locationId: null,
+          claimId: randomUUID(),
+          // M41 (a commercial claim on the tenant's own account): the ERA reader's M23 path also needs a claim_submission row.
+          billingModule: "M41",
+          submissionId: randomUUID(),
+          attemptKey: "tenant-acct-attempt-1",
+          accountReference: tenantClaimMdAccountReference(orgA),
+          usage: "test",
+          x12Claim: {
+            billingNpi: "1234567893",
+            billingTin: "000000001",
+            payerId: "payer-synthetic",
+            pcn: "PCN-TENANT-ACCT",
+            claimType: "81:A:3",
+            serviceFrom: null,
+            serviceTo: null,
+            serviceLines: [],
+            isa13: "000000201",
+            gs06: "201",
+            st02: "0201",
+          },
+          payloadSha256: "b".repeat(64),
+          outboundReference: "tenant-acct-attempt-1",
+          reservedAt: new Date(),
+        });
+
+      // 1. Filed under the tenant's own org and its own account reference, and immutable.
+      const row = await admin.query<{ organization_id: string; account_reference: string }>(
+        "SELECT organization_id, account_reference FROM claimmd_submission_evidence WHERE id=$1",
+        [evidenceId],
+      );
+      expect(row.rows).toEqual([{ organization_id: orgA, account_reference: `tenant:${orgA}` }]);
+      await app.query("SELECT set_config('app.org_id',$1,false)", [orgA]);
+      await expect(
+        app.query("UPDATE claimmd_submission_evidence SET pcn='X' WHERE id=$1", [evidenceId]),
+      ).rejects.toThrow();
+      await expect(
+        app.query("DELETE FROM claimmd_submission_evidence WHERE id=$1", [evidenceId]),
+      ).rejects.toThrow();
+      await expect(
+        admin.query("UPDATE claimmd_submission_evidence SET pcn='X' WHERE id=$1", [evidenceId]),
+      ).rejects.toThrow(/IMMUTABLE/);
+      await expect(
+        admin.query("DELETE FROM claimmd_submission_evidence WHERE id=$1", [evidenceId]),
+      ).rejects.toThrow(/IMMUTABLE/);
+
+      // 2. Invisible under another organization's app.org_id.
+      await app.query("SELECT set_config('app.org_id',$1,false)", [orgB]);
+      const asOther = await app.query("SELECT id FROM claimmd_submission_evidence WHERE id=$1", [
+        evidenceId,
+      ]);
+      expect(asOther.rowCount).toBe(0);
+
+      // 3. The platform readers (identity candidates, ERA facts), run cross-tenant as the platform does, never return it.
+      const platformAccount = "acct-platform-synthetic";
+      const openTin = (fact: {
+        id: string;
+        organizationId: string;
+        providerEntityId: string;
+        attemptKey: string;
+        sealed: string;
+      }) => cipher.open({ ...fact, evidenceId: fact.id });
+      const eraFor = (accountReference: string) =>
+        readClaimMdEraSubmissionFacts({
+          tx: adminDb.db,
+          accountReference,
+          usage: "test",
+          npis: ["1234567893"],
+          pcns: ["PCN-TENANT-ACCT"],
+          openTin,
+        });
+      expect((await eraFor(platformAccount)).facts).toEqual([]);
+      // Positive control: the same query under the tenant's reference does find it, so the empty result is the account scope.
+      expect((await eraFor(`tenant:${orgA}`)).facts.map((fact) => fact.id)).toEqual([evidenceId]);
+
+      const provider = createClaimMdCandidateProvider({
+        readSnapshot: (fn) => adminDb.db.transaction(fn),
+        siteReader: {
+          providerEntityOwners: async () => [],
+          locationOwners: async () => [],
+        },
+        commercialSubmissionReader: async () => [],
+        cipher,
+        accountReference: platformAccount,
+        usage: "test",
+      });
+      const event = {
+        usage: "test" as const,
+        responseId: null,
+        claimMdClaimId: null,
+        remoteClaimId: null,
+        claimId: null,
+        fileId: null,
+        batchId: null,
+        pcn: "PCN-TENANT-ACCT",
+        billingNpi: "1234567893",
+        billingTin: null,
+        payerId: null,
+        claimType: null,
+        serviceFrom: null,
+        serviceTo: null,
+      };
+      // A platform-account event carrying the tenant row's PCN matches nothing ...
+      expect(
+        await provider.findClaimMdSubmissionCandidates({
+          ...event,
+          accountReference: platformAccount,
+        }),
+      ).toEqual({ candidates: [], complete: true });
+      // ... and an event naming the tenant's reference is refused by the platform provider outright.
+      expect(
+        await provider.findClaimMdSubmissionCandidates({
+          ...event,
+          accountReference: `tenant:${orgA}`,
+        }),
+      ).toEqual({ candidates: [], complete: true });
+    } finally {
+      await appDb.close();
+      await adminDb.close();
+    }
   });
 });

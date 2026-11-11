@@ -171,7 +171,11 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const objects = createInMemoryObjectStore();
-    const uploads = createServerUploadService({ db: handle.db, objects: objects.store });
+    const uploads = createServerUploadService({
+      db: handle.db,
+      objects: objects.store,
+      logger: { warn: () => undefined },
+    });
     backend = createDbDocumentBackend(handle.db, {}, uploads);
 
     resetAuthorizationContract();
@@ -391,7 +395,11 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
 
   it("the upload services refuse an internal document: a new version, a new document under an internal type, the verified-upload initiate", async () => {
     const objects = createInMemoryObjectStore();
-    const uploads = createServerUploadService({ db: handle.db, objects: objects.store });
+    const uploads = createServerUploadService({
+      db: handle.db,
+      objects: objects.store,
+      logger: { warn: () => undefined },
+    });
     const actor = { userId: "f2200000-0000-4000-8000-000000000001", membershipId: MEMBERSHIP };
     await expect(
       uploads.createVersion(ORG_A as never, actor, doc.summary.document, {

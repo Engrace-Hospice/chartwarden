@@ -16,6 +16,7 @@ import {
 } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectReaderPort, ObjectStorePort } from "../seams/store";
+import { assertKindWritable } from "./immutable-kinds";
 import type { DocumentProvenanceMetadata } from "./service";
 
 const UPLOAD_TTL_MS = 15 * 60 * 1000;
@@ -107,6 +108,9 @@ export interface VerifiedUploadService {
 
 function validateInput(input: InitiateVerifiedUploadInput): void {
   assertNotInternalOnlyForWrite(input.aggregateType);
+  // The tenant-facing presigned upload never files an operator-filed kind (the signed BAA), whatever the route schema allows: that door is
+  // the onboarding port's createDocumentOn. A new version is checked against the target's own kind below.
+  assertKindWritable(input.aggregateType);
   if ((input.mode === "new_version") !== Boolean(input.targetDocumentId)) {
     throw new ChartWardenError(
       "VALIDATION_FAILED",
@@ -245,6 +249,7 @@ export function createVerifiedUploadService(deps: {
           if (!doc) throw new NotFoundError("document");
           // Render-only and never a version target for anyone: answer as if absent (no internal/unknown oracle).
           if (isInternalOnlyAggregateType(doc.aggregateType)) throw new NotFoundError("document");
+          assertKindWritable(doc.aggregateType);
           // ADR-0109 D10 (PR 3) — a new version is the SAME document: its declared type and patient must be the target's, so the MIME / size /
           // org-level rules validateInput applied (video only for a library document) are the target's real rules; and a grief-library file
           // is fixed once uploaded.
@@ -415,11 +420,17 @@ export function createVerifiedUploadService(deps: {
         if (documentId) {
           await tx.execute(sql`select id from document where id = ${documentId} for update`);
           const [doc] = await tx
-            .select({ id: D.id, activeVersionId: D.activeVersionId, status: D.status })
+            .select({
+              id: D.id,
+              activeVersionId: D.activeVersionId,
+              status: D.status,
+              aggregateType: D.aggregateType,
+            })
             .from(D)
             .where(and(eq(D.id, documentId), eq(D.organizationId, organizationId)))
             .limit(1);
           if (!doc) throw new NotFoundError("document");
+          assertKindWritable(doc.aggregateType);
           if (doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
             throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",

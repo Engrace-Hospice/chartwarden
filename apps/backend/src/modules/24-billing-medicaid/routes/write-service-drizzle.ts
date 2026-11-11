@@ -467,7 +467,7 @@ export function buildDrizzleM24WriteService(
   /** Insert or version-bump one provider entity's state trading-partner credential, on `tx` (RLS already scoped). */
   async function upsertCredentialRow(
     tx: Tx,
-    actor: M24WriteActor,
+    actor: M24Actor,
     input: UpsertCredentialInput,
   ): Promise<{ id: string }> {
     const existing = await tx

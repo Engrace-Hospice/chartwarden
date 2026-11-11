@@ -9,7 +9,7 @@
 // list (a session whose permission list is stale) hides it too: no heading, no empty state, no hint that letters exist. Any other failure is
 // said plainly, with a retry. Approval and decline carry the version the list READ in `If-Match`; a 409/404 means another reviewer moved
 // first, which is said and the list reloaded. A reload keeps the list on screen: only the first load shows a placeholder.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -41,7 +41,6 @@ import {
   td,
   th,
   useActionStatus,
-  useIdempotencyKey,
   visuallyHidden,
 } from "./bereavement-ui";
 
@@ -331,7 +330,7 @@ function ApproveModal({
   const [attendingUserId, setAttendingUserId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const idempotency = useIdempotencyKey();
+  const idempotency = useAttemptKey();
 
   const noteLength = note.trim().length;
   const noteTooLong = noteLength > NOTE_MAX;
@@ -351,7 +350,7 @@ function ApproveModal({
       body,
       idempotency.keyFor(JSON.stringify(body)),
     );
-    idempotency.settle(status);
+    idempotency.settle(status, err);
     setBusy(false);
     if (err) {
       if (isStaleWrite(status)) onStale();
@@ -448,7 +447,7 @@ function DeclineModal({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const idempotency = useIdempotencyKey();
+  const idempotency = useAttemptKey();
   const reasonLength = reason.trim().length;
 
   const submit = async (): Promise<void> => {
@@ -462,7 +461,7 @@ function DeclineModal({
       trimmed,
       idempotency.keyFor(trimmed),
     );
-    idempotency.settle(status);
+    idempotency.settle(status, err);
     setBusy(false);
     if (err) {
       if (isStaleWrite(status)) onStale();

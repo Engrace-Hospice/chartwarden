@@ -3,7 +3,13 @@
 // load-bearing ones on the real roles.
 import { ChartWardenError } from "@chartwarden/types";
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PlatformActor, StepTemplate, TenantActor, TenantRef } from "../onboarding/model";
+import {
+  type PlatformActor,
+  type StepTemplate,
+  type TenantActor,
+  type TenantRef,
+  isSkippableStep,
+} from "../onboarding/model";
 import { type OnboardingWizardDeps, createOnboardingWizard } from "../onboarding/wizard-service";
 import {
   type MemoryWizardState,
@@ -48,7 +54,7 @@ const TEMPLATES: StepTemplate[] = [
   tpl("billing", 2, { owner: "either" }),
   tpl("locations", 3, { owner: "org_admin", completionMode: "either" }),
   tpl("baa_auto", 4, { completionMode: "auto" }),
-  tpl("sample", 5, { optional: true }),
+  tpl("sample_data_loaded", 5, { optional: true }),
   tpl("go_live_checklist_complete", 6, { owner: "compliance_officer" }),
 ];
 
@@ -144,7 +150,9 @@ describe("strict sequence", () => {
       "ONBOARDING_STEP_OUT_OF_ORDER",
     );
     expect(
-      await code(wizard().skipPlatform("acme", taskId("billing"), OPS, "not needed here")),
+      await code(
+        wizard().skipPlatform("acme", taskId("sample_data_loaded"), OPS, "not needed here"),
+      ),
     ).toBe("ONBOARDING_STEP_OUT_OF_ORDER");
     expect(statusOf("billing")).toBe("pending");
   });
@@ -269,10 +277,11 @@ describe("attestation", () => {
 });
 
 describe("skip", () => {
-  it("skips with a recorded rationale and counts as settled for the next step", async () => {
+  it("skips a listed step with a recorded rationale, and it counts as settled for the next step", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
     const step = await wizard().skipPlatform(
       "acme",
-      taskId("organisation"),
+      taskId("sample_data_loaded"),
       OPS,
       "customer migrating from another system",
     );
@@ -280,9 +289,47 @@ describe("skip", () => {
       status: "skipped",
       skipRationale: "customer migrating from another system",
     });
-    expect((await wizard().attestPlatform("acme", taskId("billing"), OPS, evidence)).status).toBe(
-      "done",
+    const view = await wizard().getPlatform("acme");
+    expect(view.currentStepKey).toBe("go_live_checklist_complete");
+    expect(view.steps.find((s) => s.key === "sample_data_loaded")?.skippable).toBe(true);
+  });
+
+  it("refuses to skip a step outside the skippable list (the plan, the provider entity, the organisation...)", async () => {
+    expect(
+      await code(wizard().skipPlatform("acme", taskId("organisation"), OPS, "customer migrating")),
+    ).toBe("ONBOARDING_STEP_NOT_SKIPPABLE");
+    expect(statusOf("organisation")).not.toBe("skipped");
+    expect((await wizard().getPlatform("acme")).steps[0]?.skippable).toBe(false);
+  });
+
+  it("a non-canonical catalog step (added by platform ops) is skippable; go-live never is, even off the canonical list", () => {
+    expect(isSkippableStep({ key: "tenant_custom_training", canonical: false })).toBe(true);
+    expect(isSkippableStep({ key: "organisation", canonical: true })).toBe(false);
+    expect(isSkippableStep({ key: "sample_data_loaded", canonical: true })).toBe(true);
+    expect(isSkippableStep({ key: "go_live_checklist_complete", canonical: false })).toBe(false);
+  });
+
+  it("skip() settles a non-canonical catalog step, and the view offers Skip on it", async () => {
+    const extra = tpl("custom_training", 5, { canonical: false });
+    state = createMemoryWizardState({
+      tenants: state.tenants,
+      templates: [...TEMPLATES, extra],
+      tasks: [...TEMPLATES, extra].map((t) => memoryTask(TENANT, t.key)),
+      members: state.members,
+      baa: state.baa,
+      profiles: state.profiles,
+    });
+    settle("organisation", "billing", "locations", "baa_auto");
+    const before = await wizard().getPlatform("acme");
+    expect(before.steps.find((s) => s.key === "custom_training")?.skippable).toBe(true);
+    const step = await wizard().skipPlatform(
+      "acme",
+      taskId("custom_training"),
+      OPS,
+      "not part of this customer's rollout",
     );
+    expect(step).toMatchObject({ status: "skipped", skippable: true });
+    expect(statusOf("custom_training")).toBe("skipped");
   });
 
   it("refuses to skip go-live", async () => {
@@ -1040,6 +1087,70 @@ describe("a BAA recorded or last changed by the approving operator cannot take t
     },
   );
 
+  it("refuses (409 GO_LIVE_APPROVER_WROTE_BAA) an approver who UPLOADED the signed agreement, though another operator wrote the row", async () => {
+    state.baa = new Map([
+      [
+        TENANT,
+        {
+          baaStatus: "executed",
+          expiresOn: "2028-01-01",
+          documentId: "doc-1",
+          recordedByUserId: "someone-u",
+          updatedByUserId: "someone-u",
+          documentUploadedByMembershipId: OPS.membershipId,
+        },
+      ],
+    ]);
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).rejects.toMatchObject({
+      code: "GO_LIVE_APPROVER_WROTE_BAA",
+      statusCode: 409,
+    });
+    expect(tenant().status).toBe("onboarding");
+    expect(state.goLive[0]?.status).toBe("pending");
+    expect(activateOrganization).not.toHaveBeenCalled();
+  });
+
+  // A revoked membership is never revived: a returning operator is re-invited as a NEW membership row. The document still names the OLD
+  // membership id, which no longer equals the approver's, so the user behind it is what has to match.
+  it("refuses an approver who uploaded the file under an OLDER, revoked membership of the same user (the membership id no longer matches)", async () => {
+    state.baa = new Map([
+      [
+        TENANT,
+        {
+          baaStatus: "executed",
+          expiresOn: "2028-01-01",
+          documentId: "doc-1",
+          recordedByUserId: "someone-u",
+          updatedByUserId: "someone-u",
+          documentUploadedByMembershipId: "ops-m-before-the-revoke",
+          documentUploadedByUserId: OPS.userId,
+        },
+      ],
+    ]);
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).rejects.toMatchObject({
+      code: "GO_LIVE_APPROVER_WROTE_BAA",
+      statusCode: 409,
+    });
+    expect(tenant().status).toBe("onboarding");
+    expect(activateOrganization).not.toHaveBeenCalled();
+  });
+
+  it("another operator approves when someone else uploaded the file, and a legacy row with no recorded uploader cannot be judged", async () => {
+    state.baa = new Map([
+      [
+        TENANT,
+        {
+          baaStatus: "executed",
+          expiresOn: "2028-01-01",
+          documentId: "doc-1",
+          recordedByUserId: "someone-u",
+          documentUploadedByMembershipId: "another-ops-m",
+        },
+      ],
+    ]);
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).resolves.toBeDefined();
+  });
+
   it("another operator approves, and a legacy row with no recorded writer cannot be judged", async () => {
     state.baa = new Map([
       [
@@ -1564,5 +1675,231 @@ describe("read model", () => {
     });
     expect(view.goLive.state).toBe("not_ready");
     expect(view.orgProfile).toEqual({ displayName: "Acme", orgTimezone: "America/New_York" });
+  });
+});
+
+// Owner decision D5 (2026-11-06): choosing `outside` auto-skips the billing steps that only matter to a tenant ChartWarden
+// transmits for (MAC credentials, payer enrollment) with a SYSTEM reason, through the wizard's own skip path (so the audit and
+// the strict sequence hold); switching back to a vendor reopens exactly the steps the system skipped.
+describe("choosing outside ChartWarden: the billing steps follow (D5)", () => {
+  const SKIP_REASON = "bills outside ChartWarden";
+  const BILLING_TEMPLATES: StepTemplate[] = [
+    tpl("organisation", 1),
+    tpl("clearinghouse_selected", 2, { owner: "either", completionMode: "either" }),
+    tpl("mac_configured", 3, { owner: "either", completionMode: "either" }),
+    tpl("payer_enrollment", 4, { owner: "either" }),
+    tpl("go_live_checklist_complete", 5, { owner: "compliance_officer" }),
+  ];
+  let choice: "outside" | "vendor" | "none";
+
+  function billingWizard() {
+    return createOnboardingWizard({
+      runner: createMemoryWizardRunner(state),
+      orgProfile: createMemoryOrgProfile(state),
+      activateOrganization,
+      advance,
+      clearinghouseChoice: async () => choice,
+      warn: (message) => warnings.push(message),
+      now: () => NOW,
+    });
+  }
+
+  beforeEach(() => {
+    choice = "outside";
+    const ref = state.tenants[0] as TenantRef;
+    state = createMemoryWizardState({
+      tenants: [ref],
+      templates: BILLING_TEMPLATES,
+      tasks: BILLING_TEMPLATES.map((t) => memoryTask(TENANT, t.key)),
+      members: state.members,
+      baa: new Map([[TENANT, { baaStatus: "executed", expiresOn: "2028-01-01" }]]),
+      profiles: new Map([[ORG, { displayName: "Acme", orgTimezone: "America/New_York" }]]),
+    });
+  });
+
+  it("skips the MAC and payer-enrollment steps with the system reason, once the earlier steps are settled", async () => {
+    settle("organisation", "clearinghouse_selected");
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(statusOf("mac_configured")).toBe("skipped");
+    expect(statusOf("payer_enrollment")).toBe("skipped");
+    expect(statusOf("go_live_checklist_complete")).toBe("pending"); // nothing else is touched
+    const skipped = state.tasks.find((t) => t.templateKey === "mac_configured");
+    expect(skipped?.completionEvidence.skip).toMatchObject({
+      rationale: SKIP_REASON,
+      skippedByMembershipId: "system",
+    });
+    // a second pass changes nothing (idempotent)
+    const before = JSON.stringify(state.tasks);
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(JSON.stringify(state.tasks)).toBe(before);
+  });
+
+  it("marks a skip the system made with a flag the console reads, and never one a person typed the same words for", async () => {
+    settle("organisation", "clearinghouse_selected");
+    await billingWizard().syncClearinghouseSteps(ORG);
+    const view = await billingWizard().getPlatform("acme");
+    expect(view.steps.find((s) => s.key === "mac_configured")).toMatchObject({
+      status: "skipped",
+      skipRationale: SKIP_REASON,
+      systemSkipped: true,
+    });
+    // an operator who types the very same rationale on another step is a person's skip, not the system's
+    state.tasks = state.tasks.map((t) =>
+      t.templateKey === "payer_enrollment"
+        ? { ...t, status: "pending" as const, completionEvidence: {} }
+        : t,
+    );
+    await billingWizard().skipPlatform("acme", taskId("payer_enrollment"), OPS, SKIP_REASON);
+    const after = await billingWizard().getPlatform("acme");
+    expect(after.steps.find((s) => s.key === "payer_enrollment")).toMatchObject({
+      status: "skipped",
+      skipRationale: SKIP_REASON,
+      systemSkipped: false,
+    });
+    expect(after.steps.find((s) => s.key === "organisation")?.systemSkipped).toBe(false);
+  });
+
+  it("keeps the strict sequence: while an earlier gating step is open nothing is skipped, and it is not an error", async () => {
+    settle("organisation"); // clearinghouse_selected is still open
+    await expect(billingWizard().syncClearinghouseSteps(ORG)).resolves.toBeUndefined();
+    expect(statusOf("mac_configured")).toBe("pending");
+    expect(statusOf("payer_enrollment")).toBe("pending");
+    // ...and the skip lands as soon as the wizard settles that step: every wizard change re-runs the sync, no explicit pass needed
+    await billingWizard().attestPlatform("acme", taskId("clearinghouse_selected"), OPS, evidence);
+    expect(statusOf("clearinghouse_selected")).toBe("done");
+    expect(statusOf("mac_configured")).toBe("skipped");
+    expect(statusOf("payer_enrollment")).toBe("skipped");
+  });
+
+  it("leaves a step an operator already settled alone, and leaves a tenant that is no longer onboarding alone", async () => {
+    settle("organisation", "clearinghouse_selected", "mac_configured");
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(statusOf("mac_configured")).toBe("done");
+    expect(statusOf("payer_enrollment")).toBe("skipped");
+    state.tenants[0] = { ...(state.tenants[0] as TenantRef), status: "active" };
+    state.tasks = state.tasks.map((t) =>
+      t.templateKey === "payer_enrollment" ? { ...t, status: "pending" as const } : t,
+    );
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(statusOf("payer_enrollment")).toBe("pending");
+  });
+
+  it("switching back to a vendor reopens ONLY the steps the system skipped", async () => {
+    settle("organisation", "clearinghouse_selected");
+    await billingWizard().syncClearinghouseSteps(ORG);
+    // an operator, not the system, skips another step on its own account
+    const idx = state.tasks.findIndex((t) => t.templateKey === "organisation");
+    state.tasks[idx] = { ...(state.tasks[idx] as (typeof state.tasks)[number]), status: "skipped" };
+    choice = "vendor";
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(statusOf("mac_configured")).toBe("in_progress");
+    expect(statusOf("payer_enrollment")).toBe("in_progress");
+    expect(statusOf("organisation")).toBe("skipped"); // not ours to reopen
+  });
+
+  it("does not reopen a step a person skipped for their own reason, even when the org is back on a vendor", async () => {
+    settle("organisation", "clearinghouse_selected");
+    await billingWizard().skipPlatform(
+      "acme",
+      taskId("mac_configured"),
+      OPS,
+      "carrier handles MAC enrollment",
+    );
+    choice = "vendor";
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(statusOf("mac_configured")).toBe("skipped");
+  });
+
+  it("does nothing while the org has chosen nothing", async () => {
+    choice = "none";
+    settle("organisation", "clearinghouse_selected");
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(statusOf("mac_configured")).toBe("pending");
+  });
+
+  it("runs after every wizard change, so a skip that was waiting on an earlier step lands as soon as it settles", async () => {
+    settle("clearinghouse_selected"); // the clearinghouse step is settled; `organisation` (earlier) is open
+    await billingWizard().syncClearinghouseSteps(ORG);
+    expect(statusOf("mac_configured")).toBe("pending");
+    await billingWizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    expect(statusOf("organisation")).toBe("done");
+    expect(statusOf("mac_configured")).toBe("skipped");
+    expect(statusOf("payer_enrollment")).toBe("skipped");
+  });
+});
+
+// Owner decision (2026-11-06, slice 5): a tenant that bills outside ChartWarden pays no billing percentage, so choosing `outside`
+// sets its billing service mode to `none`, through the pricing side's port, in the same post-commit sync that skips the billing
+// steps. Choosing a vendor again leaves the mode alone: an operator picks the mode the vendor billing calls for (the console says so).
+describe("choosing outside ChartWarden: the billing service mode follows (slice 5)", () => {
+  let choice: "outside" | "vendor" | "none";
+  let calls: string[];
+  let failWith: Error | null;
+
+  function modeWizard(withHook = true) {
+    return createOnboardingWizard({
+      runner: createMemoryWizardRunner(state),
+      orgProfile: createMemoryOrgProfile(state),
+      activateOrganization,
+      advance,
+      clearinghouseChoice: async () => choice,
+      ...(withHook
+        ? {
+            settleBillingModeForOutside: async (organizationId: string) => {
+              calls.push(organizationId);
+              if (failWith) throw failWith;
+            },
+          }
+        : {}),
+      warn: (message) => warnings.push(message),
+      now: () => NOW,
+    });
+  }
+
+  beforeEach(() => {
+    choice = "outside";
+    calls = [];
+    failWith = null;
+  });
+
+  it("asks the pricing side to set the mode to none when the org bills outside", async () => {
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG]);
+  });
+
+  it("does it for a live tenant too: a tenant that switches to outside after go-live stops paying the percentage", async () => {
+    state.tenants[0] = { ...(state.tenants[0] as TenantRef), status: "active" };
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG]);
+  });
+
+  it("leaves the mode alone for a vendor and while nothing is chosen", async () => {
+    choice = "vendor";
+    await modeWizard().syncClearinghouseSteps(ORG);
+    choice = "none";
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([]);
+  });
+
+  it("a failing pricing side is warned about and never fails the sync or the change that triggered it", async () => {
+    failWith = new Error("pricing unavailable");
+    await expect(modeWizard().syncClearinghouseSteps(ORG)).resolves.toBeUndefined();
+    expect(warnings.some((w) => /billing service mode/i.test(w))).toBe(true);
+  });
+
+  it("a failed attempt is retried by the next sync: the first call fails, a later one reaches the pricing side", async () => {
+    failWith = new Error("pricing unavailable");
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG]); // asked once, and refused
+    expect(warnings.some((w) => /billing service mode/i.test(w))).toBe(true);
+
+    failWith = null;
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG, ORG]); // asked again, and this time it went through
+  });
+
+  it("is optional: a deployment without the pricing side syncs the steps as before", async () => {
+    await expect(modeWizard(false).syncClearinghouseSteps(ORG)).resolves.toBeUndefined();
+    expect(calls).toEqual([]);
   });
 });

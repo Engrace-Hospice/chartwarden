@@ -313,6 +313,14 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
                 [linkId],
               );
             },
+            revokeForDisclosureAttempt: async ({ organizationId, disclosureAttemptId, linkId }) => {
+              const result = await kit.admin.query<{ id: string }>(
+                "UPDATE collaborator_link SET revoked_at = now() WHERE organization_id=$1 AND revoked_at IS NULL AND (disclosure_attempt_id=$2 OR id=$3) RETURNING id",
+                [organizationId, disclosureAttemptId, linkId ?? null],
+              );
+              linkRevokes.push(...result.rows.map((row) => row.id));
+              return result.rowCount ?? 0;
+            },
           },
           delivery: {
             deliver: async (d) => {

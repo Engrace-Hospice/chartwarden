@@ -1,10 +1,14 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — the shared list/drawer behaviours on the M34 screens: a stale ?param link is
 // cleared with a notice, Enter opens a row's drawer, Escape closes it and hands focus back to the row, and a free-text
-// filter issues one request after the typing pauses (Apply / Enter still load at once).
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// filter issues one request after the typing pauses (Apply / Enter still load at once). A drawer opened from the URL
+// survives a reload that still lists its record, is cleared (with the notice) by one that does not, is not re-mounted from
+// stale rows while a failed load is retried, and closes on Back. Every screen's drawer selection is on `useSelectionParam`, so
+// they share one history contract: opening pushes a single entry, picking another row replaces it, closing (or a record that
+// vanishes) pops it, and no dead or duplicate entry is left for Back to land on.
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { BaaRegister } from "../baa-register";
 import { DsarQueue } from "../dsar-queue";
@@ -25,22 +29,43 @@ interface Recorded {
   search: string;
 }
 
-const json = (body: unknown): Response =>
+const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" },
   });
 const page = (items: unknown[]): unknown => ({ items, nextCursor: null, hasMore: false });
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
-  return <output data-testid="search">{location.search}</output>;
+  return (
+    <>
+      <output data-testid="search">{location.search}</output>
+      <output data-testid="pathname">{location.pathname}</output>
+    </>
+  );
 }
 
+function HistoryBack(): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      history back
+    </button>
+  );
+}
+
+/** A route's reply: a body served as 200 JSON, or a function that answers each request itself. */
+type Reply = unknown | (() => Response | Promise<Response>);
+
+const PREVIOUS_PATH = "/previous";
+
+/** `previous` seeds one earlier history entry (a different page), so a test can count how many Backs leave the screen. */
 function mount(
   element: JSX.Element,
   url: string,
-  routes: Record<string, unknown>,
+  routes: Record<string, Reply>,
+  previous?: string,
 ): { calls: Recorded[]; listCalls: (path: string) => Recorded[] } {
   const calls: Recorded[] = [];
   const client = createApiClient({
@@ -49,15 +74,29 @@ function mount(
       const req = input instanceof Request ? input : new Request(String(input), init);
       const parsed = new URL(req.url);
       calls.push({ path: parsed.pathname, search: parsed.search });
-      return json(routes[parsed.pathname] ?? page([]));
+      const reply = routes[parsed.pathname];
+      return typeof reply === "function"
+        ? (reply as () => Response | Promise<Response>)()
+        : json(reply ?? page([]));
     },
   });
   render(
     <ApiClientProvider client={client}>
       <ToastProvider>
-        <MemoryRouter initialEntries={[url]}>
-          {element}
+        <MemoryRouter
+          initialEntries={previous ? [previous, url] : [url]}
+          initialIndex={previous ? 1 : 0}
+        >
+          {previous ? (
+            <Routes>
+              <Route path={previous} element={<p>previous page</p>} />
+              <Route path="*" element={element} />
+            </Routes>
+          ) : (
+            element
+          )}
           <LocationProbe />
+          <HistoryBack />
         </MemoryRouter>
       </ToastProvider>
     </ApiClientProvider>,
@@ -66,11 +105,21 @@ function mount(
 }
 
 const search = (): string => screen.getByTestId("search").textContent ?? "";
+/** The list's rows: activatable `<tr role="button">`s in the first (main) table, not buttons nested inside a row or drawer. */
+const rows = (): HTMLElement[] => {
+  const [table] = screen.queryAllByRole("table");
+  if (!table) return [];
+  return within(table)
+    .queryAllByRole("button")
+    .filter((el) => el.tagName === "TR");
+};
 const firstRow = (): HTMLElement => {
-  const row = document.querySelector<HTMLElement>("tr.wx-data-row-interactive");
+  const [row] = rows();
   if (!row) throw new Error("no interactive row rendered");
   return row;
 };
+
+const rowShown = (): void => expect(rows().length).toBeGreaterThan(0);
 
 afterEach(() => cleanup());
 
@@ -82,8 +131,58 @@ interface ParamCase {
   id: string;
   drawer: string;
   routes: Record<string, unknown>;
+  /** The button that reloads the list. Only some screens have one (see URL_DRAWER_CASES). */
+  reload?: string;
+  /** What distinguishes a second row, where the selection id is not the row's `id` field (tenants are picked by slug). */
+  second?: { id: string; fields: Record<string, unknown> };
+  /** Set where a failed reload keeps the rows it already had (so the drawer is never re-mounted from stale rows). */
+  keepsRowsOnFailure?: boolean;
 }
 
+const flag = {
+  id: "flag-1",
+  flagKey: "beta.thing",
+  organizationId: null,
+  flagKind: "product",
+  valueType: "bool",
+  value: true,
+  rolloutPercent: null,
+  killSwitchActive: false,
+  updatedAt: NOW,
+};
+const baa = {
+  id: "baa-1",
+  organizationId: "org-1",
+  tenantAccountId: "tenant-1",
+  addendumVersion: "v2",
+  baaStatus: "executed",
+  executedOn: null,
+  effectiveOn: null,
+  expiresOn: null,
+  documentId: null,
+  attestedAt: null,
+};
+const dsar = {
+  id: "dsar-1",
+  patientId: "patient-1",
+  requestSource: "patient",
+  status: "requested",
+  requestedAt: NOW,
+  slaDueAt: NOW,
+  extendedUntil: null,
+  fulfilledAt: null,
+  deniedReason: null,
+  createdAt: NOW,
+};
+const exportJob = {
+  id: "export-1",
+  requestedPurpose: "migration",
+  status: "fulfilled",
+  requestedAt: NOW,
+  fulfilledAt: NOW,
+  bundleSizeBytes: 10,
+  createdAt: NOW,
+};
 const PARAM_CASES: ParamCase[] = [
   {
     name: "Signups",
@@ -174,6 +273,50 @@ const PARAM_CASES: ParamCase[] = [
         },
       ]),
     },
+    // The toolbar's Search reloads the list when the text is unchanged.
+    reload: "Search",
+    keepsRowsOnFailure: true,
+    second: { id: "cedar-2", fields: { id: "t-2", orgSlug: "cedar-2" } },
+  },
+  {
+    name: "FeatureFlags",
+    element: <FeatureFlags />,
+    path: "/flags",
+    param: "flag",
+    id: "flag-1",
+    drawer: "Feature flag",
+    routes: { "/api/v1/platform/feature-flags": page([flag]) },
+    reload: "Refresh",
+  },
+  {
+    name: "BaaRegister",
+    element: <BaaRegister />,
+    path: "/baa",
+    param: "baa",
+    id: "baa-1",
+    drawer: "BAA record",
+    routes: { "/api/v1/platform/baa-register": page([baa]) },
+    reload: "Refresh",
+  },
+  {
+    name: "DsarQueue",
+    element: <DsarQueue />,
+    path: "/dsar",
+    param: "job",
+    id: "dsar-1",
+    drawer: "DSAR request",
+    routes: { "/api/v1/tenant/dsar-export-jobs": page([dsar]) },
+    reload: "Apply",
+  },
+  {
+    name: "TenantExportQueue",
+    element: <TenantExportQueue />,
+    path: "/exports",
+    param: "export",
+    id: "export-1",
+    drawer: "Export job",
+    routes: { "/api/v1/tenant/tenant-export-jobs": page([exportJob]) },
+    reload: "Apply",
   },
 ];
 
@@ -194,9 +337,7 @@ describe.each(PARAM_CASES)("$name list behaviour", (c) => {
 
   it("opens on Enter, closes on Escape and returns focus to the row", async () => {
     mount(c.element, c.path, c.routes);
-    await waitFor(() =>
-      expect(document.querySelector("tr.wx-data-row-interactive")).not.toBeNull(),
-    );
+    await waitFor(rowShown);
     const row = firstRow();
     row.focus();
     fireEvent.keyDown(row, { key: "Enter" });
@@ -206,6 +347,292 @@ describe.each(PARAM_CASES)("$name list behaviour", (c) => {
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     await waitFor(() => expect(search()).toBe(""));
     await waitFor(() => expect(document.activeElement).toBe(firstRow()));
+  });
+
+  it("closes the drawer on Back", async () => {
+    mount(c.element, c.path, c.routes);
+    await waitFor(rowShown);
+    fireEvent.keyDown(firstRow(), { key: "Enter" });
+    await screen.findByRole("complementary", { name: c.drawer });
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("");
+  });
+});
+
+type Phase = "listed" | "gone" | "failing" | "held";
+
+/** The screen's list route, answering by phase so a test can reload it into any of the four outcomes. */
+function scriptedList(c: ParamCase): {
+  routes: Record<string, Reply>;
+  listPath: string;
+  setPhase: (next: Phase) => void;
+  release: () => void;
+} {
+  const [listPath, listed] = Object.entries(c.routes)[0] as [string, unknown];
+  let phase: Phase = "listed";
+  let settle: (response: Response) => void = () => {};
+  const reply = (): Response | Promise<Response> => {
+    if (phase === "gone") return json(page([]));
+    if (phase === "failing")
+      return json({ error: { code: "INTERNAL", message: "boom", correlationId: "c" } }, 500);
+    if (phase === "held")
+      return new Promise<Response>((resolve) => {
+        settle = resolve;
+      });
+    return json(listed);
+  };
+  return {
+    routes: { [listPath]: reply },
+    listPath,
+    setPhase: (next) => {
+      phase = next;
+    },
+    release: () => settle(json(listed)),
+  };
+}
+
+// The screens with a button that reloads their list (flags, BAA register, DSAR, tenant exports, tenants' Search): each empties
+// its list when a load fails and has a drawer that must survive, or be cleared by, a reload. The other lists keep their rows
+// through a failed refresh, so their drawer is never re-mounted and has nothing to prove here.
+const URL_DRAWER_CASES = PARAM_CASES.filter((c) => c.reload);
+
+describe.each(URL_DRAWER_CASES)("$name URL drawer across reloads", (c) => {
+  const open = async (): Promise<
+    ReturnType<typeof scriptedList> & {
+      drawer: HTMLElement;
+      listCalls: (path: string) => Recorded[];
+    }
+  > => {
+    const list = scriptedList(c);
+    const { listCalls } = mount(c.element, `${c.path}?${c.param}=${c.id}`, list.routes);
+    const drawer = await screen.findByRole("complementary", { name: c.drawer });
+    return { ...list, drawer, listCalls };
+  };
+  const reload = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: c.reload }));
+  };
+
+  it("survives a reload that still lists the record, without re-mounting", async () => {
+    const { drawer } = await open();
+    reload();
+    await waitFor(rowShown);
+    expect(screen.getByRole("complementary", { name: c.drawer })).toBe(drawer);
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+    expect(screen.queryByText(STALE_NOTICE)).toBeNull();
+  });
+
+  it("clears the drawer, with the notice, when a reload no longer lists the record", async () => {
+    const { setPhase } = await open();
+    setPhase("gone");
+    reload();
+    expect(await screen.findByText(STALE_NOTICE)).toBeTruthy();
+    await waitFor(() => expect(search()).toBe(""));
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  const goBack = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+  };
+
+  it("a record that vanishes under a drawer opened from the list pops that entry: one Back reaches the previous page", async () => {
+    const list = scriptedList(c);
+    mount(c.element, c.path, list.routes, PREVIOUS_PATH);
+    await waitFor(rowShown);
+    fireEvent.click(firstRow());
+    await screen.findByRole("complementary", { name: c.drawer });
+    list.setPhase("gone");
+    reload();
+    expect(await screen.findByText(STALE_NOTICE)).toBeTruthy();
+    await waitFor(() => expect(search()).toBe(""));
+    // History depth: no duplicate list entry was left behind by the clear.
+    goBack();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("a stale deep link is cleared by replacing the param: one Back reaches the previous page", async () => {
+    const list = scriptedList(c);
+    mount(c.element, `${c.path}?${c.param}=missing`, list.routes, PREVIOUS_PATH);
+    expect(await screen.findByText(STALE_NOTICE)).toBeTruthy();
+    await waitFor(() => expect(search()).toBe(""));
+    goBack();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+});
+
+/** Screens whose list empties when a load fails (the others keep their rows through a failed refresh, so nothing re-mounts). */
+const EMPTIES_ON_FAILURE_CASES = URL_DRAWER_CASES.filter((c) => !c.keepsRowsOnFailure);
+
+describe.each(EMPTIES_ON_FAILURE_CASES)("$name URL drawer across a failed load", (c) => {
+  const open = async (): Promise<
+    ReturnType<typeof scriptedList> & { listCalls: (path: string) => Recorded[] }
+  > => {
+    const list = scriptedList(c);
+    const { listCalls } = mount(c.element, `${c.path}?${c.param}=${c.id}`, list.routes);
+    await screen.findByRole("complementary", { name: c.drawer });
+    return { ...list, listCalls };
+  };
+  const reload = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: c.reload }));
+  };
+
+  it("does not re-mount the drawer from stale rows while a failed load is retried", async () => {
+    const { setPhase, release, listPath, listCalls } = await open();
+    setPhase("failing");
+    reload();
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    // The list cannot be read, so no drawer — but the link is kept: nothing says the record is gone.
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+    expect(screen.queryByText(STALE_NOTICE)).toBeNull();
+
+    setPhase("held");
+    fireEvent.click(retry);
+    // Initial load, the failing reload, and the retry now held in flight.
+    await waitFor(() => expect(listCalls(listPath)).toHaveLength(3));
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+
+    release();
+    expect(await screen.findByRole("complementary", { name: c.drawer })).toBeTruthy();
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+  });
+});
+
+/** The screen's list with a second row (the first one's id counted up), so a test can pick row A then row B. */
+function withSecondRow(c: ParamCase): { routes: Record<string, unknown>; secondId: string } {
+  const [listPath, listed] = Object.entries(c.routes)[0] as [string, { items: { id: string }[] }];
+  const first = listed.items[0] as { id: string };
+  const secondId = c.second?.id ?? c.id.replace(/1$/, "2");
+  const secondRow = { ...first, id: secondId, ...c.second?.fields };
+  return { routes: { [listPath]: page([first, secondRow]) }, secondId };
+}
+
+describe.each(PARAM_CASES)("$name URL drawer history", (c) => {
+  const { routes, secondId } = withSecondRow(c);
+  const openLists = async (): Promise<void> => {
+    mount(c.element, c.path, routes, PREVIOUS_PATH);
+    await waitFor(() => expect(rows()).toHaveLength(2));
+  };
+  const pathname = (): string => screen.getByTestId("pathname").textContent ?? "";
+  const back = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+  };
+  const drawerShown = (): Promise<HTMLElement> =>
+    screen.findByRole("complementary", { name: c.drawer });
+
+  it("keeps other query params when a row is opened and when the drawer closes", async () => {
+    mount(c.element, `${c.path}?keep=1`, routes);
+    await waitFor(rowShown);
+    fireEvent.keyDown(firstRow(), { key: "Enter" });
+    const drawer = await screen.findByRole("complementary", { name: c.drawer });
+    expect(new URLSearchParams(search()).get("keep")).toBe("1");
+    expect(new URLSearchParams(search()).get(c.param)).toBe(c.id);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("?keep=1");
+  });
+
+  it("opening then closing the drawer leaves no dead entry: one Back reaches the previous page", async () => {
+    await openLists();
+    fireEvent.click(firstRow());
+    const drawer = await drawerShown();
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(search()).toBe(""));
+    expect(pathname()).toBe(c.path);
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+    expect(pathname()).toBe(PREVIOUS_PATH);
+  });
+
+  it("closing from the Close button pops the same single entry", async () => {
+    await openLists();
+    fireEvent.click(firstRow());
+    await drawerShown();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("picking row B while row A is open replaces the entry: one Back closes the drawer, a second leaves the page", async () => {
+    await openLists();
+    fireEvent.click(rows()[0] as HTMLElement);
+    await drawerShown();
+    fireEvent.click(rows()[1] as HTMLElement);
+    await waitFor(() => expect(search()).toBe(`?${c.param}=${secondId}`));
+    back();
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("");
+    expect(pathname()).toBe(c.path);
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("closing a drawer opened by picking row B pops back to the page before row A", async () => {
+    await openLists();
+    fireEvent.click(rows()[0] as HTMLElement);
+    await drawerShown();
+    fireEvent.click(rows()[1] as HTMLElement);
+    await waitFor(() => expect(search()).toBe(`?${c.param}=${secondId}`));
+    fireEvent.keyDown(screen.getByRole("complementary", { name: c.drawer }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("");
+    expect(pathname()).toBe(c.path);
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("re-clicking the open row adds no history entry", async () => {
+    await openLists();
+    const rowA = rows()[0] as HTMLElement;
+    fireEvent.click(rowA);
+    await drawerShown();
+    fireEvent.click(rowA);
+    fireEvent.keyDown(rowA, { key: "Enter" });
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+    // One entry was pushed: one Back closes the drawer (a duplicate entry would leave it open at the same URL).
+    back();
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("");
+    expect(pathname()).toBe(c.path);
+  });
+
+  it("a drawer opened by a link closes by replacing the param, not by leaving the page", async () => {
+    mount(c.element, `${c.path}?${c.param}=${c.id}`, routes, PREVIOUS_PATH);
+    const drawer = await drawerShown();
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(search()).toBe(""));
+    expect(pathname()).toBe(c.path);
+    expect(screen.queryByText("previous page")).toBeNull();
+  });
+
+  it("moves focus from row A to row B's drawer, and Escape returns it to row B", async () => {
+    await openLists();
+    const [rowA, rowB] = rows() as [HTMLElement, HTMLElement];
+    rowA.focus();
+    fireEvent.click(rowA);
+    const drawerA = await drawerShown();
+    expect(document.activeElement).toBe(drawerA);
+    expect(rowA.getAttribute("aria-pressed")).toBe("true");
+
+    rowB.focus();
+    fireEvent.click(rowB);
+    await waitFor(() => expect(search()).toBe(`?${c.param}=${secondId}`));
+    const drawerB = await drawerShown();
+    expect(drawerB).not.toBe(drawerA);
+    // Row A's drawer unmounting does not drag focus back to row A, and row B's drawer takes it.
+    await waitFor(() => expect(document.activeElement).toBe(drawerB));
+    expect(rows()[1]?.getAttribute("aria-pressed")).toBe("true");
+    expect(rows()[0]?.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.keyDown(drawerB, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
   });
 });
 
@@ -228,100 +655,6 @@ describe("TenantInventory new-tenant link", () => {
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     await waitFor(() => expect(search()).toBe(""));
   });
-});
-
-describe("state-held selections", () => {
-  const flag = {
-    id: "flag-1",
-    flagKey: "beta.thing",
-    organizationId: null,
-    flagKind: "product",
-    valueType: "bool",
-    value: true,
-    rolloutPercent: null,
-    killSwitchActive: false,
-    updatedAt: NOW,
-  };
-  const baa = {
-    id: "baa-1",
-    organizationId: "org-1",
-    tenantAccountId: "tenant-1",
-    addendumVersion: "v2",
-    baaStatus: "executed",
-    executedOn: null,
-    effectiveOn: null,
-    expiresOn: null,
-    documentId: null,
-    attestedAt: null,
-  };
-  const dsar = {
-    id: "dsar-1",
-    patientId: "patient-1",
-    requestSource: "patient",
-    status: "requested",
-    requestedAt: NOW,
-    slaDueAt: NOW,
-    extendedUntil: null,
-    fulfilledAt: null,
-    deniedReason: null,
-    createdAt: NOW,
-  };
-  const exportJob = {
-    id: "export-1",
-    requestedPurpose: "migration",
-    status: "fulfilled",
-    requestedAt: NOW,
-    fulfilledAt: NOW,
-    bundleSizeBytes: 10,
-    createdAt: NOW,
-  };
-  const cases = [
-    {
-      name: "FeatureFlags",
-      element: <FeatureFlags />,
-      route: "/api/v1/platform/feature-flags",
-      item: flag,
-      drawer: "Feature flag",
-    },
-    {
-      name: "BaaRegister",
-      element: <BaaRegister />,
-      route: "/api/v1/platform/baa-register",
-      item: baa,
-      drawer: "BAA record",
-    },
-    {
-      name: "DsarQueue",
-      element: <DsarQueue />,
-      route: "/api/v1/tenant/dsar-export-jobs",
-      item: dsar,
-      drawer: "DSAR request",
-    },
-    {
-      name: "TenantExportQueue",
-      element: <TenantExportQueue />,
-      route: "/api/v1/tenant/tenant-export-jobs",
-      item: exportJob,
-      drawer: "Export job",
-    },
-  ];
-
-  it.each(cases)(
-    "$name: Enter opens the drawer, Escape closes it and focus returns to the row",
-    async (c) => {
-      mount(c.element, "/x", { [c.route]: page([c.item]) });
-      await waitFor(() =>
-        expect(document.querySelector("tr.wx-data-row-interactive")).not.toBeNull(),
-      );
-      const row = firstRow();
-      row.focus();
-      fireEvent.keyDown(row, { key: "Enter" });
-      const drawer = await screen.findByRole("complementary", { name: c.drawer });
-      fireEvent.keyDown(drawer, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
-      expect(document.activeElement).toBe(firstRow());
-    },
-  );
 });
 
 describe("debounced text filters", () => {
@@ -375,5 +708,110 @@ describe("debounced text filters", () => {
     expect(listCalls(path)[2]?.search).toContain("patientId=pat-43");
     await new Promise((resolve) => setTimeout(resolve, SETTLE_AFTER_DEBOUNCE_MS));
     expect(listCalls(path)).toHaveLength(3);
+  });
+});
+
+describe("FeatureFlags kill-switch commit", () => {
+  it("returns focus to the flag's row after the drawer closes and the list reloads", async () => {
+    mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      "/api/v1/platform/feature-flags/beta.thing/kill-switch": json({}, 202),
+    });
+    await waitFor(rowShown);
+    fireEvent.keyDown(firstRow(), { key: "Enter" });
+    await screen.findByRole("complementary", { name: "Feature flag" });
+    fireEvent.click(screen.getByRole("button", { name: "Arm kill switch…" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText(/Type the flag key to confirm/), {
+      target: { value: "beta.thing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm & toggle" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(firstRow()));
+  });
+
+  const KILL_SWITCH = "/api/v1/platform/feature-flags/beta.thing/kill-switch";
+  const armAndConfirm = async (): Promise<void> => {
+    await waitFor(rowShown);
+    fireEvent.keyDown(firstRow(), { key: "Enter" });
+    await screen.findByRole("complementary", { name: "Feature flag" });
+    fireEvent.click(screen.getByRole("button", { name: "Arm kill switch…" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText(/Type the flag key to confirm/), {
+      target: { value: "beta.thing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm & toggle" }));
+  };
+
+  it("a refused commit (stale step-up) says so inside the open ceremony, offers Re-verify, and a retry can succeed", async () => {
+    let accept = false;
+    const { listCalls } = mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      [KILL_SWITCH]: () =>
+        accept
+          ? json({}, 202)
+          : json(
+              { error: { code: "STEP_UP_REQUIRED", message: "stale", correlationId: "c" } },
+              403,
+            ),
+    });
+    await armAndConfirm();
+    const refusal = await screen.findByText(/not recent enough for this action/);
+    expect(refusal.textContent).toContain("The kill switch was not changed.");
+    expect(screen.getByRole("link", { name: "Re-verify" })).toBeTruthy();
+    // The ceremony stays open with the operator's typed confirmation, and nothing was reloaded or closed behind it.
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect((screen.getByLabelText(/Type the flag key to confirm/) as HTMLInputElement).value).toBe(
+      "beta.thing",
+    );
+    expect(screen.getByRole("complementary", { name: "Feature flag" })).toBeTruthy();
+    expect(listCalls("/api/v1/platform/feature-flags")).toHaveLength(1);
+
+    accept = true;
+    fireEvent.click(screen.getByRole("button", { name: "Confirm & toggle" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(listCalls("/api/v1/platform/feature-flags")).toHaveLength(2));
+  });
+
+  it("an empty-body gateway 502 is a failure: the ceremony stays open instead of closing as a success", async () => {
+    const { listCalls } = mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      // openapi-fetch returns `error: undefined` for a non-ok response with an empty body.
+      [KILL_SWITCH]: () => new Response(null, { status: 502, headers: { "content-length": "0" } }),
+    });
+    await armAndConfirm();
+    expect(await screen.findByText(/service is unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/Check the flag's current state/)).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(listCalls("/api/v1/platform/feature-flags")).toHaveLength(1); // no reload as if it had worked
+  });
+
+  it("an unreachable server is reported in the ceremony, which stays open and is not stuck", async () => {
+    mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      [KILL_SWITCH]: () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    await armAndConfirm();
+    expect(await screen.findByText(/Could not reach the server/)).toBeTruthy();
+    expect(screen.getByText(/Check the flag's current state/)).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    // Not stuck on "Working…": the commit button is back and can be pressed again.
+    expect(screen.getByRole("button", { name: "Confirm & toggle" })).toBeTruthy();
+  });
+
+  it("cancelling the ceremony clears the failure, so the next arming starts clean", async () => {
+    mount(<FeatureFlags />, "/flags", {
+      "/api/v1/platform/feature-flags": page([flag]),
+      [KILL_SWITCH]: () => json({ error: { code: "X", message: "no", correlationId: "c" } }, 403),
+    });
+    await armAndConfirm();
+    await screen.findByText(/do not have access|not changed/i);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Arm kill switch…" }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByText(/do not have access|not changed/i)).toBeNull();
   });
 });

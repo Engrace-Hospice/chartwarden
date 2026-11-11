@@ -1,9 +1,13 @@
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
+import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
 import {
   CLAIMMD_M23_PAYER_ROUTES_ENV,
   CLEARINGHOUSE_PAYER_ID_ENV,
   type ClaimMdM23PayerRoute,
+  buildClaimPayerRouteStatus,
   buildClearinghouseContextPort,
+  claimAccountReferenceFor,
   resolveClaimMdM23PayerRoute,
 } from "./clearinghouse-context";
 
@@ -119,5 +123,275 @@ describe("M23 Claim.MD payer route resolution", () => {
         providerNpi: async () => null,
       }),
     ).toThrow(/must be a valid array/);
+  });
+});
+
+// ── Claim.MD payer routing follows the ORG's resolved binding (vendor + account), never the platform env vendor ──────────
+// A tenant-owned Claim.MD account resolves its route under `tenant:<org>`; a Stedi org never needs a route; the platform's own
+// Claim.MD account (and the orgs it serves) keeps the platform reference. Each of the platform vendor settings is exercised.
+const ORG = "org-a";
+const tenantRoute: ClaimMdM23PayerRoute = {
+  ...base,
+  accountReference: tenantClaimMdAccountReference(ORG),
+  payerId: "synthetic-tenant-account-payer",
+};
+const platformRoute: ClaimMdM23PayerRoute = {
+  ...base,
+  accountReference: "platform-account",
+  payerId: "synthetic-platform-account-payer",
+};
+const PLATFORM_CLAIMMD = {
+  CLEARINGHOUSE_VENDOR: "claimmd",
+  CLAIMMD_ACCOUNT_REFERENCE: "platform-account",
+  CLAIMMD_ACCOUNT_USAGE: "test",
+};
+const routesEnv = (...routes: readonly ClaimMdM23PayerRoute[]) => ({
+  [CLAIMMD_M23_PAYER_ROUTES_ENV]: JSON.stringify(routes),
+});
+type Resolved = { readonly vendor: string | null; readonly account?: "tenant" };
+const perOrg = (resolved: Resolved) => ({
+  vendor: null,
+  forOrg: async () => resolved,
+});
+const tenantClaimMd: Resolved = { vendor: "claimmd", account: "tenant" };
+const tenantStedi: Resolved = { vendor: "stedi", account: "tenant" };
+const platformAccount: Resolved = { vendor: "claimmd" }; // the platform binding: no `account`
+
+// A fake tenant transaction: the MAC credential read answers one row; nothing else is touched.
+const fakeTx = {
+  execute: async () => [],
+  select: () => ({
+    from: () => ({ where: () => ({ limit: async () => [{ macJurisdiction: "mac-a" }] }) }),
+  }),
+};
+const fakeDb = { transaction: async (fn: (tx: unknown) => unknown) => fn(fakeTx) } as never;
+
+const portFor = (
+  env: Record<string, string>,
+  binding: ReturnType<typeof perOrg>,
+  usage: "test" | "production" | null = "test",
+) =>
+  buildClearinghouseContextPort({
+    db: fakeDb,
+    env,
+    binding,
+    usageFor: async () => usage,
+    providerNpi: async () => "synthetic-npi",
+  });
+
+describe("the clearinghouse context follows the organization's own binding", () => {
+  it("tenant-owned Claim.MD with the platform vendor unset resolves a route under its own account reference", async () => {
+    const port = portFor(routesEnv(tenantRoute), perOrg(tenantClaimMd));
+    const context = await port.contextFor(ORG, "provider-a");
+    expect(context.payerId).toBe("synthetic-tenant-account-payer");
+    expect(context.claimMdRouteFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("tenant-owned Claim.MD with the platform vendor on Stedi never takes the global payer override", async () => {
+    const port = portFor(
+      {
+        CLEARINGHOUSE_VENDOR: "stedi",
+        [CLEARINGHOUSE_PAYER_ID_ENV]: "global-id",
+        ...routesEnv(tenantRoute),
+      },
+      perOrg(tenantClaimMd),
+    );
+    const context = await port.contextFor(ORG, "provider-a");
+    expect(context.payerId).toBe("synthetic-tenant-account-payer");
+  });
+
+  it("tenant-owned Claim.MD with no route for its account is refused with the route code, even if the platform account has one", async () => {
+    await expect(
+      portFor(routesEnv(), perOrg(tenantClaimMd)).contextFor(ORG, "provider-a"),
+    ).rejects.toThrow("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
+    await expect(
+      portFor(
+        { ...PLATFORM_CLAIMMD, ...routesEnv(platformRoute) },
+        perOrg(tenantClaimMd),
+      ).contextFor(ORG, "provider-a"),
+    ).rejects.toThrow("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
+  });
+
+  it("a tenant-owned account is matched on ITS mode, not the platform's", async () => {
+    const port = portFor(
+      { ...PLATFORM_CLAIMMD, ...routesEnv(tenantRoute) },
+      perOrg(tenantClaimMd),
+      "production",
+    );
+    await expect(port.contextFor(ORG, "provider-a")).rejects.toThrow(
+      "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    );
+  });
+
+  it("platform Claim.MD with a tenant on Stedi: that org needs no Claim.MD route and gets no fingerprint", async () => {
+    // The platform's routes are scoped to the platform account; the Stedi org has none, and must not be refused for it.
+    const port = portFor({ ...PLATFORM_CLAIMMD, ...routesEnv(platformRoute) }, perOrg(tenantStedi));
+    const context = await port.contextFor(ORG, "provider-a");
+    expect(context.payerId).toBe("mac-a");
+    expect(context.claimMdRouteFingerprint).toBeUndefined();
+  });
+
+  it("platform Claim.MD with a tenant on its own Claim.MD: the fingerprint is the tenant account's, not the platform's", async () => {
+    const env = { ...PLATFORM_CLAIMMD, ...routesEnv(platformRoute, tenantRoute) };
+    const tenant = await portFor(env, perOrg(tenantClaimMd)).contextFor(ORG, "provider-a");
+    const platform = await portFor(env, perOrg(platformAccount)).contextFor(ORG, "provider-a");
+    expect(tenant.payerId).toBe("synthetic-tenant-account-payer");
+    expect(platform.payerId).toBe("synthetic-platform-account-payer");
+    expect(tenant.claimMdRouteFingerprint).not.toBe(platform.claimMdRouteFingerprint);
+  });
+
+  it("platform Claim.MD serving a fallback org keeps today's behaviour (the platform account reference)", async () => {
+    const port = portFor(
+      { ...PLATFORM_CLAIMMD, ...routesEnv(platformRoute) },
+      perOrg(platformAccount),
+    );
+    const context = await port.contextFor(ORG, "provider-a");
+    expect(context.payerId).toBe("synthetic-platform-account-payer");
+    expect(context.claimMdRouteFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("a pull (acks, remittances) never needs the payer route: a tenant account with no route still gets its context", async () => {
+    // Only a claim is addressed to a payer. A tenant that chose Claim.MD before an operator added its route must not fail the shared
+    // ack / remittance crons; its claims are refused at the route and at the worker instead.
+    const port = portFor(routesEnv(), perOrg(tenantClaimMd));
+    const context = await port.contextFor(ORG, "provider-a", { payerRoute: "skip" });
+    expect(context.payerId).toBe("mac-a");
+    expect(context.claimMdRouteFingerprint).toBeUndefined();
+    await expect(port.contextFor(ORG, "provider-a")).rejects.toThrow(
+      "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    );
+  });
+
+  it("without a binding the platform env vendor decides, as before", async () => {
+    const port = buildClearinghouseContextPort({
+      db: fakeDb,
+      env: { ...PLATFORM_CLAIMMD, ...routesEnv(platformRoute) },
+      providerNpi: async () => "synthetic-npi",
+    });
+    expect((await port.contextFor(ORG, "provider-a")).payerId).toBe(
+      "synthetic-platform-account-payer",
+    );
+  });
+});
+
+describe("the claim payer-route readiness follows the organization's own binding", () => {
+  const status = (
+    env: Record<string, string>,
+    binding: ReturnType<typeof perOrg>,
+    payerIsActive = async () => true,
+  ) =>
+    buildClaimPayerRouteStatus({
+      db: fakeDb,
+      env,
+      binding,
+      usageFor: async () => "test",
+      providerNpi: async () => "synthetic-npi",
+      payerIsActive,
+    })(ORG, "provider-a");
+
+  it("tenant-owned Claim.MD is verified from its own route, with the platform vendor unset", async () => {
+    const result = await status(routesEnv(tenantRoute), perOrg(tenantClaimMd));
+    expect(result.status).toBe("verified");
+  });
+
+  it("tenant-owned Claim.MD with no route is not configured (the route code, never 'changed')", async () => {
+    expect(await status(routesEnv(), perOrg(tenantClaimMd))).toEqual({
+      status: "not_configured",
+      reasonCode: "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    });
+  });
+
+  it("a tenant on Stedi under a platform Claim.MD account is not applicable (no route needed)", async () => {
+    expect(
+      await status({ ...PLATFORM_CLAIMMD, ...routesEnv(platformRoute) }, perOrg(tenantStedi)),
+    ).toEqual({ status: "not_applicable" });
+  });
+
+  it("a Stedi org is not applicable when the platform vendor is unset", async () => {
+    expect(await status({}, perOrg(tenantStedi))).toEqual({ status: "not_applicable" });
+  });
+
+  it("the platform Claim.MD account keeps its readiness check, including the active-payer gate", async () => {
+    const env = { ...PLATFORM_CLAIMMD, ...routesEnv(platformRoute) };
+    expect((await status(env, perOrg(platformAccount))).status).toBe("verified");
+    expect(await status(env, perOrg(platformAccount), async () => false)).toEqual({
+      status: "not_configured",
+      reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE",
+    });
+  });
+
+  it("an org whose binding cannot be resolved is not configured, never silently applicable", async () => {
+    const broken = {
+      vendor: null,
+      forOrg: async () => {
+        throw new Error("connection refused");
+      },
+    };
+    expect(await status(routesEnv(tenantRoute), broken)).toEqual({
+      status: "not_configured",
+      reasonCode: "PAYER_ROUTE_NOT_VERIFIED",
+    });
+  });
+
+  it("an org whose clearinghouse credential is unreadable reports THAT code, and logs it with ids only", async () => {
+    const unreadable = {
+      vendor: null,
+      forOrg: async () => {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+          "the credential could not be opened (synthetic message detail)",
+          503,
+        );
+      },
+    };
+    const logs: { fields: Record<string, unknown>; message: string }[] = [];
+    const result = await buildClaimPayerRouteStatus({
+      db: fakeDb,
+      env: routesEnv(tenantRoute),
+      binding: unreadable,
+      usageFor: async () => "test",
+      providerNpi: async () => "synthetic-npi",
+      payerIsActive: async () => true,
+      log: (fields, message) => logs.push({ fields, message }),
+    })(ORG, "provider-a");
+    expect(result).toEqual({
+      status: "not_configured",
+      reasonCode: "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+    });
+    expect(logs).toEqual([
+      {
+        fields: {
+          organizationId: ORG,
+          providerEntityId: "provider-a",
+          code: "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+        },
+        message: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("synthetic message detail");
+  });
+});
+
+describe("the account reference a claim's preview and submit fingerprints are bound to", () => {
+  const reference = (env: Record<string, string>, binding?: ReturnType<typeof perOrg>) =>
+    claimAccountReferenceFor({ env, ...(binding ? { binding } : {}) }, ORG);
+
+  it("a tenant's own Claim.MD account is tenant:<org>, never the platform's reference", async () => {
+    expect(
+      await reference({ CLAIMMD_ACCOUNT_REFERENCE: "platform-account" }, perOrg(tenantClaimMd)),
+    ).toBe(tenantClaimMdAccountReference(ORG));
+  });
+
+  it("the platform's account (and an org it serves) keeps CLAIMMD_ACCOUNT_REFERENCE, else the legacy placeholder", async () => {
+    const env = { CLAIMMD_ACCOUNT_REFERENCE: " platform-account " };
+    expect(await reference(env, perOrg(platformAccount))).toBe("platform-account");
+    expect(await reference(env)).toBe("platform-account");
+    expect(await reference({})).toBe("legacy-mac");
+  });
+
+  it("a tenant on its own Stedi account is not on a Claim.MD account: the platform reference applies, as before", async () => {
+    expect(
+      await reference({ CLAIMMD_ACCOUNT_REFERENCE: "platform-account" }, perOrg(tenantStedi)),
+    ).toBe("platform-account");
   });
 });

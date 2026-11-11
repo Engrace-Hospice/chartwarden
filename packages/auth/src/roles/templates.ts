@@ -157,10 +157,14 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
   "onboarding.manage_platform",
   "go_live.approve_platform",
   "platform_tenant_baa.write_platform",
+  // Migration 1438: the wizard's own read and its skip (both platform routes gate on tenant_lifecycle_platform_ops, so platform_ops
+  // alone can use them). Without the read key a template operator was refused the wizard itself; only the dev seed held both.
+  "onboarding.read_platform",
+  "onboarding.skip",
 ] as const;
 
 /**
- * The platform onboarding-data pair (M34 `/api/v1/platform/tenants/:orgSlug/{provider-entities,locations,mac-credentials}`):
+ * The platform onboarding-data keys (M34 `/api/v1/platform/tenants/:orgSlug/{provider-entities,locations,mac-credentials}`):
  * operators fill in a tenant's provider entities, service locations and MAC credentials on its behalf while it is
  * still onboarding. The routes also gate on the `tenant_lifecycle_platform_ops` predicate, which admits the EXACT
  * `platform_ops` role only (a `platform_admin` / `platform_owner` is denied by it), a fresh step-up and a recorded
@@ -170,6 +174,24 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
 export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_onboarding_data.read_platform",
   "tenant_onboarding_data.write_platform",
+  // ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (`/platform/tenants/:orgSlug/clearinghouse`) is
+  // onboarding data entered on its behalf, with the same predicate, step-up and reason.
+  "tenant_clearinghouse.read_platform",
+  "tenant_clearinghouse.write_platform",
+  "tenant_clearinghouse.verify_baa_platform",
+  // Owner decision "build it" (2026-11-09): revoking a tenant's vendor BAA is its own platform duty (migration 1468).
+  "tenant_clearinghouse.revoke_baa_platform",
+  // Owner decision 2026-11-08: releasing a tenant's earlier clearinghouse credentials is its own platform duty (migration 1435).
+  "tenant_clearinghouse.release_credential_platform",
+  // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1422).
+  "tenant_notice_filing.withdraw_platform",
+  // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1424). Scoped to the one document kind
+  // `tenant_baa` and the tenant in the path; it is not `documents.upload` and reads no document.
+  "tenant_baa_document.upload_platform",
+  // Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration is onboarding data entered on its behalf,
+  // with the same predicate, step-up and reason (migration 1429).
+  "tenant_dosespot.read_platform",
+  "tenant_dosespot.write_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 

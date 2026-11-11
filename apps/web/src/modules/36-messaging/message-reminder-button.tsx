@@ -43,8 +43,6 @@ export function MessageReminderButton({
   const inFlight = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
-  // One idempotency key per (dialog open, chosen time): a retry of the same choice replays, another choice is a new request.
-  const keys = useRef(new Map<string, string>());
   // The trigger is the one stable control on the row: focus returns to it whenever the dialog closes.
   useEffect(() => {
     if (wasOpen.current && !open) triggerRef.current?.focus();
@@ -56,16 +54,12 @@ export function MessageReminderButton({
   const mine = reminders.find((reminder) => reminder.message_id === messageId);
   const who = authorName || "a colleague";
 
-  async function choose(presetId: string, at: Date): Promise<void> {
+  async function choose(at: Date): Promise<void> {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
-    const key = keys.current.get(presetId) ?? crypto.randomUUID();
-    keys.current.set(presetId, key);
-    const result = await actions.set(messageId, at, key);
-    // Every HTTP response is cached under its key (errors too): only a thrown fetch (status undefined) may retry with it.
-    if (result.ok || result.status !== undefined) keys.current.delete(presetId);
+    const result = await actions.set(messageId, at);
     inFlight.current = false;
     setBusy(false);
     if (result.ok) {
@@ -96,7 +90,6 @@ export function MessageReminderButton({
         onClick={() => {
           setError(null);
           setStatus("");
-          keys.current = new Map();
           setOpen(true);
         }}
       >
@@ -137,7 +130,7 @@ export function MessageReminderButton({
                   type="button"
                   tone="secondary"
                   disabled={busy}
-                  onClick={() => void choose(preset.id, preset.at)}
+                  onClick={() => void choose(preset.at)}
                 >
                   {preset.label}
                 </Button>

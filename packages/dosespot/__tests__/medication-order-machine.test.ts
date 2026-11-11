@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MEDICATION_ORDER_GRAPH,
   type MedicationOrderSideEffect,
+  type MedicationOrderState,
   isEpcsRequired,
   planDraftCreation,
   transitionMedicationOrder,
@@ -411,6 +412,68 @@ describe("§2.2 transmission chain (signed → … → active)", () => {
     expect(outboxEvents(t.effects)).toEqual(["m12.medication_order.transmission_failed"]);
     expect(alerts(t.effects)).toEqual(["medication_order.transmission_failed"]);
     expect(MEDICATION_ORDER_GRAPH.transmission_failed).toEqual([]);
+  });
+  // Review of slice 4, MEDIUM-1: an order HELD for an unconfirmed outcome (queued_for_transmission, in flight) had no way out. An
+  // administrator who has checked the prescriber's DoseSpot account resolves it by hand: it was sent (with DoseSpot's prescription id) or it
+  // was not (so the prescriber can retransmit). Neither is a system-actor transition, and neither is a re-send.
+  describe("a held order is resolved by an administrator", () => {
+    it("resolveHeldSent → transmitted, like a worker success but by a person with the DoseSpot prescription id", () => {
+      const t = transitionMedicationOrder("queued_for_transmission", {
+        type: "resolveHeldSent",
+        actorIsAdministrator: true,
+        dosespotPrescriptionId: "9001",
+      });
+      expect(t.to).toBe("transmitted");
+      expect(t.effects).toContainEqual({ kind: "update_transmission", outcome: "succeeded" });
+      expect(t.effects).toContainEqual({ kind: "set_send_state", state: "transmitted" });
+      expect(t.effects).toContainEqual({ kind: "set_timestamp", field: "transmitted_at" });
+      expect(outboxEvents(t.effects)).toEqual(["m12.medication_order.transmitted"]);
+    });
+    it("resolveHeldNotSent → transmission_failed (the retransmit path), never back to the queue", () => {
+      const t = transitionMedicationOrder("queued_for_transmission", {
+        type: "resolveHeldNotSent",
+        actorIsAdministrator: true,
+      });
+      expect(t.to).toBe("transmission_failed");
+      expect(t.effects).toContainEqual({ kind: "set_send_state", state: "failed" });
+      expect(t.effects).not.toContainEqual({ kind: "set_send_state", state: "queued" });
+      expect(outboxEvents(t.effects)).toEqual(["m12.medication_order.transmission_failed"]);
+    });
+    it("only an administrator may, and a sent resolution must name the DoseSpot prescription", () => {
+      for (const type of ["resolveHeldSent", "resolveHeldNotSent"] as const) {
+        expect(() =>
+          transitionMedicationOrder("queued_for_transmission", {
+            type,
+            actorIsAdministrator: false,
+            dosespotPrescriptionId: "9001",
+          }),
+        ).toThrow(expect.objectContaining({ code: "NOT_ADMINISTRATOR" }));
+      }
+      expect(() =>
+        transitionMedicationOrder("queued_for_transmission", {
+          type: "resolveHeldSent",
+          actorIsAdministrator: true,
+          dosespotPrescriptionId: "  ",
+        }),
+      ).toThrow(expect.objectContaining({ code: "PRESCRIPTION_ID_REQUIRED" }));
+    });
+    it("is legal from queued_for_transmission only: every other state refuses it", () => {
+      const others = (Object.keys(MEDICATION_ORDER_GRAPH) as MedicationOrderState[]).filter(
+        (state) => state !== "queued_for_transmission",
+      );
+      for (const state of others) {
+        for (const type of ["resolveHeldSent", "resolveHeldNotSent"] as const) {
+          expect(MEDICATION_ORDER_GRAPH[state], `${state} ${type}`).not.toContain(type);
+          expect(() =>
+            transitionMedicationOrder(state, {
+              type,
+              actorIsAdministrator: true,
+              dosespotPrescriptionId: "9001",
+            }),
+          ).toThrow(expect.objectContaining({ code: "ILLEGAL_MEDICATION_ORDER_TRANSITION" }));
+        }
+      }
+    });
   });
   it("pharmacyAck → ack_received, then activate → active", () => {
     const ack = transitionMedicationOrder("transmitted", {

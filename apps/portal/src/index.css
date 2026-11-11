@@ -5906,7 +5906,7 @@
   padding: var(--space-3);
   background: var(--color-surface-lowest);
 }
-.wx-portal-shell--messages .wx-portal-message-composer .wx-field > span:first-child {
+.wx-portal-shell--messages .wx-portal-message-composer .wx-field > :first-child {
   position: absolute;
   width: 1px;
   height: 1px;

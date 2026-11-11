@@ -1,6 +1,7 @@
 import {
   Button,
   StatusPill,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useRequestGuard,
@@ -134,7 +135,7 @@ export function CapabilitiesList(): JSX.Element {
             description="Clear a filter to see the rest of the registry."
           />
         ) : (
-          <div className="wx-list-table-wrap">
+          <TableScroll>
             <table className="wx-list-table">
               <caption className="wx-sr-only">AI capabilities</caption>
               <thead>
@@ -179,7 +180,7 @@ export function CapabilitiesList(): JSX.Element {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
       </div>
     </div>

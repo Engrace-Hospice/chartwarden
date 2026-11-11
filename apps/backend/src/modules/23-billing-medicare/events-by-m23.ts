@@ -26,6 +26,8 @@ import { Type } from "@sinclair/typebox";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
+/** A calendar day (`YYYY-MM-DD`): a date, never a timestamp, never free text. */
+const isoDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
 const nullableId = Type.Union([id, Type.Null()]);
 const nullableInstant = Type.Union([isoInstant, Type.Null()]);
 const str = Type.String();
@@ -540,6 +542,73 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // consumers, none of them M30.
     declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  // ── Owner decision (round 2, Q4): a NOE / NOTR the tenant filed OUTSIDE ChartWarden and recorded AFTER the due date ─────────
+  // Published by the record-external-filing route in the record's own transaction (ids and dates only). M23's own consumer turns it
+  // into the M36 alert to the tenant (billing manager, compliance officer, org admin) and a platform-ops notice: the watchdog
+  // cannot stamp a breach for a notice that left its scan, and nobody else would ever hear of a late filing it was not told of.
+  // The same event also announces the opposite disagreement: an ON-TIME date recorded over a breach the watchdog had ALREADY stamped
+  // (the stamp is never cleared by a tenant's record). It is told apart by `breachObservedAt`, the date the watchdog stamped.
+  {
+    eventName: "m23.noe.filed_externally_late",
+    moduleOwner: "m23",
+    description:
+      "A tenant that bills outside ChartWarden recorded that it filed its NOE after the 5-day CMS window (filedOn is after windowTargetAt), or recorded an in-window filedOn over a breach the deadline watchdog had already stamped (breachObservedAt is the stamped date; the stamp is kept).",
+    payloadSchema: Type.Object({
+      noeId: id,
+      admissionId: id,
+      filedOn: isoDay,
+      windowTargetAt: isoDay,
+      breachObservedAt: Type.Optional(isoDay),
+    }),
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.notr.filed_externally_late",
+    moduleOwner: "m23",
+    description:
+      "A tenant that bills outside ChartWarden recorded that it filed its NOTR after the CMS window (filedOn is after windowTargetAt), or recorded an in-window filedOn over a breach the deadline watchdog had already stamped (breachObservedAt is the stamped date; the stamp is kept).",
+    payloadSchema: Type.Object({
+      notrId: id,
+      admissionId: id,
+      filedOn: isoDay,
+      windowTargetAt: isoDay,
+      breachObservedAt: Type.Optional(isoDay),
+    }),
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  // ── A platform operator revoked a tenant's vendor BAA (ADR-0053 amendment; owner decision "build it") ─────────────────────────
+  // Published by the revoke in the revoke's own transaction (the config rows' ids, the vendor, a closed reason code and COUNTS only:
+  // never the ticket reference, a document reference or any text). M23's own consumer turns it into the M36 alert to the tenant (rule
+  // `m23.tenant_clearinghouse.baa_revoked`: billing manager, compliance officer, org admin) and an org-less platform-ops notice, so
+  // the tenant is told by the system, not by a runbook step. The counts say what the revoke leaves held and what may still be owed.
+  {
+    eventName: "m23.tenant_clearinghouse.baa_revoked",
+    moduleOwner: "m23",
+    description:
+      "A platform operator revoked the vendor BAA a tenant recorded for its own Stedi or Claim.MD account: the verification is void, a live configuration left active (wasActive), and its claims, notices and response pulls are held. Counts: production attempts still in flight, attempts sent in the response window (acknowledgments or remittances may be owed), and claims / M41 submissions queued.",
+    payloadSchema: Type.Object({
+      clearinghouseConfigId: id,
+      vendor: Type.Union([Type.Literal("stedi"), Type.Literal("claimmd")]),
+      reasonCode: Type.Union([
+        Type.Literal("vendor_terminated"),
+        Type.Literal("account_closed"),
+        Type.Literal("baa_expired"),
+        Type.Literal("other"),
+      ]),
+      wasActive: Type.Boolean(),
+      attemptsInFlight: int,
+      attemptsSentInWindow: int,
+      queuedClaims: int,
+      queuedCommercialSubmissions: int,
+    }),
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── NOTR lifecycle (§4.10 "mirror of NOE", expanded to the 7 concrete events) ──────────────────────

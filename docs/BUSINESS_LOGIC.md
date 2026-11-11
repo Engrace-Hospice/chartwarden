@@ -46,7 +46,9 @@ module.
 - **CSRF**: double-submit-cookie pattern for mutating methods when a session cookie is present;
   fails closed.
 - **Idempotency**: `Idempotency-Key` header + org scope hashed with the request body; identical
-  replay returns the cached response, a differing body is `409 IDEMPOTENCY_CONFLICT`.
+  replay returns the cached response, a differing body is `409 IDEMPOTENCY_CONFLICT`, and a key whose record was written before the
+  server's idempotency key changed (a rotated secret) is `409 IDEMPOTENCY_KEY_STALE` (check whether the first request took effect, then
+  retry with a new key).
 - **Transactional outbox**: the pattern backing every `mN.*` cross-module event referenced
   throughout this document.
 

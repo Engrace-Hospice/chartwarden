@@ -7,14 +7,31 @@ import { describe, expect, it, vi } from "vitest";
 import { createInMemoryObjectStore } from "../seams/store";
 import {
   type DocumentContentScanner,
-  createServerUploadService,
+  type ServerUploadDeps,
+  type UploadLogger,
+  createServerUploadService as createUploadService,
   decodeBase64Content,
   verifyUploadContent,
 } from "./server-upload";
 
+/** The production service always has a logger (it is a required dep); a test that does not look at it gets a silent one. */
+const silent: UploadLogger = { warn: () => undefined };
+const createServerUploadService = (
+  deps: Omit<ServerUploadDeps, "logger"> & { logger?: UploadLogger },
+) => createUploadService({ logger: silent, ...deps });
+
 vi.mock("@chartwarden/tenancy", () => ({
-  withOrgContext: async (db: { tx: unknown }, _ctx: unknown, fn: (tx: unknown) => unknown) =>
-    fn(db.tx),
+  // `failCommit` models a COMMIT that fails after the callback finished: the rows may or may not be there.
+  withOrgContext: async (
+    db: { tx: unknown; failCommit?: boolean | Error },
+    _ctx: unknown,
+    fn: (tx: unknown) => unknown,
+  ) => {
+    const result = await fn(db.tx);
+    if (db.failCommit)
+      throw db.failCommit instanceof Error ? db.failCommit : new Error("commit failed");
+    return result;
+  },
 }));
 
 const ORG = "11111111-1111-4111-8111-111111111111" as never;
@@ -37,7 +54,9 @@ const ARGS = {
 };
 
 /** A tx that records inserts per table and answers selects from `selects` in order. */
-function fakeDb(opts: { failInsertOn?: unknown; selects?: unknown[][] } = {}) {
+function fakeDb(
+  opts: { failInsertOn?: unknown; selects?: unknown[][]; failCommit?: boolean | Error } = {},
+) {
   const inserts: { table: unknown; values: Record<string, unknown> }[] = [];
   const updates: Record<string, unknown>[] = [];
   const selects = [...(opts.selects ?? [])];
@@ -65,7 +84,8 @@ function fakeDb(opts: { failInsertOn?: unknown; selects?: unknown[][] } = {}) {
       },
     }),
   };
-  return { db: { tx } as unknown as DbClient, inserts, updates };
+  const failCommit = opts.failCommit ?? false;
+  return { db: { tx, failCommit } as unknown as DbClient, inserts, updates };
 }
 
 describe("verifyUploadContent", () => {
@@ -171,6 +191,19 @@ describe("createServerUploadService.createDocument", () => {
     expect(mem.objects.size).toBe(0);
   });
 
+  // The signed BAA is filed once by a platform operator through the onboarding port (createDocumentOn). The tenant-facing upload (this
+  // method) must refuse the kind itself: the route schema is not the only thing that keeps a tenant from filing evidence of its own BAA.
+  it("refuses an operator-filed kind (tenant_baa) with 409 DOCUMENT_IMMUTABLE, storing nothing", async () => {
+    const { db, inserts } = fakeDb();
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db, objects: mem.store });
+    await expect(
+      svc.createDocument(ORG, ACTOR, { ...ARGS, aggregateType: "tenant_baa" }),
+    ).rejects.toMatchObject({ code: "DOCUMENT_IMMUTABLE", statusCode: 409 });
+    expect(inserts).toHaveLength(0);
+    expect(mem.objects.size).toBe(0);
+  });
+
   // ADR-0109 D10 (PR 3) — the same org-level rule the verified upload applies (one shared assertion).
   it("refuses a grief-library document that names a patient or an admission, storing nothing", async () => {
     for (const named of [
@@ -206,6 +239,445 @@ describe("createServerUploadService.createDocument", () => {
   });
 });
 
+describe("createServerUploadService.createDocumentOn", () => {
+  // The caller's own transaction: a `withOrgContext` call would reach `db.tx` too in this harness, so the counter on the mock proves the
+  // service opened none of its own.
+  it("files on the caller's transaction without opening one, and reports what it verified", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    const filed = await svc.createDocumentOn(tx, ORG, ACTOR, ARGS);
+    expect(filed).toMatchObject({
+      versionNumber: 1,
+      mimeType: "application/pdf",
+      byteSize: PDF.byteLength,
+      sha256Hex: sha(PDF),
+    });
+    expect(inserts.find((i) => i.table === schema.documents)?.values).toMatchObject({
+      organizationId: ORG,
+      createdByMembershipId: ACTOR.membershipId,
+    });
+    expect(mem.objects.size).toBe(1);
+  });
+
+  it("still files the operator-filed kind (tenant_baa): the onboarding port's door is createDocumentOn", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    await expect(
+      svc.createDocumentOn(tx, ORG, ACTOR, { ...ARGS, aggregateType: "tenant_baa" }),
+    ).resolves.toMatchObject({ versionNumber: 1 });
+    expect(mem.objects.size).toBe(1);
+  });
+
+  it("discard() removes the stored object (the caller's later step failed and its transaction rolled back)", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    const filed = await svc.createDocumentOn(tx, ORG, ACTOR, ARGS);
+    await filed.discard();
+    expect(mem.objects.size).toBe(0);
+  });
+
+  it("removes the object itself when the insert fails, and still gates on the content first", async () => {
+    const { db } = fakeDb({ failInsertOn: schema.documentVersions });
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toThrow("boom");
+    expect(mem.objects.size).toBe(0);
+    await expect(
+      svc.createDocumentOn(tx, ORG, ACTOR, {
+        ...ARGS,
+        content: { bytes: new TextEncoder().encode("<html>"), mimeType: "application/pdf" },
+      }),
+    ).rejects.toMatchObject({ code: "UPLOAD_CONTENT_MISMATCH" });
+  });
+});
+
+describe("createServerUploadService: the put and the commit while the caller holds a transaction", () => {
+  /** A store whose put never answers until it is aborted: what a hung object store looks like to a caller holding a transaction. */
+  function hangingStore() {
+    const destroyed: string[] = [];
+    const destroySignals: (AbortSignal | undefined)[] = [];
+    const base = createInMemoryObjectStore();
+    return {
+      destroyed,
+      destroySignals,
+      store: {
+        ...base.store,
+        putObject: ({ signal }: { signal?: AbortSignal }) =>
+          new Promise<never>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+        destroyAllVersions: async ({
+          objectKey,
+          signal,
+        }: { objectKey: string; signal?: AbortSignal }) => {
+          destroyed.push(objectKey);
+          destroySignals.push(signal);
+        },
+      } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"],
+    };
+  }
+
+  it("aborts a put that never answers and answers 503 document-storage, writing no row (createDocumentOn)", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const { store, destroyed, destroySignals } = hangingStore();
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+    });
+
+    expect(inserts).toHaveLength(0);
+    expect(destroyed).toHaveLength(1); // a put that timed out may still have landed: cleaned up best effort
+    // ... and that clean-up is bounded too: the caller still holds its transaction while it runs
+    expect(destroySignals[0]).toBeInstanceOf(AbortSignal);
+  });
+
+  it("stops waiting for a put that IGNORES the abort signal (503 document-storage, no row), and cleans up best effort", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const destroyed: string[] = [];
+    const store = {
+      ...base.store,
+      putObject: () => new Promise<never>(() => undefined), // never settles, signal or not
+      destroyAllVersions: async ({ objectKey }: { objectKey: string }) => {
+        destroyed.push(objectKey);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+      message: expect.stringContaining("document-storage"),
+    });
+
+    expect(inserts).toHaveLength(0);
+    expect(destroyed).toHaveLength(1);
+  });
+
+  it("stops waiting for a clean-up delete that ignores the signal: the failure is still answered, the orphan is warned about", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const store = {
+      ...base.store,
+      putObject: async () => ({ sha256Hex: "f".repeat(64) }), // a digest that is not the verified one: the clean-up runs
+      destroyAllVersions: () => new Promise<never>(() => undefined), // never settles, signal or not
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+      logger: { warn },
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      code: "UPLOAD_INTEGRITY_MISMATCH",
+    });
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[1]).toContain("orphan");
+  });
+
+  it("gives the scan and the put ONE deadline: a scan and a put that each fit it, but not together, are a 503", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const later = <T>(ms: number, value: T) =>
+      new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+    const store = {
+      ...base.store,
+      putObject: async (input: Parameters<typeof base.store.putObject>[0]) => {
+        await later(60, undefined); // 60 ms, signal ignored
+        return base.store.putObject(input);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const scanner: DocumentContentScanner = {
+      scan: () => later(60, { verdict: "clean" as const }),
+    };
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      scanner,
+      heldTimeoutMs: 100, // 60 + 60 > 100, each alone < 100
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+      message: expect.stringContaining("document-storage"),
+    });
+
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("warns, naming the objectKey, when a put is abandoned at the deadline, and deletes the object AGAIN if the abandoned put lands late", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const destroyed: string[] = [];
+    const warn = vi.fn();
+    const store = {
+      ...base.store,
+      putObject: () =>
+        new Promise((resolve) => setTimeout(() => resolve({ sha256Hex: sha(PDF) }), 120)), // ignores the signal, lands after the deadline
+      destroyAllVersions: async ({ objectKey }: { objectKey: string }) => {
+        destroyed.push(objectKey);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+      logger: { warn },
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+    });
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toMatchObject({
+      objectKey: expect.stringMatching(/^uploads\//),
+    });
+    expect(warn.mock.calls[0]?.[1]).toContain("abandoned");
+    expect(warn.mock.calls[0]?.[1]).toContain("reconcile by objectKey");
+    expect(destroyed).toHaveLength(1); // the clean-up made at the deadline
+    await vi.waitFor(() => expect(destroyed).toHaveLength(2)); // ... and again once the abandoned put settled
+    expect(destroyed[1]).toBe(destroyed[0]);
+  });
+
+  it("does not delete again when the abandoned put fails late (nothing landed)", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const destroyed: string[] = [];
+    let failLate: () => void = () => undefined;
+    const store = {
+      ...base.store,
+      putObject: () =>
+        new Promise((_resolve, reject) => {
+          failLate = () => reject(new Error("late"));
+        }),
+      destroyAllVersions: async ({ objectKey }: { objectKey: string }) => {
+        destroyed.push(objectKey);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+    });
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+    });
+    failLate();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(destroyed).toHaveLength(1);
+  });
+
+  it("warns, naming the objectKey, when the clean-up itself fails: the orphan is not silent", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const store = {
+      ...base.store,
+      putObject: async () => ({ sha256Hex: "f".repeat(64) }), // not the verified digest: the clean-up runs
+      destroyAllVersions: async () => {
+        throw new Error("store refused the delete");
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+      logger: { warn },
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      code: "UPLOAD_INTEGRITY_MISMATCH",
+    });
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toMatchObject({
+      objectKey: expect.stringMatching(/^uploads\//),
+    });
+    expect(warn.mock.calls[0]?.[1]).toContain("reconcile by objectKey");
+  });
+
+  it("bounds the clean-up after an integrity mismatch and the discard() the same way, and a generic upload (no transaction held) stays unbounded", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const base = createInMemoryObjectStore();
+    const lyingStore = {
+      ...base.store,
+      putObject: async () => ({ sha256Hex: "f".repeat(64) }), // the store reports a digest that is not the verified one
+      destroyAllVersions: async ({ signal }: { signal?: AbortSignal }) => {
+        signals.push(signal);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const held = createServerUploadService({ db: {} as DbClient, objects: lyingStore });
+    await expect(held.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      code: "UPLOAD_INTEGRITY_MISMATCH",
+    });
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+
+    const honest = createServerUploadService({
+      db: {} as DbClient,
+      objects: {
+        ...base.store,
+        destroyAllVersions: async ({ signal }: { signal?: AbortSignal }) => {
+          signals.push(signal);
+        },
+      } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"],
+    });
+    const filed = await honest.createDocumentOn(tx, ORG, ACTOR, ARGS);
+    await filed.discard();
+    expect(signals[1]).toBeInstanceOf(AbortSignal);
+
+    // the generic upload opens its own transaction AFTER the put and holds none during it: nothing to bound
+    const generic = createServerUploadService({
+      db: fakeDb({ failInsertOn: schema.documentVersions }).db,
+      objects: {
+        ...base.store,
+        destroyAllVersions: async ({ signal }: { signal?: AbortSignal }) => {
+          signals.push(signal);
+        },
+      } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"],
+    });
+    await expect(generic.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("boom");
+    expect(signals[2]).toBeUndefined();
+  });
+
+  it("stops waiting for a scanner that never answers while the transaction is held: 503 document-scanner, nothing stored, no row", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const scanner: DocumentContentScanner = { scan: () => new Promise(() => undefined) };
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: mem.store,
+      scanner,
+      heldTimeoutMs: 25,
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+    });
+
+    expect(mem.objects.size).toBe(0);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("keeps the object, and logs it, when the COMMIT itself fails after the rows were written WITHOUT an answer from the database (the document may exist)", async () => {
+    const { db } = fakeDb({ failCommit: true });
+    const mem = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+    await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("commit failed");
+
+    expect(mem.objects.size).toBe(1);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toMatchObject({
+      objectKey: expect.stringMatching(/^uploads\//),
+    });
+    expect(warn.mock.calls[0]?.[1]).toContain("reconcile by objectKey");
+  });
+
+  it("removes the object when the COMMIT fails WITH a SQLSTATE: the database answered no and rolled back, so the object points at nothing", async () => {
+    const refused = Object.assign(new Error("could not serialize access"), {
+      code: "40001",
+      severity: "ERROR",
+    });
+    const { db } = fakeDb({ failCommit: refused });
+    const mem = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+    await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("could not serialize");
+
+    expect(mem.objects.size).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["08P01", "a protocol violation answered by a pooler"],
+    ["57P01", "an admin shutdown"],
+    ["40003", "statement completion unknown"],
+    ["58030", "a server I/O error"],
+    ["XX000", "an internal error"],
+  ])(
+    "KEEPS the object when the COMMIT fails with SQLSTATE %s (%s): the database spoke, but the outcome is unknown",
+    async (code) => {
+      const unknown = Object.assign(new Error(`terminated ${code}`), { code, severity: "FATAL" });
+      const { db } = fakeDb({ failCommit: unknown });
+      const mem = createInMemoryObjectStore();
+      const warn = vi.fn();
+      const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+      await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow(`terminated ${code}`);
+
+      expect(mem.objects.size).toBe(1);
+      expect(warn).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("finds the SQLSTATE on the cause of a wrapped error (a driver wrapper), and a Node EPIPE is not a SQLSTATE", async () => {
+    const wrapped = Object.assign(new Error("Failed query"), {
+      cause: Object.assign(new Error("deadlock detected"), { code: "40P01", severity: "ERROR" }),
+    });
+    const a = createInMemoryObjectStore();
+    await expect(
+      createServerUploadService({
+        db: fakeDb({ failCommit: wrapped }).db,
+        objects: a.store,
+      }).createDocument(ORG, ACTOR, ARGS),
+    ).rejects.toThrow("Failed query");
+    expect(a.objects.size).toBe(0); // the database answered: rolled back
+
+    const b = createInMemoryObjectStore();
+    const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" }); // five uppercase characters, but not the database
+    await expect(
+      createServerUploadService({
+        db: fakeDb({ failCommit: epipe }).db,
+        objects: b.store,
+      }).createDocument(ORG, ACTOR, ARGS),
+    ).rejects.toThrow("EPIPE");
+    expect(b.objects.size).toBe(1); // the connection died: the commit may have landed
+  });
+
+  it("still removes the object when the failure was inside the transaction (rolled back)", async () => {
+    const { db } = fakeDb({ failInsertOn: schema.documentVersions, failCommit: true });
+    const mem = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+    await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("boom");
+
+    expect(mem.objects.size).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("createServerUploadService.createVersion", () => {
   const DOC_ID = "44444444-4444-4444-8444-444444444444";
   const writable = { id: DOC_ID, status: "active", aggregateType: "other", activeVersionId: "v1" };
@@ -220,6 +692,16 @@ describe("createServerUploadService.createVersion", () => {
     const res = await svc.createVersion(ORG, ACTOR, DOC_ID, { content: ARGS.content });
     expect(res.versionNumber).toBe(3);
     expect(inserts[0]?.values).toMatchObject({ versionNumber: "3", replacesVersionId: "v1" });
+  });
+
+  it("refuses a tenant_baa document with 409 DOCUMENT_IMMUTABLE and stores nothing: the generic upload cannot add a version to the signed BAA", async () => {
+    const { db } = fakeDb({ selects: [[{ ...writable, aggregateType: "tenant_baa" }], []] });
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db, objects: mem.store });
+    await expect(
+      svc.createVersion(ORG, ACTOR, DOC_ID, { content: ARGS.content }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "DOCUMENT_IMMUTABLE" });
+    expect(mem.objects.size).toBe(0);
   });
 
   it("refuses a new version of an internal-only document (render-only), storing nothing", async () => {

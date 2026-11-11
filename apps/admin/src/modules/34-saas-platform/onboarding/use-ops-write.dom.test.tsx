@@ -1,0 +1,135 @@
+// @vitest-environment jsdom
+// useOpsWrite: how a platform write runs. One Idempotency-Key per attempt: the key survives a request that got NO answer (the network
+// dropped it, so a retry replays) and is renewed by ANY answer, because the server caches a refusal under the key and a retry on it
+// would be handed the refusal again (a 403 STEP_UP_REQUIRED would never clear). A refusal becomes an OpsFailure the screen switches on.
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { AFTER_SUCCESS_TIMEOUT_MS, useOpsWrite } from "./use-ops-write";
+
+type Result = { data?: { id: string }; error?: unknown; response?: { status: number } };
+
+function setup() {
+  const keys: string[] = [];
+  const hook = renderHook(() => useOpsWrite());
+  const attempt = (fingerprint: string, result: Result | "throw") =>
+    act(async () =>
+      hook.result.current.run(fingerprint, async (key) => {
+        keys.push(key);
+        if (result === "throw") throw new TypeError("network down");
+        return result;
+      }),
+    );
+  return { hook, keys, attempt };
+}
+
+describe("useOpsWrite", () => {
+  it("returns the data on success and clears any earlier failure", async () => {
+    const { hook, attempt } = setup();
+    await attempt("a", {
+      error: { error: { code: "ONBOARDING_TASK_CHANGED", message: "no" } },
+      response: { status: 409 },
+    });
+    expect(hook.result.current.failure?.kind).toBe("conflict");
+    const ok = await attempt("a", { data: { id: "1" }, response: { status: 200 } });
+    expect(ok).toEqual({ ok: true, data: { id: "1" } });
+    expect(hook.result.current.failure).toBeNull();
+    expect(hook.result.current.busy).toBe(false);
+  });
+
+  it("turns a refusal into a failure the screen can switch on, with the caller's copy", async () => {
+    const { hook, attempt } = setup();
+    const out = await attempt("a", {
+      error: { error: { code: "GO_LIVE_SAME_PERSON", message: "server words" } },
+      response: { status: 409 },
+    });
+    expect(out.ok).toBe(false);
+    expect(hook.result.current.failure?.code).toBe("GO_LIVE_SAME_PERSON");
+    expect(hook.result.current.failure?.message).toMatch(/different operator/i);
+  });
+
+  it("retries on the SAME key after a request that got no answer", async () => {
+    const { hook, keys, attempt } = setup();
+    await attempt("body-1", "throw");
+    expect(hook.result.current.failure?.kind).toBe("network");
+    await attempt("body-1", { data: { id: "1" }, response: { status: 200 } });
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it("starts on a NEW key after the server has answered, even with the same body (the refusal is cached under the old one)", async () => {
+    const { keys, attempt } = setup();
+    await attempt("body-1", {
+      error: { error: { code: "STEP_UP_REQUIRED", message: "x" } },
+      response: { status: 403 },
+    });
+    await attempt("body-1", { data: { id: "1" }, response: { status: 200 } });
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("keeps the key after a gateway failure that carries no error envelope: it never reached the app, so nothing was cached", async () => {
+    const { keys, attempt } = setup();
+    await attempt("body-1", { error: "<html>Bad Gateway</html>", response: { status: 502 } });
+    await attempt("body-1", { data: { id: "1" }, response: { status: 200 } });
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it("renews the key after a 5xx that carries the standard envelope: the app answered and the answer is cached", async () => {
+    const { keys, attempt } = setup();
+    await attempt("body-1", {
+      error: { error: { code: "INTERNAL_ERROR", message: "boom" } },
+      response: { status: 500 },
+    });
+    await attempt("body-1", { data: { id: "1" }, response: { status: 200 } });
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("starts on a new key when the body changes", async () => {
+    const { keys, attempt } = setup();
+    await attempt("body-1", "throw");
+    await attempt("body-2", { data: { id: "1" }, response: { status: 200 } });
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("releases busy and accepts a new run once a hung reload outlasts the follow-up bound", async () => {
+    vi.useFakeTimers();
+    try {
+      const hook = renderHook(() => useOpsWrite());
+      const ok = { data: { id: "1" }, response: { status: 200 } };
+      let first: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        first = hook.result.current.run(
+          "a",
+          async () => ok,
+          () => new Promise(() => {}),
+        );
+      });
+      expect(hook.result.current.busy).toBe(true);
+      // Still inside the window: a double submit is dropped.
+      let second = false;
+      void hook.result.current
+        .run("a", async () => ok)
+        .then(() => {
+          second = true;
+        });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AFTER_SUCCESS_TIMEOUT_MS);
+      });
+      await expect(first).resolves.toEqual({ ok: true, data: { id: "1" } });
+      expect(second).toBe(false);
+      expect(hook.result.current.busy).toBe(false);
+      const third = await act(async () => hook.result.current.run("b", async () => ok));
+      expect(third).toEqual({ ok: true, data: { id: "1" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("can be cleared by the screen", async () => {
+    const { hook, attempt } = setup();
+    await attempt("a", {
+      error: { error: { code: "X", message: "no" } },
+      response: { status: 422 },
+    });
+    act(() => hook.result.current.clear());
+    expect(hook.result.current.failure).toBeNull();
+  });
+});

@@ -367,6 +367,13 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE ("derived_organization_id", "derived_provider_entity_id", "last_error_class", "processing_outcome", "entitlement_checked_at", "processed_at", "attempt_count", "payload_cipher", "payload_key_ref", "payload_cleared_at") ON "claimmd_webhook_event" TO chartwarden_platform;',
       );
+      // The BAA register links only a signed BAA filed for the record's own tenant, judged in the write's transaction (the platform
+      // credential writes the register): COLUMNS of `document` (its id, its organization and its kind), never a title, a patient or an
+      // object key, and no other document table. Migration 1477 adds two more: the creator's membership id (go-live approval refuses the
+      // operator who uploaded the signed agreement) and the lifecycle status (a destroyed tombstone is not a filed agreement).
+      await run(
+        'GRANT SELECT ("id", "organization_id", "aggregate_type", "created_by_membership_id", "status") ON "document" TO chartwarden_platform;',
+      );
       // The NPI-verification admin list (migration 1326) also names the entity: legal_name joins that column grant.
       await run(
         'GRANT SELECT ("id", "organization_id", "npi", "legal_name") ON "provider_entity" TO chartwarden_platform;',
@@ -393,6 +400,15 @@ async function main(): Promise<void> {
       );
       await run(
         'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+      );
+      // Migration 1425: platform ops add or re-edit a non-canonical onboarding step. INSERT is table-wide (Drizzle's insert
+      // names every column); UPDATE is COLUMN-level (the upsert's set), so a step's key, owner role and settings can never be
+      // rewritten from the platform side. NOT `is_canonical`: the route never writes it (migration 1476 revokes it, and a trigger
+      // refuses the carrier any canonical row). REVOKE first so a re-provision takes back an older table-wide or column grant.
+      await run('REVOKE UPDATE ON "onboarding_task_template" FROM chartwarden_platform;');
+      await run('GRANT INSERT ON "onboarding_task_template" TO chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("display_label", "description", "canonical_order") ON "onboarding_task_template" TO chartwarden_platform;',
       );
       // subscription_contract and subscription_contract_mode: INSERT above and never UPDATE (a signed contract does not change; the mode
       // history is append-only). REVOKE so a re-provision takes back any older table-wide or column grant.
@@ -429,6 +445,15 @@ async function main(): Promise<void> {
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
+      );
+      // M23 (migrations 1435/1436): the boot check that no tenant holds the platform's own vendor key reads the fingerprint, its
+      // key and whether it is held; never the organization or the release reason. REVOKE first so a re-provision takes back the
+      // table grant an older run gave.
+      await run(
+        'REVOKE SELECT ON "tenant_clearinghouse_credential_reservation" FROM chartwarden_platform;',
+      );
+      await run(
+        'GRANT SELECT ("id", "credential_fingerprint", "credential_fingerprint_key_id", "released_at") ON "tenant_clearinghouse_credential_reservation" TO chartwarden_platform;',
       );
       for (const t of PLATFORM_WRITE_TABLES) {
         await run(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO chartwarden_platform;`);

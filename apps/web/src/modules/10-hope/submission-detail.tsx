@@ -205,7 +205,9 @@ export function SubmissionDetail(): JSX.Element {
       };
       const { error: err } = await api.POST("/api/v1/hope/submissions/{id}/mark-uploaded", {
         params: { path: { id } },
-        body: { submittedAt: new Date().toISOString() },
+        // No client clock: the server stamps `submittedAt` itself (now) when it is omitted, so a retry after a lost reply is the same
+        // request and replays under the client's per-intent Idempotency-Key.
+        body: {},
       });
       if (err) setActionError("Could not mark this package uploaded.");
       else await reload();

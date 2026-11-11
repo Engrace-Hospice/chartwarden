@@ -11,6 +11,10 @@
 // CORRECT (migration 0378) drafts a corrected NOE for a REJECTED one — a new linked DRAFT (`corrects_notice_id`),
 // gated like filing it (`billing.noe.submit` + provider scope + AI-block + `Idempotency-Key`; the step-up stays on
 // submit). CMS Pub. 100-04 ch. 11 §20.1.1; M23 §2.2 "corrected NOE is its own row".
+//
+// RECORD-EXTERNAL-FILING (owner decision D4) — an organization that bills outside ChartWarden files its NOE itself: submit PARKS
+// the notice (nothing queued or sent) and `POST /:id/record-external-filing` records the date the tenant filed it. Guarded like
+// submit (same permission, provider scope, step-up, AI-block, Idempotency-Key); 200, idempotent for the same date.
 import {
   actorOf,
   parse,
@@ -24,6 +28,7 @@ import {
   CorrectNoticeBodySchema,
   NoeIdParamsSchema,
   NoeListQuerySchema,
+  RecordExternalFilingBodySchema,
 } from "./billing-typebox";
 import { P, PROVIDER_SCOPE, STEP_UP, targetNoeId } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
@@ -95,6 +100,20 @@ export function registerNoeRoutes(app: FastifyInstance, deps: NoeRouteDeps): voi
       const { id } = parse(NoeIdParamsSchema, request.params);
       const res = await writeService.submitNoe(actor, id);
       return reply.code(202).send(res);
+    },
+  );
+
+  // POST /noe-records/:id/record-external-filing — an org that bills outside ChartWarden records the date it filed this NOE
+  // itself (owner decision D4). ChartWarden transmits nothing; the notice leaves the deadline tracker. 200, idempotent for the same
+  // date, 409 for another. Guarded exactly like submit (the same permission, provider scope, step-up, AI-block, Idempotency-Key).
+  app.post(
+    "/api/v1/noe-records/:id/record-external-filing",
+    { preHandler: [SUBMIT, SUBMIT_ABAC, SUBMIT_STEPUP, NO_AI, IDEMPOTENT] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(NoeIdParamsSchema, request.params);
+      const body = parse(RecordExternalFilingBodySchema, request.body);
+      return writeService.recordNoeExternalFiling(actor, id, body);
     },
   );
 

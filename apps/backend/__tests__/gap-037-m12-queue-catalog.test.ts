@@ -8,6 +8,8 @@ import {
   M12_QUEUE_CATALOG,
   M12_SPEC_QUEUE_NAMES,
   describeM12AdapterPosture,
+  describeM12EnvFallbackWarning,
+  describeM12PlatformFlagWarnings,
 } from "../src/modules/12-dosespot/jobs/queue-catalog";
 import {
   M12_CRON_QUEUES,
@@ -54,5 +56,72 @@ describe("M12 §4.8 queue catalog", () => {
     expect(describeM12AdapterPosture([])).toMatch(/orders keep activating locally/);
     expect(describeM12AdapterPosture(["org-1"])).toMatch(/bound for 1 tenant/);
     expect(describeM12AdapterPosture(["org-1"])).toMatch(/unverified until a sandbox run/);
+  });
+
+  it("slice 4: says per-tenant registrations are read from the database, and the env map is only a fallback", () => {
+    expect(describeM12AdapterPosture([])).toMatch(/dosespot_clinic_registration/);
+    expect(describeM12AdapterPosture(["org-1"])).toMatch(/env fallback/);
+  });
+
+  it("slice 4: warns, naming each org, that an env entry serves an org with no registration of its own", () => {
+    expect(describeM12EnvFallbackWarning([])).toBeNull();
+    const warning = describeM12EnvFallbackWarning(["org-1", "org-2"]);
+    expect(warning).toMatch(/org-1, org-2/);
+    expect(warning).toMatch(/DOSESPOT_TENANT_CONFIGS/);
+    expect(warning).toMatch(/no registration of its own/);
+  });
+
+  describe("CW-AC-21 / CW-BA-01: the platform flags are operating policy, so the boot says so loudly instead of refusing", () => {
+    it("says nothing when neither flag is set", () => {
+      expect(describeM12PlatformFlagWarnings({})).toEqual([]);
+      expect(
+        describeM12PlatformFlagWarnings({
+          NODE_ENV: "production",
+          DOSESPOT_SANDBOX_ENABLED: "false",
+          DOSESPOT_PRODUCTION_ENABLED: "false",
+        }),
+      ).toEqual([]);
+    });
+
+    it("warns when the sandbox flag is set on a production build: prescriptions go to the TEST environment", () => {
+      const [warning, ...rest] = describeM12PlatformFlagWarnings({
+        NODE_ENV: "production",
+        DOSESPOT_SANDBOX_ENABLED: "true",
+      });
+      expect(rest).toEqual([]);
+      expect(warning).toMatch(/DOSESPOT_SANDBOX_ENABLED is true on a production deployment/);
+      expect(warning).toMatch(/TEST environment/);
+      expect(warning).toMatch(/not a machine check/);
+    });
+
+    it("does not warn about the sandbox flag outside production (a development box)", () => {
+      expect(
+        describeM12PlatformFlagWarnings({
+          NODE_ENV: "development",
+          DOSESPOT_SANDBOX_ENABLED: "true",
+        }),
+      ).toEqual([]);
+    });
+
+    it("warns when the production flag is set, and says the BAA is not machine-checked", () => {
+      const [warning, ...rest] = describeM12PlatformFlagWarnings({
+        DOSESPOT_PRODUCTION_ENABLED: "true",
+      });
+      expect(rest).toEqual([]);
+      expect(warning).toMatch(/DOSESPOT_PRODUCTION_ENABLED is true/);
+      expect(warning).toMatch(/BAA is executed .* NOT machine-checked/);
+    });
+
+    it("both flags on a production build give both warnings, and no warning carries a secret", () => {
+      const env = {
+        NODE_ENV: "production",
+        DOSESPOT_SANDBOX_ENABLED: "true",
+        DOSESPOT_PRODUCTION_ENABLED: "true",
+        DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "sandbox-sub-key-secret",
+      };
+      const warnings = describeM12PlatformFlagWarnings(env);
+      expect(warnings).toHaveLength(2);
+      expect(warnings.join(" ")).not.toContain("sandbox-sub-key-secret");
+    });
   });
 });

@@ -20,6 +20,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DocumentAggregateType, OrgId } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { isDefiniteDatabaseRefusal } from "../../../bootstrap/redact-database-error";
 import {
   assertNotInternalOnlyForWrite,
   assertNotOrgLibraryForEdit,
@@ -27,6 +28,7 @@ import {
 } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
+import { assertKindWritable } from "./immutable-kinds";
 import type {
   DocumentWriteActor,
   UploadDocumentArgs,
@@ -36,6 +38,8 @@ import type {
 import { MAX_DOCUMENT_UPLOAD_BYTES, type ReferralAccessReader } from "./verified-upload";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/** The default bound on what a call makes the caller wait while it holds a transaction (see `heldTimeoutMs`). */
+const HELD_TIMEOUT_MS = 30_000;
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",
@@ -64,6 +68,8 @@ export interface DocumentContentScanner {
   scan(input: {
     readonly bytes: Uint8Array;
     readonly mimeType: string;
+    /** Aborts the scan where the caller holds a transaction (a scanner that cannot abort may ignore it: the caller stops waiting). */
+    readonly signal?: AbortSignal;
   }): Promise<ContentScanVerdict>;
 }
 
@@ -78,7 +84,21 @@ export interface ServerUploadDeps {
   readonly scanner?: DocumentContentScanner | null;
   /** Fail closed when no scanner is bound (production posture while no scanner implementation exists). */
   readonly scanRequired?: boolean;
-  readonly logger?: UploadLogger;
+  /**
+   * REQUIRED: every "best effort" in this file is only as good as the warning that says it did not work (an orphan object, a put that was
+   * abandoned), and an optional logger made those warnings silent in production.
+   */
+  readonly logger: UploadLogger;
+  /**
+   * How long `createDocumentOn` makes the CALLER wait on things that leave the process while it holds a transaction (and, for the
+   * onboarding writes, the shared onboarding advisory lock). The malware scan and the object store's put share ONE deadline of this length
+   * (default 30 s); the clean-up of an object after a failure gets its own bound of the same length (it is needed precisely because that
+   * deadline ran out), so the worst case is twice this (about 60 s). A store or scanner that never answers must not hold the transaction
+   * and the lock: the caller stops waiting (a call that ignores its abort signal is abandoned, not awaited), and the upload is a 503
+   * (`document-storage` / `document-scanner`). The clean-up is best effort: when it fails or times out the object is an orphan, a warning
+   * names its objectKey, and no sweep exists yet (reconcile by objectKey).
+   */
+  readonly heldTimeoutMs?: number;
   readonly now?: () => Date;
   readonly randomId?: () => string;
 }
@@ -89,12 +109,37 @@ export interface CommittedUpload {
   readonly versionNumber: number;
 }
 
+/** A document filed on the CALLER's transaction: what was verified, and the way to take the object back out. */
+export interface FiledUpload extends CommittedUpload {
+  /** The stored object's key: what a log line names if the object is ever orphaned (no sweep exists yet; reconcile by objectKey). */
+  readonly objectKey: string;
+  readonly mimeType: string;
+  readonly byteSize: number;
+  readonly sha256Hex: string;
+  /**
+   * Destroy the stored object. For the caller whose transaction rolls back after `createDocumentOn` returned: the rows go with the
+   * rollback, the object would not. Best effort (a failure is logged, never thrown).
+   */
+  discard(): Promise<void>;
+}
+
 export interface ServerUploadService {
   createDocument(
     organizationId: OrgId,
     actor: DocumentWriteActor,
     args: UploadDocumentArgs,
   ): Promise<CommittedUpload>;
+  /**
+   * The same upload (content gate, scan, object store) with the document and version rows written on `tx`: a transaction the caller
+   * opened, ALREADY scoped to `organizationId`, and owns (it commits or rolls back with the caller's own rows, an audit row for one).
+   * The object is destroyed here only when the insert itself fails; a caller that fails afterwards calls `discard()`.
+   */
+  createDocumentOn(
+    tx: DbClient,
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    args: UploadDocumentArgs,
+  ): Promise<FiledUpload>;
   createVersion(
     organizationId: OrgId,
     actor: DocumentWriteActor,
@@ -152,6 +197,39 @@ export function decodeBase64Content(contentBase64: string): Uint8Array {
   return new Uint8Array(Buffer.from(contentBase64, "base64"));
 }
 
+const scanTimedOut = () =>
+  new DegradedError("document-scanner", "the malware scanner did not answer in time");
+const storageTimedOut = () =>
+  new DegradedError("document-storage", "the object store did not answer in time");
+
+/** What a caller that holds a transaction waits for: scan and put share `deadline`, the clean-up gets `cleanupMs`. */
+interface HeldBounds {
+  readonly deadline: AbortSignal;
+  readonly cleanupMs: number;
+}
+
+/** `work`, unless `signal` aborts first (then `onAbort()` is thrown): the caller stops waiting for something that cannot be aborted. */
+function raceAbort<T>(work: Promise<T>, signal: AbortSignal, onAbort: () => Error): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(onAbort());
+    if (signal.aborted) {
+      work.catch(() => undefined); // the abandoned call may still reject later: that must not be an unhandled rejection
+      return abort();
+    }
+    signal.addEventListener("abort", abort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function createServerUploadService(deps: ServerUploadDeps): ServerUploadService {
   const now = deps.now ?? (() => new Date());
   const randomId = deps.randomId ?? randomUUID;
@@ -173,7 +251,11 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     return deps.objects;
   }
 
-  async function assertScanned(content: UploadedContent, verified: VerifiedContent) {
+  async function assertScanned(
+    content: UploadedContent,
+    verified: VerifiedContent,
+    deadline?: AbortSignal,
+  ) {
     if (!deps.scanner) {
       if (deps.scanRequired) {
         throw new DegradedError(
@@ -183,7 +265,12 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       }
       return;
     }
-    const result = await deps.scanner.scan({ bytes: content.bytes, mimeType: verified.mimeType });
+    const scan = deps.scanner.scan({
+      bytes: content.bytes,
+      mimeType: verified.mimeType,
+      ...(deadline ? { signal: deadline } : {}),
+    });
+    const result = deadline ? await raceAbort(scan, deadline, scanTimedOut) : await scan;
     if (result.verdict !== "clean") {
       throw new ChartWardenError(
         "UPLOAD_REJECTED",
@@ -244,6 +331,8 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     // #641 — the route's scope check saw this patient; a row that has since moved is out of scope.
     if (expectedPatientId !== undefined && doc.patientId !== expectedPatientId)
       throw new NotFoundError("document");
+    // A kind that a dedicated route files once (the signed BAA) takes no new version from this route, whoever holds documents.upload.
+    assertKindWritable(doc.aggregateType);
     assertNotInternalOnlyForWrite(doc.aggregateType);
     assertNotOrgLibraryForEdit(doc.aggregateType);
     const [hold] = await tx
@@ -261,24 +350,53 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     return `uploads/${randomId()}/${aggregateType}-${randomId().slice(0, 12)}`;
   }
 
-  /** Store the object, run `commit`, and destroy the object if the commit fails (nothing references it). */
+  /**
+   * Store the object, run `commit`, and destroy the object if the commit certainly failed (nothing references it). `commitMayHaveLanded`
+   * tells a failure of the COMMIT ITSELF (the callback finished, the commit then failed: the rows may be there) from one inside the
+   * callback (rolled back): after an ambiguous commit failure the object is kept and the failure logged, because destroying the file
+   * of a document that did commit would lose it. `held`: the caller holds a transaction, so the put is raced against the shared deadline
+   * (a store that ignores the abort signal is abandoned, not awaited) and its clean-up is bounded.
+   */
   async function storeThenCommit(
     organizationId: OrgId,
     objectKey: string,
     content: UploadedContent,
     verified: VerifiedContent,
     commit: () => Promise<CommittedUpload>,
+    options: { readonly held?: HeldBounds; readonly commitMayHaveLanded?: () => boolean } = {},
   ): Promise<CommittedUpload> {
     const objects = requireStore();
     const bucket = deriveTenantBucket(organizationId);
-    const stored = await objects.putObject({
-      bucket,
-      objectKey,
-      bytes: content.bytes,
-      mimeType: verified.mimeType,
-    });
+    const { held } = options;
+    // The scan may have spent the whole deadline: the store is not even asked (nothing to clean up).
+    if (held?.deadline.aborted) throw storageTimedOut();
+    let stored: { readonly sha256Hex: string };
+    let put: Promise<{ readonly sha256Hex: string }> | undefined;
+    try {
+      put = objects.putObject({
+        bucket,
+        objectKey,
+        bytes: content.bytes,
+        mimeType: verified.mimeType,
+        ...(held ? { signal: held.deadline } : {}),
+      });
+      stored = held ? await raceAbort(put, held.deadline, storageTimedOut) : await put;
+    } catch (error) {
+      if (!held?.deadline.aborted) throw error;
+      deps.logger.warn(
+        { organizationId, objectKey },
+        "m22 upload: the object store's put was abandoned at the deadline and may still land; a clean-up is attempted now and again if the put settles late (no sweep exists yet; reconcile by objectKey)",
+      );
+      await destroyQuietly(organizationId, objectKey, held.cleanupMs);
+      // The abandoned put may settle LATER and leave the object behind the clean-up above: delete it then, too (best effort, never throws).
+      void put?.then(
+        () => destroyQuietly(organizationId, objectKey, held.cleanupMs),
+        () => undefined, // it failed: nothing landed
+      );
+      throw storageTimedOut();
+    }
     if (stored.sha256Hex !== verified.sha256Hex) {
-      await destroyQuietly(organizationId, objectKey);
+      await destroyQuietly(organizationId, objectKey, held?.cleanupMs);
       throw new ChartWardenError(
         "UPLOAD_INTEGRITY_MISMATCH",
         "stored object does not match the verified checksum",
@@ -288,22 +406,47 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     try {
       return await commit();
     } catch (error) {
-      await destroyQuietly(organizationId, objectKey);
+      // Ambiguous when the callback finished and the failure is not a refusal the database answered with a definite error class (a
+      // serialization failure, a deferred constraint: it rolled back, so the object points at nothing). A socket or connection loss, or
+      // a connection-class or server-error SQLSTATE, leaves it unknown whether the commit landed.
+      if (options.commitMayHaveLanded?.() && !isDefiniteDatabaseRefusal(error)) {
+        deps.logger.warn(
+          { organizationId, objectKey },
+          "m22 upload: the commit failed after the rows were written, so the object is kept (the commit may have landed); if it did not, the object is an orphan (no sweep exists yet; reconcile by objectKey)",
+        );
+      } else {
+        await destroyQuietly(organizationId, objectKey, held?.cleanupMs);
+      }
       throw error;
     }
   }
 
-  async function destroyQuietly(organizationId: OrgId, objectKey: string): Promise<void> {
+  /**
+   * Remove the object, best effort: a failure is logged with the objectKey, never thrown, and the object is then an orphan (no sweep
+   * exists yet; reconcile by objectKey).
+   * `boundMs`: where the caller holds a transaction, the delete is aborted AND abandoned after that long (a store that ignores the
+   * signal cannot hold the transaction).
+   */
+  async function destroyQuietly(
+    organizationId: OrgId,
+    objectKey: string,
+    boundMs?: number,
+  ): Promise<void> {
     try {
-      await requireStore().destroyAllVersions({
+      const signal = boundMs === undefined ? undefined : AbortSignal.timeout(boundMs);
+      const destroy = requireStore().destroyAllVersions({
         bucket: deriveTenantBucket(organizationId),
         objectKey,
         organizationId,
+        ...(signal ? { signal } : {}),
       });
+      await (signal
+        ? raceAbort(destroy, signal, () => new Error("the object store did not answer in time"))
+        : destroy);
     } catch {
-      deps.logger?.warn(
+      deps.logger.warn(
         { organizationId, objectKey },
-        "m22 upload: orphaned object could not be removed after a failed commit",
+        "m22 upload: an object could not be removed (best effort); it stays as an orphan (no sweep exists yet; reconcile by objectKey)",
       );
     }
   }
@@ -338,22 +481,37 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     return version.id;
   }
 
-  return {
-    async createDocument(organizationId, actor, args) {
-      assertNotInternalOnlyForWrite(args.aggregateType);
-      assertOrgLibraryIsOrgLevel(args.aggregateType, args.patientId, args.admissionId);
-      requireStore();
-      const verified = verifyUploadContent(args.content);
-      await assertReferralAccess(
-        organizationId,
-        actor.userId,
-        args.aggregateType,
-        args.aggregateId,
-      );
-      await assertScanned(args.content, verified);
-      const objectKey = objectKeyFor(args.aggregateType);
-      return storeThenCommit(organizationId, objectKey, args.content, verified, () =>
-        inOrg(organizationId, actor.userId, async (tx) => {
+  /** Verify, scan and store the bytes, then insert the document + version(+ tags) through `scope` (the caller's way into a transaction). */
+  async function fileDocument(
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    args: UploadDocumentArgs,
+    scope: <T>(fn: (tx: DbClient) => Promise<T>) => Promise<T>,
+    options: { readonly heldTimeoutMs?: number } = {},
+  ): Promise<CommittedUpload & VerifiedContent & { readonly objectKey: string }> {
+    assertNotInternalOnlyForWrite(args.aggregateType);
+    assertOrgLibraryIsOrgLevel(args.aggregateType, args.patientId, args.admissionId);
+    requireStore();
+    const verified = verifyUploadContent(args.content);
+    await assertReferralAccess(organizationId, actor.userId, args.aggregateType, args.aggregateId);
+    // The caller's transaction is open from here: the clock starts now and runs through the scan and the put together.
+    const held: HeldBounds | undefined =
+      options.heldTimeoutMs === undefined
+        ? undefined
+        : {
+            deadline: AbortSignal.timeout(options.heldTimeoutMs),
+            cleanupMs: options.heldTimeoutMs,
+          };
+    await assertScanned(args.content, verified, held?.deadline);
+    const objectKey = objectKeyFor(args.aggregateType);
+    let bodyDone = false;
+    const committed = await storeThenCommit(
+      organizationId,
+      objectKey,
+      args.content,
+      verified,
+      () =>
+        scope(async (tx) => {
           const [doc] = await tx
             .insert(D)
             .values({
@@ -395,9 +553,42 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
               addedByMembershipId: actor.membershipId,
             });
           }
+          bodyDone = true;
           return { documentId: doc.id, versionId, versionNumber: 1 };
         }),
+      { ...(held ? { held } : {}), commitMayHaveLanded: () => bodyDone },
+    );
+    return { ...committed, ...verified, objectKey };
+  }
+
+  return {
+    async createDocument(organizationId, actor, args) {
+      // The tenant-facing upload never files an operator-filed kind (the signed BAA): that door is `createDocumentOn`, for the onboarding port.
+      assertKindWritable(args.aggregateType);
+      const { documentId, versionId, versionNumber } = await fileDocument(
+        organizationId,
+        actor,
+        args,
+        (fn) => inOrg(organizationId, actor.userId, fn),
       );
+      return { documentId, versionId, versionNumber };
+    },
+
+    async createDocumentOn(tx, organizationId, actor, args) {
+      const heldTimeoutMs = deps.heldTimeoutMs ?? HELD_TIMEOUT_MS;
+      const filed = await fileDocument(organizationId, actor, args, (fn) => fn(tx), {
+        heldTimeoutMs,
+      });
+      return {
+        documentId: filed.documentId,
+        versionId: filed.versionId,
+        versionNumber: filed.versionNumber,
+        objectKey: filed.objectKey,
+        mimeType: filed.mimeType,
+        byteSize: filed.byteSize,
+        sha256Hex: filed.sha256Hex,
+        discard: () => destroyQuietly(organizationId, filed.objectKey, heldTimeoutMs),
+      };
     },
 
     async createVersion(organizationId, actor, documentId, args) {
@@ -408,40 +599,48 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       );
       await assertScanned(args.content, verified);
       const objectKey = objectKeyFor(target.aggregateType);
-      return storeThenCommit(organizationId, objectKey, args.content, verified, () =>
-        inOrg(organizationId, actor.userId, async (tx) => {
-          const doc = await lockWritableDocument(
-            tx,
-            organizationId,
-            documentId,
-            args.expectedPatientId,
-          );
-          const rows = await tx
-            .select({ versionNumber: V.versionNumber })
-            .from(V)
-            .where(eq(V.documentId, documentId));
-          const versionNumber =
-            rows.reduce((max, row) => Math.max(max, Number(row.versionNumber)), 0) + 1;
-          const versionId = await insertVersion(
-            tx,
-            organizationId,
-            actor,
-            documentId,
-            versionNumber,
-            doc.activeVersionId,
-            objectKey,
-            verified,
-          );
-          await tx
-            .update(D)
-            .set({
-              activeVersionId: versionId,
-              updatedAt: now(),
-              ...(args.title !== undefined ? { title: args.title } : {}),
-            })
-            .where(eq(D.id, documentId));
-          return { documentId, versionId, versionNumber };
-        }),
+      let bodyDone = false;
+      return storeThenCommit(
+        organizationId,
+        objectKey,
+        args.content,
+        verified,
+        () =>
+          inOrg(organizationId, actor.userId, async (tx) => {
+            const doc = await lockWritableDocument(
+              tx,
+              organizationId,
+              documentId,
+              args.expectedPatientId,
+            );
+            const rows = await tx
+              .select({ versionNumber: V.versionNumber })
+              .from(V)
+              .where(eq(V.documentId, documentId));
+            const versionNumber =
+              rows.reduce((max, row) => Math.max(max, Number(row.versionNumber)), 0) + 1;
+            const versionId = await insertVersion(
+              tx,
+              organizationId,
+              actor,
+              documentId,
+              versionNumber,
+              doc.activeVersionId,
+              objectKey,
+              verified,
+            );
+            await tx
+              .update(D)
+              .set({
+                activeVersionId: versionId,
+                updatedAt: now(),
+                ...(args.title !== undefined ? { title: args.title } : {}),
+              })
+              .where(eq(D.id, documentId));
+            bodyDone = true;
+            return { documentId, versionId, versionNumber };
+          }),
+        { commitMayHaveLanded: () => bodyDone },
       );
     },
   };

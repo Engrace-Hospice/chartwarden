@@ -44,7 +44,7 @@ export const collaboratorLinks = pgTable(
     firstRedeemedAt: timestamp("first_redeemed_at", { withTimezone: true }),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
-    /** Funeral-home links (migration 1455): the MDM funeral_home entity whose BAA is re-checked. Null only on revoked legacy links. */
+    /** Funeral-home links (migration 1479): the MDM funeral_home entity whose BAA is re-checked. Null only on revoked legacy links. */
     funeralHomeEntityId: uuid("funeral_home_entity_id"),
     /** M36 notification attempt that minted this link; no FK so M2 stays independently destructible. */
     disclosureAttemptId: uuid("disclosure_attempt_id"),

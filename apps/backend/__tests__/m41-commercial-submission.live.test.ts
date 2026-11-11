@@ -65,6 +65,7 @@ import {
   runQuarantinePrune,
 } from "../src/modules/41-billing-commercial/jobs/quarantine-prune";
 import { bindPayloadAndMarkCallStarted } from "../src/modules/41-billing-commercial/jobs/submission-worker";
+import { __resetUnboundAlertMemoryForTest } from "../src/modules/41-billing-commercial/jobs/unbound-alert";
 import {
   LIVE_APP_ROLE_PASSWORD,
   appRoleUrl,
@@ -722,10 +723,27 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       expect(await claimState(c.claimId)).toBe("ready");
     });
 
-    it("an unbound tick sends nothing and fails while a submission waits", async () => {
+    it("an unbound tick sends nothing and REPORTS the waiting submission (one alert, the tick does not fail for every tenant)", async () => {
       const c = await readyClaim();
+      __resetUnboundAlertMemoryForTest();
       const sub = await service("stedi").submit(actor, c.claimId, "key-unbound-tick");
-      await expect(runSubmissionDrain(workerDeps(null))).rejects.toThrow(/CH_NOT_WIRED/);
+      const alerts: {
+        alertCode: string;
+        organizationId: string;
+        payload: Record<string, unknown>;
+      }[] = [];
+      await expect(
+        runSubmissionDrain({
+          ...workerDeps(null),
+          alerts: { dispatch: async (a) => void alerts.push(a) },
+        }),
+      ).resolves.toMatchObject({ sent: 0, failures: [] });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toMatchObject({
+        alertCode: "m41.clearinghouse.unbound_with_work",
+        organizationId: ORG,
+      });
+      expect(alerts[0]?.payload.waiting).toBeGreaterThanOrEqual(1);
       const row = (
         await admin.query("SELECT status, attempt_count FROM commercial_submission WHERE id=$1", [
           sub.submissionId,
@@ -2758,9 +2776,14 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       await expect(move(s.claimId, "ready")).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
     });
 
-    it("an unbound tick fails while a sent claim waits for its answer and calls no transport", async () => {
+    it("an unbound tick REPORTS a sent claim that waits for its answer (one alert, no failed tick) and calls no transport", async () => {
       const c = await sentClaim();
-      await expect(runAckPull(ackDeps(null))).rejects.toThrow(/CH_NOT_WIRED/);
+      __resetUnboundAlertMemoryForTest();
+      const alerts: { alertCode: string; organizationId: string }[] = [];
+      await expect(
+        runAckPull({ ...ackDeps(null), alerts: { dispatch: async (a) => void alerts.push(a) } }),
+      ).resolves.toMatchObject({ failures: [] });
+      expect(alerts.map((a) => a.alertCode)).toEqual(["m41.clearinghouse.unbound_with_work"]);
       expect(await claimState(c.claimId)).toBe("submitted");
     });
   });

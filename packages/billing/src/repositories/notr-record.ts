@@ -30,6 +30,13 @@ import {
 
 const N = schema.notrRecord;
 
+/**
+ * A notice its tenant recorded as filed outside ChartWarden (`external_filing_status = 'filed'`) has met, or breached on record,
+ * its deadline: it leaves the window watch and the DDE watchdog. `pending` and unmarked notices stay on both. NOT `<>`: that
+ * would drop every unmarked (NULL) notice too.
+ */
+const NOT_FILED_EXTERNALLY = sql`${N.externalFilingStatus} IS DISTINCT FROM 'filed'`;
+
 /** The DB-native NOTR trigger discriminator (`revocation` | `transfer_out` | `discharge`); no domain divergence. */
 export type NotrTriggerKind = schema.NotrRecord["triggerKind"];
 
@@ -66,6 +73,11 @@ export type NotrTransitionPatch = Partial<
     | "rejectionCodes"
     | "payerStatusDate"
     | "payerStatusDateSource"
+    | "externalFilingStatus"
+    | "filedExternallyOn"
+    | "filedExternallyRecordedAt"
+    | "filedExternallyByMembershipId"
+    | "externalFilingSetBreach"
   >
 >;
 
@@ -75,6 +87,29 @@ const NOTR_TERMINAL_DB: schema.NotrRecord["state"][] = [
   "CANCELLED",
   "ACK_REJECTED",
 ];
+
+/** Only what the platform operator's withdraw list shows (and pins): `listExternallyFiled` selects these columns and nothing else. */
+const EXTERNALLY_FILED_COLUMNS = {
+  id: N.id,
+  state: N.state,
+  windowTargetAt: N.windowTargetAt,
+  windowBreachedAt: N.windowBreachedAt,
+  filedExternallyOn: N.filedExternallyOn,
+  filedExternallyRecordedAt: N.filedExternallyRecordedAt,
+  externalFilingSetBreach: N.externalFilingSetBreach,
+};
+
+/** A NOTR as the withdraw list reads it: the projected columns of `listExternallyFiled`. */
+export type ExternallyFiledNotrRecord = Pick<
+  NotrRecord,
+  | "id"
+  | "state"
+  | "windowTargetAt"
+  | "windowBreachedAt"
+  | "filedExternallyOn"
+  | "filedExternallyRecordedAt"
+  | "externalFilingSetBreach"
+>;
 
 /** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 function toNotrRecord(row: schema.NotrRecord): NotrRecord {
@@ -100,6 +135,16 @@ export class NotrRepository {
   /** Point read by id, or `null` (domain-cased). */
   async findById(id: string): Promise<NotrRecord | null> {
     const [row] = await this.db.select().from(N).where(eq(N.id, id)).limit(1);
+    return row ? toNotrRecord(row) : null;
+  }
+
+  /**
+   * {@link findById} that takes the row's lock (`SELECT … FOR UPDATE`), held to the end of the caller's transaction. The submit
+   * worker reads the notice this way so a record / park of the same notice cannot commit between its check and its upload (and
+   * then be transmitted as well): the competing write waits for the worker's commit and loses its version check.
+   */
+  async findByIdForUpdate(id: string): Promise<NotrRecord | null> {
+    const [row] = await this.db.select().from(N).where(eq(N.id, id)).limit(1).for("update");
     return row ? toNotrRecord(row) : null;
   }
 
@@ -217,6 +262,7 @@ export class NotrRepository {
           eq(N.organizationId, organizationId),
           notInArray(N.state, NOTR_TERMINAL_DB),
           lte(N.windowTargetAt, throughDate),
+          NOT_FILED_EXTERNALLY,
           // Notices the DDE watch should (still) queue work for, decided in the query so a LIMIT can never be filled by
           // already-served ones: no item of this type yet, OR (no OPEN item AND the latest item is `closed` with no MAC
           // acceptance AND that closure has not been respawned yet). A cancelled latest item never qualifies, a closed
@@ -261,11 +307,30 @@ export class NotrRepository {
           notInArray(N.state, NOTR_TERMINAL_DB),
           lte(N.windowTargetAt, asOf),
           isNull(N.windowBreachedAt),
+          NOT_FILED_EXTERNALLY,
         ),
       )
       .orderBy(desc(N.windowTargetAt))
       .limit(Math.min(Math.max(limit, 1), 500));
     return rows.map(toNotrRecord);
+  }
+
+  /**
+   * The org's NOTRs its tenant recorded as filed outside ChartWarden (`external_filing_status = 'filed'`), newest record first
+   * `(filed_externally_recorded_at DESC, id DESC)`. What the platform operator's withdraw list reads; a parked or unmarked notice
+   * is not on it. Capped at `limit` (1..500); the caller over-fetches by one to learn whether it was cut.
+   */
+  async listExternallyFiled(
+    organizationId: string,
+    limit = 200,
+  ): Promise<readonly ExternallyFiledNotrRecord[]> {
+    const rows = await this.db
+      .select(EXTERNALLY_FILED_COLUMNS)
+      .from(N)
+      .where(and(eq(N.organizationId, organizationId), eq(N.externalFilingStatus, "filed")))
+      .orderBy(desc(N.filedExternallyRecordedAt), desc(N.id))
+      .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map((row) => ({ ...row, state: noticeStateCodec.fromDb(row.state) }));
   }
 
   /**

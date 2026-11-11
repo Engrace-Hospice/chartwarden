@@ -173,6 +173,8 @@ export {
   buildNoticeWindowPort,
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
+  buildClaimPayerRouteStatus,
+  claimAccountReferenceFor,
   buildClearinghouseContextPort,
   buildDirectMacGateway,
   buildSubmissionControlNumberReader,
@@ -339,6 +341,20 @@ export function getM23BootContracts() {
     permissionKeyList: M23_PERMISSION_KEY_LIST,
   } as const;
 }
+
+// ADR-0053 amendment ("build it"): an operator's BAA revoke -> M36 alert to the tenant + platform-ops notice on every revoke.
+export {
+  M23_BAA_REVOKED_EVENT,
+  type M23BaaRevokedDeps,
+  buildM23BaaRevokedConsumer,
+} from "./outbox-consumers/baa-revoked";
+
+// Owner decision (round 2, Q4): the late external NOE / NOTR filing event -> M36 alert + platform-ops notice.
+export {
+  M23_NOTICE_FILED_LATE_EVENTS,
+  type M23NoticeFiledLateDeps,
+  buildM23NoticeFiledLateConsumer,
+} from "./outbox-consumers/notice-filed-externally-late";
 
 // F-164 (#248) — the m25.taxonomy.unmapped_code_observed consumer, M23's last originally
 // `handlers-unbound` pair: the §11.A/D13 30-day rolling occurrence tracker + threshold alert.

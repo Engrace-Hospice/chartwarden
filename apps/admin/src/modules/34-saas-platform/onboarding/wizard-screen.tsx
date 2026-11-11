@@ -1,0 +1,183 @@
+// apps/admin/src/modules/34-saas-platform/onboarding — the tenant onboarding wizard (platform ops side).
+// One ordered list of steps beside the open step. Everything is saved on the server as it is done: each data save is its own audited
+// write, and a step settles on its own once its facts hold or when the operator attests it with evidence. "Resume" is just opening
+// the wizard: it lands on the first step that is not settled. Routes: /tenants/:orgSlug/onboarding[/:stepKey].
+import {
+  Button,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  StepRail,
+  useApiClient,
+} from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { JSX, ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ProvisioningCard } from "../provisioning-card";
+import { statusLabel } from "../saas-status";
+import { StepTitlesContext } from "./failure-notice";
+import { panelFor } from "./panels";
+import { usePermissions } from "./permissions";
+import { StaleNotice } from "./stale-notice";
+import { useLoad } from "./use-load";
+import {
+  type WizardView,
+  defaultStepKey,
+  gatingProgress,
+  railItemsOf,
+  stepActionsOf,
+} from "./wizard-model";
+
+const tenantPath = (orgSlug: string): string => `/tenants/${encodeURIComponent(orgSlug)}`;
+const stepPath = (orgSlug: string, key: string): string =>
+  `${tenantPath(orgSlug)}/onboarding/${encodeURIComponent(key)}`;
+
+/** The shared list-screen frame (padding and width), as tenant-overview.tsx uses it. */
+function Frame({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * The wizard of the tenant in the address. Keyed by its slug: the router keeps this screen mounted when only the slug changes, and one
+ * tenant's view, typed forms and drafts must never carry over to another tenant.
+ */
+export function TenantOnboardingWizard(): JSX.Element {
+  const { orgSlug = "" } = useParams<{ orgSlug: string }>();
+  return <WizardFor key={orgSlug} />;
+}
+
+function WizardFor(): JSX.Element {
+  const client = useApiClient();
+  const navigate = useNavigate();
+  const { orgSlug = "", stepKey } = useParams<{ orgSlug: string; stepKey?: string }>();
+  // what the operator may write (fail closed while the session loads)
+  const held = usePermissions();
+  const wizard = useLoad<WizardView>(`wizard:${orgSlug}`, () =>
+    client.GET("/api/v1/platform/tenants/{orgSlug}/onboarding", { params: { path: { orgSlug } } }),
+  );
+  // The header names the tenant; a failure here is not worth blocking the wizard for (the slug stands in).
+  const tenant = useLoad<{ legalBusinessName: string }>(`tenant:${orgSlug}`, () =>
+    client.GET("/api/v1/platform/tenants/{orgSlug}", { params: { path: { orgSlug } } }),
+  );
+  const view = wizard.data;
+  const resume = view ? defaultStepKey(view) : null;
+
+  // "Resume": no step in the address means the first step that is not settled.
+  useEffect(() => {
+    if (view && !stepKey && resume) navigate(stepPath(orgSlug, resume), { replace: true });
+  }, [view, stepKey, resume, orgSlug, navigate]);
+
+  // A change of step moves focus to the new step's heading, so a keyboard or screen-reader user lands on what they opened (the first
+  // step shown, a resume included, keeps the page's own focus).
+  const shownStep = useRef<string | undefined>(undefined);
+  const stepShown = view?.steps.some((s) => s.key === stepKey) ?? false;
+  useEffect(() => {
+    if (!stepShown) return;
+    const previous = shownStep.current;
+    shownStep.current = stepKey;
+    if (previous !== undefined && previous !== stepKey) {
+      document.querySelector<HTMLElement>("[data-step-heading]")?.focus();
+    }
+  }, [stepKey, stepShown]);
+
+  const refresh = useCallback(() => wizard.reload(true), [wizard.reload]);
+  const titles = useMemo(() => {
+    const byKey = new Map(view?.steps.map((s) => [s.key, s.title]));
+    return (key: string): string => byKey.get(key) ?? key;
+  }, [view]);
+
+  if (wizard.failure) {
+    const notFound = wizard.failure.kind === "not-found";
+    return (
+      <Frame>
+        <div className="wx-list-state">
+          <InlineAlert tone="error">
+            {notFound ? "Tenant not found." : "Could not load this tenant's onboarding."}
+          </InlineAlert>
+          {notFound ? null : (
+            <Button tone="secondary" onClick={() => void wizard.reload()}>
+              Try again
+            </Button>
+          )}
+        </div>
+      </Frame>
+    );
+  }
+  if (!view) {
+    return (
+      <Frame>
+        <div className="wx-list-state">
+          <LoadingSpinner label="Loading onboarding…" />
+        </div>
+      </Frame>
+    );
+  }
+
+  const progress = gatingProgress(view);
+  const name = tenant.data?.legalBusinessName ?? orgSlug;
+  const step = view.steps.find((s) => s.key === stepKey);
+  const Panel = step ? panelFor(step).Panel : null;
+
+  return (
+    <StepTitlesContext.Provider value={titles}>
+      <Frame>
+        <header className="wx-page-head">
+          <div>
+            <h1>Onboarding · {name}</h1>
+            <p>
+              {progress.done} of {progress.total} steps done · {statusLabel(view.tenantStatus)}
+            </p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <Link to={tenantPath(orgSlug)}>Back to tenant</Link>
+          </div>
+        </header>
+
+        <StaleNotice stale={wizard.stale} onReload={() => void wizard.reload()} />
+
+        {view.tenantStatus === "provisioning" ? (
+          <ProvisioningCard
+            key={orgSlug}
+            orgSlug={orgSlug}
+            headingLevel="h2"
+            onChanged={() => void refresh()}
+          />
+        ) : null}
+
+        <div className="wx-wizard">
+          <nav className="wx-wizard-rail" aria-label="Onboarding steps">
+            <StepRail
+              steps={railItemsOf(view)}
+              activeKey={stepKey ?? null}
+              onSelect={(key) => navigate(stepPath(orgSlug, key))}
+            />
+          </nav>
+          {step && Panel ? (
+            <Panel
+              key={step.key}
+              ctx={{ orgSlug, view, step, actions: stepActionsOf(step, view, held), refresh }}
+            />
+          ) : stepKey ? (
+            <EmptyState
+              title={`There is no step called "${stepKey}"`}
+              description="It may have been retired. Open the current step instead."
+              action={
+                <Link to={resume ? stepPath(orgSlug, resume) : tenantPath(orgSlug)}>
+                  Go to the current step
+                </Link>
+              }
+            />
+          ) : (
+            <div className="wx-list-state">
+              <LoadingSpinner label="Opening the current step…" />
+            </div>
+          )}
+        </div>
+      </Frame>
+    </StepTitlesContext.Provider>
+  );
+}

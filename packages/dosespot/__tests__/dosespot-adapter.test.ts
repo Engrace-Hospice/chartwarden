@@ -5,7 +5,7 @@
 // D8 NewRx idempotency-key determinism (cosmetic-sig folding; correction distinctness), the
 // `medication_order_transmission` enqueue/success/failure planners (retry-exhaustion → M36 alert), and the §2.6
 // D4 patient-sync planner. No live infra — the HTTP transport is deferred; this proves the contract M12 depends on.
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   DOSESPOT_CIRCUIT_BREAKER_CONFIG,
@@ -112,6 +112,17 @@ describe("per-tenant circuit breaker (§2.5: 5 failures / 60s → open 30s → h
     );
     expect(closed.state).toBe("closed");
     expect(didTransition(snap, closed)).toBe("closed");
+  });
+
+  it("a failed probe re-opens the stored OPEN snapshot even after its failure window emptied (it never closes it)", () => {
+    let snap = INITIAL_BREAKER_SNAPSHOT;
+    const base = Date.parse("2026-06-22T00:00:00.000Z");
+    for (let i = 0; i < 5; i++)
+      snap = applyOutcome(snap, "failure", new Date(base + i * 1000).toISOString());
+    const probeAt = new Date(base + 120_000).toISOString();
+    const after = applyOutcome(snap, "failure", probeAt);
+    expect(after).toMatchObject({ state: "open", openedAt: probeAt });
+    expect(didTransition(snap, after)).toBeNull();
   });
 
   it("openCircuitError is retryable + PHI-free", () => {
@@ -285,7 +296,7 @@ describe("D8 NewRx idempotency key", () => {
     expect(canonicalizeSig("  Take   1 Tab  PO  QD. ")).toBe("take 1 tab po qd");
   });
 
-  it("idempotencyKey binds prescriber + patient + rxBusinessKey (double-sign self-dedups)", () => {
+  it("idempotencyKey binds prescriber + patient + rxBusinessKey + order (double-sign of the same order self-dedups)", () => {
     const rxKey = computeRxBusinessKey({
       rxnormRxcui: "1191",
       strength: "81 mg",
@@ -295,11 +306,13 @@ describe("D8 NewRx idempotency key", () => {
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: rxKey,
+      medicationOrderId: "mo-1",
     });
     const k2 = computeNewRxIdempotencyKey({
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: rxKey,
+      medicationOrderId: "mo-1",
     });
     expect(k1).toBe(k2);
     // A different patient → distinct key (no cross-patient dedup).
@@ -307,8 +320,38 @@ describe("D8 NewRx idempotency key", () => {
       prescriberMembershipId: "pm-1",
       patientId: "p-2",
       rxBusinessKey: rxKey,
+      medicationOrderId: "mo-1",
     });
     expect(k1).not.toBe(k3);
+    // A different ORDER with identical content (a retransmit by the same prescriber, a refill) → distinct key: it is its own prescription, and
+    // must not collide with (or be deduped into) the earlier order's transmission row.
+    const k4 = computeNewRxIdempotencyKey({
+      prescriberMembershipId: "pm-1",
+      patientId: "p-1",
+      rxBusinessKey: rxKey,
+      medicationOrderId: "mo-2",
+    });
+    expect(k1).not.toBe(k4);
+  });
+
+  // The separator is a NUL byte (no field can contain it). It is written as an escape in the source (a raw NUL made git treat the file as binary); this
+  // pins the runtime value, since both hashes are stored on rows and a different separator would silently change every key.
+  it("both hashes join their fields with a NUL byte (known answers, computed independently)", () => {
+    const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+    const rxKey = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "1 tab PO QD",
+    });
+    expect(rxKey).toBe(sha(["1191", "81 mg", "1 tab po qd"].join("\u0000")));
+    expect(
+      computeNewRxIdempotencyKey({
+        prescriberMembershipId: "pm-1",
+        patientId: "p-1",
+        rxBusinessKey: rxKey,
+        medicationOrderId: "mo-1",
+      }),
+    ).toBe(sha(["pm-1", "p-1", rxKey, "mo-1"].join("\u0000")));
   });
 
   it("correction-of-record (changed sig) produces a distinct idempotency key", () => {
@@ -326,11 +369,13 @@ describe("D8 NewRx idempotency key", () => {
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: orig,
+      medicationOrderId: "mo-1",
     });
     const kb = computeNewRxIdempotencyKey({
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: corrected,
+      medicationOrderId: "mo-1",
     });
     expect(ka).not.toBe(kb);
   });
@@ -418,6 +463,34 @@ describe("patient-sync planner (§2.6 D4)", () => {
     expect(patientSyncIdempotencyKey("p-1", "2026-06-22T12:00:00.000Z")).toBe(
       "patient:p-1:2026-06-22T12:00:00.000Z",
     );
+  });
+
+  describe("the key is scoped to the registration target (a clinic move must not replay the old clinic's answer)", () => {
+    const UPDATED_AT = "2026-06-22T12:00:00.000Z";
+    const key = (target: string) => patientSyncIdempotencyKey("p-1", UPDATED_AT, target);
+
+    it("is stable for the same target and changes with the clinic or the environment", () => {
+      expect(key("sandbox:clinic-old")).toBe(key("sandbox:clinic-old"));
+      expect(key("sandbox:clinic-new")).not.toBe(key("sandbox:clinic-old"));
+      expect(key("production:clinic-old")).not.toBe(key("sandbox:clinic-old"));
+      expect(key("env")).not.toBe(key("sandbox:clinic-old"));
+    });
+
+    it("keeps the patient and the time (an unchanged patient still coalesces) and carries only a digest of the target, never the clinic id", () => {
+      expect(key("sandbox:clinic-old")).toMatch(
+        /^patient:p-1:2026-06-22T12:00:00\.000Z:[0-9a-f]{16}$/,
+      );
+      expect(key("sandbox:clinic-old")).not.toContain("clinic-old");
+      expect(key("sandbox:clinic-old")).not.toContain("sandbox");
+      expect(patientSyncIdempotencyKey("p-2", UPDATED_AT, "sandbox:clinic-old")).not.toBe(
+        key("sandbox:clinic-old"),
+      );
+    });
+
+    it("planPatientSync carries the target-scoped key when it is given the target", () => {
+      const plan = planPatientSync(snapshot, "sandbox:clinic-old");
+      expect(plan.idempotencyKey).toBe(key("sandbox:clinic-old"));
+    });
   });
 
   it("builds the upsert payload keyed on chartwardenPatientId and drops absent optionals", () => {

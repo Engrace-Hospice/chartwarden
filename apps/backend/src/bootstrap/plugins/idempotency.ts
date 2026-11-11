@@ -3,16 +3,21 @@
 //
 // This is the HTTP wrapper the `@chartwarden/shared` idempotency helper's docstring promised
 // "is wired in M1-T10": it reuses that leaf's request fingerprint (computeIdempotencyHash
-// = SHA-256 over scope + key + body, the scope being org, user, actor kind, method, route template,
-// path params, query string and `If-Match`) and its injected IdempotencyStore port (Valkey /
-// Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write.
+// = HMAC-SHA-256 over scope + key + body under a server key, the scope being org, user, actor kind, method,
+// route template, path params, query string and `If-Match`) and its injected IdempotencyStore port (Valkey /
+// Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write. The fingerprint is
+// KEYED because a body can be a credential and the table must not hold something a reader can test
+// guesses against; the key is derived from BETTER_AUTH_SECRET (see `idempotencyHmacKey`).
 //
 // Contract (spec §4.6): only guards mutating methods carrying an `Idempotency-Key`; skips
 // unauthenticated routes (no org scope to key on). A first request records a `pending`
 // lock then captures its response on the way out (onSend) and marks it `complete`. A replay
 // with the SAME body returns the cached response; a DIFFERENT body is a 409
-// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 IDEMPOTENCY_IN_FLIGHT (its own code, so a client keeps its
-// key and retries instead of renewing it while the first request is still writing).
+// IDEMPOTENCY_CONFLICT (a record written under another server key, i.e. after a secret rotation, is a 409
+// IDEMPOTENCY_KEY_STALE); a concurrent duplicate still in flight is a 409 IDEMPOTENCY_IN_FLIGHT.
+import { createHmac, randomBytes } from "node:crypto";
+// A concurrent duplicate uses its own code so a client keeps its key and retries instead of renewing it while the first
+// request is still writing.
 //
 // RETRYABLE FAILURES (a 5xx, or the deadlock/serialization 409 CONCURRENT_UPDATE) are released instead of cached, but ONLY when
 // the request provably committed nothing. A response that says "retry" is true only if no write of this request is durable: a
@@ -54,8 +59,10 @@ import {
   type IdempotentResponse,
   claimIdempotencyKey,
   computeIdempotencyHash,
+  legacyIdempotencyHash,
 } from "@chartwarden/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { reservedPlaceholderProblem } from "../env";
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -104,7 +111,60 @@ function parsePayload(payload: unknown): unknown {
   }
 }
 
-export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore): void {
+/** Domain separation: this key is for request fingerprints only, whatever else BETTER_AUTH_SECRET keys. */
+const FINGERPRINT_KEY_LABEL = "chartwarden:idempotency:request-fingerprint:v1";
+const MIN_SECRET_LENGTH = 32;
+
+/**
+ * The server key the request fingerprint is an HMAC under: HMAC-SHA-256(BETTER_AUTH_SECRET, purpose label). It must be the same on
+ * every replica and across restarts (an Idempotency-Key is replayed up to 24 h later), so it comes from configuration the platform
+ * already requires, never a constant in the code. Production refuses to boot without it. Outside production a missing secret gets a
+ * process-local random key: nothing is replayable across a restart there, which only costs a dev a clean 409. Rotating the secret
+ * makes every stored fingerprint a clean mismatch (409 IDEMPOTENCY_KEY_STALE), never a replay and never a re-run.
+ */
+export function idempotencyHmacKey(
+  env: NodeJS.ProcessEnv = process.env,
+  warn?: (message: string) => void,
+): Buffer {
+  // Trimmed, like the production env gate (assertProductionEnv trims before it checks), so the key is derived from the very
+  // value that gate validated; and held to its rules: at least 32 characters AFTER the trim, and no RFC 2606 reserved host in it
+  // (the env gate's placeholder rule, reused: it is a HOST check, so a placeholder that is not a host is not recognised here, as it
+  // is not by the gate). A weak secret outside production is not used: a process-local random key, announced once through `warn`.
+  const secret = env.BETTER_AUTH_SECRET?.trim() ?? "";
+  const placeholder = reservedPlaceholderProblem(secret);
+  if (secret.length >= MIN_SECRET_LENGTH && placeholder === null) {
+    return createHmac("sha256", secret).update(FINGERPRINT_KEY_LABEL).digest();
+  }
+  if (env.NODE_ENV === "production") {
+    throw new Error(
+      `BETTER_AUTH_SECRET (at least ${MIN_SECRET_LENGTH} characters, trimmed${placeholder === null ? "" : `; ${placeholder}`}) is required in production: it keys the Idempotency-Key request fingerprint`,
+    );
+  }
+  // Never the secret's value in the line: only that it was unusable.
+  warn?.(PROCESS_LOCAL_KEY_WARNING);
+  return randomBytes(32);
+}
+
+const PROCESS_LOCAL_KEY_WARNING =
+  "BETTER_AUTH_SECRET is missing, shorter than 32 characters after the trim, or contains a reserved placeholder host: the Idempotency-Key fingerprint uses a process-local random key, so a retry that reaches another process, or one made after a restart, answers 409 IDEMPOTENCY_KEY_STALE (production refuses to boot in this state)";
+
+export interface ApplyIdempotencyOptions {
+  /** The fingerprint's HMAC key. Default: {@link idempotencyHmacKey} over the process environment. */
+  readonly hmacKey?: string | Uint8Array;
+}
+
+export function applyIdempotency(
+  app: FastifyInstance,
+  store: IdempotencyStore,
+  options: ApplyIdempotencyOptions = {},
+): void {
+  const hmacKey =
+    options.hmacKey ?? idempotencyHmacKey(process.env, (message) => app.log.warn(message));
+  if (hmacKey.length === 0) {
+    // an empty key would sign every fingerprint under nothing: refuse it instead of quietly weakening the HMAC
+    throw new Error("the Idempotency-Key fingerprint HMAC key must not be empty");
+  }
+
   // Open the commit tracker for a request that can be claimed (a mutating method carrying a key). The callback form of `done`
   // keeps the ambient store active across every later hook, the handler, the serializer and `onSend` (the request-context
   // plugin relies on the same). Other requests, reads included, are not tracked and pay nothing.
@@ -116,7 +176,6 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
     commitTrackers.set(request, tracker);
     runWithCommitTracker(tracker, () => done());
   });
-
   app.addHook("preHandler", async (request, reply) => {
     if (request.method === "GET" || request.method === "HEAD") return;
     // A route that returns a ONE-TIME SECRET (GAP-020: the wristband token) opts out: its response must never be
@@ -147,10 +206,24 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       request.query ?? null,
       request.headers["if-match"] ?? null,
     ]);
-    const requestHash = computeIdempotencyHash(scope, key, request.body ?? null);
+    const requestHash = computeIdempotencyHash(scope, key, request.body ?? null, hmacKey);
     // The shared claim (`@chartwarden/shared` claimIdempotencyKey, the core of runIdempotent) decides: a cached
-    // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a duplicate still in flight is 409 IDEMPOTENCY_IN_FLIGHT.
-    const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
+    // response replays (a record stored before the keyed hash still matches the same request, so a retry across the deploy
+    // replays), a different body is 409 IDEMPOTENCY_CONFLICT, a record under another server key (a rotated secret) is
+    // 409 IDEMPOTENCY_KEY_STALE, a duplicate still in flight is 409 IDEMPOTENCY_IN_FLIGHT, and an abandoned old claim is
+    // 409 IDEMPOTENCY_KEY_STUCK.
+    // The legacy arm is chosen from the STORED record (no `h1:` prefix), never from anything the request says. What it matches is
+    // what origin/main's middleware wrote: the plain SHA-256 of `${orgId}|${userId}` (as the scope), key and body, and nothing
+    // else (no method, route, params, query string or If-Match). Good enough for the 24 h a pre-deploy row lives: a retry of a
+    // pre-deploy request replays, another body or another user is a 409, and nothing is ever re-run. It recognises ONLY origin/main's
+    // plain hash: a row an intermediate release wrote (the clearinghouse branch's plain SHA-256 over the JSON scope) is a different
+    // value, so a retry of such a row answers 409 IDEMPOTENCY_CONFLICT (safe: never a replay, never a re-run) and no further weak arm is added.
+    // REMOVAL: remove this arm, `legacyIdempotencyHash` and `LEGACY_ARM_REMOVE_AFTER` once every environment has passed one TTL after deploy;
+    // a test in packages/shared fails after that constant's date while the arm still exists.
+    const legacyScope = `${orgId}|${request.context?.userId ?? ""}`;
+    const cached = await claimIdempotencyKey(store, orgId, key, requestHash, () =>
+      legacyIdempotencyHash(legacyScope, key, request.body ?? null),
+    );
     if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
     // Only what commits AFTER the claim is the write the key guards (authentication may touch a session row before it).
     const tracker = commitTrackers.get(request);

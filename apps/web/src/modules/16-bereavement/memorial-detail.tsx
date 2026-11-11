@@ -13,6 +13,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useId, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -35,7 +36,6 @@ import {
   pageTitleStyle,
   primaryButtonStyle,
   useActionStatus,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
 import { MemorialFormModal } from "./memorial-form-modal";
@@ -69,7 +69,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const { announce, region } = useActionStatus();
   const descId = useId();
 
@@ -106,7 +106,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
       name === "publish"
         ? await publishMemorial(client, service.serviceId, service.version, key)
         : await closeMemorial(client, service.serviceId, service.version, name, key);
-    keys.settle(res.status);
+    keys.settle(res.status, res.error);
     inFlight.current = false;
     setBusy(false);
     if (res.error || !res.data) {

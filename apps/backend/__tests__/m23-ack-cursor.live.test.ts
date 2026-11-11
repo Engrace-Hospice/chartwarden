@@ -326,7 +326,11 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
     await runAckPull999(deps);
     await clearinghouse.control.payerAccepts(a.ccn, "ICN-CRASH", SCOPE);
     state.failPublish = true; // the payer acceptance emits m23.claim.acknowledged
-    await expect(runAckPull277ca(deps)).rejects.toThrow(/injected crash/);
+    // the job error names the failing entity and the error class, never the crash's own message
+    const crashed = await runAckPull277ca(deps).catch((e: unknown) => e as Error);
+    expect(crashed).toBeInstanceOf(Error);
+    expect((crashed as Error).message).toMatch(/clearinghouse ack pull: 1 failure\(s\).*: Error$/);
+    expect((crashed as Error).message).not.toContain("injected crash");
     expect(await storedCursor("ack_277ca")).toBeUndefined();
     expect(await claimState(a.claimId)).toBe("ACK_PENDING");
     state.failPublish = false;

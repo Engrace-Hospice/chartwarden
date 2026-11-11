@@ -8,6 +8,7 @@ import {
   LoadingSpinner,
   StatusPill,
   type StatusTone,
+  UnstyledList,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -22,9 +23,6 @@ interface InvitationRow {
   issuedAt: string;
   expiresAt: string | null;
 }
-
-/** Safety cap on following the global invitation list's cursor. */
-const MAX_PAGES = 50;
 
 const TONE: Record<string, StatusTone> = {
   pending: "progress",
@@ -41,7 +39,13 @@ function serverMessage(err: unknown): string | null {
 export function InvitationCard({
   orgSlug,
   tenantAccountId,
-}: { orgSlug: string; tenantAccountId: string }): JSX.Element {
+  headingLevel: Heading = "h3",
+}: {
+  orgSlug: string;
+  tenantAccountId: string;
+  /** h2 beside the hub's other h2 cards; h3 (the default) inside the onboarding wizard's step frame (an h2). */
+  headingLevel?: "h2" | "h3";
+}): JSX.Element {
   const client = useApiClient();
   const guard = useRequestGuard();
   const [rows, setRows] = useState<InvitationRow[] | null>(null);
@@ -52,28 +56,19 @@ export function InvitationCard({
   const load = useCallback(async () => {
     const isCurrent = guard();
     try {
-      // The list is global (every tenant, newest first, cursor-paginated), so keep paging until the end: an older
-      // tenant's invitations are not on the first page.
-      const mine: InvitationRow[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const { data, error } = await client.GET(
-          "/api/v1/platform/tenant-invitations",
-          cursor ? { params: { query: { cursor } } } : {},
-        );
-        if (!isCurrent()) return;
-        if (error || !data) {
-          setLoadError(true);
-          return;
-        }
-        mine.push(
-          ...(data.items as unknown as InvitationRow[]).filter(
-            (i) => i.tenantAccountId === tenantAccountId,
-          ),
-        );
-        if (!data.nextCursor) break;
-        cursor = data.nextCursor as string;
+      // The server narrows the list to this tenant (it used to be global, and this paged every tenant's invitations to find one).
+      // The filter below stays as a belt: an invitation of another tenant is never shown here.
+      const { data, error } = await client.GET("/api/v1/platform/tenant-invitations", {
+        params: { query: { tenantAccountId } },
+      });
+      if (!isCurrent()) return;
+      if (error || !data) {
+        setLoadError(true);
+        return;
       }
+      const mine = (data.items as unknown as InvitationRow[]).filter(
+        (i) => i.tenantAccountId === tenantAccountId,
+      );
       setLoadError(false);
       setRows(mine.sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)));
     } catch {
@@ -110,15 +105,15 @@ export function InvitationCard({
   return (
     <section className="wx-drawer-card" aria-label="First-admin invitation">
       <div className="wx-drawer-card-head">
-        <h3>First-admin invitation</h3>
+        <Heading>First-admin invitation</Heading>
       </div>
       {loadError ? <InlineAlert tone="error">Could not load invitations.</InlineAlert> : null}
       {rows === null && !loadError ? <LoadingSpinner label="Loading invitations…" /> : null}
-      {rows?.length === 0 ? <p>No invitation on record.</p> : null}
+      {rows?.length === 0 ? <p className="wx-row-sub">No invitation on record.</p> : null}
       {rows && rows.length > 0 ? (
-        <ul className="wx-kv" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        <UnstyledList className="wx-fact-list">
           {rows.map((i) => (
-            <li key={i.id} className="flex flex-wrap items-center gap-2">
+            <li key={i.id} className="wx-drawer-title-row">
               <span>{i.firstAdminEmail}</span>
               <StatusPill label={i.status} tone={TONE[i.status] ?? "neutral"} />
               <span className="wx-nums wx-row-sub">
@@ -126,7 +121,7 @@ export function InvitationCard({
               </span>
             </li>
           ))}
-        </ul>
+        </UnstyledList>
       ) : null}
       {actionError ? <InlineAlert tone="error">{actionError}</InlineAlert> : null}
       {latest && (canResend || canRevoke) ? (

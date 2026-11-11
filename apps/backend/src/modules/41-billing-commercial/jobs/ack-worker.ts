@@ -28,9 +28,15 @@ import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES } from "@chartwarden/types";
-import { CH } from "@chartwarden/x12-837-client";
+import { CH, cursorVendorKey } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import {
+  failureLabel,
+  isPerOrgResolveFailure,
+  isPlatformClaimMdBinding,
+  withOrgBinding,
+} from "../services/org-binding";
 import {
   ACK_POLL_MAX_AGE_DAYS,
   type AckCursorKey,
@@ -44,6 +50,7 @@ import {
 } from "./ack-apply";
 import { replayHeldEvents, sweepHeldEvents } from "./ack-held-replay";
 import { M41_CRON_QUEUES, M41_JOB_SCHEDULES } from "./queues";
+import { reportUnboundWithWork } from "./unbound-alert";
 
 // the apply core lives in ack-apply.ts and the held-event replay in ack-held-replay.ts; this file keeps the public surface
 export {
@@ -149,7 +156,14 @@ async function pullEntity(
   }
   const ctx = await deps.contexts.contextFor(organizationId, providerEntityId, payerId);
   if (ctx === null) throw new Error("the provider entity has no billing NPI on file");
-  const key: AckCursorKey = { organizationId, providerEntityId, usage: ctx.usage, vendor };
+  // A tenant's own account has its own position space (`claimmd@tenant`), as in M23's and M25's pulls: an org that moves from the
+  // platform account to its own never reuses the platform's cursor.
+  const key: AckCursorKey = {
+    organizationId,
+    providerEntityId,
+    usage: ctx.usage,
+    vendor: cursorVendorKey({ ...deps.binding, vendor }),
+  };
   // events held from an earlier pass may be ready now (a person reconciled the submission)
   tally.applied += (await replayHeldEvents(deps, scope)).applied;
   let state = await deps.cursors.read(key);
@@ -248,14 +262,15 @@ export async function outstanding(
 }
 
 export async function pullOrgAcks(
-  deps: AckWorkerDeps,
+  rawDeps: AckWorkerDeps,
   organizationId: string,
 ): Promise<AckPullResult> {
+  const deps = await withOrgBinding(rawDeps, organizationId, rawDeps.log);
   const tally: Tally = { applied: 0, duplicates: 0, unmatched: 0 };
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
-  if (deps.binding.vendor === "claimmd") return { ...tally, failures, backlog, quarantined };
+  if (isPlatformClaimMdBinding(deps.binding)) return { ...tally, failures, backlog, quarantined };
   const work = await outstanding(deps, organizationId);
   // Provider entities that hold events but have no live work left (their submission failed, the claim was voided) are still swept,
   // with no transport call, so a dead held event is abandoned instead of waiting forever.
@@ -263,9 +278,7 @@ export async function pullOrgAcks(
     const live = new Set(work.map((w) => w.providerEntityId));
     await sweepHeldEvents(deps, organizationId, live);
   } catch (err) {
-    failures.push(
-      `org ${organizationId} held-event sweep: ${err instanceof Error ? err.message : "failed"}`,
-    );
+    failures.push(`org ${organizationId} held-event sweep: ${failureLabel(err)}`);
   }
   for (const { providerEntityId, payerId } of work) {
     try {
@@ -278,15 +291,13 @@ export async function pullOrgAcks(
       );
       if (out === "backlog") backlog.push(`org ${organizationId} provider ${providerEntityId}`);
     } catch (err) {
-      failures.push(
-        `org ${organizationId} provider ${providerEntityId}: ${err instanceof Error ? err.message : "failed"}`,
-      );
+      failures.push(`org ${organizationId} provider ${providerEntityId}: ${failureLabel(err)}`);
     }
   }
   return { ...tally, failures, backlog, quarantined };
 }
 
-/** The cron body. Throws after every org ran when anything failed (BullMQ retries; the DLQ alert fires). Unbound with work waiting fails. */
+/** The cron body. Throws after every org ran when anything FAILED (BullMQ retries; the DLQ alert fires). An org unbound with work waiting is reported per org, not failed. */
 export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
   const total: Tally = { applied: 0, duplicates: 0, unmatched: 0 };
   const failures: string[] = [];
@@ -294,25 +305,44 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
   const quarantined: { eventId: string; reason: string }[] = [];
   // Claim.MD's account-wide normalized stream is owned by the BIL-1.1 inbox. The
   // legacy provider poller cannot safely attribute or label those events as X12.
-  if (deps.binding.vendor === "claimmd") return { ...total, failures, backlog, quarantined };
+  if (isPlatformClaimMdBinding(deps.binding)) return { ...total, failures, backlog, quarantined };
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
-    if (deps.binding.vendor === null) {
+    try {
+      // Resolved once per org: the rest of this org's pull uses ITS clearinghouse; another org's pull is never affected by it.
+      let orgDeps: AckWorkerDeps;
       try {
-        // unbound: no transport is needed to close out aged / foreign-stream / event-less held rows, so they still leave audited
-        await sweepHeldEvents(deps, organizationId, new Set());
+        orgDeps = await withOrgBinding(deps, organizationId, deps.log);
+      } catch (err) {
+        if (!isPerOrgResolveFailure(err)) throw err;
+        // Its credential cannot be opened, or its config could not be read: reported like an unbound org (with the code), and the
+        // tick carries on. (The held-event sweep resolves the org's binding itself, so it waits for the tenant to be fixed.)
         const waiting = await outstanding(deps, organizationId);
         if (waiting.length > 0) {
-          failures.push(
-            `org ${organizationId}: CH_NOT_WIRED (${waiting.length} provider entity(ies) waiting for acknowledgments)`,
-          );
+          await reportUnboundWithWork(deps, {
+            organizationId,
+            queue: M41_CRON_QUEUES.ackPull,
+            waiting: waiting.length,
+            code: err.code,
+          });
         }
-      } catch (err) {
-        failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
+        continue;
       }
-      continue;
-    }
-    try {
-      const res = await pullOrgAcks(deps, organizationId);
+      if (orgDeps.binding.vendor === null) {
+        // unbound: no transport is needed to close out aged / foreign-stream / event-less held rows, so they still leave audited
+        await sweepHeldEvents(orgDeps, organizationId, new Set());
+        const waiting = await outstanding(orgDeps, organizationId);
+        if (waiting.length > 0) {
+          // That tenant's setup, not a fault of this shared job: one alert per window, and the tick carries on (failing it
+          // would retry the job into the DLQ for every other tenant too).
+          await reportUnboundWithWork(deps, {
+            organizationId,
+            queue: M41_CRON_QUEUES.ackPull,
+            waiting: waiting.length,
+          });
+        }
+        continue;
+      }
+      const res = await pullOrgAcks(orgDeps, organizationId);
       total.applied += res.applied;
       total.duplicates += res.duplicates;
       total.unmatched += res.unmatched;
@@ -320,7 +350,7 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
       backlog.push(...res.backlog);
       quarantined.push(...res.quarantined);
     } catch (err) {
-      failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
+      failures.push(`org ${organizationId}: ${failureLabel(err)}`);
     }
   }
   if (total.unmatched > 0) deps.log?.({ event: "ack.unmatched", count: total.unmatched });

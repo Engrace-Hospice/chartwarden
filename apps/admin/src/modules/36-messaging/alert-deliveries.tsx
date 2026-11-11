@@ -1,7 +1,10 @@
 import {
   Button,
+  InlineAlert,
+  SelectField,
   StatusPill,
   type StatusTone,
+  TableScroll,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -116,90 +119,92 @@ export function AlertDeliveries(): JSX.Element {
   const nextCursor = older ? older.next : (firstPage?.nextBefore ?? null);
 
   return (
-    <div className="wx-list-drawer-main">
-      <header className="wx-page-head">
-        <div>
-          <h1>Alert deliveries</h1>
-          <p>
-            Notification delivery outcomes across tenants. Metadata only; every read is audited.
-          </p>
-        </div>
-        <div className="wx-list-toolbar-end">
-          <select
-            className="min-h-11"
-            value={status}
-            onChange={(ev) => onFilter(ev.target.value as DeliveryStatusFilter)}
-            aria-label="Filter by delivery status"
-          >
-            {DELIVERY_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s === "all" ? "All statuses" : s.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-          <Button tone="secondary" size="lg" onClick={onRefresh}>
-            Refresh
-          </Button>
-        </div>
-      </header>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Alert deliveries</h1>
+            <p>
+              Notification delivery outcomes across tenants. Metadata only; every read is audited.
+            </p>
+          </div>
+          <div className="wx-list-toolbar-end">
+            <SelectField
+              className="wx-touch-select"
+              label={<span className="wx-sr-only">Filter by delivery status</span>}
+              value={status}
+              onChange={(ev) => onFilter(ev.target.value as DeliveryStatusFilter)}
+              options={DELIVERY_STATUSES.map((s) => ({
+                value: s,
+                label: s === "all" ? "All statuses" : s.replace(/_/g, " "),
+              }))}
+            />
+            <Button tone="secondary" size="lg" onClick={onRefresh}>
+              Refresh
+            </Button>
+          </div>
+        </header>
 
-      {fallback ??
-        (rows.length === 0 ? (
-          <StateEmpty>No deliveries match this filter.</StateEmpty>
-        ) : (
-          <>
-            <div className="wx-list-table-wrap">
-              <table className="wx-list-table">
-                <caption className="wx-sr-only">Alert deliveries</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Alert</th>
-                    <th scope="col">Tenant</th>
-                    <th scope="col">Channel</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Failure reason</th>
-                    <th scope="col">Queued</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.deliveryId}>
-                      <td>
-                        <span className="wx-row-title">{r.alertCategory}</span>
-                        <span className="wx-row-sub">{r.alertSeverity}</span>
-                      </td>
-                      <td className="wx-data-md">{r.organizationId.slice(0, 8)}</td>
-                      <td>{r.channel}</td>
-                      <td>
-                        <StatusPill
-                          label={r.status.replace(/_/g, " ")}
-                          tone={deliveryTone(r.status)}
-                        />
-                      </td>
-                      <td>{r.failReason ?? "—"}</td>
-                      <td className="wx-nums">{new Date(r.queuedAt).toLocaleString()}</td>
+        {fallback ??
+          (rows.length === 0 ? (
+            <StateEmpty>No deliveries match this filter.</StateEmpty>
+          ) : (
+            <>
+              <TableScroll>
+                <table className="wx-list-table wx-list-table-static">
+                  <caption className="wx-sr-only">Alert deliveries</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Alert</th>
+                      <th scope="col">Tenant</th>
+                      <th scope="col">Channel</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Failure reason</th>
+                      <th scope="col">Queued</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {moreError ? <p role="alert">Could not load more deliveries.</p> : null}
-            {nextCursor ? (
-              <div className="wx-list-state">
-                <Button
-                  tone="secondary"
-                  size="lg"
-                  loading={moreLoading}
-                  onClick={() =>
-                    void loadMore(nextCursor, rows.slice(firstPage?.items.length ?? 0))
-                  }
-                >
-                  Load more
-                </Button>
-              </div>
-            ) : null}
-          </>
-        ))}
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.deliveryId}>
+                        <td>
+                          <span className="wx-row-title">{r.alertCategory}</span>
+                          <span className="wx-row-sub">{r.alertSeverity}</span>
+                        </td>
+                        <td className="wx-data-md">{r.organizationId.slice(0, 8)}</td>
+                        <td>{r.channel}</td>
+                        <td>
+                          <StatusPill
+                            label={r.status.replace(/_/g, " ")}
+                            tone={deliveryTone(r.status)}
+                          />
+                        </td>
+                        <td>{r.failReason ?? "—"}</td>
+                        <td className="wx-nums">{new Date(r.queuedAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+              {moreError ? (
+                <InlineAlert tone="error">Could not load more deliveries.</InlineAlert>
+              ) : null}
+              {nextCursor ? (
+                <div className="wx-list-state">
+                  <Button
+                    tone="secondary"
+                    size="lg"
+                    loading={moreLoading}
+                    onClick={() =>
+                      void loadMore(nextCursor, rows.slice(firstPage?.items.length ?? 0))
+                    }
+                  >
+                    Load more
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ))}
+      </div>
     </div>
   );
 }

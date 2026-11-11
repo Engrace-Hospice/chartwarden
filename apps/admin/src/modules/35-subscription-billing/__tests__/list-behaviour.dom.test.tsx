@@ -1,12 +1,18 @@
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
+import {
+  ApiClientProvider,
+  ToastProvider,
+  createApiClient,
+  parsePriceCents,
+  parseWholeNumber,
+} from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — shared list behaviour of the four drawer lists (plans, promos,
 // subscriptions, refunds): a stale ?param is cleared with a notice, Enter opens a row's drawer, Escape closes it and
 // hands focus back to the row; plus the create-plan form (Enter submits, a non-numeric price cannot be submitted).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlansList, parsePriceCents, parseTrialDays } from "../plans-list";
+import { PlansList } from "../plans-list";
 import { Promos } from "../promos";
 import { RefundsQueue } from "../refunds-queue";
 import { SubscriptionsList } from "../subscriptions-list";
@@ -71,10 +77,26 @@ const json = (body: unknown, status = 200): Response =>
 
 function Probe(): JSX.Element {
   const location = useLocation();
-  return <output data-testid="search">{location.search}</output>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="search">{location.search}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        history back
+      </button>
+    </>
+  );
 }
 
-function mount(element: JSX.Element, url: string, listBody: unknown): Recorded[] {
+const PREVIOUS_PATH = "/previous";
+
+/** `previous` seeds one earlier history entry (a different page), so a test can count how many Backs leave the screen. */
+function mount(
+  element: JSX.Element,
+  url: string,
+  listBody: unknown,
+  previous?: string,
+): Recorded[] {
   const calls: Recorded[] = [];
   const client = createApiClient({
     baseUrl: "http://localhost",
@@ -93,8 +115,18 @@ function mount(element: JSX.Element, url: string, listBody: unknown): Recorded[]
   render(
     <ApiClientProvider client={client}>
       <ToastProvider>
-        <MemoryRouter initialEntries={[url]}>
-          {element}
+        <MemoryRouter
+          initialEntries={previous ? [previous, url] : [url]}
+          initialIndex={previous ? 1 : 0}
+        >
+          {previous ? (
+            <Routes>
+              <Route path={previous} element={<p>previous page</p>} />
+              <Route path="*" element={element} />
+            </Routes>
+          ) : (
+            element
+          )}
           <Probe />
         </MemoryRouter>
       </ToastProvider>
@@ -180,6 +212,57 @@ describe.each(SCREENS)("$name list behaviour", ({ el, param, body, row, drawer }
   });
 });
 
+describe.each(SCREENS)("$name drawer history", ({ el, param, body, row, drawer }) => {
+  const rowButton = async (): Promise<HTMLElement> => {
+    const tr = (await screen.findByText(row)).closest("tr");
+    if (!tr) throw new Error("row not found");
+    return tr;
+  };
+  const closed = (): Promise<void> =>
+    waitFor(() => expect(screen.queryByRole("complementary", { name: drawer })).toBeNull());
+  const back = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+  };
+
+  it("opening then closing leaves no dead entry: one Back reaches the previous page", async () => {
+    mount(el, "/x", body, PREVIOUS_PATH);
+    fireEvent.click(await rowButton());
+    const aside = await screen.findByRole("complementary", { name: drawer });
+    expect(screen.getByTestId("search").textContent).toBe(`?${param}=${ID}`);
+    fireEvent.keyDown(aside, { key: "Escape" });
+    await closed();
+    await waitFor(() => expect(screen.getByTestId("search").textContent).toBe(""));
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("re-clicking the open row adds no history entry, and keeps the page's other params", async () => {
+    mount(el, "/x?keep=1", body, PREVIOUS_PATH);
+    const tr = await rowButton();
+    fireEvent.click(tr);
+    await screen.findByRole("complementary", { name: drawer });
+    fireEvent.click(tr);
+    fireEvent.keyDown(tr, { key: "Enter" });
+    const search = (): URLSearchParams =>
+      new URLSearchParams(screen.getByTestId("search").textContent ?? "");
+    expect(search().get("keep")).toBe("1");
+    expect(search().get(param)).toBe(ID);
+    // One entry was pushed: one Back closes the drawer (a duplicate would leave it open at the same URL).
+    back();
+    await closed();
+    expect(screen.getByTestId("search").textContent).toBe("?keep=1");
+  });
+
+  it("closing keeps the other params; a drawer opened by a link closes by replacing the param", async () => {
+    mount(el, `/x?keep=1&${param}=${ID}`, body, PREVIOUS_PATH);
+    const aside = await screen.findByRole("complementary", { name: drawer });
+    fireEvent.keyDown(aside, { key: "Escape" });
+    await closed();
+    await waitFor(() => expect(screen.getByTestId("search").textContent).toBe("?keep=1"));
+    expect(screen.queryByText("previous page")).toBeNull();
+  });
+});
+
 describe("create plan form", () => {
   const openForm = async (): Promise<void> => {
     fireEvent.click(await screen.findByRole("button", { name: "New plan" }));
@@ -229,8 +312,10 @@ describe("price and trial parsing", () => {
     expect(parsePriceCents("abc")).toBeNull();
     expect(parsePriceCents("-1")).toBeNull();
     expect(parsePriceCents("Infinity")).toBeNull();
-    expect(parseTrialDays("14")).toBe(14);
-    expect(parseTrialDays("1.5")).toBeNull();
-    expect(parseTrialDays("x")).toBeNull();
+    expect(parseWholeNumber("14")).toBe(14);
+    expect(parseWholeNumber("1.5")).toBeNull();
+    expect(parseWholeNumber("x")).toBeNull();
+    expect(parseWholeNumber("0x10")).toBeNull();
+    expect(parseWholeNumber("1e1")).toBeNull();
   });
 });

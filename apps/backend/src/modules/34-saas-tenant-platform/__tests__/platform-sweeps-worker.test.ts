@@ -1,6 +1,9 @@
 // GAP-163 — the BAA radar, the support-session close sweep and the onboarding fan-out, over injected ports.
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  createOnboardingAdvancer,
   describeM34SweepSchedules,
   runBaaExpiryCron,
   runOnboardingFanOut,
@@ -96,6 +99,33 @@ describe("runOnboardingFanOut", () => {
     });
     expect(result).toEqual({ tenants: 2, failed: 1 });
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createOnboardingAdvancer", () => {
+  it("takes the shared onboarding lock before it reads the tenant's status", async () => {
+    const dialect = new PgDialect();
+    const steps: string[] = [];
+    const chain = { from: () => chain, where: () => chain, limit: async () => [] };
+    const tx = {
+      execute: async (q: SQL) => {
+        steps.push(dialect.sqlToQuery(q).sql);
+      },
+      select: () => {
+        steps.push("select status");
+        return chain;
+      },
+    };
+    const db = { transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) };
+    const advance = createOnboardingAdvancer({
+      db: db as never,
+      outbox: { publish: vi.fn() } as never,
+      alerts: { emit: vi.fn() } as never,
+    });
+    await advance({ tenantAccountId: "t1", orgId: "o1" });
+    const lock = steps.findIndex((s) => s.includes("pg_advisory_xact_lock_shared"));
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeLessThan(steps.indexOf("select status"));
   });
 });
 

@@ -6,8 +6,8 @@
 // `POST /funeral/invite` are recorded BEFORE delivery (an unrecorded disclosure is revoked, not sent); refused/blocked disclosures are audited too.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq, isNull } from "drizzle-orm";
-import { FuneralLinkIssueError } from "../modules/36-messaging/death-notification/death-notification-service";
+import { FuneralLinkIssueError } from "@chartwarden/types";
+import { and, eq } from "drizzle-orm";
 
 type FuneralLinkCreated = { linkId: string; token?: string | undefined; expiresAt: string };
 
@@ -22,6 +22,11 @@ export interface FuneralLinkStorePort {
     disclosureAttemptId: string;
   }): Promise<FuneralLinkCreated> | FuneralLinkCreated;
   revoke(scope: { organizationId: string; linkId: string }): Promise<void>;
+  revokeForDisclosureAttempt(scope: {
+    organizationId: string;
+    disclosureAttemptId: string;
+    linkId?: string | undefined;
+  }): Promise<number>;
 }
 
 export interface FuneralLinkDeliveryPort {
@@ -103,8 +108,6 @@ async function activeMembershipId(
   return rows[0]?.id ?? null;
 }
 
-const LINKS = schema.collaboratorLinks;
-
 /** Revoke only the still-live funeral link minted by this M36 disclosure attempt, plus its pinned id when known. */
 async function revokeOrphanLinks(
   input: FuneralLinkPortInput,
@@ -114,25 +117,11 @@ async function revokeOrphanLinks(
     linkId: string | null;
   },
 ): Promise<number> {
-  const rows = await withOrgContext(
-    input.db,
-    { organizationId: a.orgId, userId: SYSTEM_USER_ID },
-    (tx) =>
-      tx
-        .select({ id: LINKS.id })
-        .from(LINKS)
-        .where(
-          and(
-            eq(LINKS.organizationId, a.orgId),
-            eq(LINKS.disclosureAttemptId, a.disclosureAttemptId),
-            isNull(LINKS.revokedAt),
-          ),
-        ),
-  );
-  const ids = new Set(rows.map((r) => r.id));
-  if (a.linkId) ids.add(a.linkId); // revoke is idempotent and org-scoped
-  for (const linkId of ids) await input.collaborators.revoke({ organizationId: a.orgId, linkId });
-  return ids.size;
+  return input.collaborators.revokeForDisclosureAttempt({
+    organizationId: a.orgId,
+    disclosureAttemptId: a.disclosureAttemptId,
+    ...(a.linkId ? { linkId: a.linkId } : {}),
+  });
 }
 
 /** Undefined when the delivery channel (the bound transactional email provider) is absent: the notice route then answers 503 and sends nothing. */

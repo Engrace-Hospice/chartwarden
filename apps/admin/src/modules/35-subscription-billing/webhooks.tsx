@@ -1,4 +1,12 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatusPill,
+  TableScroll,
+  sendWrite,
+  useApiClient,
+  useIdempotencyKeeper,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Stripe webhooks (`/admin/webhooks/stripe`,
 // stripe.admin.read). Recent inbound webhook receipts over GET /api/admin/webhooks/stripe/recent, searchable
@@ -6,7 +14,7 @@ import type { operations } from "@chartwarden/ui";
 // that re-enqueues processing through the existing outbox path (vendor SDK OFF). Cursor-paged.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { formatDate, idempotencyKey } from "./status";
+import { formatDate } from "./status";
 import {
   LoadMore,
   type Outcome,
@@ -14,7 +22,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type WebhookReceiptsPage =
@@ -23,6 +31,8 @@ type Receipt = WebhookReceiptsPage["items"][number];
 
 export function Webhooks(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [rows, setRows] = useState<Receipt[]>([]);
   const [search, setSearch] = useState("");
   const [cursor, setCursor] = useState<string | null>(null);
@@ -72,19 +82,27 @@ export function Webhooks(): JSX.Element {
     async (eventId: string) => {
       setBusyId(eventId);
       setOutcome(null);
-      const res = await client.POST("/api/admin/webhooks/stripe/replay/{eventId}", {
-        params: { path: { eventId } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
-      if (res.error) {
-        setOutcome(failureOutcome(res.error, "Could not replay this event."));
-      } else {
+      try {
+        const failure = writeFailure(
+          await sendWrite(keeper, `replay:${eventId}`, (key) =>
+            client.POST("/api/admin/webhooks/stripe/replay/{eventId}", {
+              params: { path: { eventId } },
+              headers: { "Idempotency-Key": key },
+            }),
+          ),
+          "Could not replay this event.",
+        );
+        if (failure) {
+          setOutcome(failure);
+          return;
+        }
         setOutcome({ ok: true, message: `Event ${eventId} re-enqueued.` });
         await load(null, false);
+      } finally {
+        setBusyId(null); // also when the reload after a landed write throws: the row never stays locked
       }
-      setBusyId(null);
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   return (
@@ -135,7 +153,7 @@ function ReceiptsTable({
   onReplay: (eventId: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Stripe webhook receipts</caption>
         <thead>
@@ -168,7 +186,7 @@ function ReceiptsTable({
               </td>
               <td className="wx-num-col wx-nums">{r.processingAttemptCount}</td>
               <td>
-                <div className="flex justify-end">
+                <div className="wx-action-row is-end">
                   <Button
                     tone="secondary"
                     size="sm"
@@ -183,6 +201,6 @@ function ReceiptsTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

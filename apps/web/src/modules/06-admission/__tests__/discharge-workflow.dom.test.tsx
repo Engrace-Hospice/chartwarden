@@ -318,7 +318,9 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
     cont();
     typeNarrative("x".repeat(min - 1));
     cont();
-    expect(screen.getByText(`Enter at least ${min} characters (${min - 1} so far).`)).toBeTruthy();
+    expect(screen.getByText(`Enter at least ${min} characters.`)).toBeTruthy();
+    // The running count stays in the hint, beside the error.
+    expect(screen.getByText(`${min - 1} / at least ${min} characters`)).toBeTruthy();
     // Still on the details step.
     expect(screen.getByLabelText(/^Narrative/)).toBeTruthy();
     typeNarrative("x".repeat(min));

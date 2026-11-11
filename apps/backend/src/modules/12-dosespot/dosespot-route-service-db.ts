@@ -67,6 +67,7 @@ import {
   logRenderPayload,
 } from "../../bootstrap/render-payload-sources";
 import { getOrderSignatureProvider } from "../11-orders";
+import { UNCONFIRMED_OUTCOME_CLASS } from "./jobs/hold";
 import {
   type ConsentGatePort,
   allergyGateError,
@@ -87,6 +88,7 @@ import {
   mdmIdAlreadyEnrolled,
   namedPrescriberNotEnrolled,
   prescriberEligible,
+  prescriberVendorLinked,
   signerStanding,
 } from "./prescriber-eligibility";
 import {
@@ -108,11 +110,19 @@ import type {
 } from "./routes/service";
 import { MEDICATION_ORDER_LIST_LIMIT, RX_BENEFIT_UNKNOWN } from "./routes/service";
 import { enqueueTransmissionIfBound } from "./transmission-enqueue";
+import type { TransmissionGate } from "./transmission-gate";
 
 const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
 const RR = schema.refillRequests;
 const DP = schema.dosespotPrescribers;
+/** Clears the prescriber's own confirmation of the linked physician record (migration 1430): all four together. */
+const NO_LINK_CONFIRMATION = {
+  linkConfirmedMdmId: null,
+  linkConfirmedNpi: null,
+  linkConfirmedAt: null,
+  linkConfirmedByMembershipId: null,
+} as const;
 const MHR = schema.medicationHistoryRecords;
 const RXB = schema.rxBenefitCache;
 
@@ -297,11 +307,11 @@ export interface DoseSpotSafetyGateDeps {
   readonly resolveConsentEvaluator?: () => ConsentGatePort;
   readonly resolveAllergyReader?: () => PatientAllergyReader;
   /**
-   * GAP-037 — does this tenant have a bound DoseSpot adapter (complete per-tenant credentials)? When true, a
-   * signed order that CAN be e-prescribed (has an RxCUI + a structured sig) is queued for transmission
-   * instead of being activated locally. Absent / false ⇒ the F-058 behaviour is unchanged (`not_required`).
+   * GAP-037 / slice 4 — may this SIGNED order be queued for e-prescribing instead of activating locally? Answered inside the
+   * signing transaction: the org's DoseSpot is live AND the signing prescriber is linked to DoseSpot (`transmission-gate.ts`).
+   * Absent / false => the F-058 behaviour is unchanged (`not_required`).
    */
-  readonly transmissionEnabledFor?: (organizationId: string) => boolean;
+  readonly transmissionGate?: TransmissionGate;
   /**
    * CW-CLIN-008 — the M40 directory `createDraft` checks the ordering physician against. Absent ⇒ no check (the
    * live suites run without the seam); the boot wiring passes the registered `MdmEntityProvider`.
@@ -453,7 +463,7 @@ export function createDbDoseSpotBackend(
     at: Date,
   ): Promise<void> {
     if (
-      gates.transmissionEnabledFor?.(organizationId) &&
+      (await gates.transmissionGate?.(tx, organizationId, row.prescriberMembershipId)) &&
       (await enqueueTransmissionIfBound(tx, outbox, organizationId, row, at))
     ) {
       return;
@@ -720,15 +730,19 @@ export function createDbDoseSpotBackend(
           .where(eq(MOT.medicationOrderId, id))
           .orderBy(desc(MOT.queuedAt))
           .limit(1);
+        // The hold MARKER decides "held", not the failure timestamp: a retryable failure sets `transmission_failed_at` (the backoff needs it kept)
+        // and a hold can follow it. A resolved order's marker is gone (`resolved_*`), so it reads as what it became.
         const status = !t
           ? "not_transmitted"
           : t.transmissionSucceededAt
             ? "transmitted"
-            : t.transmissionFailedAt
-              ? "transmission_failed"
-              : t.transmissionStartedAt
-                ? "in_flight"
-                : "queued";
+            : t.lastErrorClass === UNCONFIRMED_OUTCOME_CLASS
+              ? "unconfirmed_outcome" // HELD: DoseSpot did not confirm what became of the call; an administrator resolves it
+              : t.transmissionFailedAt
+                ? "transmission_failed"
+                : t.transmissionStartedAt
+                  ? "in_flight"
+                  : "queued";
         const retryHistory =
           t && t.retryCount > 0
             ? [
@@ -1570,6 +1584,7 @@ export function createDbDoseSpotBackend(
       membershipId,
       deaAuthorizedSchedules,
       externalPhysicianMdmId,
+      linkedByMembershipId,
     ) {
       if (externalPhysicianMdmId) {
         const holder = await withOrg(organizationId, (tx) =>
@@ -1585,6 +1600,46 @@ export function createDbDoseSpotBackend(
       try {
         return await withOrg(organizationId, async (tx) => {
           const at = new Date();
+          // A re-link to another physician record must not carry the old vendor identity along: a row already linked to a DoseSpot
+          // clinician is refused (the clinician was created under the OLD NPI), and any NPI left on an unlinked row is cleared.
+          const [existing] = await tx
+            .select({
+              mdmId: DP.externalPhysicianMdmId,
+              vendorId: DP.dosespotPrescriberId,
+              revokedAt: DP.revokedAt,
+              linkedBy: DP.linkedByMembershipId,
+            })
+            .from(DP)
+            .where(and(eq(DP.organizationId, organizationId), eq(DP.membershipId, membershipId)))
+            .for("update");
+          const relinking =
+            existing !== undefined &&
+            Boolean(externalPhysicianMdmId) &&
+            existing.mdmId !== externalPhysicianMdmId;
+          if (relinking && existing?.vendorId != null) throw prescriberVendorLinked();
+          // WHO asserted the link (migration 1433): whoever sets or changes it, or reinstates a revoked row (the confirmation went with the
+          // revocation, so the reinstatement is a fresh assertion). The prescriber cannot confirm a link they made themself.
+          // A member who linked THEMSELF is fixed by another roster administrator re-saving the same link: that member becomes the
+          // linker, and any confirmation the member wrote under their own link is cleared, so they confirm again under the new maker.
+          const reassertsSelfLink =
+            existing !== undefined &&
+            Boolean(externalPhysicianMdmId) &&
+            existing.mdmId === externalPhysicianMdmId &&
+            existing.linkedBy === membershipId &&
+            linkedByMembershipId !== membershipId;
+          // A link with NO recorded maker (it predates the column, or was written outside this route) is unconfirmable (409
+          // DOSESPOT_LINK_MAKER_UNKNOWN) and never passes the enrolment gate, so it is fixed the same way: ANY administrator re-save of the
+          // row (the same link re-sent, or a DEA-schedules-only save that carries no physician record) becomes its maker, and a
+          // confirmation made while the maker was unknown is cleared, so the member confirms again under the recorded maker.
+          // (A re-save naming a different physician is a re-link, handled above.)
+          const reassertsUnattributedLink =
+            existing !== undefined && existing.mdmId !== null && existing.linkedBy === null;
+          const linkAsserted =
+            (Boolean(externalPhysicianMdmId) && existing?.mdmId !== externalPhysicianMdmId) ||
+            (existing !== undefined && existing.revokedAt !== null) ||
+            reassertsSelfLink ||
+            reassertsUnattributedLink;
+          const linker = { linkedByMembershipId };
           const row = firstOrThrow(
             await tx
               .insert(DP)
@@ -1593,6 +1648,7 @@ export function createDbDoseSpotBackend(
                 membershipId,
                 deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
                 externalPhysicianMdmId: externalPhysicianMdmId ?? null,
+                ...(externalPhysicianMdmId ? linker : {}),
                 enrolledAt: at,
               })
               .onConflictDoUpdate({
@@ -1600,6 +1656,10 @@ export function createDbDoseSpotBackend(
                 set: {
                   deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
                   ...(externalPhysicianMdmId ? { externalPhysicianMdmId } : {}),
+                  // a re-link carries nothing of the previous one: no stale NPI, and the PRESCRIBER's confirmation was of the old link
+                  ...(relinking ? { npi: null, ...NO_LINK_CONFIRMATION } : {}),
+                  ...(reassertsSelfLink || reassertsUnattributedLink ? NO_LINK_CONFIRMATION : {}),
+                  ...(linkAsserted ? linker : {}),
                   enrolledAt: at,
                   revokedAt: null,
                   revocationReason: null,
@@ -1648,6 +1708,8 @@ export function createDbDoseSpotBackend(
             revokedAt: new Date(),
             revocationReason: reason,
             epcsEnabled: false,
+            // a revoked prescriber who is reinstated confirms again: the confirmation does not survive the revocation
+            ...NO_LINK_CONFIRMATION,
             updatedAt: new Date(),
           })
           .where(eq(DP.id, row.id));

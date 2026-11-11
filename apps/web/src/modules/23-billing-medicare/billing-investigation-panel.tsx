@@ -19,7 +19,6 @@ type InvestigationApiClient = {
   GET: (path: string, options?: unknown) => Promise<{ data?: unknown; error?: unknown }>;
   POST: (path: string, options?: unknown) => Promise<{ data?: unknown; error?: unknown }>;
 };
-const requestKey = () => crypto.randomUUID();
 const field = (value: unknown): string => (typeof value === "string" ? value : "");
 
 export function BillingInvestigationPanel({
@@ -56,6 +55,8 @@ export function BillingInvestigationPanel({
   };
 
   useEffect(() => {
+    // Incrementing the epoch deliberately reruns this read/open sequence after an operator retry.
+    void loadEpoch;
     let active = true;
     void (async () => {
       setBusy(true);
@@ -64,7 +65,6 @@ export function BillingInvestigationPanel({
         let id = investigationId ?? "";
         if (!id && requestedSourceModule && requestedSubmissionId) {
           const opened = await client.POST("/api/v1/billing/operations/investigations", {
-            headers: { "Idempotency-Key": `${loadEpoch}-${requestKey()}` },
             body: { sourceModule: requestedSourceModule, submissionId: requestedSubmissionId },
           });
           if (opened.error || !opened.data)
@@ -168,13 +168,11 @@ export function BillingInvestigationPanel({
   }) =>
     client.POST("/api/v1/billing/operations/investigations/{id}/assignment", {
       params: { path: { id: caseId } },
-      headers: { "Idempotency-Key": requestKey() },
       body,
     });
   const postNote = (body: { body: string }) =>
     client.POST("/api/v1/billing/operations/investigations/{id}/notes", {
       params: { path: { id: caseId } },
-      headers: { "Idempotency-Key": requestKey() },
       body,
     });
   const postTransition = (body: {
@@ -190,7 +188,6 @@ export function BillingInvestigationPanel({
   }) =>
     client.POST("/api/v1/billing/operations/investigations/{id}/transitions", {
       params: { path: { id: caseId } },
-      headers: { "Idempotency-Key": requestKey() },
       body,
     });
 

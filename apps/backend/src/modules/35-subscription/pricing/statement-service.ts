@@ -368,11 +368,25 @@ export async function runStatementsForOrg(
 }
 
 /**
+ * What the sweep does for one org: given the org and its statement run, it may do something first (the worker's outside-mode backstop,
+ * `reconcileThenStatement`) and must then run the statement. Without one the sweep just runs the statement.
+ */
+export type StatementOrgStep = (
+  organizationId: string,
+  statement: (organizationId: string) => Promise<unknown>,
+) => Promise<void>;
+
+/**
  * The hourly sweep: every org that can still need a statement, each isolated from the others (one org's failure is logged with its id
  * and reported at the end, never stops the rest). ONE platform call reads every org's facts; an org with nothing to compute opens no
- * further platform transaction (see the file header).
+ * further platform transaction (see the file header). The facts are read once for the whole sweep, so an `orgStep` that changes an org's
+ * billing mode does not show in that org's statement until the next sweep; that is harmless for the outside-mode reconcile, whose change
+ * to a live tenant is dated the 1st of next month and whose onboarding tenants have no statement.
  */
-export async function runStatementSweep(deps: StatementDeps): Promise<void> {
+export async function runStatementSweep(
+  deps: StatementDeps,
+  orgStep?: StatementOrgStep,
+): Promise<void> {
   const at = clockOf(deps);
   const byOrg = await deps.platformRunner((tx) => loadContractFactsByOrg(tx, deps.goLive, at));
   await runM35Fanout(
@@ -381,7 +395,9 @@ export async function runStatementSweep(deps: StatementDeps): Promise<void> {
       ...(deps.log ? { log: deps.log } : {}),
     },
     async (organizationId) => {
-      await runStatementsForOrg(deps, organizationId, byOrg.get(organizationId));
+      const statement = (org: string) => runStatementsForOrg(deps, org, byOrg.get(org));
+      if (orgStep) await orgStep(organizationId, statement);
+      else await statement(organizationId);
     },
     "pricing_statement",
   );

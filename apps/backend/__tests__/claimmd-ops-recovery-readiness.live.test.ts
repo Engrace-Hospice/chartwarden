@@ -8,7 +8,7 @@ import {
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { registerPlatformJob, resetPlatformJobRegistry } from "@chartwarden/tenancy";
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerOpsClaimMdObservabilityRoute } from "../src/bootstrap/routes/ops-claimmd-observability";
@@ -101,7 +101,7 @@ describe.skipIf(!DB_URL)("BIL-5.5 central Claim.MD HTTP/PostgreSQL boundary", ()
       keyRing: { activeId: "test-key", byId: new Map([["test-key", Buffer.alloc(32, 7)]]) },
     });
     app = Fastify();
-    app.addHook("onRequest", async (request) => {
+    app.addHook("onRequest", async (request: FastifyRequest) => {
       const principal = request.headers["x-test-principal"];
       if (principal !== "platform" && principal !== "tenant-admin") return;
       request.context = {

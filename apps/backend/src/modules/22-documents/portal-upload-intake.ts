@@ -12,7 +12,7 @@
 import type { DbClient } from "@chartwarden/db";
 import { getSeam } from "../../bootstrap/index";
 import { createDbDocumentBackend } from "./documents-route-service-db";
-import { createServerUploadService } from "./routes/server-upload";
+import { type UploadLogger, createServerUploadService } from "./routes/server-upload";
 import { RENDER_SYSTEM_MEMBERSHIP_ID } from "./seams/drizzle-seam-store";
 import { createS3ObjectStore, s3ObjectStoreConfigFromEnv } from "./seams/index";
 
@@ -29,11 +29,15 @@ export interface PortalUploadIntakeAdapter {
   }): Promise<{ readonly documentId: string; readonly intakeBatchId: string }>;
 }
 
-export function buildPortalUploadIntakePort(db: DbClient): PortalUploadIntakeAdapter {
+export function buildPortalUploadIntakePort(
+  db: DbClient,
+  logger: UploadLogger,
+): PortalUploadIntakeAdapter {
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
   const uploads = createServerUploadService({
     db,
+    logger,
     objects,
     scanRequired: process.env.DOCUMENT_UPLOAD_SCAN_REQUIRED === "true",
     referralReader: {

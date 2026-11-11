@@ -1,4 +1,4 @@
-import { createApiClient, initTheme } from "@chartwarden/ui";
+import { clearIdempotencyKeys, createApiClient, initTheme } from "@chartwarden/ui";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/inter";
 import "./index.css"; // Tailwind v4 Preflight + the portal's Lantern token layer (global styles)
@@ -14,7 +14,9 @@ import { createSessionGuard } from "./session-guard";
 // Resolve the stored choice (or OS preference) before React paints, matching web/admin.
 initTheme();
 
-const sessionGuard = createSessionGuard();
+// The guard decides the session is dead (not every 401 is: a failed step-up code, a session with no organization yet), so it is the
+// one that drops the client's held Idempotency-Keys. `client` is built next; the guard can only fire once the client observes a response.
+const sessionGuard = createSessionGuard({ onSessionExpired: () => clearIdempotencyKeys(client) });
 const client = createApiClient({ onResponseStatus: sessionGuard.onResponseStatus });
 
 const rootEl = document.getElementById("root");

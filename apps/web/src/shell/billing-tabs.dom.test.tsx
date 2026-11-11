@@ -145,7 +145,7 @@ describe("BillingTabs areas", () => {
     );
     expect(hrefs).toEqual({
       Overview: "/billing",
-      "Work Queue": "/billing/queue",
+      "Work Queue": "/billing/operations",
       Claims: "/billing/claims",
       "Revenue Cycle": "/remittance",
       Tools: "/billing/eligibility",

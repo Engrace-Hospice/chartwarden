@@ -186,7 +186,7 @@ describe.skipIf(!DB_URL)("M23 claim validation overview - LIVE Postgres", () => 
     const next = await svc().listInDoubtSubmissions(
       actor(ORG_A),
       { providerEntityScope: [PE_1] },
-      page.nextCursor,
+      page.nextCursor ?? undefined,
       1,
     );
     const bothPages = [...page.items, ...next.items];

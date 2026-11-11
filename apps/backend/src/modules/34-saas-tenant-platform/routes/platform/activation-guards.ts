@@ -29,7 +29,18 @@ export interface ActivationGuardInput {
   readonly canonicalTemplateKeys: readonly string[];
   readonly tasks: readonly { readonly templateKey: string; readonly status: string }[];
   /** The tenant's most recent BAA record (the register lists newest first), if any. */
-  readonly latestBaa: { readonly baaStatus: string; readonly expiresOn: string | null } | undefined;
+  readonly latestBaa:
+    | {
+        readonly baaStatus: string;
+        readonly expiresOn: string | null;
+        /**
+         * Whether the BAA's `documentId` is a signed BAA filed for this tenant (M22's check): `false` means the status rests on a link that
+         * proves nothing, and the BAA is not executed for go-live. REQUIRED: an input that does not say is not an executed BAA (a caller
+         * with no document check bound fails closed, as the sweep worker does), never one that passes by omission.
+         */
+        readonly documentFiled: boolean;
+      }
+    | undefined;
   readonly today: Date;
 }
 
@@ -49,7 +60,8 @@ export function evaluateActivationGuards(input: ActivationGuardInput): Activatio
       .filter((t) => t.status === "done" || t.status === "skipped")
       .map((t) => t.templateKey),
   );
-  const baaExecuted = input.latestBaa?.baaStatus === "executed";
+  const baaExecuted =
+    input.latestBaa?.baaStatus === "executed" && input.latestBaa.documentFiled === true;
   const expiresOn = input.latestBaa?.expiresOn ?? null;
   return {
     // No canonical templates at all means an unseeded catalog, not "nothing to do": never complete vacuously.

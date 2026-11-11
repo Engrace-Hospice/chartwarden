@@ -81,6 +81,11 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "Optimistic concurrency (§7.7/§2.5). A wrong value is a 412 STALE_VERSION — it can lose you a write, never win you one.",
   },
+  "content-length": {
+    classification: "not-authorization",
+    reason:
+      "The BAA upload's size precheck (an onRequest hook ahead of body parsing): a declared length over the route's limit is a 413. A forged or missing value can only get a request refused earlier or fall through to bodyLimit, which bounds the streamed bytes; it decides no access.",
+  },
   "idempotency-key": {
     classification: "not-authorization",
     reason:

@@ -30,6 +30,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   buildDrizzlePlatformService,
   buildM34WorkerPorts,
@@ -139,6 +140,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
 
   const platformService = () =>
     buildDrizzlePlatformService({
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformHandle.db,
       enqueue: {
         async enqueue() {
@@ -194,6 +196,32 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
 
   // ── the PULL half: the cross-tenant list ────────────────────────────────────────────────────────
   describe("GET /api/v1/platform/tenant-export-jobs", () => {
+    it("answers a malformed cursor with a 400 BEFORE the platform context is entered: no bypass audit row, no database cast error", async () => {
+      const bypassRows = async () =>
+        Number(
+          (
+            await admin.query(
+              "SELECT count(*)::text AS n FROM audit_event WHERE event_type='platform.bypass_invoked'",
+            )
+          ).rows[0].n,
+        );
+      const before = await bypassRows();
+      const cursorOf = (createdAt: string, id: string) =>
+        Buffer.from(JSON.stringify({ createdAt, id }), "utf8").toString("base64url");
+      for (const cursor of [
+        cursorOf("garbage", "6f1f9c3e-8d2a-4b7e-9a10-2c4d5e6f7a8b"),
+        cursorOf("2026-11-06T12:00:00.123456Z", "not-a-uuid"),
+        cursorOf("0000-01-01T00:00:00Z", "6f1f9c3e-8d2a-4b7e-9a10-2c4d5e6f7a8b"),
+        "%%%",
+      ]) {
+        await expect(
+          platformService().listTenantExportJobs({ held: true }, cursor, 10),
+          cursor,
+        ).rejects.toMatchObject({ statusCode: 400, code: "VALIDATION_FAILED" });
+      }
+      expect(await bypassRows()).toBe(before);
+    });
+
     it("surfaces held bundles from EVERY tenant, with the size the co-signer decides on", async () => {
       const a = await seedJob(ORG_A, { sizeBytes: 60 * 1024 * 1024 * 1024 });
       const b = await seedJob(ORG_B, { sizeBytes: 80 * 1024 * 1024 * 1024 });
@@ -286,6 +314,37 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
       const seen = [...first.items, ...second.items].map((j) => j.id);
       expect(new Set(seen).size).toBe(3);
       expect(seen.sort()).toEqual([...ids].sort());
+    });
+
+    it("pages jobs that share ONE millisecond without repeating or dropping any (the database orders microseconds; a cursor carries milliseconds)", async () => {
+      // Five requests in the same millisecond, microseconds apart. The page boundary falls inside that millisecond, so a cursor that kept
+      // only milliseconds would resume at `< .123000` and silently drop every remaining row of the millisecond.
+      const ids: string[] = [];
+      for (let micro = 100; micro <= 500; micro += 100) {
+        ids.push(await seedJob(ORG_A, { requestedAt: `2026-03-01T00:00:00.123${micro}Z` }));
+      }
+      const svc = platformService();
+      const served: string[] = [];
+      let cursor: string | undefined;
+      for (let guard = 0; guard < 10; guard += 1) {
+        const page = await svc.listTenantExportJobs({}, cursor, 2);
+        served.push(...page.items.map((j) => j.id));
+        if (!page.hasMore || !page.nextCursor) break;
+        cursor = page.nextCursor;
+      }
+      // newest first: the microsecond order, which is the reverse of how they were seeded
+      expect(served).toEqual([...ids].reverse());
+    });
+
+    it("an old cursor (milliseconds only, issued before the fix) is still accepted: it resumes, it does not crash", async () => {
+      const a = await seedJob(ORG_B, { requestedAt: "2026-04-01T00:00:00.000Z" });
+      const b = await seedJob(ORG_B, { requestedAt: "2026-04-02T00:00:00.000Z" });
+      const old = Buffer.from(
+        JSON.stringify({ createdAt: "2026-04-02T00:00:00.000Z", id: b }),
+        "utf8",
+      ).toString("base64url");
+      const page = await platformService().listTenantExportJobs({ organizationId: ORG_B }, old, 50);
+      expect(page.items.map((j) => j.id)).toEqual([a]);
     });
 
     it("the release route clears the job off the queue end to end", async () => {

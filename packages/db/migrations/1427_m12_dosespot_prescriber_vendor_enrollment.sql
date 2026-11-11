@@ -1,0 +1,13 @@
+-- compat: expand
+-- M12: a prescriber's DoseSpot (vendor) enrolment is its own fact, recorded when the vendor call is made. Until now the enroll
+-- route only wrote a local roster row, so `dosespot_prescriber_id` (the id `transmit-newrx` sends under) was never set by any
+-- production path and an API-enrolled prescriber's orders failed permanently as `prescriber_not_enrolled`.
+--
+--   vendor_enrollment_requested_at  committed BEFORE the vendor call (create-then-record). A crash between the vendor create and
+--                                   the record leaves this set with no `dosespot_prescriber_id`: the next attempt sees it, and the
+--                                   retry may meet a vendor duplicate (DoseSpot's dedupe by NPI is unverified: sandbox).
+--
+-- The vendor link itself stays `dosespot_prescriber_id IS NOT NULL`; `enrolled_at` keeps meaning "on the local roster" (verbal
+-- orders need that with no vendor at all). Additive and nullable: the previous release is unaffected. dosespot_prescriber already
+-- has RLS, table-level app grants and the M4 write-audit trigger (0039), so a new column inherits all three.
+ALTER TABLE "dosespot_prescriber" ADD COLUMN IF NOT EXISTS "vendor_enrollment_requested_at" timestamptz;

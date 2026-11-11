@@ -18,17 +18,19 @@
 // This file is the factory: it opens the right transaction for each surface and delegates. A step's lifecycle is
 // wizard-steps.ts, the officer and the go-live are wizard-go-live.ts, what they share is wizard-core.ts, the contract is
 // wizard-types.ts (re-exported here, so importers keep one entry point).
+import { ChartWardenError } from "@chartwarden/types";
 import { normalizeReason } from "./evidence";
 import {
   ONBOARDING_STATUS,
   type PlatformActor,
+  SYSTEM_MEMBERSHIP_ID,
   type StepTask,
   type StepTemplate,
   type TenantActor,
   type TenantRef,
 } from "./model";
 import { normalizeOrgProfilePatch } from "./org-profile";
-import { lockedByStep } from "./sequence";
+import { isSettled, lockedByStep } from "./sequence";
 import { type Loaded, actorMayActOnStep, load, loadTenant, view } from "./wizard-core";
 import { requireOnboarding } from "./wizard-core";
 import {
@@ -37,6 +39,7 @@ import {
   createGoLiveOperations,
 } from "./wizard-go-live";
 import { createStepOperations } from "./wizard-steps";
+import type { WizardStore } from "./wizard-store";
 import type {
   OnboardingWizard,
   OnboardingWizardDeps,
@@ -54,12 +57,45 @@ import {
 export { actorMayActOnStep };
 export type {
   AttestInput,
+  ClearinghouseChoiceKind,
   ComplianceOfficerRoleBinder,
   OnboardingWizard,
   OnboardingWizardDeps,
   ProfileInput,
   WizardViewWithProfile,
 } from "./wizard-types";
+
+/**
+ * Owner decision D5: the steps that only matter to a tenant ChartWarden transmits claims for. Under `outside` they are skipped
+ * for the system (the tenant files claims and enrols with payers itself); back on a vendor they are reopened.
+ */
+export const OUTSIDE_BILLING_STEP_KEYS: readonly string[] = ["mac_configured", "payer_enrollment"];
+/** The reason recorded on a system skip: also how a later reopen recognises the skips that are the system's to undo. */
+export const OUTSIDE_SKIP_RATIONALE = "bills outside ChartWarden";
+const SYSTEM_MEMBERSHIP = SYSTEM_MEMBERSHIP_ID;
+const SYSTEM_ACTOR: PlatformActor = {
+  kind: "platform",
+  membershipId: SYSTEM_MEMBERSHIP,
+  userId: "",
+};
+const SYSTEM_TENANT_ACTOR: TenantActor = {
+  kind: "tenant",
+  membershipId: SYSTEM_MEMBERSHIP,
+  userId: "",
+  roles: [],
+};
+const REOPEN_ON_VENDOR_REASON = "the organization chose a clearinghouse vendor again";
+
+/** True for a skip the system recorded for `outside` (so only the system's own skips are ever reopened by it). */
+async function isSystemOutsideSkip(store: WizardStore, task: StepTask): Promise<boolean> {
+  if (task.status !== "skipped") return false;
+  const skip = (await store.getCompletionEvidence(task.id)).skip as
+    | { rationale?: unknown; skippedByMembershipId?: unknown }
+    | undefined;
+  return (
+    skip?.rationale === OUTSIDE_SKIP_RATIONALE && skip?.skippedByMembershipId === SYSTEM_MEMBERSHIP
+  );
+}
 
 export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWizard {
   const now = deps.now ?? (() => new Date());
@@ -87,15 +123,74 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     tenantAccountId: string;
     organizationId: string;
   }): Promise<void> {
-    if (!deps.advance) return;
+    if (deps.advance) {
+      try {
+        await deps.advance(tenant);
+      } catch (error) {
+        deps.warn?.("m34.onboarding wizard: advance after change failed", {
+          tenantAccountId: tenant.tenantAccountId,
+          err: error,
+        });
+      }
+    }
     try {
-      await deps.advance(tenant);
+      await syncClearinghouseSteps(tenant.organizationId);
     } catch (error) {
-      deps.warn?.("m34.onboarding wizard: advance after change failed", {
+      deps.warn?.("m34.onboarding wizard: clearinghouse step sync failed", {
         tenantAccountId: tenant.tenantAccountId,
         err: error,
       });
     }
+  }
+
+  async function syncClearinghouseSteps(organizationId: string): Promise<void> {
+    if (!deps.clearinghouseChoice) return;
+    const choice = await deps.clearinghouseChoice(organizationId);
+    if (choice === "none") return;
+    if (choice === "outside" && deps.settleBillingModeForOutside) {
+      // Pricing is its own module and its own transaction: a failure is warned about and must never fail the sync (the billing steps
+      // below still follow the choice) or the change that triggered it. The next change of the wizard or the clearinghouse retries it.
+      try {
+        await deps.settleBillingModeForOutside(organizationId);
+      } catch (error) {
+        deps.warn?.(
+          "m34.onboarding wizard: setting the billing service mode for an outside tenant failed",
+          {
+            organizationId,
+            err: error,
+          },
+        );
+      }
+    }
+    await deps.runner.inTenant(SYSTEM_TENANT_ACTOR, organizationId, async (store) => {
+      let ctx = await load(store, { organizationId });
+      if (ctx.tenant.status !== ONBOARDING_STATUS) return;
+      for (const key of OUTSIDE_BILLING_STEP_KEYS) {
+        const task = ctx.tasks.find((t) => t.templateKey === key);
+        if (!task) continue;
+        let next: StepTask | null = null;
+        try {
+          if (choice === "outside" && !isSettled(task.status)) {
+            next = await skip(ctx, SYSTEM_ACTOR, task.id, OUTSIDE_SKIP_RATIONALE);
+          } else if (choice === "vendor" && (await isSystemOutsideSkip(store, task))) {
+            next = await reopen(ctx, SYSTEM_ACTOR, task.id, REOPEN_ON_VENDOR_REASON);
+          }
+        } catch (error) {
+          // An earlier gating step is still open (the skip waits for the next change), or a go-live attestation is pending
+          // (a reopen would invalidate it): neither is a failure of the clearinghouse change. Say so, and carry on.
+          if (!(error instanceof ChartWardenError) || error.statusCode !== 409) throw error;
+          deps.warn?.("m34.onboarding wizard: clearinghouse step left as it is", {
+            organizationId,
+            step: key,
+            reason: error.code,
+          });
+        }
+        if (next) {
+          const updated = next;
+          ctx = { ...ctx, tasks: ctx.tasks.map((t) => (t.id === updated.id ? updated : t)) };
+        }
+      }
+    });
   }
 
   async function withProfile(ctx: Loaded): Promise<WizardViewWithProfile> {
@@ -295,6 +390,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         (ctx) => goLiveRevoke(ctx, actor, reason),
         actor,
       ),
+    syncClearinghouseSteps,
 
     getTenant: (organizationId) =>
       deps.runner.inTenant(

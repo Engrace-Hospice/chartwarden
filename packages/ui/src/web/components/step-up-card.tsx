@@ -22,6 +22,15 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { useApiClient } from "../../core/api/provider";
 import { CenteredCardLayout } from "../layouts/patterns";
 
+/** The history state a successful step-up returns with, so a screen restores a stashed draft only on that return (not on a later visit). */
+export const STEP_UP_RETURN_STATE = { fromStepUp: true } as const;
+
+/** Whether a location state is the step-up return. */
+export const isStepUpReturn = (state: unknown): boolean =>
+  typeof state === "object" &&
+  state !== null &&
+  (state as { fromStepUp?: unknown }).fromStepUp === true;
+
 /**
  * The `returnTo` to navigate to after a successful step-up, or "/" when the raw value is missing or not
  * an app-relative path. Only "/..." qualifies: "//host" and "/\\host" are protocol-relative URLs to
@@ -196,7 +205,7 @@ export function StepUpCard({
       return;
     }
     onVerified?.(returnTo);
-    navigate(returnTo); // freshness recorded — resume the action that required step-up
+    navigate(returnTo, { state: STEP_UP_RETURN_STATE }); // freshness recorded — resume the action that required step-up
   }
 
   async function verifyPasskey(): Promise<void> {
@@ -263,7 +272,7 @@ export function StepUpCard({
       return;
     }
     onVerified?.(returnTo);
-    navigate(returnTo); // freshness recorded — resume the action that required step-up
+    navigate(returnTo, { state: STEP_UP_RETURN_STATE }); // freshness recorded — resume the action that required step-up
   }
 
   return (

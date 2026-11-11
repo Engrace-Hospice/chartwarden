@@ -49,7 +49,7 @@ const tpl = (key: string, sequence: number, over: Partial<StepTemplate> = {}): S
   ...over,
 });
 const TEMPLATES = [
-  tpl("organisation", 1),
+  tpl("mac_configured", 1),
   tpl("billing", 2, { owner: "either" }),
   tpl("go_live_checklist_complete", 3, { owner: "compliance_officer" }),
 ];
@@ -191,10 +191,10 @@ describe("platform onboarding routes", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.steps.map((s: { key: string }) => s.key)).toEqual(TEMPLATES.map((t) => t.key));
-    expect(body.currentStepKey).toBe("organisation");
-    expect(body.currentStep).toBe("organisation");
+    expect(body.currentStepKey).toBe("mac_configured");
+    expect(body.currentStep).toBe("mac_configured");
     expect(body.tasks).toEqual(body.steps);
-    expect(body.steps[1]).toMatchObject({ locked: true, lockedBy: "organisation" });
+    expect(body.steps[1]).toMatchObject({ locked: true, lockedBy: "mac_configured" });
     expect(body.goLive.state).toBe("not_ready");
     expect(
       (
@@ -233,7 +233,7 @@ describe("platform onboarding routes", () => {
       (
         await app.inject({
           method: "POST",
-          url: url("organisation"),
+          url: url("mac_configured"),
           headers: OPS,
           payload: attest,
         })
@@ -242,7 +242,7 @@ describe("platform onboarding routes", () => {
     const stepped = { ...OPS, ...FRESH };
     const ai = await app.inject({
       method: "POST",
-      url: url("organisation"),
+      url: url("mac_configured"),
       headers: { ...stepped, "x-actor-kind": "ai_agent" },
       payload: attest,
     });
@@ -252,7 +252,7 @@ describe("platform onboarding routes", () => {
       (
         await app.inject({
           method: "POST",
-          url: url("organisation"),
+          url: url("mac_configured"),
           headers: stepped,
           payload: { evidenceNote: "ok" },
         })
@@ -262,7 +262,7 @@ describe("platform onboarding routes", () => {
       (
         await app.inject({
           method: "POST",
-          url: url("organisation"),
+          url: url("mac_configured"),
           headers: stepped,
           payload: { ...attest, evidenceNote: "x".repeat(2001) },
         })
@@ -278,7 +278,7 @@ describe("platform onboarding routes", () => {
     expect(outOfOrder.json().error.code).toBe("ONBOARDING_STEP_OUT_OF_ORDER");
     const ok = await app.inject({
       method: "POST",
-      url: url("organisation"),
+      url: url("mac_configured"),
       headers: stepped,
       payload: attest,
     });
@@ -329,7 +329,7 @@ describe("platform onboarding routes", () => {
   it("skip, re-open, org profile and compliance officer each need step-up and are denied to a tenant admin", async () => {
     const { app, id } = makeServer();
     const stepped = { ...OPS, ...FRESH };
-    const skip = `/api/v1/platform/tenants/acme/onboarding/${id("organisation")}/skip`;
+    const skip = `/api/v1/platform/tenants/acme/onboarding/${id("mac_configured")}/skip`;
     expect(
       (
         await app.inject({
@@ -360,8 +360,17 @@ describe("platform onboarding routes", () => {
         })
       ).json().status,
     ).toBe("skipped");
+    // a step outside the server's skippable list is refused whatever the caller offers (the console reads `skippable`)
+    const refused = await app.inject({
+      method: "POST",
+      url: `/api/v1/platform/tenants/acme/onboarding/${id("billing")}/skip`,
+      headers: stepped,
+      payload: { skipRationale: "customer migrating" },
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe("ONBOARDING_STEP_NOT_SKIPPABLE");
 
-    const reopen = `/api/v1/platform/tenants/acme/onboarding/${id("organisation")}/reopen`;
+    const reopen = `/api/v1/platform/tenants/acme/onboarding/${id("mac_configured")}/reopen`;
     expect(
       (
         await app.inject({
@@ -538,7 +547,7 @@ describe("tenant onboarding routes", () => {
   it("never returns a platform operator's membership to the tenant, and still returns the reason", async () => {
     const { app, state } = makeServer();
     state.tasks = state.tasks.map((t) =>
-      t.templateKey === "organisation"
+      t.templateKey === "mac_configured"
         ? {
             ...t,
             status: "done" as const,
@@ -574,14 +583,14 @@ describe("tenant onboarding routes", () => {
       (
         await app.inject({
           method: "POST",
-          url: `/api/v1/tenant/onboarding/${id("organisation")}/attest`,
+          url: `/api/v1/tenant/onboarding/${id("mac_configured")}/attest`,
           headers: ADMIN,
           payload: { evidenceNote: "done" },
         })
       ).json().error.code,
     ).toBe("ONBOARDING_STEP_OWNER_MISMATCH");
     state.tasks = state.tasks.map((t) =>
-      t.templateKey === "organisation" ? { ...t, status: "done" as const } : t,
+      t.templateKey === "mac_configured" ? { ...t, status: "done" as const } : t,
     );
     expect(
       (
@@ -643,7 +652,7 @@ describe("tenant onboarding routes", () => {
   it("a tenant re-open without a written reason is refused before the service runs", async () => {
     const { app, state, id } = makeServer();
     state.tasks = state.tasks.map((t) =>
-      t.templateKey === "organisation" ? { ...t, status: "done" as const } : t,
+      t.templateKey === "mac_configured" ? { ...t, status: "done" as const } : t,
     );
     await app.inject({
       method: "POST",
@@ -771,7 +780,7 @@ describe("a live session with no membership (the route kit's 403 contract, never
     const { app, id } = makeServer();
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/platform/tenants/acme/onboarding/${id("organisation")}/skip`,
+      url: `/api/v1/platform/tenants/acme/onboarding/${id("mac_configured")}/skip`,
       headers: { ...OPS, ...FRESH, ...NO_MEMBERSHIP },
       payload: { skipRationale: "customer migrating" },
     });
@@ -788,7 +797,7 @@ describe("a live session with no membership (the route kit's 403 contract, never
     ] as const) {
       const res = await app.inject({
         method: "POST",
-        url: `/api/v1/tenant/onboarding/${id("organisation")}/${action}`,
+        url: `/api/v1/tenant/onboarding/${id("mac_configured")}/${action}`,
         headers: { ...ADMIN, ...NO_MEMBERSHIP },
         payload,
       });

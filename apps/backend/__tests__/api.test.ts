@@ -93,6 +93,47 @@ describe("M1-T10 foundation API", () => {
       await app.close();
     });
 
+    it("accepts a UUID and a bounded safe token as the caller's correlation id, and echoes it", async () => {
+      const app = makeServer();
+      for (const id of [
+        "0b9f3c4d-1111-4222-8333-444455556666",
+        "client.req_42-a",
+        "a".repeat(64),
+      ]) {
+        const res = await app.inject({
+          method: "GET",
+          url: "/api/v1/system/status",
+          headers: { "x-correlation-id": id },
+        });
+        expect(res.json().error.correlationId).toBe(id);
+      }
+      await app.close();
+    });
+
+    // The id lands in log lines and in audit rows: a value with control characters, spaces, quotes or a huge length would forge a log
+    // line or bloat a row, so it is replaced by a server-made id (never rejected: a client's header must not fail its request).
+    it("replaces an unsafe correlation id (control characters, spaces, quotes, path-like, over 64 characters) with a server id", async () => {
+      const app = makeServer();
+      for (const id of [
+        "has space",
+        'quo"te',
+        "semi;colon",
+        "a".repeat(65),
+        "../../etc/passwd",
+        "line\tbreak",
+      ]) {
+        const res = await app.inject({
+          method: "GET",
+          url: "/api/v1/system/status",
+          headers: { "x-correlation-id": id },
+        });
+        const served = res.json().error.correlationId as string;
+        expect(served).not.toBe(id);
+        expect(served).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      }
+      await app.close();
+    });
+
     it("admin status mutation without platform_ops role → 403 FORBIDDEN", async () => {
       const app = makeServer();
       const res = await app.inject({

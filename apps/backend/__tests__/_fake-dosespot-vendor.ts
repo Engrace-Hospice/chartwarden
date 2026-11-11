@@ -16,6 +16,7 @@ import type {
   DoseSpotMedHistoryResponse,
   DoseSpotNewRxPayload,
   DoseSpotNewRxResponse,
+  DoseSpotNewRxResume,
   DoseSpotPatientPayload,
   DoseSpotPatientResponse,
   DoseSpotPrescriberResponse,
@@ -34,6 +35,7 @@ export interface FakeDoseSpotVendorScript {
     orgId: string,
     payload: DoseSpotNewRxPayload,
     idempotencyKey: string,
+    resume?: DoseSpotNewRxResume,
   ) => Promise<DoseSpotNewRxResponse>;
   readonly prescriptionStatus?: (
     orgId: string,
@@ -79,10 +81,11 @@ export class FakeDoseSpotVendor implements DoseSpotClient {
     orgId: string,
     payload: DoseSpotNewRxPayload,
     idempotencyKey: string,
+    resume?: DoseSpotNewRxResume,
   ): Promise<DoseSpotNewRxResponse> {
     this.calls.push({ method: "transmitNewRx", orgId, payload });
     if (!this.script.transmit) throw new Error("FakeDoseSpotVendor: transmitNewRx not scripted");
-    return this.script.transmit(orgId, payload, idempotencyKey);
+    return this.script.transmit(orgId, payload, idempotencyKey, resume);
   }
   async lookupRxBenefit(
     orgId: string,

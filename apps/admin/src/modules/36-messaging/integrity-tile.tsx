@@ -1,4 +1,4 @@
-import { Button, StatusPill, type StatusTone, useApiClient } from "@chartwarden/ui";
+import { Button, StatGrid, StatusPill, type StatusTone, useApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/36-messaging — Integrity jobs (`/admin/messaging/integrity`): a status tile for the M36
 // hash-verify / decrypt-integrity jobs, derived from `m36.*` audit rows (see integrity-status.ts).
 import { useMemo } from "react";
@@ -31,48 +31,50 @@ export function IntegrityTile({ source }: { source?: IntegritySource }): JSX.Ele
   const summary = state.kind === "ok" ? summariseIntegrity(state.data) : null;
 
   return (
-    <div className="wx-list-drawer-main">
-      <header className="wx-page-head">
-        <div>
-          <h1>Integrity jobs</h1>
-          <p>Latest hash-verification run and any integrity findings, from the audit trail.</p>
-        </div>
-        <div className="wx-list-toolbar-end">
-          <Button tone="secondary" size="lg" onClick={refresh}>
-            Refresh
-          </Button>
-        </div>
-      </header>
-      {fallback ??
-        (summary ? (
-          <div className="wx-stat-grid" aria-label="Integrity job status">
-            <div className="wx-stat-card">
-              <div>
-                <span className="wx-stat-label">Hash verification</span>
-                <StatusPill
-                  label={HEALTH[summary.health].label}
-                  tone={HEALTH[summary.health].tone}
-                />
-                <span className="wx-row-sub wx-nums">
-                  {summary.lastRunAt
-                    ? `Last run ${new Date(summary.lastRunAt).toLocaleString()}`
-                    : "The job has not recorded a run."}
-                </span>
-              </div>
-            </div>
-            <div className="wx-stat-card">
-              <div>
-                <span className="wx-stat-label">Open findings</span>
-                <span className="wx-stat-value wx-nums">{summary.findings.length}</span>
-                {summary.findings.map((f) => (
-                  <span key={f.eventType} className="wx-row-sub">
-                    {f.eventType} · {new Date(f.createdAt).toLocaleString()}
-                  </span>
-                ))}
-              </div>
-            </div>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Integrity jobs</h1>
+            <p>Latest hash-verification run and any integrity findings, from the audit trail.</p>
           </div>
-        ) : null)}
+          <div className="wx-list-toolbar-end">
+            <Button tone="secondary" size="lg" onClick={refresh}>
+              Refresh
+            </Button>
+          </div>
+        </header>
+        {fallback ??
+          (summary ? (
+            <StatGrid label="Integrity job status">
+              <div className="wx-stat-card">
+                <div>
+                  <span className="wx-stat-label">Hash verification</span>
+                  <StatusPill
+                    label={HEALTH[summary.health].label}
+                    tone={HEALTH[summary.health].tone}
+                  />
+                  <span className="wx-row-sub wx-nums">
+                    {summary.lastRunAt
+                      ? `Last run ${new Date(summary.lastRunAt).toLocaleString()}`
+                      : "The job has not recorded a run."}
+                  </span>
+                </div>
+              </div>
+              <div className="wx-stat-card">
+                <div>
+                  <span className="wx-stat-label">Open findings</span>
+                  <span className="wx-stat-value wx-nums">{summary.findings.length}</span>
+                  {summary.findings.map((f) => (
+                    <span key={f.eventType} className="wx-row-sub">
+                      {f.eventType} · {new Date(f.createdAt).toLocaleString()}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </StatGrid>
+          ) : null)}
+      </div>
     </div>
   );
 }

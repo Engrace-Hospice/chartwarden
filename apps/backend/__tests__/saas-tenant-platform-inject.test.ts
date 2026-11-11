@@ -97,6 +97,8 @@ function headerAuth(request: FastifyRequest): void {
   if (request.headers["x-step-up"] === "fresh") {
     request.context.attributes.stepUpRecent = true;
   }
+  const kind = request.headers["x-actor-kind"];
+  if (typeof kind === "string") request.context.attributes.actorKind = kind;
 }
 
 const ORG = "org_a";
@@ -208,9 +210,17 @@ function buildTestAbacResolver(): TenantPlatformAbacResolver {
 }
 
 function makeServer(
-  options: { tenantBaseDomain?: string | null; slugAvailabilityRateLimit?: RouteRateLimit } = {},
+  options: {
+    tenantBaseDomain?: string | null;
+    slugAvailabilityRateLimit?: RouteRateLimit;
+    extraTenants?: TenantPlatformRouteSeed["tenants"];
+  } = {},
 ) {
   const platformSeed: TenantPlatformRouteSeed = {
+    // One migration-owned canonical template: the catalog route must refuse to overwrite it.
+    templates: [
+      { key: "baa_executed", title: "BAA executed", canonicalOrder: 3, isCanonical: true },
+    ],
     // GAP-098 — one HELD bundle and one already-released job, so the `?held=true` filter has something
     // to include AND something to exclude (a filter proven only against an all-held set proves nothing).
     tenantExportJobs: [
@@ -225,6 +235,7 @@ function makeServer(
         legalBusinessName: "Destroying Corp",
         status: "destruction_pending",
       },
+      ...(options.extraTenants ?? []),
     ],
     consentGrants: [
       {
@@ -260,7 +271,10 @@ function makeServer(
     ],
   };
 
-  const platform = createInMemoryTenantPlatformBackend(platformSeed);
+  // The in-memory twin holds no documents: it is handed M22's check (the signed BAA of this tenant is the one id below).
+  const platform = createInMemoryTenantPlatformBackend(platformSeed, {
+    baaDocumentFiled: async ({ documentId }) => documentId === TENANT_BAA_DOCUMENT_ID,
+  });
   const tenant = createInMemoryTenantBackend(tenantSeed);
   // The onboarding wizard (tenant surface): two org_admin-owned steps in sequence.
   const wizardState = createMemoryWizardState({
@@ -475,6 +489,205 @@ describe("M34-saas-tenant-platform-inject — provisioning slug (POST /api/v1/pl
 
   it("accepts a valid slug", async () => {
     expect((await post("sunrise")).statusCode).toBe(202);
+  });
+
+  // Slice 5 (G5): the plan is chosen at onboarding step 2 (a census-banded contract), so provisioning no longer needs the retired
+  // flat tier. An omitted `planLabel` is stored as the honest placeholder "unassigned", never as a tier nobody picked.
+  it("provisions without a planLabel and stores the placeholder 'unassigned'", async () => {
+    const { app } = makeServer();
+    const { planLabel: _omitted, ...withoutPlan } = body;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { ...withoutPlan, slug: "sunrise" },
+    });
+    expect(res.statusCode).toBe(202);
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants?search=Sunrise",
+      headers: PLATFORM_OPS,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().items.map((t: { planLabel: string }) => t.planLabel)).toEqual([
+      "unassigned",
+    ]);
+    await app.close();
+  });
+
+  it("still refuses a planLabel that is not one of the known labels", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { ...body, slug: "sunrise", planLabel: "platinum" },
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+// ── slug availability (GET /api/v1/platform/tenant-slugs/:slug/availability) ─────────────────────────
+describe("M34-saas-tenant-platform-inject — tenant slug availability", () => {
+  const check = async (
+    slug: string,
+    opts: { headers?: Record<string, string>; tenantBaseDomain?: string | null } = {},
+  ) => {
+    const { app } = makeServer(
+      opts.tenantBaseDomain === undefined ? {} : { tenantBaseDomain: opts.tenantBaseDomain },
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+      headers: opts.headers ?? PLATFORM_OPS,
+    });
+    await app.close();
+    return res;
+  };
+
+  it("401 without a session and 403 without tenant.read_platform", async () => {
+    expect((await check("sunrise", { headers: {} })).statusCode).toBe(401);
+    expect((await check("sunrise", { headers: NOPERM })).statusCode).toBe(403);
+  });
+
+  it("403 when the permission is held but the tenant_lifecycle_platform_ops ABAC predicate denies (no platform_ops role)", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+      headers: READER_WITHOUT_ROLE,
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(403);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("a free, valid slug is available and carries its address when a base domain is set", async () => {
+    const res = await check("sunrise", { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      slug: "sunrise",
+      valid: true,
+      available: true,
+      url: "https://sunrise.chartwarden.cloud",
+    });
+  });
+
+  it("answers without a url in single-host mode (no base domain)", async () => {
+    const res = await check("sunrise");
+
+    expect(res.json()).toEqual({ slug: "sunrise", valid: true, available: true });
+  });
+
+  it("a slug an organization already holds is valid but not available", async () => {
+    const res = await check("acme");
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      slug: "acme",
+      valid: true,
+      available: false,
+      reason: "taken",
+    });
+  });
+
+  it.each([
+    ["admin", "reserved"],
+    ["app", "reserved"],
+    ["ab", "format"],
+    ["Sunrise", "format"],
+    ["sun_rise", "format"],
+    ["xn--sunrise", "punycode"],
+    ["x".repeat(64), "format"],
+  ])("refuses %s as invalid (%s) without consulting the data", async (slug, reason) => {
+    const res = await check(slug, { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ slug, valid: false, available: false, reason });
+  });
+
+  it("never calls the taken-lookup for a reserved, malformed or punycode slug, but does for a valid one", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+    const probe = (slug: string) =>
+      app.inject({
+        method: "GET",
+        url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+        headers: PLATFORM_OPS,
+      });
+
+    for (const refused of ["admin", "wardenx", "ab", "Sunrise", "sun_rise", "xn--sunrise"]) {
+      expect((await probe(refused)).json().valid).toBe(false);
+    }
+    expect(lookup).not.toHaveBeenCalled();
+
+    expect((await probe("sunrise")).json().valid).toBe(true);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith("sunrise");
+    await app.close();
+  });
+
+  describe("per-route rate limit (a probe is an audited platform read)", () => {
+    const TWO_PER_MINUTE: RouteRateLimit = {
+      perUser: 2,
+      perOrg: 100,
+      windowMs: 60_000,
+      failMode: "open",
+    };
+    const probe = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) =>
+      app.inject({
+        method: "GET",
+        url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+        headers,
+      });
+
+    it("answers 429 RATE_LIMITED with Retry-After once a user is over the cap", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      const first = await probe(app, PLATFORM_OPS);
+      const second = await probe(app, PLATFORM_OPS);
+      const third = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
+      expect(third.statusCode).toBe(429);
+      expect(third.json().error.code).toBe("RATE_LIMITED");
+      expect(third.headers["retry-after"]).toBe("60");
+    });
+
+    it("is not spent by callers the permission or ABAC gate refuses", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      for (let i = 0; i < 5; i++) {
+        expect((await probe(app, READER_WITHOUT_ROLE)).statusCode).toBe(403);
+        expect((await probe(app, NOPERM)).statusCode).toBe(403);
+      }
+      const allowed = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect(allowed.statusCode).toBe(200);
+    });
+
+    it("the composition root builds the limiter from the shipped budget and mounts it on the platform routes", () => {
+      const root = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+
+      expect(root).toMatch(
+        /slugAvailabilityRateLimit: createRouteRateLimit\(\{[^}]*limit: TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT/s,
+      );
+    });
+
+    it("the shipped budget is 30 per minute per user and fails open (an availability control, not a probing oracle)", () => {
+      expect(TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT).toMatchObject({
+        perUser: 30,
+        windowMs: 60_000,
+        failMode: "open",
+      });
+    });
   });
 });
 
@@ -755,6 +968,107 @@ describe("M34-saas-tenant-platform-inject — platform → first-admin invitatio
 
     await app.close();
   });
+
+  // Slice 5 (G3): the wizard's "first admin" step reads ONE tenant's invitations in a single call. The list used to be global, so the
+  // admin console paged every tenant's invitations client-side to find its own.
+  it("narrows the list to one tenant with ?tenantAccountId", async () => {
+    const { app } = makeServer();
+    const issue = (orgSlug: string, email: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/platform/tenant-invitations",
+        headers: PLATFORM_OPS_STEPUP,
+        payload: { orgSlug, firstAdminEmail: email },
+      });
+    expect((await issue("acme", "first@acme.example.org")).statusCode).toBe(201);
+    expect((await issue("destroying-corp", "first@destroying.example.org")).statusCode).toBe(201);
+
+    const all = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-invitations",
+      headers: PLATFORM_OPS,
+    });
+    expect(all.json().items).toHaveLength(2);
+
+    const acme = await app.inject({
+      method: "GET",
+      url: `/api/v1/platform/tenant-invitations?tenantAccountId=${TENANT_ACME_ID}`,
+      headers: PLATFORM_OPS,
+    });
+    expect(acme.statusCode).toBe(200);
+    expect(acme.json().items.map((i: { tenantAccountId: string }) => i.tenantAccountId)).toEqual([
+      TENANT_ACME_ID,
+    ]);
+
+    const stranger = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-invitations?tenantAccountId=99999999-9999-4999-8999-999999999999",
+      headers: PLATFORM_OPS,
+    });
+    expect(stranger.statusCode).toBe(200);
+    expect(stranger.json().items).toEqual([]);
+
+    const malformed = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-invitations?tenantAccountId=not-a-uuid",
+      headers: PLATFORM_OPS,
+    });
+    expect(malformed.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+// Slice 5 (G1): the hub list shows where each onboarding tenant is, so the inventory carries it. The Drizzle read behind it is proved
+// live (m34-tenant-hub-reads.live.test.ts); this pins the route contract: the field is on every row and on the overview.
+describe("M34-saas-tenant-platform-inject — tenant inventory carries onboarding progress", () => {
+  const PROGRESS = {
+    doneCount: 7,
+    totalCount: 13,
+    currentStepKey: "locations_seeded",
+    goLiveState: "not_ready",
+  };
+  const seeded = () =>
+    makeServer({
+      extraTenants: [
+        {
+          id: "10000000-0000-4000-8000-000000000003",
+          orgSlug: "onboarding-corp",
+          legalBusinessName: "Onboarding Corp",
+          status: "onboarding",
+          onboardingProgress: PROGRESS as never,
+        },
+      ],
+    });
+
+  it("lists the progress of an onboarding tenant and null for the others", async () => {
+    const { app } = seeded();
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS,
+    });
+    expect(list.statusCode).toBe(200);
+    const bySlug = new Map(
+      list
+        .json()
+        .items.map((t: { orgSlug: string; onboardingProgress: unknown }) => [t.orgSlug, t]),
+    );
+    expect(bySlug.get("onboarding-corp")).toMatchObject({ onboardingProgress: PROGRESS });
+    expect(bySlug.get("acme")).toMatchObject({ onboardingProgress: null });
+    await app.close();
+  });
+
+  it("carries it on the overview too", async () => {
+    const { app } = seeded();
+    const overview = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants/onboarding-corp",
+      headers: PLATFORM_OPS,
+    });
+    expect(overview.statusCode).toBe(200);
+    expect(overview.json().onboardingProgress).toEqual(PROGRESS);
+    await app.close();
+  });
 });
 
 // ── platform-ops: key-ring.ts (1 route) ──────────────────────────────────────────────────────────────
@@ -773,6 +1087,15 @@ describe("M34-saas-tenant-platform-inject — key-ring metadata (§3.5)", () => 
 });
 
 // ── platform-ops: onboarding-templates.ts (2 routes) ─────────────────────────────────────────────────
+// The catalog is shown in every tenant's wizard, so a write is a named operator's decision: a fresh step-up, an Idempotency-Key, a
+// reason (screened for patient identifiers) and no AI principal.
+let templateKeySeq = 0;
+const TEMPLATE_WRITE_HEADERS = () => ({
+  ...PLATFORM_OPS_STEPUP,
+  "idempotency-key": `tmpl-${++templateKeySeq}`,
+});
+const TEMPLATE_REASON = "Add a staff training step, ticket CHG-6001";
+
 describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () => {
   it("lists then adds a non-canonical template", async () => {
     const { app } = makeServer();
@@ -787,12 +1110,191 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     const write = await app.inject({
       method: "POST",
       url: "/api/v1/platform/onboarding-templates",
-      headers: PLATFORM_OPS_STEPUP,
-      payload: { key: "custom_step", title: "Custom Onboarding Step", canonicalOrder: 5 },
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "custom_step",
+        title: "Custom Onboarding Step",
+        canonicalOrder: 5,
+        reason: TEMPLATE_REASON,
+      },
     });
     expect(write.statusCode).toBe(201);
     expect(write.json().key).toBe("custom_step");
 
+    // a non-canonical template can be edited again
+    const edit = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "custom_step",
+        title: "Custom step, renamed",
+        canonicalOrder: 6,
+        reason: TEMPLATE_REASON,
+      },
+    });
+    expect(edit.statusCode).toBe(201);
+    expect(edit.json()).toMatchObject({ title: "Custom step, renamed", isCanonical: false });
+
+    // ...but never made canonical: that is a migration's act (the body schema takes only `false`)
+    const promote = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "custom_step",
+        title: "Promoted",
+        canonicalOrder: 6,
+        isCanonical: true,
+        reason: TEMPLATE_REASON,
+      },
+    });
+    expect(promote.statusCode).toBe(422);
+
+    await app.close();
+  });
+
+  it("refuses a POST naming a canonical template's key (409 ONBOARDING_TEMPLATE_CANONICAL) and leaves it canonical", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "baa_executed",
+        title: "Hijacked",
+        canonicalOrder: 99,
+        reason: TEMPLATE_REASON,
+      },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("ONBOARDING_TEMPLATE_CANONICAL");
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS,
+    });
+    const canonical = (
+      list.json().items as { key: string; title: string; isCanonical: boolean }[]
+    ).find((t) => t.key === "baa_executed");
+    expect(canonical).toMatchObject({ title: "BAA executed", isCanonical: true });
+    await app.close();
+  });
+
+  it("names its operator like every other ops write: a reason is required, screened for a patient identifier, and an Idempotency-Key", async () => {
+    const { app } = makeServer();
+    const post = (headers: Record<string, string>, payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/platform/onboarding-templates",
+        headers,
+        payload,
+      });
+    const base = { key: "custom_step", title: "Custom step", canonicalOrder: 5 };
+    // no reason
+    expect((await post(TEMPLATE_WRITE_HEADERS(), base)).statusCode).toBe(422);
+    // a reason too short once whitespace is collapsed
+    expect((await post(TEMPLATE_WRITE_HEADERS(), { ...base, reason: "abc     " })).statusCode).toBe(
+      422,
+    );
+    // a reason that carries a patient identifier (a synthetic SSN from the allowed ranges: area 000)
+    const phi = await post(TEMPLATE_WRITE_HEADERS(), {
+      ...base,
+      reason: "Add the step the customer asked for, SSN 000-12-3456",
+    });
+    expect(phi.statusCode).toBe(422);
+    // no Idempotency-Key
+    const noKey = await post(PLATFORM_OPS_STEPUP, { ...base, reason: TEMPLATE_REASON });
+    expect(noKey.statusCode).toBeGreaterThanOrEqual(400);
+    expect(noKey.statusCode).toBeLessThan(500);
+    // and nothing was written by any of them
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS,
+    });
+    expect((list.json().items as { key: string }[]).some((t) => t.key === "custom_step")).toBe(
+      false,
+    );
+    await app.close();
+  });
+
+  // The title and description go to EVERY tenant's wizard: they pass the same identifier screen as the reason, before any write.
+  it.each([
+    ["title", { title: "Training for SSN 000-12-3456" }, "title"],
+    [
+      "description",
+      { title: "Staff training", description: "Customer MBI 1EG4TE5MK73" },
+      "description",
+    ],
+  ])(
+    "refuses a %s that holds a patient identifier (422 EVIDENCE_LOOKS_LIKE_PHI) and writes nothing",
+    async (_field, text, field) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/platform/onboarding-templates",
+        headers: TEMPLATE_WRITE_HEADERS(),
+        payload: { key: "screened_step", canonicalOrder: 5, reason: TEMPLATE_REASON, ...text },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.json().error.details).toEqual([expect.objectContaining({ field })]);
+      // the value is never echoed back
+      expect(res.body).not.toContain("000-12-3456");
+      expect(res.body).not.toContain("1EG4TE5MK73");
+      const list = await app.inject({
+        method: "GET",
+        url: "/api/v1/platform/onboarding-templates",
+        headers: PLATFORM_OPS,
+      });
+      expect((list.json().items as { key: string }[]).some((t) => t.key === "screened_step")).toBe(
+        false,
+      );
+      await app.close();
+    },
+  );
+
+  it("lets a title and a description with no identifier through", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "screened_ok",
+        title: "Staff training (ticket CHG-6001)",
+        description: "Walk the first admin through the staff roster import.",
+        canonicalOrder: 6,
+        reason: TEMPLATE_REASON,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("refuses an AI principal and a caller with no fresh step-up", async () => {
+    const { app } = makeServer();
+    const payload = {
+      key: "custom_step",
+      title: "Custom step",
+      canonicalOrder: 5,
+      reason: TEMPLATE_REASON,
+    };
+    const ai = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: { ...TEMPLATE_WRITE_HEADERS(), "x-actor-kind": "ai_agent" },
+      payload,
+    });
+    expect(ai.statusCode).toBe(403);
+    const stale = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: { ...PLATFORM_OPS, "idempotency-key": "tmpl-stale" },
+      payload,
+    });
+    expect(stale.statusCode).toBe(403);
     await app.close();
   });
 });
@@ -883,6 +1385,8 @@ describe("M34-saas-tenant-platform-inject — platform-ops signup-intent triage 
   });
 });
 
+const TENANT_BAA_DOCUMENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004";
+
 // ── platform-ops: baa-register.ts (3 routes) ─────────────────────────────────────────────────────────
 describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§3.8/D11)", () => {
   it("lists, creates, and updates a BAA record", async () => {
@@ -950,11 +1454,35 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
       headers: PLATFORM_OPS_STEPUP,
-      payload: { baaStatus: "executed", documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004" },
+      payload: { baaStatus: "executed", documentId: TENANT_BAA_DOCUMENT_ID },
     });
     expect(update.statusCode).toBe(200);
     expect(update.json().baaStatus).toBe("executed");
-    expect(update.json().documentId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004");
+    expect(update.json().documentId).toBe(TENANT_BAA_DOCUMENT_ID);
+
+    // The link must be a signed BAA filed for THIS tenant (the twin calls the same guard as the Drizzle service): any other id is a 422.
+    const elsewhere = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00ff";
+    const badUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/platform/baa-register/${baaId}`,
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { documentId: elsewhere },
+    });
+    expect(badUpdate.statusCode).toBe(422);
+    expect(badUpdate.json().error.code).toBe("BAA_DOCUMENT_INVALID");
+    const badCreate = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/baa-register",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: {
+        ...payload,
+        addendumVersion: "v-elsewhere",
+        baaStatus: "executed",
+        documentId: elsewhere,
+      },
+    });
+    expect(badCreate.statusCode).toBe(422);
+    expect(badCreate.json().error.code).toBe("BAA_DOCUMENT_INVALID");
 
     await app.close();
   });

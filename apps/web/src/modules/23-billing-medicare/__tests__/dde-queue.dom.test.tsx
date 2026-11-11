@@ -434,7 +434,7 @@ describe("DdeQueue actions", () => {
     fireEvent.change(r.getByLabelText(/What came back/), { target: { value: "accepted" } });
     for (const field of document.querySelectorAll("input, textarea, select")) {
       const name = field.getAttribute("name") ?? "";
-      const label = field.closest("label")?.querySelector("span")?.textContent ?? "";
+      const label = (field as HTMLInputElement).labels?.[0]?.textContent ?? "";
       expect(`${name} ${label}`).not.toMatch(/mbi|medicare/i);
     }
   });

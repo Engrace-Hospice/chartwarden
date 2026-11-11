@@ -1,18 +1,23 @@
 import {
   Button,
-  type FieldErrors,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
   isValid,
-  stashStepUpDraft,
+  parsePriceCents,
+  parseWholeNumber,
+  sendWrite,
+  stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
+  useIdempotencyKeeper,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Promos (`/admin/promos`, promo.admin.read/write).
@@ -22,8 +27,9 @@ import type { operations } from "@chartwarden/ui";
 // promo (`?promo=<id>`) with its Deactivate action; "New promo" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { useSearchParams } from "react-router-dom";
-import { cap, formatCents, idempotencyKey } from "./status";
+
+import { PROMO_EMPTY_FORM, type PromoForm, promoFormErrors } from "./form-rules";
+import { cap, formatCents } from "./status";
 import {
   DrawerHead,
   type Outcome,
@@ -31,42 +37,13 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type Promo =
   operations["getApiAdminPromos"]["responses"][200]["content"]["application/json"][number];
 
-const EMPTY_FORM = {
-  code: "",
-  coupon: "",
-  promotion: "",
-  kind: "percent_off",
-  percent: "",
-  amount: "",
-  duration: "once",
-};
-type PromoForm = typeof EMPTY_FORM;
-
 const PROMO_DRAFT_KEY = "promo-create";
-
-/** Per-field messages for the New promo form; empty when it can be submitted (#597, F-042). */
-export function promoFormErrors(form: PromoForm): FieldErrors<keyof PromoForm> {
-  const errors: FieldErrors<keyof PromoForm> = {};
-  if (form.code.trim() === "") errors.code = "Enter a promo code.";
-  if (form.kind === "percent_off") {
-    const percent = Number(form.percent);
-    if (form.percent.trim() === "") errors.percent = "Enter a percentage from 1 to 100.";
-    else if (!Number.isInteger(percent) || percent < 1 || percent > 100)
-      errors.percent = "Enter a whole percentage from 1 to 100.";
-  } else {
-    const amount = Number(form.amount);
-    if (form.amount.trim() === "") errors.amount = "Enter an amount in dollars, e.g. 10.00.";
-    else if (!Number.isFinite(amount) || Math.round(amount * 100) < 1)
-      errors.amount = "Enter a dollar amount of at least 0.01, e.g. 10.00.";
-  }
-  return errors;
-}
 
 const KIND_OPTIONS = [
   { value: "percent_off", label: "Percent off" },
@@ -93,17 +70,19 @@ const redemptionsText = (p: Promo): string =>
 
 export function Promos(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [promos, setPromos] = useState<Promo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   // A step-up refusal sends the operator to /step-up and back; the typed promo is restored and the drawer reopens.
-  const restored = useStepUpDraft<PromoForm>(PROMO_DRAFT_KEY);
+  const restored = useStepUpMemoryDraft<PromoForm>(PROMO_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("promo");
-  const [form, setForm] = useState<PromoForm>(restored ?? EMPTY_FORM);
+  // The open promo lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("promo");
+  const [form, setForm] = useState<PromoForm>(restored ?? PROMO_EMPTY_FORM);
   const [loaded, setLoaded] = useState(false);
   const guard = useRequestGuard();
 
@@ -130,51 +109,61 @@ export function Promos(): JSX.Element {
 
   const create = useCallback(async () => {
     if (!isValid(promoFormErrors(form))) return;
+    const percentOff = form.kind === "percent_off" ? parseWholeNumber(form.percent) : null;
+    const fixedOffCents = form.kind === "amount_off" ? parsePriceCents(form.amount) : null;
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/promos", {
-      body: {
-        code: form.code.trim(),
-        stripeCouponId: form.coupon.trim() || form.code.trim(),
-        stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
-        kind: form.kind as "percent_off" | "amount_off",
-        percentOff: form.kind === "percent_off" ? Number(form.percent) || undefined : undefined,
-        fixedOffCents:
-          form.kind === "amount_off"
-            ? Math.round(Number(form.amount) * 100) || undefined
-            : undefined,
-        duration: form.duration as "once" | "repeating" | "forever",
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error)
-      setOutcome(failureOutcome(res.error, "Could not create the promo (check the fields)."));
-    else {
+    const body = {
+      code: form.code.trim(),
+      stripeCouponId: form.coupon.trim() || form.code.trim(),
+      stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
+      kind: form.kind as "percent_off" | "amount_off",
+      ...(percentOff !== null ? { percentOff } : {}),
+      ...(fixedOffCents !== null ? { fixedOffCents } : {}),
+      duration: form.duration as "once" | "repeating" | "forever",
+    };
+    try {
+      // One key per create request: a retry of the same unchanged promo replays it, so a lost reply cannot create a second one.
+      const failure = writeFailure(
+        await sendWrite(keeper, JSON.stringify(body), (key) =>
+          client.POST("/api/admin/promos", { body, headers: { "Idempotency-Key": key } }),
+        ),
+        "Could not create the promo (check the fields).",
+      );
+      if (failure) {
+        setOutcome(failure);
+        return;
+      }
       setOutcome({ ok: true, message: `Promo "${form.code}" created.` });
       setShowCreate(false);
-      setForm(EMPTY_FORM);
+      setForm(PROMO_EMPTY_FORM);
       await load();
+    } finally {
+      setBusy(false); // also when the reload after a landed write throws: the form never stays locked
     }
-    setBusy(false);
-  }, [client, form, load]);
+  }, [client, form, load, keeper]);
 
   const deactivate = useCallback(
     async (id: string, code: string) => {
       setBusy(true);
       setOutcome(null);
-      const res = await client.POST("/api/admin/promos/{id}/deactivate", {
-        params: { path: { id } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
-      setOutcome(
-        res.error
-          ? failureOutcome(res.error, "Could not deactivate this promo.")
-          : { ok: true, message: `Promo "${code}" deactivated.` },
-      );
-      if (!res.error) await load();
-      setBusy(false);
+      try {
+        const failure = writeFailure(
+          await sendWrite(keeper, `deactivate:${id}`, (key) =>
+            client.POST("/api/admin/promos/{id}/deactivate", {
+              params: { path: { id } },
+              headers: { "Idempotency-Key": key },
+            }),
+          ),
+          "Could not deactivate this promo.",
+        );
+        setOutcome(failure ?? { ok: true, message: `Promo "${code}" deactivated.` });
+        if (!failure) await load();
+      } finally {
+        setBusy(false); // also when the reload after a landed write throws: the button never stays locked
+      }
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   const selected = selectedId ? (promos.find((p) => p.id === selectedId) ?? null) : null;
@@ -183,6 +172,7 @@ export function Promos(): JSX.Element {
     ready: loaded,
     found: selected !== null,
     ignore: ["new"],
+    clear: close,
   });
   const hasDrawer = showCreate || selected !== null;
 
@@ -197,7 +187,7 @@ export function Promos(): JSX.Element {
           <div className="wx-list-toolbar-end">
             <Button
               onClick={() => {
-                setParams({});
+                if (selectedId !== null) close();
                 setShowCreate((s) => !s);
               }}
             >
@@ -206,7 +196,10 @@ export function Promos(): JSX.Element {
           </div>
         </header>
         {outcome ? (
-          <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(PROMO_DRAFT_KEY, form)} />
+          <OutcomeBanner
+            {...outcome}
+            onReverify={() => stashStepUpMemoryDraft(PROMO_DRAFT_KEY, form)}
+          />
         ) : null}
         {loading ? (
           <StateLoading label="Loading promos…" />
@@ -220,7 +213,7 @@ export function Promos(): JSX.Element {
             selectedId={selectedId}
             onOpen={(id) => {
               setShowCreate(false);
-              setParams({ promo: id });
+              select(id);
             }}
           />
         )}
@@ -235,10 +228,11 @@ export function Promos(): JSX.Element {
         />
       ) : selected ? (
         <PromoDrawer
+          key={selected.id}
           promo={selected}
           busy={busy}
           onDeactivate={() => void deactivate(selected.id, selected.code)}
-          onClose={() => setParams({})}
+          onClose={close}
         />
       ) : null}
     </div>
@@ -255,7 +249,7 @@ function PromosTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Promo codes</caption>
         <thead>
@@ -278,7 +272,7 @@ function PromosTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId, false, p.id)}
             >
               <td>
                 <span className="wx-row-title wx-data-md">{p.code}</span>
@@ -296,7 +290,7 @@ function PromosTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -384,7 +378,7 @@ function CreatePromoDrawer({
             value={form.code}
             onChange={(e) => onChange({ ...form, code: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="wx-form-grid">
             <SelectField
               label="Kind"
               value={form.kind}

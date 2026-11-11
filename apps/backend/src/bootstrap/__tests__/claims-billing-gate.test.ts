@@ -9,6 +9,7 @@ import {
   CLAIMS_BILLING_HOLD_MS,
   assertClaimsBillingSeamBound,
   claimsBillingAddonRequired,
+  claimsBillingEnforcementBootWarning,
   claimsBillingPreHandler,
   configureClaimsBillingGate,
   holdUnlessClaimsBillingEntitled,
@@ -102,6 +103,10 @@ describe("the route gate", () => {
 
   it("enforce: the 402 message and detail say why, not always that the add-on is missing", () => {
     const wording = [
+      ["clearinghouse_not_chosen", "has not chosen a clearinghouse"],
+      ["clearinghouse_outside", "bills outside ChartWarden"],
+      ["clearinghouse_not_active", "clearinghouse is set up but not active"],
+      ["clearinghouse_baa_revoked", "vendor BAA was revoked"],
       ["never_purchased", "has not purchased the claims-billing add-on"],
       ["lapsed", "claims-billing add-on has ended"],
       ["subscription_suspended", "subscription is suspended"],
@@ -303,5 +308,24 @@ describe("holdUnlessClaimsBillingEntitled (workers: hold, don't fail)", () => {
     bindReader({ entitled: false, reason: "lapsed" });
     await holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit");
     expect(j.moves).toEqual([]);
+  });
+});
+
+// Owner decision (round 2, Q2): the shadow default stays; a production deployment running anything but enforce says so at boot.
+describe("claimsBillingEnforcementBootWarning", () => {
+  it("warns on a production deployment in shadow or off, naming the mode and the variable", () => {
+    for (const mode of ["shadow", "off"] as const) {
+      const warning = claimsBillingEnforcementBootWarning(mode, "production");
+      expect(warning, mode).toContain(mode);
+      expect(warning, mode).toContain("CLAIMS_BILLING_ENFORCEMENT");
+    }
+  });
+
+  it("is silent for enforce in production, and outside production whatever the mode", () => {
+    expect(claimsBillingEnforcementBootWarning("enforce", "production")).toBeNull();
+    for (const env of ["development", "test", undefined]) {
+      expect(claimsBillingEnforcementBootWarning("shadow", env)).toBeNull();
+      expect(claimsBillingEnforcementBootWarning("off", env)).toBeNull();
+    }
   });
 });

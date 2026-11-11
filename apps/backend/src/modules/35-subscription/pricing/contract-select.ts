@@ -7,10 +7,12 @@
 // the billing-service-mode seam, the platform and tenant views and the onboarding resume all call it.
 //
 //   scope "live"        a contract whose subscription is billable NOW: not canceled, and not paused unless the pause has lapsed (an admin
-//                       pause with an end date whose date has passed). The hourly pause-resume sweep (billing-runtime/pause-resume.ts)
-//                       resumes the stored status of a lapsed pause; this covers the hours between the date and the next sweep (and a
-//                       sweep that is late), treating the pause as over at its date, the same as the statement's pause windows do.
-//                       The census records for these, and the mode seam answers for these.
+//                       pause with an end date whose date has passed: nothing resumes it, so billing treats it as over at that date, the
+//                       hourly sweep resumes the stored status; until then billing treats it as over at that date, the same as the
+//                       statement's pause windows do). The census records for these, and the mode seam answers for these.
+//   scope "current"     a contract that has not been canceled: live OR paused. A paused contract still belongs to the tenant (it bills
+//                       again on resume), so "does this tenant have a contract" and the billing mode that must follow its clearinghouse
+//                       choice are asked here, never against "live" (which would let a paused contract slip past both)
 //   scope "statements"  a contract that can still need a statement: every subscription not canceled (a paused one still owes the months
 //                       before its pause), and a canceled one for POST_END_SETTLEMENT_MONTHS after it ended, so late-posting money is
 //                       still billed on a settlement statement in the month it posts
@@ -29,7 +31,7 @@ const PL = schema.plan;
 /** How long after a subscription ended it is still scanned for money that posts late (billed on a settlement statement). */
 export const POST_END_SETTLEMENT_MONTHS = 12;
 
-export type ContractScope = "live" | "statements" | "latest";
+export type ContractScope = "live" | "current" | "statements" | "latest";
 
 /**
  * The contract columns EVERY reader may see: the tenant role holds a COLUMN-level SELECT on exactly these (migration 1412), never on who
@@ -77,6 +79,7 @@ function scopeFilter(scope: ContractScope, at: Date): SQL | undefined {
   if (scope === "live") {
     return and(ne(SUB.status, "canceled"), or(ne(SUB.status, "paused"), pauseLapsed(at)));
   }
+  if (scope === "current") return ne(SUB.status, "canceled");
   if (scope === "statements") {
     const cutoff = new Date(
       Date.UTC(at.getUTCFullYear(), at.getUTCMonth() - POST_END_SETTLEMENT_MONTHS, 1),

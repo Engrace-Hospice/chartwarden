@@ -2,18 +2,44 @@
 // Every cron is ORG-EXPLICIT: a tick fans out over the active orgs and runs one pass per org, each opening its
 // own `withOrgContext` (a cron tick is not a request). The vendor call is NEVER made inside a transaction.
 import type { DbClient } from "@chartwarden/db";
-import { type DegradedError, type DoseSpotClient, isDegradedError } from "@chartwarden/dosespot";
+import {
+  type DegradedError,
+  type DoseSpotClient,
+  type DoseSpotTenantConfigResolver,
+  isDegradedError,
+} from "@chartwarden/dosespot";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
+import {
+  type EpisodeTracker,
+  createInMemoryEpisodeStore,
+  createValkeyEpisodeTracker,
+} from "./episode-store";
+
+export type { EpisodeTracker } from "./episode-store";
 
 /** A worker-driven write names no acting membership (the M12 sync worker's convention). */
 export const CRON_USER_ID = "";
+
+/** The in-process tracker: the same state machine over an in-memory store (see `episode-store.ts`). */
+export function createEpisodeTracker(): EpisodeTracker {
+  return createValkeyEpisodeTracker(createInMemoryEpisodeStore());
+}
 
 export interface M12CronDeps {
   readonly db: DbClient;
   readonly outbox: DoseSpotWriteOutboxPort;
   readonly client: DoseSpotClient;
   readonly now?: () => Date;
+  /**
+   * The same resolver the client reads. The transmit pass resolves the org's config ONCE before it claims anything, so a credential or
+   * resolver fault skips the pass (no claim, no UPDATE, no audit row) instead of being rediscovered, and audited, order by order.
+   */
+  readonly config?: Pick<DoseSpotTenantConfigResolver, "configFor">;
+  /** Episode memory for the degradation alerts. Absent = faults are logged on every tick but never alerted. */
+  readonly episodes?: EpisodeTracker;
+  /** A structured warning (pino's `(fields, message)` shape). Never given a secret, a key or a name: org ids and error classes. */
+  readonly warn?: (fields: Record<string, string | number>, message: string) => void;
 }
 
 export const nowOf = (deps: Pick<M12CronDeps, "now">): Date => (deps.now ?? (() => new Date()))();

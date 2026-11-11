@@ -4,7 +4,7 @@ import type { ApiClient } from "@chartwarden/ui";
 // The first admin's invitation expires (and an email can be lost), and the API's list / issue / revoke routes had no
 // screen, so an expired invitation meant a database edit. The card lists the tenant's invitations and resends or
 // revokes one; a resend issues a fresh single-use link to the same address.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InvitationCard } from "./invitation-card";
 
@@ -20,15 +20,24 @@ const invite = (over: Record<string, unknown>) => ({
 
 const page = (...items: unknown[]) => ({ data: { items, nextCursor: null, hasMore: false } });
 
-function mount(client: unknown): void {
+function mount(client: unknown, headingLevel?: "h2" | "h3"): void {
   render(
     <ApiClientProvider client={client as ApiClient}>
-      <InvitationCard orgSlug="cedar-ridge" tenantAccountId="t-1" />
+      <InvitationCard orgSlug="cedar-ridge" tenantAccountId="t-1" headingLevel={headingLevel} />
     </ApiClientProvider>,
   );
 }
 
 describe("InvitationCard", () => {
+  it("heads the card with an h3 by default (inside the wizard's h2 step frame) and an h2 when asked", () => {
+    const client = { GET: vi.fn(async () => page()), POST: vi.fn(), DELETE: vi.fn() };
+    mount(client);
+    expect(screen.getByRole("heading", { level: 3, name: "First-admin invitation" })).toBeTruthy();
+    cleanup();
+    mount(client, "h2");
+    expect(screen.getByRole("heading", { level: 2, name: "First-admin invitation" })).toBeTruthy();
+  });
+
   it("lists only this tenant's invitations, newest first", async () => {
     const GET = vi.fn(async () =>
       page(
@@ -107,22 +116,14 @@ describe("InvitationCard", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/try again/i);
   });
 
-  it("finds this tenant's invitation on a later page of the global list", async () => {
-    const GET = vi
-      .fn()
-      .mockResolvedValueOnce({
-        data: {
-          items: [invite({ id: "other", tenantAccountId: "t-2" })],
-          nextCursor: "c2",
-          hasMore: true,
-        },
-      })
-      .mockResolvedValueOnce(page(invite({ id: "inv-1", status: "expired" })));
+  it("asks the server for this tenant's invitations only, in one call", async () => {
+    const GET = vi.fn(async () => page(invite({ id: "inv-1", status: "expired" })));
     mount({ GET, POST: vi.fn(), DELETE: vi.fn() });
 
     expect(await screen.findByRole("button", { name: /resend invitation/i })).toBeTruthy();
-    expect(GET).toHaveBeenLastCalledWith("/api/v1/platform/tenant-invitations", {
-      params: { query: { cursor: "c2" } },
+    expect(GET).toHaveBeenCalledTimes(1);
+    expect(GET).toHaveBeenCalledWith("/api/v1/platform/tenant-invitations", {
+      params: { query: { tenantAccountId: "t-1" } },
     });
   });
 

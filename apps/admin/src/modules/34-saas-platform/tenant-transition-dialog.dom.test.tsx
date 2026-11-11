@@ -31,7 +31,8 @@ function renderDialog(
 
 describe("transitionTargets", () => {
   it.each([
-    ["onboarding", ["active"]],
+    // Going live is the two-party approval in the onboarding wizard: the status route refuses onboarding to active (409).
+    ["onboarding", []],
     ["active", ["suspended", "at_risk", "offboarding_initiated"]],
     ["suspended", ["active", "offboarding_initiated"]],
     ["at_risk", ["active", "suspended", "offboarding_initiated"]],
@@ -46,20 +47,14 @@ describe("transitionTargets", () => {
 });
 
 describe("TenantTransitionDialog", () => {
-  it("activates an onboarding tenant with the operator's reason", async () => {
-    const post = vi.fn(async () => ({ data: { tenantAccountId: "t-1", status: "active" } }));
-    const { onDone } = renderDialog("onboarding", post);
+  it("does not activate an onboarding tenant: going live is the two-party approval in the wizard", () => {
+    const post = vi.fn();
+    renderDialog("onboarding", post);
 
-    fireEvent.change(screen.getByLabelText(/reason/i), {
-      target: { value: "All onboarding steps verified" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /activate tenant/i }));
-
-    await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(post).toHaveBeenCalledWith("/api/v1/platform/tenants/{orgSlug}/status", {
-      params: { path: { orgSlug: "cedar-ridge" } },
-      body: { toStatus: "active", transitionReason: "All onboarding steps verified" },
-    });
+    expect(screen.queryByRole("button", { name: /activate tenant/i })).toBeNull();
+    expect(screen.getByText(/compliance officer attests/i)).toBeTruthy();
+    expect(screen.getByText(/different operator approves/i)).toBeTruthy();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("refuses a too-short reason without sending a request", () => {
@@ -77,10 +72,12 @@ describe("TenantTransitionDialog", () => {
     const post = vi.fn(async () => ({
       error: { error: { message: "every canonical onboarding_task must be 'done' or 'skipped'" } },
     }));
-    const { onDone } = renderDialog("onboarding", post);
+    const { onDone } = renderDialog("active", post);
 
-    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Ready to go live" } });
-    fireEvent.click(screen.getByRole("button", { name: /activate tenant/i }));
+    fireEvent.change(screen.getByLabelText(/reason/i), {
+      target: { value: "Non-payment 30 days" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
 
     expect((await screen.findByRole("alert")).textContent).toMatch(/canonical onboarding_task/);
     expect(onDone).not.toHaveBeenCalled();
@@ -114,7 +111,7 @@ describe("TenantTransitionDialog", () => {
         />
       </ApiClientProvider>
     );
-    const { rerender } = render(dialog("onboarding"));
+    const { rerender } = render(dialog("suspended"));
 
     rerender(dialog("active"));
     fireEvent.change(screen.getByLabelText(/reason/i), {

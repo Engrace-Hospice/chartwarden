@@ -161,7 +161,7 @@ describe("CommercialAuthorizations", () => {
     expect(screen.queryByText("Authorizations unavailable")).toBeNull();
   });
 
-  it("announces a successful deny, reloads, and does not drop focus to the page body", async () => {
+  it("announces a successful deny, reloads, and returns focus to the row rather than the page body", async () => {
     const calls: Call[] = [];
     let n = 0;
     mount(
@@ -177,7 +177,11 @@ describe("CommercialAuthorizations", () => {
     await waitFor(() => expect(screen.queryByLabelText(DRAWER)).toBeNull());
     await waitFor(() => expect(within(screen.getByRole("table")).getByText("Denied")).toBeTruthy());
     expect(document.activeElement).not.toBe(document.body);
-    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
+    // The drawer was opened by a link, so the open row (aria-pressed) stands in as its opener: focus returns to it. The page
+    // heading is only the fallback for a row that is gone.
+    expect(document.activeElement).toBe(
+      within(screen.getByRole("table")).getByRole("button", { name: /Synthetic PPO/ }),
+    );
   });
 
   it("keeps the rows mounted while a reload is in flight", async () => {

@@ -17,6 +17,7 @@ import {
   hostnamesIn,
   integrationEnabled,
   isReservedPlaceholderHost,
+  platformClaimMdAccountReference,
   reservedPlaceholderProblem,
   withM24LaunchGatewayDefault,
 } from "../src/bootstrap/env";
@@ -253,6 +254,32 @@ describe("collectEnvProblems", () => {
     });
     expect(problems).toEqual([
       { key: "M24_CREDENTIAL_ENCRYPTION_KEY", problem: "must decode to 32 base64 bytes" },
+    ]);
+  });
+
+  it("checks the retired clearinghouse fingerprint subkeys only when set, with the cipher's own strict reader (migration 1436)", () => {
+    const KEY = "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS";
+    const retired = Buffer.alloc(32, 7).toString("base64");
+    const problem = "must be comma-separated 32-byte keys, each padded standard base64 (44 chars)";
+    expect(
+      collectEnvProblems({
+        ...GOOD,
+        [KEY]: `${retired}, ${Buffer.alloc(32, 8).toString("base64")}`,
+      }),
+    ).toEqual([]);
+    expect(collectEnvProblems({ ...GOOD, [KEY]: `${retired},short` })).toEqual([
+      { key: KEY, problem },
+    ]);
+    // strict base64: a typo Buffer.from would skip still decodes to 32 bytes, and is refused
+    expect(
+      collectEnvProblems({ ...GOOD, [KEY]: `${retired.slice(0, 10)}*${retired.slice(10)}` }),
+    ).toEqual([{ key: KEY, problem }]);
+    expect(collectEnvProblems({ ...GOOD, [KEY]: GOOD.M24_CREDENTIAL_ENCRYPTION_KEY })).toEqual([
+      {
+        key: KEY,
+        problem:
+          "must hold derived fingerprint subkeys, never the M24_CREDENTIAL_ENCRYPTION_KEY itself",
+      },
     ]);
   });
 
@@ -557,6 +584,27 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
       "CLAIMMD_M23_PAYER_ROUTES",
     ]);
   });
+  // `tenant:<org id>` is a tenant's OWN account in the evidence tables: the platform's reference may never take that namespace.
+  it("refuses a platform Claim.MD account reference in the tenant namespace, at boot and at every read", () => {
+    const base = {
+      CLEARINGHOUSE_VENDOR: "claimmd",
+      CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
+      CLAIMMD_ACCOUNT_USAGE: "production",
+    };
+    expect(keysFor({ ...base, CLAIMMD_ACCOUNT_REFERENCE: "TENANT:abc" })).toContain(
+      "CLAIMMD_ACCOUNT_REFERENCE",
+    );
+    expect(keysFor({ ...base, CLAIMMD_ACCOUNT_REFERENCE: "acct-1" })).not.toContain(
+      "CLAIMMD_ACCOUNT_REFERENCE",
+    );
+    expect(() =>
+      platformClaimMdAccountReference({ CLAIMMD_ACCOUNT_REFERENCE: " tenant:x " }),
+    ).toThrow(/tenant:/);
+    expect(platformClaimMdAccountReference({ CLAIMMD_ACCOUNT_REFERENCE: " acct-1 " })).toBe(
+      "acct-1",
+    );
+    expect(platformClaimMdAccountReference({})).toBeUndefined();
+  });
   it("the Claim.MD webhook is off by default and, once enabled, needs the account key and a payload key", () => {
     expect(keysFor({ CLAIMMD_WEBHOOK_ENABLED: "false" })).toEqual([]);
     expect(keysFor({ CLAIMMD_WEBHOOK_ENABLED: "yes" })).toEqual(["CLAIMMD_WEBHOOK_ENABLED"]);
@@ -585,6 +633,51 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
     expect(collectEnvProblems({ NODE_ENV: "development", CLEARINGHOUSE_VENDOR: "acme" })).toEqual(
       [],
     );
+  });
+});
+
+describe("CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS (ADR-0053 amendment 2026-11-06)", () => {
+  const ORG = "11111111-1111-4111-8111-111111111111";
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const problemsFor = (override: Record<string, string>) =>
+    collectEnvProblems({ ...GOOD, ...override }).map((p) => `${p.key}: ${p.problem}`);
+
+  it("is optional: unset or blank names no organization", () => {
+    expect(problemsFor({})).toEqual([]);
+    expect(problemsFor({ CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: "  " })).toEqual([]);
+  });
+  it("accepts organization uuids once a platform vendor is bound", () => {
+    expect(
+      problemsFor({
+        CLEARINGHOUSE_VENDOR: "stedi",
+        CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: ` ${ORG}, ${OTHER} `,
+      }),
+    ).toEqual([]);
+  });
+  it("refuses anything that is not a uuid list, and naming organizations with no vendor bound", () => {
+    expect(
+      problemsFor({ CLEARINGHOUSE_VENDOR: "stedi", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: "demo" }),
+    ).toEqual([
+      "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: must be a comma-separated list of organization uuids",
+    ]);
+    expect(problemsFor({ CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: ORG })).toEqual([
+      "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: names organizations but CLEARINGHOUSE_VENDOR is not set",
+    ]);
+  });
+  it("refuses a list with a blank entry (a stray comma is a typo, not an org)", () => {
+    for (const raw of [",,", `${ORG},,${OTHER}`, `${ORG},`, `,${ORG}`]) {
+      expect(
+        problemsFor({ CLEARINGHOUSE_VENDOR: "stedi", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: raw }),
+        raw,
+      ).toEqual([
+        "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: must be a comma-separated list of organization uuids",
+      ]);
+    }
+  });
+  it("is not validated outside production", () => {
+    expect(
+      collectEnvProblems({ NODE_ENV: "development", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: "demo" }),
+    ).toEqual([]);
   });
 });
 

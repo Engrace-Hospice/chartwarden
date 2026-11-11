@@ -353,6 +353,12 @@ jobs:
               name: "M12 DoseSpot crons",
               scripts: "test:m12:crons-transmit:live test:m12:crons-housekeeping:live",
             }
+          # Tenant onboarding slice 4 (ADR-0111) - a tenant's DoseSpot clinic registration on the real roles: RLS + grants + CHECKs, the
+          # clinic key sealed under the REAL tenant key ring (never in the clear, bound to org / environment / clinic), the
+          # draft -> registered -> verified -> active lifecycle through the tenant lane and the platform-operator lane (onboarding-only,
+          # deactivate excepted, audited with a reason), the layered resolver on the real adapter (a row is never served from the env map),
+          # the sign gate (live registration AND a linked prescriber), a prescriber's vendor enrolment, and wizard step 10 settling.
+          - { name: "M12 tenant DoseSpot", scripts: "test:m12:tenant-dosespot:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
@@ -504,6 +510,8 @@ jobs:
           - { name: "M23 Ack cursor", scripts: "test:m23:ack-cursor:live" }
           # M23 durable clearinghouse attempt store: the package contract run against the real table as chartwarden_app, plus RLS isolation, the identity/final-row guard and no-delete.
           - { name: "M23 Clearinghouse attempts", scripts: "test:m23:clearinghouse-attempts:live" }
+          # ADR-0053 amendment D7 - Claim.MD webhook intake: signature refusals, atomic batch, dedupe, encryption, platform-only table.
+          - { name: "M23 Claim.MD webhook", scripts: "test:m23:claimmd-webhook:live" }
           - { name: "M23 Claim.MD response inbox", scripts: "test:m23:claimmd-response-inbox:live" }
           # ADR-0053 amendment D7 - Claim.MD webhook intake: signature refusals, atomic batch, dedupe, encryption, platform-only table.
           - { name: "M23 Claim.MD webhook", scripts: "test:m23:claimmd-webhook:live" }
@@ -859,6 +867,8 @@ jobs:
           - { name: "M25 ADR readiness", scripts: "test:m25:adr-readiness:live" }
           # Milestone 12a-1 - payer (commercial / Medicare Advantage) appeal paths written by a person and verified by a second one, a payer appeal case per level on a claim-less denial, deadlines computed only from a complete path row, the denial-keyed case view.
           - { name: "M25 payer appeals", scripts: "test:m25:payer-appeal:live test:m25:payer-seam:live" }
+          # ADR-0053 amendment D7 - Claim.MD appeal reports: real publisher + dispatcher; open/link/timeline/record-only, never a decision.
+          - { name: "M25 Claim.MD appeal reports", scripts: "test:m25:appeal-reports:live" }
           # Milestone 13a - beneficiary-filed appeals and appointments of representative (record-keeping only): a second person with step-up activates an appointment (the database refuses recorder = activator), signed documents are validated against the M22 active version, no computed beneficiary deadline, no portal / consent / caregiver side effects.
           - { name: "M25 beneficiary and representative", scripts: "test:m25:beneficiary-representative:live" }
           # Milestone 9a-1 - the org-authored denial playbook library (nothing seeded; review before publish; advisory ticks).
@@ -869,6 +879,8 @@ jobs:
           - { name: "M41 commercial claim", scripts: "test:m41:commercial-claim:live" }
           # M41 commercial routes (#722) - the HTTP layer: guards, step-up, AI block, idempotency, error envelope, read audit.
           - { name: "M41 commercial routes", scripts: "test:m41:commercial-routes:live" }
+          # ADR-0053 amendment D7 - advisory Claim.MD enrollment reports: real publisher + dispatcher, payer mapping, supersede, send gate unchanged until staff apply, route chain.
+          - { name: "M41 enrollment reports", scripts: "test:m41:enrollment-reports:live" }
           # M41 commercial eligibility (270/271) and enrollment (#724) - tenant isolation as chartwarden_app, append-only checks, no member id column, the send gate end to end (unbound / not routed / not enrolled never reach the transport).
           - { name: "M41 eligibility", scripts: "test:m41:eligibility:live" }
           # M41 commercial submission (ADR-0053 D10) - the send gate, the submit transaction (queued row + event, claim stays ready), the drain through the in-memory transport (ready -> submitted only on a receipt), idempotency, RLS as chartwarden_app.
@@ -1067,6 +1079,9 @@ jobs:
           # evidence + audit, auto/either steps from the real fact readers, the two-party go-live (attest -> approve, guards at
           # approval time, revoke, the sweep never activates), retired steps, and the tenant role boxed out of approval.
           - { name: "M34 onboarding wizard v2", scripts: "test:m34:onboarding-wizard:live" }
+          # Slice 5 (admin console): the tenant list's onboarding progress (gating steps only, one batch, on the platform
+          # credential) and the compliance-officer picker's members read (active staff, roles held now, the tenant's own RLS).
+          - { name: "M34 tenant hub reads", scripts: "test:m34:tenant-hub-reads:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
@@ -1410,6 +1425,9 @@ jobs:
           - { name: "M35 claims-billing add-on", scripts: "test:m35:claims-billing-addon:live" }
           # M34 - a platform operator enters a tenant's provider entity / location / MAC credential on its behalf: rows land in the target org under its RLS (real chartwarden_app), operator-attributed + audited with a reason, refused unless the tenant is provisioning/onboarding, no step-up / AI actor / missing reason refused, EIN + MAC secret never returned.
           - { name: "M34 onboarding data", scripts: "test:m34:onboarding-data:live" }
+          - { name: "M34 BAA document upload", scripts: "test:m34:baa-document:live" }
+          # ADR-0053 amendment 2026-11-06 - each tenant's own clearinghouse: sealed credential never returned (table, responses, audit), RLS isolation as the real chartwarden_app, per-org transport resolution against the real table, the claims-billing gate per choice, the platform write lane (audited, onboarding-only) settling wizard step 7, vendor lock once a production submission exists and a switch refused while claims are queued, the tenant-held vendor BAA (tenant records, operator verifies, the table CHECK and activation refuse active without it), rotation back to draft with the claim job held, the audit trigger's secret_changed flag and the field-level audit row, the org-level permission pair (an entity-scoped MAC-key holder refused).
+          - { name: "M23 tenant clearinghouse", scripts: "test:m23:tenant-clearinghouse:live" }
           # ADR-0110 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
           - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
           # Slice 2 (tenant pricing) - the plan editor (a published version is frozen by the database, and cannot be un-frozen by changing its
@@ -1450,6 +1468,9 @@ jobs:
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
           # ADR-0110 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
           - { name: "Claims-billing worker hold", scripts: "test:claims-billing:worker-hold:live" }
+          # Review of slice 4 (M3) - the M12 degradation alerts' alert-once-per-episode memory on a real Valkey: shared across processes (a
+          # recovery is announced by whichever replica sees it), survives a restart, refreshed while the fault lasts, lapses when nobody reports it.
+          - { name: "M12 episode store", scripts: "test:m12:episode-store:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,
@@ -1981,6 +2002,8 @@ jobs:
       # self-skip this workflow's live jobs guard against.
       - name: Chromium browser workflows and axe-core WCAG 2A/AA scans (real stack)
         run: bun run test:e2e
+      - name: Patient axe walk and role-matrix additions (#852)
+        run: bun run test:e2e:new
       - name: Six-viewport layout smoke (#852)
         id: e2e_viewports
         run: bun run test:e2e:viewports

@@ -89,7 +89,79 @@ export interface M35WorkerDeps {
     /** When a tenant went live (M34's tenant activation): statements are charged from the go-live day. */
     readonly goLive: GoLiveReader;
     readonly stripe?: StatementStripePort;
+    /**
+     * The backstop for "a tenant that bills outside ChartWarden pays no billing percentage": the M34 wizard sets the mode post-commit and
+     * best effort, so a failure there is otherwise retried only by another clearinghouse change. The hourly pricing worker runs this for
+     * every current contract, including onboarding and paused tenants with no statement run. Idempotent and cheap.
+     */
+    readonly reconcileOutsideMode?: (organizationId: string) => Promise<void>;
   };
+}
+
+/**
+ * One org's statement step: first the outside-mode reconcile, then the statement. A reconcile that fails is logged and NEVER blocks the
+ * statement: it is computed on the mode as it stands, and the next hourly sweep tries the reconcile again. What that retry corrects
+ * depends on the tenant: while it is onboarding (nothing billed) the change applies at once; for a LIVE tenant the change is dated the
+ * 1st of next month, like any mode change, so it cannot reprice the month being drafted.
+ */
+export async function reconcileThenStatement(
+  reconcile: ((organizationId: string) => Promise<void>) | undefined,
+  log: M35JobDeps["log"],
+  statement: (organizationId: string) => Promise<unknown>,
+  organizationId: string,
+): Promise<void> {
+  if (reconcile) {
+    try {
+      await reconcile(organizationId);
+    } catch (err) {
+      log?.("m35 outside billing mode reconcile failed for an org", {
+        organizationId,
+        err,
+      });
+    }
+  }
+  await statement(organizationId);
+}
+
+/**
+ * Reconcile every not-canceled contract, including onboarding and paused tenants that have no statement run yet. The statement sweep's
+ * own organization list is go-live filtered, so tying this repair to statement generation leaves precisely those non-live tenants stale.
+ */
+export async function reconcileOutsideModes(
+  reconcile: ((organizationId: string) => Promise<void>) | undefined,
+  log: M35JobDeps["log"],
+  organizationIds: Iterable<string>,
+): Promise<void> {
+  if (!reconcile) return;
+  for (const organizationId of organizationIds) {
+    try {
+      await reconcile(organizationId);
+    } catch (err) {
+      log?.("m35 outside billing mode reconcile failed for an org", { organizationId, err });
+    }
+  }
+}
+
+/** One hourly pricing tick: repair every current contract before generating any statements. */
+export async function runPricingStatementTick(
+  jobs: M35JobDeps,
+  pricing: NonNullable<M35WorkerDeps["pricing"]>,
+): Promise<void> {
+  // Reconcile the current-contract population first. This deliberately includes onboarding and paused organizations: neither is
+  // guaranteed to reach statement generation, but both may hold a contract whose mode must be none while billing outside.
+  const current = await listContractedOrgIds(jobs.platformRunner, "current", nowOf(jobs));
+  await reconcileOutsideModes(pricing.reconcileOutsideMode, jobs.log, current);
+  // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
+  // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
+  await runStatementSweep({
+    platformRunner: jobs.platformRunner,
+    keyProvider: pricing.keyProvider,
+    netCollections: pricing.netCollections,
+    goLive: pricing.goLive,
+    ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
+    ...(jobs.now ? { now: jobs.now } : {}),
+    ...(jobs.log ? { log: jobs.log } : {}),
+  });
 }
 
 /** One Worker per bound queue. */
@@ -187,21 +259,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
   }
   if (deps.pricing) {
     const pricing = deps.pricing;
-    workers.push(
-      worker(M35_QUEUES.pricingStatement, () =>
-        // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
-        // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
-        runStatementSweep({
-          platformRunner: jobs.platformRunner,
-          keyProvider: pricing.keyProvider,
-          netCollections: pricing.netCollections,
-          goLive: pricing.goLive,
-          ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
-          ...(jobs.now ? { now: jobs.now } : {}),
-          ...(jobs.log ? { log: jobs.log } : {}),
-        }),
-      ),
-    );
+    workers.push(worker(M35_QUEUES.pricingStatement, () => runPricingStatementTick(jobs, pricing)));
   }
   return workers;
 }

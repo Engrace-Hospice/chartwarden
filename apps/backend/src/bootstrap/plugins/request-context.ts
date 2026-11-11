@@ -23,11 +23,18 @@ declare module "fastify" {
   }
 }
 
+/**
+ * A caller-supplied correlation id is accepted only as a UUID or a short token of `[A-Za-z0-9._-]`. It lands in every log line and in
+ * audit rows, so a value with control characters, spaces or quotes (a forged log line) or an unbounded length (a bloated row) is replaced
+ * by a server-made id rather than trusted. Never an error: a client's header must not fail its request.
+ */
+const SAFE_CORRELATION_ID = /^[A-Za-z0-9._-]{1,64}$/;
+
 export function applyRequestContext(app: FastifyInstance): void {
   app.addHook("onRequest", async (request) => {
     const headerCorrelation = request.headers["x-correlation-id"];
     const correlationId =
-      typeof headerCorrelation === "string" && headerCorrelation.length > 0
+      typeof headerCorrelation === "string" && SAFE_CORRELATION_ID.test(headerCorrelation)
         ? headerCorrelation
         : randomUUID();
 

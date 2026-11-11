@@ -56,6 +56,7 @@ import {
   assertNotOrgLibraryForEdit,
 } from "./internal-documents";
 import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
+import { assertKindWritable } from "./routes/immutable-kinds";
 import { type CursorPage, paginate } from "./routes/pagination";
 import type { ServerUploadService } from "./routes/server-upload";
 import type {
@@ -292,6 +293,8 @@ export function createDbDocumentRouteService(
       throw new NotFoundError("document");
     if (basis?.expectedAdmissionId !== undefined && doc.admissionId !== basis.expectedAdmissionId)
       throw new NotFoundError("document");
+    // The signed BAA is filed once by ChartWarden support: no patch, link or tag from the generic routes (patch, link, add / remove tag).
+    assertKindWritable(doc.aggregateType);
     return doc;
   }
 

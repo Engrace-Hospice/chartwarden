@@ -2,7 +2,7 @@
 // console. The admin analogue of the tenant slice's billing-status.ts: every §5.2 screen resolves a wire
 // enum to the §6.6 StatusPill taxonomy through these maps, so the badge vocabulary is applied once. The wire
 // enums mirror the backend `subscription-typebox.ts` literal unions the /api/admin routes serve.
-import type { StatusTone } from "@chartwarden/ui";
+import type { GlyphName, StatusTone } from "@chartwarden/ui";
 
 /** Subscription lifecycle status → §6.6 tone (SubscriptionStatusLit). */
 export const SUBSCRIPTION_TONE: Record<string, StatusTone> = {
@@ -52,6 +52,14 @@ export const cap = (s: string): string => statusLabel(s);
 export const subscriptionTone = (status: string): StatusTone =>
   SUBSCRIPTION_TONE[status] ?? "neutral";
 export const dunningTone = (stage: string): StatusTone => DUNNING_TONE[stage] ?? "neutral";
+/** The icon for a refund that is already past `requested`: a denial or failure must not read as a success tick. */
+export const DECIDED_REFUND_ICON: Record<string, GlyphName> = {
+  approved: "check-circle",
+  executed_success: "check-circle",
+  denied: "x-circle",
+  executed_failed: "alert-circle",
+};
+
 export const refundTone = (status: string): StatusTone => REFUND_TONE[status] ?? "neutral";
 export const usageThresholdTone = (state: string): StatusTone =>
   USAGE_THRESHOLD_TONE[state] ?? "neutral";
@@ -82,13 +90,6 @@ export function formatDate(iso: string | null | undefined): string {
 /** An org label for a cross-tenant row: the resolved display name, or the shortened id when unresolved. */
 export function orgLabel(name: string | null | undefined, id: string): string {
   return name && name.length > 0 ? name : id.slice(0, 8);
-}
-
-/** A fresh idempotency key for a mutating platform action (§4.17 — the server caches 24h replays). */
-export function idempotencyKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
-    return crypto.randomUUID();
-  return `idem-${Date.now()}`;
 }
 
 /** The set of live dunning stages a subscription can occupy (for the dunning-screen filter). */

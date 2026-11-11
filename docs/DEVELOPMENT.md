@@ -232,6 +232,34 @@ passes. To run it end to end against a local model:
 See the per-module Definition of Done in
 [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md).
 
+## Idempotency keys in the UI (one rule, one hook)
+
+A write whose reply is lost may or may not have landed, so its retry has to carry the same `Idempotency-Key`. The UI has **one** implementation
+of that rule, in `@chartwarden/ui` (`packages/ui/src/core/ops-write/` and `core/api/`); do not write another.
+
+- **Default: do nothing.** The shared API client gives every keyless POST/PUT/PATCH/DELETE one key per write intent (method + URL + `If-Match` +
+  JSON body), keeps it across a retry, and renews it on any answer. A screen that just calls `client.POST(...)` is already covered.
+- **A screen that must hold the key itself** (a form that retries, a ceremony with several steps) uses `useAttemptKey()`
+  (`attempt.keyFor(fingerprint)` / `attempt.run(fingerprint, send)` / `attempt.settle(status, body)`), or `useOpsWrite` / `sendWrite` in the
+  platform console. Never a `useRef`/`useState`/`Map` of keys, never `crypto.randomUUID()` kept in a held value, never a new `use...AttemptKey`
+  or `use...IdempotencyKey` hook. `scripts/__tests__/attempt-key-guard.test.ts` fails on one (its allowlist is empty).
+- **The rule** (`ops-write/idempotency-key.ts`, `keepsKey`): the key is kept across no answer (a thrown request, an abort), a gateway page (a 5xx
+  that is not the API error envelope) and the "an earlier request under this key is still running" 409 (`IDEMPOTENCY_IN_FLIGHT`, or the older
+  plain `CONFLICT` with that exact message). Any other answer, success or refusal, renews it, because the server caches what it answered. The
+  idle window (`IDEMPOTENCY_KEY_TTL_MS`) restarts after an unanswered attempt but not after the in-flight 409; `IDEMPOTENCY_KEY_MAX_AGE_MS` caps
+  a key's life from its first attempt.
+- **Session end.** Held keys belong to one session. `clearIdempotencyKeys(client)` drops the client's table and every mounted screen's keys; call
+  it where the app decides the session is over (web: `onSessionExpired`; portal: the session guard; admin: the actor-session 401) and from any
+  sign-out that does not reload the page. A 401 alone is not session death (a wrong unlock or step-up code is a 401).
+- **A re-run action** (validate, refresh, probe, regenerate: every click means "do it now, against the current state") sends
+  `headers: freshIdempotencyKeyHeaders()` so a lost-reply retry is never handed a stale answer.
+- **A click-time clock value in a body** (a signature time) defeats the retry: the server hashes the whole body under the key. Omit the field when
+  the server stamps it itself; otherwise send `attempt.attemptFor(fingerprint).stampedAt` (the intent's first-attempt time) and leave the clock
+  out of the fingerprint.
+- **The one deliberate exception:** the messaging send composer (`36-messaging/messaging-utils.ts` `SendAttempt`) carries a `clientMessageId` that
+  the database dedupes on, so it rotates the header key on any 4xx/5xx on purpose (an in-flight 409 recovers through the backstop instead of by
+  holding the key).
+
 ## Layout
 
 ```

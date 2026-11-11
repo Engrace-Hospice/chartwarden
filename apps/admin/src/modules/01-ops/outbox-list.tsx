@@ -3,10 +3,13 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  StatGrid,
   StatusPill,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useRequestGuard,
+  useSelectionParam,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/01-ops — Outbox status (`/admin/ops/outbox`, WX-PR-020/OPS-004). The M1
 // operator recovery view over `outbox_event` (apps/backend/src/bootstrap/routes/ops-outbox.ts) —
@@ -17,7 +20,7 @@ import {
 // survives and an event can be linked to (the old detail route, `/admin/ops/outbox/:id`, redirects here).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { Navigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { OutboxEventDrawer } from "./outbox-detail";
 import { type OutboxStatus, outboxStatusTone } from "./outbox-status";
 
@@ -38,8 +41,8 @@ const LIST_PATH = "/admin/ops/outbox";
 
 export function OutboxList(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("event");
+  // The open event lives in the URL (`?event=<id>`): Back closes the drawer, and the filter and other params survive open/close.
+  const { selectedId, select, close } = useSelectionParam("event");
   const [rows, setRows] = useState<OutboxRow[]>([]);
   const [status, setStatus] = useState<OutboxStatus | "">("");
   const [loading, setLoading] = useState(true);
@@ -99,7 +102,7 @@ export function OutboxList(): JSX.Element {
 
         {!loading && !error ? (
           <>
-            <div className="wx-stat-grid" aria-label="Outbox summary">
+            <StatGrid label="Outbox summary">
               {counts.map(({ s, n }) => (
                 <div key={s} className="wx-stat-card">
                   <div>
@@ -111,7 +114,7 @@ export function OutboxList(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </div>
+            </StatGrid>
             <p className="wx-row-sub">
               Counts cover the {rows.length} most recent events in this view, not the whole outbox.
             </p>
@@ -123,7 +126,7 @@ export function OutboxList(): JSX.Element {
             <LoadingSpinner label="Loading outbox…" />
           </div>
         ) : error ? (
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">{error}</InlineAlert>
             <Button tone="secondary" onClick={() => void load()}>
               Try again
@@ -135,7 +138,7 @@ export function OutboxList(): JSX.Element {
             <span>No outbox events match this filter.</span>
           </div>
         ) : (
-          <div className="wx-list-table-wrap">
+          <TableScroll>
             <table className="wx-list-table">
               <caption className="wx-sr-only">Outbox events</caption>
               <thead>
@@ -151,7 +154,7 @@ export function OutboxList(): JSX.Element {
               <tbody>
                 {rows.map((r) => {
                   const isSelected = r.id === selectedId;
-                  const open = (): void => setParams({ event: r.id });
+                  const open = (): void => select(r.id);
                   return (
                     <tr
                       key={r.id}
@@ -160,7 +163,7 @@ export function OutboxList(): JSX.Element {
                           ? "is-selected wx-data-row-interactive"
                           : "wx-data-row-interactive"
                       }
-                      {...interactiveRowProps(open, isSelected)}
+                      {...interactiveRowProps(open, isSelected, false, r.id)}
                     >
                       <td>
                         <span className="wx-row-title">{r.eventType}</span>
@@ -178,12 +181,10 @@ export function OutboxList(): JSX.Element {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
       </div>
-      {selectedId ? (
-        <OutboxEventDrawer key={selectedId} id={selectedId} onClose={() => setParams({})} />
-      ) : null}
+      {selectedId ? <OutboxEventDrawer key={selectedId} id={selectedId} onClose={close} /> : null}
     </div>
   );
 }

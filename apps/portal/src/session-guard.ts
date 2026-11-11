@@ -112,7 +112,15 @@ async function isLiveOrgLessSession(response: Response): Promise<boolean> {
   }
 }
 
-export function createSessionGuard(): SessionGuard {
+export interface SessionGuardOptions {
+  /**
+   * Called when the guard decides the session is dead: a 401 on a portal route that is not a step-up refusal and not a live session with
+   * no organization yet. main.tsx uses it to drop the API client's held Idempotency-Keys (the client cannot tell those 401s apart).
+   */
+  onSessionExpired?: () => void;
+}
+
+export function createSessionGuard({ onSessionExpired }: SessionGuardOptions = {}): SessionGuard {
   let router: GuardRouter | null = null;
   let redirecting = false;
 
@@ -135,7 +143,9 @@ export function createSessionGuard(): SessionGuard {
       const path = pathOf(url);
       if (!path?.startsWith(PORTAL_API_PREFIX) || NOT_SESSION_DEATH_ON_401.includes(path)) return;
       void isLiveOrgLessSession(response).then((orgLess) => {
-        if (!orgLess) redirect();
+        if (orgLess) return;
+        onSessionExpired?.();
+        redirect();
       });
     },
     attach(next) {

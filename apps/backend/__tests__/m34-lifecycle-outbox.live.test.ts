@@ -27,6 +27,7 @@ import { registerPlatformJob } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import { buildDrizzleTenantPlatformAbacResolver } from "../src/modules/34-saas-tenant-platform/abac-resolver-drizzle";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
@@ -124,6 +125,7 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
       },
     };
     const deps: DrizzleTenantPlatformDeps = {
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformDb.db,
       enqueue: {
         async enqueue(queue, jobKey) {

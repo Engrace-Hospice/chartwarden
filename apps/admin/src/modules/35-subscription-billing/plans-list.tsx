@@ -1,18 +1,23 @@
 import {
   Button,
-  type FieldErrors,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
   isValid,
-  stashStepUpDraft,
+  parsePriceCents,
+  parseWholeNumber,
+  sendWrite,
+  stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
+  useIdempotencyKeeper,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
@@ -22,8 +27,9 @@ import type { operations } from "@chartwarden/ui";
 // meter/pricing editor (`/admin/plans/:id/edit`); "New plan" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { cap, formatCents, idempotencyKey } from "./status";
+import { useNavigate } from "react-router-dom";
+import { PLAN_EMPTY_FORM, type PlanForm, planFormErrors } from "./form-rules";
+import { cap, formatCents } from "./status";
 import {
   DrawerHead,
   type Outcome,
@@ -31,56 +37,13 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type PlanRow =
   operations["getApiAdminPlans"]["responses"][200]["content"]["application/json"][number];
 
-const EMPTY_FORM = {
-  slug: "",
-  name: "",
-  tier: "starter",
-  cadence: "monthly",
-  basePrice: "",
-  trialDays: "0",
-};
-type PlanForm = typeof EMPTY_FORM;
-
-/** Dollars typed by the operator to integer cents; null unless it is a finite number >= 0 ("abc" is not a $0 plan). */
-export function parsePriceCents(raw: string): number | null {
-  const text = raw.trim();
-  if (text === "") return null;
-  const dollars = Number(text);
-  return Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 100) : null;
-}
-
-/** Whole trial days >= 0; null for anything else. */
-export function parseTrialDays(raw: string): number | null {
-  const text = raw.trim();
-  if (text === "") return null;
-  const days = Number(text);
-  return Number.isInteger(days) && days >= 0 ? days : null;
-}
-
-const SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PLAN_DRAFT_KEY = "plan-create";
-
-/** Per-field messages for the New plan form; empty when it can be submitted (#597, F-042). */
-export function planFormErrors(form: PlanForm): FieldErrors<keyof PlanForm> {
-  const errors: FieldErrors<keyof PlanForm> = {};
-  const slug = form.slug.trim();
-  if (slug === "") errors.slug = "Enter a slug.";
-  else if (!SLUG_SHAPE.test(slug))
-    errors.slug = "Use lowercase letters, numbers and hyphens only, e.g. starter-monthly.";
-  if (form.name.trim() === "") errors.name = "Enter a plan name.";
-  if (form.basePrice.trim() === "") errors.basePrice = "Enter a price in dollars, e.g. 49.00.";
-  else if (parsePriceCents(form.basePrice) === null)
-    errors.basePrice = "Enter a number of dollars, 0 or more, e.g. 49.00.";
-  if (parseTrialDays(form.trialDays) === null)
-    errors.trialDays = "Enter a whole number of days, 0 or more.";
-  return errors;
-}
 
 const TIER_OPTIONS = [
   { value: "starter", label: "Starter" },
@@ -94,16 +57,18 @@ const CADENCE_OPTIONS = [
 
 export function PlansList(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("plan");
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
+  // The open plan lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("plan");
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // A step-up refusal sends the operator to /step-up and back; the typed plan is restored and the drawer reopens.
-  const restored = useStepUpDraft<PlanForm>(PLAN_DRAFT_KEY);
+  const restored = useStepUpMemoryDraft<PlanForm>(PLAN_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
-  const [form, setForm] = useState<PlanForm>(restored ?? EMPTY_FORM);
+  const [form, setForm] = useState<PlanForm>(restored ?? PLAN_EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const guard = useRequestGuard();
@@ -131,33 +96,40 @@ export function PlansList(): JSX.Element {
 
   const create = useCallback(async () => {
     const basePriceCents = parsePriceCents(form.basePrice);
-    const trialPeriodDays = parseTrialDays(form.trialDays);
+    const trialPeriodDays = parseWholeNumber(form.trialDays);
     if (!isValid(planFormErrors(form)) || basePriceCents === null || trialPeriodDays === null)
       return;
     setSaving(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/plans", {
-      body: {
-        slug: form.slug.trim(),
-        name: form.name.trim(),
-        tier: form.tier as "starter" | "professional" | "enterprise",
-        cadence: form.cadence as "monthly" | "annual",
-        basePriceCents,
-        currencyCode: "USD",
-        trialPeriodDays,
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not create the plan (check the fields)."));
-    } else {
+    const body = {
+      slug: form.slug.trim(),
+      name: form.name.trim(),
+      tier: form.tier as "starter" | "professional" | "enterprise",
+      cadence: form.cadence as "monthly" | "annual",
+      basePriceCents,
+      currencyCode: "USD" as const,
+      trialPeriodDays,
+    };
+    try {
+      // One key per create request: a retry of the same unchanged plan replays it, so a lost reply cannot create a second draft.
+      const failure = writeFailure(
+        await sendWrite(keeper, JSON.stringify(body), (key) =>
+          client.POST("/api/admin/plans", { body, headers: { "Idempotency-Key": key } }),
+        ),
+        "Could not create the plan (check the fields).",
+      );
+      if (failure) {
+        setOutcome(failure);
+        return;
+      }
       setOutcome({ ok: true, message: `Draft plan "${form.name}" created.` });
       setShowCreate(false);
-      setForm(EMPTY_FORM);
+      setForm(PLAN_EMPTY_FORM);
       await load();
+    } finally {
+      setSaving(false); // also when the reload after a landed write throws: the form never stays locked
     }
-    setSaving(false);
-  }, [client, form, load]);
+  }, [client, form, load, keeper]);
 
   const selected = selectedId ? (plans.find((p) => p.id === selectedId) ?? null) : null;
   useStaleSelection({
@@ -165,6 +137,7 @@ export function PlansList(): JSX.Element {
     ready: loaded,
     found: selected !== null,
     ignore: ["new"],
+    clear: close,
   });
   const hasDrawer = showCreate || selected !== null;
 
@@ -179,7 +152,7 @@ export function PlansList(): JSX.Element {
           <div className="wx-list-toolbar-end">
             <Button
               onClick={() => {
-                setParams({});
+                if (selectedId !== null) close();
                 setShowCreate((s) => !s);
               }}
             >
@@ -188,7 +161,10 @@ export function PlansList(): JSX.Element {
           </div>
         </header>
         {outcome ? (
-          <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(PLAN_DRAFT_KEY, form)} />
+          <OutcomeBanner
+            {...outcome}
+            onReverify={() => stashStepUpMemoryDraft(PLAN_DRAFT_KEY, form)}
+          />
         ) : null}
         {loading ? (
           <StateLoading label="Loading plans…" />
@@ -202,7 +178,7 @@ export function PlansList(): JSX.Element {
             selectedId={selectedId}
             onOpen={(id) => {
               setShowCreate(false);
-              setParams({ plan: id });
+              select(id);
             }}
           />
         )}
@@ -216,7 +192,7 @@ export function PlansList(): JSX.Element {
           onClose={() => setShowCreate(false)}
         />
       ) : selected ? (
-        <PlanDrawer plan={selected} onClose={() => setParams({})} />
+        <PlanDrawer key={selected.id} plan={selected} onClose={close} />
       ) : null}
     </div>
   );
@@ -232,7 +208,7 @@ function PlansTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Plans</caption>
         <thead>
@@ -258,7 +234,7 @@ function PlansTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId, false, p.id)}
             >
               <td>
                 <span className="wx-row-title">{p.name}</span>
@@ -280,7 +256,7 @@ function PlansTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -365,7 +341,7 @@ function CreatePlanDrawer({
             value={form.name}
             onChange={(e) => onChange({ ...form, name: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="wx-form-grid">
             <SelectField
               label="Tier"
               value={form.tier}

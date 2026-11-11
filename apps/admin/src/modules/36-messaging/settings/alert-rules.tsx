@@ -5,12 +5,12 @@
 // platform default clones it server-side, so the row adopts the id the PATCH returns. Locked rules are read-only.
 // Rows carry a stable client `key` so adopting a new ruleId neither remounts the row (focus) nor mis-targets a
 // concurrent edit; every state change is a functional update touching only the edited row.
-import { StatusPill, useApiClient } from "@chartwarden/ui";
+import { SelectField, StatusPill, TableScroll, useApiClient } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { type ReadResult, StateEmpty, renderLoadFallback, useLoad } from "../ui";
-import { asRead, toResult } from "./api";
+import { asRead, settleResult, toResult } from "./api";
 import { type Banner, BannerView, PageHead } from "./ui";
 
 export type AlertRule =
@@ -40,8 +40,6 @@ interface RuleRow {
   readonly rule: AlertRule;
 }
 
-const SELECT_CLASS = "min-h-11 rounded-lg border px-2 focus-visible:outline-2";
-
 export function AlertRules(): JSX.Element {
   const client = useApiClient();
   const load = useCallback(async (): Promise<ReadResult<RuleRow[]>> => {
@@ -53,7 +51,7 @@ export function AlertRules(): JSX.Element {
         : result,
     );
   }, [client]);
-  const { state, reload, setData } = useLoad(load);
+  const { state, reload, refresh, setData } = useLoad(load);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const [banner, setBanner] = useState<Banner | null>(null);
 
@@ -63,11 +61,13 @@ export function AlertRules(): JSX.Element {
     put({ ...rule, ...patch });
     setPending((p) => new Set(p).add(key));
     if (pending.size === 0) setBanner(null);
-    const res = await client.PATCH("/api/v1/alert-rules/{id}", {
-      params: { path: { id: rule.ruleId } },
-      body: patch,
-    });
-    const result = toResult(res, "Could not update the rule.");
+    const result = await settleResult(
+      client.PATCH("/api/v1/alert-rules/{id}", {
+        params: { path: { id: rule.ruleId } },
+        body: patch,
+      }),
+      "Could not update the rule.",
+    );
     setPending((p) => {
       const next = new Set(p);
       next.delete(key);
@@ -80,7 +80,15 @@ export function AlertRules(): JSX.Element {
       );
     } else {
       put(rule);
-      setBanner({ ok: false, message: `${result.message} The change was undone.` });
+      setBanner({
+        ok: false,
+        // "Undone" is only true when the server refused the change. With no answer the PATCH may already have applied: say it could
+        // not be confirmed, show the rule as it was, and re-read the rules so the page settles on what the server holds.
+        message: result.unreachable
+          ? `${result.message} Whether the change to ${humanize(rule.eventType)} was saved could not be confirmed; check the rule below before changing it again.`
+          : `${result.message} The change was undone.`,
+      });
+      if (result.unreachable) refresh();
     }
   };
 
@@ -91,22 +99,24 @@ export function AlertRules(): JSX.Element {
     retry: reload,
   });
   return (
-    <div className="wx-list-drawer-main">
-      <PageHead
-        title="Alert rules"
-        sub="Which events raise alerts, how severe, and who is notified."
-      />
-      <BannerView banner={banner} />
-      {fallback ??
-        (state.kind === "ok" && state.data.length === 0 ? (
-          <StateEmpty>No alert rules are configured.</StateEmpty>
-        ) : state.kind === "ok" ? (
-          <RulesTable
-            rows={state.data}
-            pending={pending}
-            onPatch={(row, patch) => void patchRule(row, patch)}
-          />
-        ) : null)}
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="Alert rules"
+          sub="Which events raise alerts, how severe, and who is notified."
+        />
+        <BannerView banner={banner} />
+        {fallback ??
+          (state.kind === "ok" && state.data.length === 0 ? (
+            <StateEmpty>No alert rules are configured.</StateEmpty>
+          ) : state.kind === "ok" ? (
+            <RulesTable
+              rows={state.data}
+              pending={pending}
+              onPatch={(row, patch) => void patchRule(row, patch)}
+            />
+          ) : null)}
+      </div>
     </div>
   );
 }
@@ -121,8 +131,8 @@ function RulesTable({
   onPatch: (row: RuleRow, patch: RulePatch) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
-      <table className="wx-list-table">
+    <TableScroll>
+      <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Alert rules</caption>
         <thead>
           <tr>
@@ -149,23 +159,26 @@ function RulesTable({
                   <span className="wx-row-sub">{humanize(rule.category)}</span>
                 </td>
                 <td>
-                  <label className="inline-flex min-h-11 min-w-11 items-center gap-2">
+                  <label className="wx-action-check">
                     <input
                       type="checkbox"
-                      className="size-5 focus-visible:outline-2"
                       checked={rule.enabled}
                       disabled={rule.systemLocked}
                       aria-disabled={busy || undefined}
-                      aria-label={`${name} enabled`}
                       onChange={(e) => patchRow({ enabled: e.target.checked })}
                     />
+                    {/* The state is in the name ON PURPOSE: the visible "On"/"Off" must be part of the accessible name (WCAG 2.5.3 Label in
+                        Name), so the name is "<rule> enabled: On|Off". A checkbox's checked state is announced as well, so
+                        a screen reader repeats it; that redundancy is the accepted cost of Label in Name. */}
+                    <span className="wx-sr-only">{`${name} enabled: `}</span>
                     <span>{rule.enabled ? "On" : "Off"}</span>
                   </label>
                 </td>
                 <td>
-                  <select
-                    className={SELECT_CLASS}
-                    aria-label={`${name} severity floor`}
+                  <SelectField
+                    className="wx-touch-select"
+                    label={<span className="wx-sr-only">{`${name} severity floor`}</span>}
+                    options={SEVERITIES.map((s) => ({ value: s, label: humanize(s) }))}
                     value={rule.severityFloor}
                     disabled={rule.systemLocked}
                     aria-disabled={busy || undefined}
@@ -174,18 +187,13 @@ function RulesTable({
                         severityFloor: e.target.value as AlertRule["severityFloor"],
                       })
                     }
-                  >
-                    {SEVERITIES.map((s) => (
-                      <option key={s} value={s}>
-                        {humanize(s)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </td>
                 <td>
-                  <select
-                    className={SELECT_CLASS}
-                    aria-label={`${name} recipients`}
+                  <SelectField
+                    className="wx-touch-select"
+                    label={<span className="wx-sr-only">{`${name} recipients`}</span>}
+                    options={RESOLVERS.map((r) => ({ value: r, label: humanize(r) }))}
                     value={rule.recipientResolver}
                     disabled={rule.systemLocked}
                     aria-disabled={busy || undefined}
@@ -194,13 +202,7 @@ function RulesTable({
                         recipientResolver: e.target.value as AlertRule["recipientResolver"],
                       })
                     }
-                  >
-                    {RESOLVERS.map((r) => (
-                      <option key={r} value={r}>
-                        {humanize(r)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </td>
                 <td>
                   {rule.systemLocked ? (
@@ -217,6 +219,6 @@ function RulesTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

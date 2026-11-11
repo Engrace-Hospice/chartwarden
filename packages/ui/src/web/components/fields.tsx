@@ -8,40 +8,54 @@ import type {
 } from "react";
 import { t } from "../theme/tokens";
 
-interface FieldFrameProps {
+export interface FieldFrameProps {
   id?: string;
+  /** Set on the `<label>` so a widget (a listbox) can be named by it with aria-labelledby. */
+  labelId?: string;
   label: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
   required?: boolean;
+  /** The caller's own `aria-describedby`; it is kept after the hint and error ids rather than overwritten by them. */
+  describedBy?: string;
   children: (ids: { inputId: string; describedBy?: string; invalid: boolean }) => ReactNode;
 }
 
-function FieldFrame({
+/**
+ * The label / control / hint / error column shared by the kit's fields. Error text should be static (put changing detail such
+ * as a running count in the hint): the error is `role="alert"`, which announces on insertion and again on every text change.
+ */
+export function FieldFrame({
   id,
+  labelId,
   label,
   hint,
   error,
   required = false,
+  describedBy: callerDescribedBy,
   children,
 }: FieldFrameProps): JSX.Element {
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
-  const describedBy = error ? errorId : hint ? hintId : undefined;
+  // The hint (guidance such as a PHI warning) stays while an error shows; both describe the control, hint first.
+  const describedBy =
+    [hint ? hintId : null, error ? errorId : null, callerDescribedBy].filter(Boolean).join(" ") ||
+    undefined;
+  // Only the label text is the <label>: the hint and error are tied to the control by aria-describedby, so inside the label
+  // they would be read twice (once as part of the name, once as the description).
   return (
-    <label
-      htmlFor={inputId}
+    <div
       className="wx-field"
       style={{ display: "flex", flexDirection: "column", gap: t.space2, color: t.onSurface }}
     >
-      <span style={{ fontSize: "0.8125rem", fontWeight: 650 }}>
+      <label id={labelId} htmlFor={inputId} style={{ fontSize: "0.8125rem", fontWeight: 650 }}>
         {label}
         {required ? <span aria-hidden="true"> *</span> : null}
-      </span>
+      </label>
       {children({ inputId, describedBy, invalid: Boolean(error) })}
-      {hint && !error ? (
+      {hint ? (
         <span id={hintId} style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}>
           {hint}
         </span>
@@ -51,13 +65,14 @@ function FieldFrame({
           {error}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }
 
 const inputStyle = (invalid: boolean) => ({
   width: "100%",
-  minHeight: "2.5rem",
+  // Defined once in list-chrome.css (`.wx-field`), so a stylesheet rule can change it without !important and the toolbar can read it.
+  minHeight: "var(--wx-field-control-height)",
   padding: "0.5rem 0.75rem",
   border: `1px solid ${invalid ? t.error : t.outlineVariant}`,
   borderRadius: t.radiusLg,
@@ -83,7 +98,14 @@ export function TextField({
   ...props
 }: TextFieldProps): JSX.Element {
   return (
-    <FieldFrame id={id} label={label} hint={hint} error={error} required={required}>
+    <FieldFrame
+      id={id}
+      label={label}
+      hint={hint}
+      error={error}
+      required={required}
+      describedBy={props["aria-describedby"]}
+    >
       {({ inputId, describedBy, invalid }) => (
         <input
           {...props}
@@ -124,7 +146,14 @@ export function SelectField({
   ...props
 }: SelectFieldProps): JSX.Element {
   return (
-    <FieldFrame id={id} label={label} hint={hint} error={error} required={required}>
+    <FieldFrame
+      id={id}
+      label={label}
+      hint={hint}
+      error={error}
+      required={required}
+      describedBy={props["aria-describedby"]}
+    >
       {({ inputId, describedBy, invalid }) => (
         <select
           {...props}
@@ -163,7 +192,14 @@ export function TextAreaField({
   ...props
 }: TextAreaFieldProps): JSX.Element {
   return (
-    <FieldFrame id={id} label={label} hint={hint} error={error} required={required}>
+    <FieldFrame
+      id={id}
+      label={label}
+      hint={hint}
+      error={error}
+      required={required}
+      describedBy={props["aria-describedby"]}
+    >
       {({ inputId, describedBy, invalid }) => (
         <textarea
           {...props}

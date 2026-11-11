@@ -14,6 +14,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the MAC CREDENTIALS admin (R2, §5.1
 // admin / §4.1 #34-35, §3.6). The per-ProviderEntity MAC submitter-credential surface: a selectable
@@ -32,7 +33,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { statusLabel } from "./billing-status";
-import { useAttemptKey } from "./use-attempt-key";
 
 type MacJurisdiction =
   | "ngs_j6"

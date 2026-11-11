@@ -79,6 +79,13 @@
     font-size: 0.6875rem;
     color: var(--color-muted);
   }
+  /* The brand mark + wordmark on a chromeless card (sign in, organization select, step-up): inline, not the sidebar's block. */
+  .wx-brand-lockup {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    text-align: left;
+  }
   .wx-nav {
     display: flex;
     flex-direction: column;

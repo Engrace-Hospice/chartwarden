@@ -6,6 +6,298 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-10 — Operators can revoke a tenant clearinghouse BAA from the onboarding console
+
+The admin onboarding clearinghouse card now exposes the BAA-revocation contract added on 2026-11-09. An authorized operator chooses one
+of the closed reason codes and supplies an operator ticket; the console sends no free-text reason and pins the request to the BAA's
+`recordedAt`. The card shows current and previous revocation facts. When a tenant re-records the same document that was revoked, verification
+requires the operator to review that history and send `acknowledgePreviousRevocation: true` explicitly. Revocation rate limits answer 429;
+stale records and the BAA-specific conflict codes are shown as actionable failures and the current record is reloaded.
+
+The hourly M35 repair for “outside means billing mode none” now enumerates every current, not-canceled contract before statement generation.
+That includes onboarding and paused tenants, which may not have a statement run and therefore could previously miss the repair.
+
+## 2026-11-09 — A paused subscription whose end date has passed is resumed automatically
+
+**Why.** `POST /api/admin/subscriptions/{id}/pause` takes an optional `pausedUntil`. Billing already treated such a pause as over at that
+date, but nothing changed the stored status, so the subscription read `paused` (in the admin list, the tenant's own view and the
+claims-billing entitlement) until an operator remembered to resume it.
+
+- An hourly sweep (`m35.subscription-pause-resume`) now resumes a subscription that is `paused` with a `pausedUntil` that has passed: `status`
+  becomes `active` and `pausedAt` and `pausedUntil` become `null`. Until the sweep runs (normally within the hour; longer if the worker is late
+  or skips the row) the stored status still reads `paused`, and billing still counts the pause as over at its date.
+- The resume is announced with the same `m35.subscription.resumed` event an operator's resume publishes; `resumedAt` is the pause's end
+  date, not the instant the sweep ran. The subscription's status history (`reasonCode` `platform_ops_pause_lapsed`, no actor) is dated at
+  that end date too, so a statement for the month the pause ended in does not change when the sweep runs.
+- The sweep visits active organizations only, and acts on the organization's newest subscription only. A pause with no end date, a pause
+  whose date is ahead, an organization suspension (which pauses with no end date) and an older, superseded subscription are never resumed by
+  it. The newest subscription's pause is also left alone when an older subscription of the organization is live.
+- When the platform suspends an organization (`m2.organization.suspended`) while an operator's dated pause is still running, the pause
+  becomes open-ended: `pausedUntil` is cleared, the subscription's status history gains a `paused` to `paused` row (`reasonCode`
+  `org_suspended_by_platform_admin`) dated at the suspension, and `m35.subscription.paused` is published again with `pausedUntil: null`.
+  The suspended organization stays unbilled past the old date until it is reactivated.
+- `POST /api/v1/subscription/resume` (the tenant's own resume of a non-contracted subscription) now reads the subscription under the same row
+  lock, so it cannot announce a resume the sweep has just made, and it answers `409 SUBSCRIPTION_NOT_PAUSED` for a subscription that is
+  neither paused nor scheduled to cancel (it used to answer `200`, touch `updatedAt` and publish `m35.subscription.resumed` again).
+  Resuming a subscription scheduled to cancel at period end still clears the schedule; it no longer publishes `m35.subscription.resumed`,
+  which means "resumed from paused".
+- `POST /api/v1/subscription/resume` also answers `409 SUBSCRIPTION_CANCELED` for a canceled subscription (it is final), even when it still
+  carries a cancel-at-period-end schedule: it used to answer `200`, flip the schedule and clear the pause columns of a canceled row.
+- `POST /api/admin/subscriptions/{id}/resume` and `POST /api/v1/subscription/resume` answer `409 SUBSCRIPTION_OTHER_LIVE_EXISTS` when the
+  organization already has another live subscription (an organization can hold one live subscription; a paused one does not count). They used
+  to fail with a raw `500` from the database's unique index. The tenant response says to contact support; the operator response says to cancel
+  or pause the other subscription by id. The hourly sweep then resumes this one on its next tick (or an operator can resume it again by hand).
+  The sweep and organization-activation consumer both leave such a pause alone and raise the same dedicated operator notice (ids only) at most
+  once a day per subscription until it is unblocked.
+- `POST /api/admin/subscriptions/{id}/resume` answers `409 SUBSCRIPTION_SUPERSEDED` when the requested paused row is older than the
+  organization's current subscription. It no longer resurrects an older row behind a newer paused subscription.
+- An organization's current subscription is the subscription with the newest `startedAt`; rows that share that instant are ordered by the
+  higher `id`. Subscription readers and writers use that ordering, so the tenant's view, the resume routes, the lifecycle consumer and the
+  sweep agree on which subscription is current. Contract selection retains its separate `createdAt`, `id` ordering.
+- No request or response shape changes.
+## 2026-11-09 — Onboarding-step catalog writes name their operator; the notice list moves behind the notice key
+
+- `POST /api/v1/platform/onboarding-templates` now requires an `Idempotency-Key` header and a `reason` (8-500 characters after
+  whitespace is collapsed, screened for patient identifiers), refuses an AI actor, and leaves one `m34.onboarding_template.upserted`
+  audit event naming the operator, the reason and the step. The step catalog is shown in every tenant's wizard.
+- `GET /api/v1/platform/tenants/{orgSlug}/notice-filings` is gated on `tenant_notice_filing.withdraw_platform` (the notice-filing
+  key), no longer on `tenant_onboarding_data.read_platform`: a notice id with its dates identifies a patient's record. Its audit row
+  records the number of NOEs and NOTRs shown, never which.
+- `POST /api/v1/platform/tenants/{orgSlug}/go-live/approve` answers `409 GO_LIVE_APPROVER_WROTE_BAA` for an operator who UPLOADED the
+  signed agreement of the governing BAA, as well as one who recorded or last changed the record. A document whose content was
+  destroyed (a tombstone) no longer counts as a filed agreement.
+
+---
+
+## 2026-11-09 — A platform operator can revoke a tenant's vendor BAA; the tenant can then leave the vendor
+
+**New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke` revokes the vendor BAA a tenant recorded for its
+own Stedi or Claim.MD account (the vendor ended the agreement). Platform ops only
+(`tenant_clearinghouse.revoke_baa_platform`, a fresh step-up, an `Idempotency-Key`; an AI actor is refused). `If-Match` is required
+and is the `baa.recordedAt` of the record the operator read (428 without it, 422 if malformed, 409 `CLEARINGHOUSE_BAA_CHANGED` if the
+tenant has recorded another since). Not limited to a tenant that is still onboarding. At most 10 revokes per operator (across every
+tenant) and 20 in all per ten minutes, then 429.
+
+**No free text.** The body is `{"reasonCode": "vendor_terminated" | "account_closed" | "baa_expired" | "other", "ticketRef":
+"SEC-42"}`; the ticket must match `^[A-Z][A-Z0-9]{1,9}-\d{1,8}$`. There is no `reason` field and an unknown field is a 422. Both
+values are recorded as given on the tenant's own audit trail, which the tenant can read: the ticket is a reference, never a name.
+
+**What it does.** In one transaction it records who and why, voids the BAA's verification, takes a live config out of `active` (to
+`verified`, as re-recording a changed BAA does), writes the audit row and tells the tenant (an alert to its billing, compliance and
+org administrators with counts of attempts still in flight, attempts sent in the response window and queued work; and a platform-ops
+notice). If the audit row or the announcement cannot be written, nothing is revoked. It never touches the credential. The tenant's
+claims, NOE, NOTR and transfer notices are then held, and new claims and eligibility work is refused with 402
+`clearinghouse_baa_revoked` (a new reason beside `clearinghouse_not_active`); its acknowledgment and 835 pulls skip, with a once-a-day alert while responses may still be
+owed. No new job or tick starts after the commit; a job already past its pre-flight finishes. It is not an expiry: a BAA still never
+ends by itself, and no vendor signal reaches ChartWarden.
+
+**New errors, all 409.** `CLEARINGHOUSE_BAA_REVOKED` — on the revoke of a BAA that is already revoked, on `baa/verify`, and on
+`POST /api/v1/tenant/clearinghouse/activate` while the revocation stands; `CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED` — on `baa/verify`
+of a record whose document is the one that was revoked before, unless the request carries `acknowledgePreviousRevocation: true`;
+`CLEARINGHOUSE_BAA_NOT_RECORDED` (existing) when there is no BAA to revoke. 503 `CLEARINGHOUSE_OUTBOX_UNBOUND` if the outbox is not
+bound.
+
+**Clearing it.** The tenant clears a revocation by recording a new BAA (`POST /api/v1/tenant/clearinghouse/baa`, which now also
+accepts re-recording the identical document; it starts again at unverified) or by leaving the vendor (a vendor change, or
+`outside`). A same-vendor mode change keeps it.
+
+**The vendor lock has one exception.** While the BAA is revoked, `PUT /api/v1/tenant/clearinghouse` no longer answers
+`CLEARINGHOUSE_VENDOR_LOCKED`: the tenant may change vendor or mode, or switch to `outside`, although production traffic is recent.
+Once it has left the revoked vendor, that vendor's attempts no longer lock the next config either (a tenant that picked the wrong next
+vendor can move on); the new config's own traffic locks as ever. The operator's PUT gets no such exception (and stays
+onboarding-only). Switching away means the old vendor's late acknowledgments and remittances are no longer pulled for the tenant (they
+stay with the vendor).
+
+**View.** The clearinghouse view's `baa` object gains `revoked` (boolean), `revokedAt` (timestamp or null) and `revokedReasonCode` (the
+closed code or null) on both the tenant and the platform routes; `revokedTicketRef` and `previousRevocation` (`at`, `sameDocument`)
+appear on the platform routes only.
+
+---
+
+## 2026-11-09 — The clearinghouse vendor lock has a 90-day window; the platform PUT is rate limited
+
+**Vendor and mode lock.** `PUT /api/v1/tenant/clearinghouse` (and the operator's onboarding PUT) answer 409
+`CLEARINGHOUSE_VENDOR_LOCKED` while the organization has any production attempt in flight (reserved) or sent in the last 90 days
+(the same window as the credential release). Before, one production claim locked vendor and mode for good; now they can be changed
+again only after 90 days with no production attempt. An organization that sends continuously stays locked for as long as it does,
+and there is no operator override. Test-mode, released and voided attempts do not lock.
+
+**Rate limit.** `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` now allows 10 saves a minute per operator and 30 per
+tenant, counted per target tenant, and answers 429 beyond that (503 when the limiter's store is unavailable), as the tenant's own
+PUT does: both can answer `CLEARINGHOUSE_ACCOUNT_IN_USE`, which says a credential is held elsewhere.
+
+---
+
+## 2026-11-08 — Releasing a tenant's earlier clearinghouse credentials
+
+**New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release` frees every clearinghouse credential a
+tenant still holds except its current one, so another organization may connect it. Platform ops only
+(`tenant_clearinghouse.release_credential_platform`, a fresh step-up, an `Idempotency-Key` and a `reason`; an AI actor is refused).
+Refused with 409 `CLEARINGHOUSE_RESPONSES_PENDING` while the tenant has a production submission in flight or sent one in the last
+90 days.
+
+**The reason is visible to the tenant.** It is recorded as given on the tenant's own audit trail. Give a ticket reference only,
+never the name of the organization an account moved to.
+
+**Saving a credential.** `PUT /api/v1/tenant/clearinghouse` (and the platform operator's onboarding PUT) answer 409
+`CLEARINGHOUSE_ACCOUNT_IN_USE` for a credential another organization (or the platform) holds, and 409
+`CLEARINGHOUSE_CREDENTIAL_LIMIT` once the organization holds 20 earlier credentials per configured fingerprint key.
+
+---
+
+## 2026-11-08 — Price plan writes are pinned to the version read
+
+**Why.** Two operators editing one draft price plan could overwrite each other's prices, or publish prices the publisher never saw.
+
+- `PUT /api/admin/pricing/plans/{id}`, `POST /api/admin/pricing/plans/{id}/publish`, `POST /api/admin/pricing/plans/{id}/new-version` and
+  `POST /api/admin/pricing/plans/{id}/archive` now require `If-Match: "<updatedAt>"`, the plan's `updatedAt` as read (a UTC ISO
+  timestamp, quoted, weak-prefixed or bare). Without it the answer is `428 IF_MATCH_REQUIRED`; a value that is not a timestamp is `422`; a plan that changed since it was
+  read is `409 PRICING_PLAN_CHANGED`, with `details: [{ field: "currentUpdatedAt", message: <the current updatedAt> }]`. Re-read the plan,
+  show the operator what it now says, and send the fresh value; never retry the same body on the new pin without that re-read.
+- Nothing is written on any of these refusals.
+
+---
+
+## 2026-11-07 — Skippable steps, the BAA register's governing record, and a proxy's 413
+
+**Why.** The console offered Skip from its own list and guessed which BAA record go-live judges; both now come from the server.
+
+- Each step of `GET /api/v1/platform/tenants/{orgSlug}/onboarding` carries `skippable`: true for a non-canonical catalog step (added by platform ops) and
+  for the canonical steps on the server's allowlist (MAC configuration, payer enrollment, the DoseSpot kickoff, sample data). Go-live is
+  never skippable.
+- `POST /api/v1/platform/onboarding-templates` naming the key of a canonical template is now `409 ONBOARDING_TEMPLATE_CANONICAL` and
+  changes nothing (it could overwrite the template and mark it non-canonical). Canonical templates change only by migration.
+- `POST /api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/skip` on any other step is `409 ONBOARDING_STEP_NOT_SKIPPABLE` (answered
+  before the sequence check, so it is final whatever is still open).
+- Each item of `GET /api/v1/platform/baa-register` carries `governing` (true on the one record per tenant that go-live and step 3 judge:
+  an undated termination, else the newest dated record, judged over the tenant's whole register whatever the status filter) and
+  `documentFiled` (on the governing record, whether its `documentId` is a signed BAA filed for that tenant, false with no link; null on any
+  other record, or when no check is configured).
+- `POST /api/v1/platform/tenants/{orgSlug}/baa-document` behind the production proxy: the Platform Ops vhost admits bodies up to 16m on this
+  route only. A body the proxy refuses is a `413` with an HTML page, not the error envelope (no `code`); treat any `413` with no envelope as
+  "too large at the edge". The API's own `413 BAA_UPLOAD_TOO_LARGE` and `422 UPLOAD_SIZE_INVALID` (over 10 MiB decoded) are unchanged.
+
+---
+
+## 2026-11-06 — The operator switches a live tenant off "bills outside ChartWarden"
+
+**Why.** A live tenant that bills outside ChartWarden and holds a contract could not move to a vendor by any route: its own lane is
+blocked while a contract exists, and the operator's write was onboarding-only.
+
+- `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` that moves a tenant with a contract from `outside` to a vendor (the body names
+  `billingServiceMode`) is now accepted for a tenant that is provisioning, onboarding, active, at risk or suspended (an explicit allowlist:
+  any other status, such as offboarding, final export pending, retained, being destroyed, destroyed or a sign-up intent, is
+  `409 TENANT_NOT_ONBOARDING`, answered before any mode is written). Every other write on that route stays onboarding-only. For a live tenant the mode is dated the 1st of next month,
+  like any mode change.
+- A body that names `billingServiceMode` also needs the pricing key `subscription.onboard_platform` (`403` with the clearinghouse key alone).
+- Everything that can be refused beforehand is refused BEFORE the mode is written (the plan's `422`s, the body's rules, `412`/`428` on the
+  If-Match, the switch's locks, a missing credential), so a plain input error writes no mode; a refusal is audited as a failed attempt.
+  After the vendor commits, the mode is asked for again (idempotent), and once more if that fails, so a sync that ran in between cannot
+  leave the tenant on none. If it still cannot be confirmed the answer carries `billingModeConfirmed: false` (the vendor change stands):
+  read the contract and set the mode if it is not the one chosen.
+- That early status refusal is audited (`write_refused`) on its own short transaction and fails closed: a refusal that cannot be audited is
+  `503 ONBOARDING_AUDIT_UNAVAILABLE` (nothing changed; try again).
+- If the vendor's commit fails WITHOUT a definite answer from the database (a lost connection, or a connection-class or server-error
+  SQLSTATE), the vendor row is read again before the mode is undone. Not saved: the mode goes back to `none` and the failure is answered.
+  Saved: the switch stands and the answer is the row as it is. Unreadable: the mode is left as set and the answer is
+  `503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN` (read the tenant's clearinghouse and contract before changing anything). One narrow case
+  cannot be closed from the server: a commit the server gave up on can still land after the read-back saw `outside`, leaving a vendor with
+  the mode put back to `none`; after any failed switch, read the tenant's clearinghouse and contract and set the mode if it is not the one chosen.
+- A `write_failed` audit row for a commit that failed with no definite answer carries `detail.commitOutcomeUnknown: true`: the write may
+  have landed, so the row can sit beside a success row (it is not a rollback).
+- A contract that is PAUSED counts: the tenant's own switch is `409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR`, the operator names the
+  mode, and the outside-means-none rule applies to it. A canceled contract is none. A contract that cannot be read is
+  `503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE` on the operator's route too.
+- `GET /api/v1/platform/tenants/{orgSlug}/clearinghouse` now carries `hasContract` (a contract that is not canceled): the server's answer to
+  whether the switch takes a billing mode, for a screen to use instead of inferring it.
+
+---
+
+## 2026-11-06 — A platform operator uploads a tenant's signed BAA
+
+**Why.** Onboarding step 3 linked the signed agreement by a document id the operator had to be handed. The operator can now upload it.
+
+- New `POST /api/v1/platform/tenants/{orgSlug}/baa-document` (`201`): body `{ contentBase64, mimeType, reason }` and nothing else (a field
+  naming a document kind, patient or title is a `422`). Headers: `Idempotency-Key` (required) and a fresh step-up. It answers
+  `{ documentId, mimeType, byteSize, sha256Hex }`; link `documentId` on the BAA register row (`POST /api/v1/platform/baa-register` or
+  `PATCH /api/v1/platform/baa-register/{id}`) as before.
+- The file goes through the documents pipeline: at most 10 MiB decoded (`422 UPLOAD_SIZE_INVALID`; a declared Content-Length over the limit is `413 BAA_UPLOAD_TOO_LARGE`, refused before the body is read), a type allowlist (`415`), magic
+  bytes (`415 UPLOAD_CONTENT_MISMATCH`), not base64 (`422`), a scanner refusal (`422 UPLOAD_REJECTED`), no object store configured
+  (`503`). The size and digest are the server's.
+- New permission `tenant_baa_document.upload_platform`, held by `platform_ops` only. It is not `documents.upload`: it files one document
+  kind (`tenant_baa`) for the tenant in the path, and reads or lists no document. Accepted while the tenant is `provisioning`, `onboarding`,
+  `active`, `at_risk` or `suspended` (a live tenant's renewal files its new signed copy); any other status is `409 TENANT_NOT_ONBOARDING`.
+  A successful upload voids a pending go-live attestation, like any other onboarding data write; for a tenant that is no longer onboarding it
+  runs no onboarding pass (no step settles, no `m34.tenant.onboarding_overdue` is emitted).
+- The `tenant_baa` kind is not accepted by `POST /api/v1/documents`, and a `tenant_baa` document takes no new version, metadata edit, link or
+  tag from any generic documents route (`409 DOCUMENT_IMMUTABLE`).
+- `POST /api/v1/platform/baa-register` and `PATCH /api/v1/platform/baa-register/{id}` now require `documentId` to be a signed BAA filed for
+  the record's own tenant (the document `tenant_baa` kind, in that organization): another tenant's document, a document of another kind or an
+  unknown id is `422 BAA_DOCUMENT_INVALID` (field `documentId`). Wizard step 3
+  settles only on a governing BAA whose document verifies the same way.
+- **Deploy note: go-live now needs the BAA's document to verify.** The go-live guard (the wizard's approval and the status route's
+  `onboarding -> active` activation) treats a governing BAA as executed only when its `document_id` is a `tenant_baa` document of that
+  organization, not on the `executed` status alone. A tenant whose governing BAA is `executed` but whose `document_id` does not verify
+  (an id pasted before the upload existed, another tenant's document, another kind, or none) is refused go-live (the BAA guard fails)
+  until the BAA is relinked to an uploaded document (`PATCH /api/v1/platform/baa-register/{id}`). Before deploying, list the tenants this
+  would hold back (an operator's read-only query; nothing is changed by it):
+
+  ```sql
+  SELECT a.organization_id, b.tenant_account_id, b.addendum_version, b.document_id
+  FROM platform_tenant_baa_record b
+  JOIN tenant_account a ON a.id = b.tenant_account_id
+  WHERE a.status IN ('provisioning', 'onboarding')
+    AND b.baa_status = 'executed'
+    AND NOT EXISTS (SELECT 1 FROM document d
+                    WHERE d.id = b.document_id AND d.organization_id = b.organization_id AND d.aggregate_type = 'tenant_baa');
+  ```
+
+---
+
+## 2026-11-06 — Leaving "bills outside ChartWarden" is a platform operator's switch
+
+**Why.** A tenant that bills outside ChartWarden is on billing service mode `none` (the system sets it). Moving it to a clearinghouse also
+means choosing the billing mode the vendor billing calls for, which only an operator may do.
+
+- `PUT /api/v1/tenant/clearinghouse` that moves an organization from `outside` to a vendor now answers
+  `409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR` while the organization has a pricing contract (`503
+  CLEARINGHOUSE_CONTRACT_UNAVAILABLE` if the contract cannot be read). An organization with no contract can still switch.
+- `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` takes an optional `billingServiceMode` (`none`, `billing_software`,
+  `managed_billing`). It is required (`422 BILLING_SERVICE_MODE_REQUIRED`, field `billingServiceMode`) when a tenant with a contract
+  leaves `outside` for a vendor, and refused (`422 BILLING_SERVICE_MODE_NOT_APPLICABLE`) on any other write. The mode is set first,
+  through the pricing path (dated like any mode change, audited as the operator), then the vendor; if the vendor change fails the mode is
+  put back to `none`.
+- `PUT /api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode` for a tenant that bills outside ChartWarden now answers
+  `409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE` for any mode but `none`.
+
+---
+
+## 2026-11-06 — Admin console reads for the tenant onboarding wizard
+
+**Why.** The platform-ops console now runs tenant onboarding as one ordered wizard. It needs a few reads and one relaxed field.
+
+- `GET /api/v1/platform/tenant-invitations` accepts `?tenantAccountId=<uuid>` and returns only that tenant's invitations (a malformed id is a
+  `422`). Without it the list is unchanged (every tenant, newest first).
+- New `GET /api/v1/platform/tenants/{orgSlug}/members` (platform ops; `tenant_onboarding_data.read_platform`): a tenant's **active** staff
+  (`membershipId`, `displayName`, `email`, `roleKeys`) so an operator can pick the compliance officer by name. Read on the tenant's own
+  scope and audited. Capped at 500, named members first (by name, then id); `truncated` says when there were more.
+- `GET /api/v1/platform/tenants` and `GET /api/v1/platform/tenants/{orgSlug}` carry `onboardingProgress`
+  (`doneCount`, `totalCount`, `currentStepKey`, `goLiveState`), judged over the gating wizard steps for every tenant (`live` once
+  active, `closed` once past onboarding), read for the requested page only. On the overview the older
+  `onboarding.{totalTasks,doneTasks,currentStep}` now follow the same rule: they used to count every task row, retired history
+  included, and to name whichever pending row came back first.
+- Every wizard step (`GET /api/v1/platform/tenants/{orgSlug}/onboarding`, `GET /api/v1/tenant/onboarding` and the step answers) carries
+  `systemSkipped`: true only when the SYSTEM skipped the step because the tenant bills outside ChartWarden. Read it, never the
+  `skipRationale` text: a person can type the same words.
+- New `GET /api/v1/platform/tenants/{orgSlug}/notice-filings` (platform ops; `tenant_onboarding_data.read_platform`): the NOEs and NOTRs the
+  tenant recorded as filed outside ChartWarden, newest record first (`noticeKind`, `noticeId`, `state`, `windowTargetAt`,
+  `windowBreachedAt`, `filedOn`, `recordedAt`, `breachStampFromRecord`; no patient, admission or control number). `recordedAt` is the
+  `If-Match` the withdraw routes pin; `breachStampFromRecord` says the withdrawal will clear the breach stamp. Not gated on the
+  tenant's onboarding status, audited, capped at 200 (`truncated` says when older records exist).
+- `POST /api/v1/platform/tenants` no longer requires `planLabel`. The retired flat tier is replaced by the census-banded contract signed at
+  onboarding step 2, so an omitted label is stored as `"unassigned"`. A label that is sent must still be `starter`, `standard` or `enterprise`.
+
+---
 ## 2026-11-09 — More operator free-text fields refuse a patient identifier (`422 EVIDENCE_LOOKS_LIKE_PHI`)
 
 **Why.** Text typed by an operator and stored on a row a tenant can read, or copied into the audit trail, is no place for a patient.
@@ -73,7 +365,6 @@ so a same-key retry never ran the write.
   resource; do not retry with the key), until the key's 24-hour record expires.
 - Not tracked: an effect outside Postgres made directly in a route (an outbound call, a queue or object-store write). Those
   belong behind the outbox (after the commit) by the platform's convention; a route that makes one directly is not covered.
-
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
 
 **Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong
@@ -82,6 +373,95 @@ from-status.
 - `POST /api/v1/platform/tenants/{orgSlug}/status` and `POST /api/v1/platform/tenants/{orgSlug}/offboard` answer
   `409 TENANT_STATUS_CHANGED` when another transition changed the tenant's status while the request was waiting. Nothing is
   written; reload the tenant and retry.
+
+## 2026-11-05 — Tenant pricing: census-banded plans, a signed contract, and a monthly statement
+
+**Why.** The flat starter / professional / enterprise tiers are retired. A tenant now signs a *census-banded* plan version at
+onboarding step 2: the monthly platform fee is the **greater of** (active staff accounts x the per-user price) and the flat fee of the
+average-daily-census band the tenant falls in, plus a percentage of net collections when the tenant bills through ChartWarden. The default
+bands are five: 0-9, 10-16, 17-25, 26-29 and 30+ patients (`GET /api/admin/pricing/defaults` returns `[0, 10, 17, 26, 30]`). Every
+price is a column on a plan version and a published version is frozen, so a tenant keeps the price it signed. Money is integer cents,
+rates are basis points.
+
+### 1. What changes for existing clients
+
+- `tier` on plan and subscription responses can now be `census_banded` (the three old values stay readable on existing rows).
+- `GET /api/v1/plans` (the tenant catalog) never lists a `census_banded` plan, and the retired flat plans are no longer offered.
+- `POST /api/v1/subscription` and `PATCH /api/v1/subscription` answer `404` for a `census_banded` slug (exactly what a plan that does not
+  exist answers), and `403 PLAN_ASSIGNED_BY_OPERATIONS` for a tenant that is already on one; so does `POST /api/v1/subscription/cancel`: a
+  contracted plan is assigned and ended by ChartWarden operations.
+- `POST /api/admin/subscriptions/{id}/pause`, `/resume` and `/cancel` now check the subscription's status under a row lock and answer
+  `409` with a stable code instead of acting on any status: `SUBSCRIPTION_NOT_PAUSED` (resume of a subscription that is not paused),
+  `SUBSCRIPTION_CANCELED` (pause or cancel of a canceled subscription: it is final), `SUBSCRIPTION_ALREADY_PAUSED` (pause of a paused
+  one). A refused request writes nothing. They answer `503 AUDIT_UNBOUND` when the platform audit writer is not bound.
+- `POST /api/admin/plans` no longer accepts `tier: census_banded`; `activate`, `deprecate` and `meters` on such a plan answer
+  `403 PLAN_ASSIGNED_BY_OPERATIONS` (use the pricing plan editor below), and the legacy edit and activate answer `409` for a retired flat plan.
+
+### 2. New routes
+
+| Route | Who | Guards |
+|---|---|---|
+| `GET /api/admin/pricing/defaults`, `GET /api/admin/pricing/plans[/{id}]` | platform billing roles | `plan.admin.read` |
+| `POST /api/admin/pricing/plans` (draft), `PUT .../{id}` (replace a draft), `POST .../{id}/publish`, `/new-version`, `/archive` | platform billing roles | `plan.admin.write`, step-up, no AI actor, `Idempotency-Key`, body `reason` |
+| `GET /api/v1/platform/pricing/plans`, `POST /api/v1/platform/pricing/preview` | platform ops and billing roles | `subscription.pricing_read_platform` |
+| `GET /api/v1/platform/tenants/{orgSlug}/subscription` | platform ops and billing roles | `subscription.pricing_read_platform` |
+| `POST /api/v1/platform/tenants/{orgSlug}/subscription` | `platform_ops` only | `subscription.onboard_platform`, `tenant_lifecycle_platform_ops`, step-up, no AI actor, `Idempotency-Key`, body `reason` |
+| `PUT /api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode` | `platform_ops` only | same |
+| `GET /api/v1/subscription/pricing` | the tenant | `subscription.read` (read-only) |
+
+`POST .../subscription` signs the tenant onto a published plan version in one transaction (subscription, contract, `m35.subscription.created`,
+audit row) and then settles the wizard's `plan_contract` step through the wizard. It refuses while an earlier step is unsettled
+(`409 ONBOARDING_STEP_OUT_OF_ORDER`) or once the tenant is live (`409 TENANT_NOT_ONBOARDING`). The response carries
+`planContractStep.status`: `settled`, `already_settled`, or `pending` (the subscription exists but the step could not be settled; repeat the
+same POST to resume, nothing is duplicated).
+
+`billingServiceMode` is `none` (the tenant bills outside ChartWarden, no percentage), `billing_software` or `managed_billing`. The mode is an
+effective-dated history: a change takes effect from the **1st of the next month** (the contract view shows it as `pendingBillingServiceMode`), and
+immediately only while the tenant is still onboarding with no statement yet. A statement prices with the mode in force for its period, and a
+month that is already final can never be re-dated. `GET .../subscription` writes a read-audit row naming the operator.
+
+### 3. The statement
+
+One statement per subscription per UTC month, `draft` while the month is open and `final` once it is closed (five days after month end, so
+late-posted remittances dated inside the month still count). It shows both sides of the greater-of rule, the meters it used (active staff
+accounts, average daily census with its days observed, net collections with its remittance and pending counts) and the total. The tenant reads
+its latest statement on `GET /api/v1/subscription/pricing`; it never carries the ChartWarden operator who signed the contract.
+
+- **Charged from go-live, by days.** The platform fee and the plan minimum are charged by `inputs.daysLive / inputs.adcDaysInPeriod`: the
+  subscription's live days in the month, the go-live day (and a cancel day) counting in full, half up to the cent. A go-live on the 1st is a whole
+  month; mid-month it is a part. The implementation fee is not prorated. The billing percentage is on what was collected, so it is naturally partial.
+- **The minimum floors the platform fee only.** `minimumAdjustmentCents` lifts the (prorated) platform fee to the (prorated) plan minimum; the billing
+  fee is added on top.
+- **Late money is never lost.** A remittance dated inside a closed month that posts after the month finalized is billed on the next open
+  statement as a `priorPeriodLines` entry stored with its source month and that month's own rate (`priorPeriodFeeCents`), and never re-bills the
+  closed month. After a subscription ended, a settlement statement (`daysLive` 0) carries it.
+- **`needsReview`** marks a statement an operator should look at: its staff count fell back to the unfiltered ledger, or a remittance of the month had
+  not posted when it closed. Statements finalize on schedule either way.
+- **A canceled or paused subscription** is billed for the days it was live; a month already closed finalizes whatever the subscription has become.
+- New fields on the statement and contract views: `inputs.daysLive`, `priorPeriodLines`, `priorPeriodFeeCents`, `needsReview`,
+  `pendingBillingServiceMode`; the price preview takes an optional `plannedGoLiveOn` and returns `firstMonthDaysLive` / `firstMonthDaysInPeriod`.
+
+### 4. Later changes to the same release
+
+- `POST /api/v1/subscription/resume` and `POST /api/v1/subscription` answer `403 PLAN_ASSIGNED_BY_OPERATIONS` for a tenant that holds a
+  contracted subscription (resuming one, or starting another beside a paused one): a contracted subscription is paused and resumed by ChartWarden
+  operations. A pause that was left open (the subscription was resumed by a path that wrote no history row) now closes at the subscription's last
+  write instead of billing nothing for ever.
+- `POST /api/v1/roles` answers `422 RESERVED_ROLE` for the key `external_auditor` (whatever the category): that role is created by the system on the
+  first auditor redemption, and an auditor is only ever attached to it. The database refuses the same for any other writer.
+- A platform operator's pause, resume and cancel of a subscription no longer write the operator into the tenant-readable state history (or its
+  audit copy); they write a platform-scoped audit row (`m35.subscription.platform_paused|resumed|canceled`) that names the operator and the tenant.
+- The onboarding evidence note for step 2 (tenant-readable) no longer carries the order-form reference.
+- A settlement statement (`daysLive` 0, carrying late money after a cancel or pause) now finalizes after its grace like any other, and prior-period
+  money rides the EARLIEST open statement only (a later draft does not carry it again).
+- A closed month with no census day is recorded once per subscription-month for review (platform-only) instead of being logged every hour.
+- The staff count excludes an auditor or platform operator by what they WERE when they signed in (recorded in the staff ledger), not by their roles at
+  statement time, so changing a member's roles afterwards cannot move them on or off the bill.
+- The band is chosen on the exact mean (patient-days against threshold x days), not the rounded ADC shown.
+- A published plan version and a final statement cannot be deleted; a tenant reads its contract's identity and start only (not who signed, why, or the
+  order form).
+
+---
 
 ## 2026-11-05 — Onboarding wizard v2, pre-PR review fixes (go-live integrity)
 

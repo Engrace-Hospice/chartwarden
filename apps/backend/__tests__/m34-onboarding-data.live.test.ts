@@ -47,6 +47,10 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { m34PlatformBypassAuditor } from "../src/index";
 import { createTaxIdCipher } from "../src/modules/02-identity/tax-id-cipher";
 import {
+  isTenantBaaDocumentFiled,
+  tenantBaaDocumentUploader,
+} from "../src/modules/22-documents/onboarding-baa-document-port";
+import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
@@ -1209,6 +1213,8 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
     const wizard = createOnboardingWizard({
       activateOrganization: async () => undefined,
       runner: createDrizzleWizardRunner({
+        baaDocumentFiled: isTenantBaaDocumentFiled,
+        baaDocumentUploader: tenantBaaDocumentUploader,
         db: tenantPool.db,
         platformDb: platformPool.db,
         auditBypass: m34PlatformBypassAuditor,
