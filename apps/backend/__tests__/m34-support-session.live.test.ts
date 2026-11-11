@@ -379,6 +379,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       },
       now: () => clock,
       supportOps: ops,
+      warn: (message, context) => warnings.push({ message, context }),
       // 7B's table is not in this tree: the port a grant revoke hands the linked request to is a recording fake.
       linkedHelpRequestsFor: () => ({
         resolveForRevokedGrant: async (input) => {
@@ -423,7 +424,15 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
     reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
     registerAbacRegistry(reg);
 
-    server = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    server = buildServer({
+      authenticate: headerAuth,
+      security: { rateLimitEnabled: false },
+      db: app.db,
+      readAuditPrefixes: [
+        "/api/v1/platform/support-sessions",
+        "/api/v1/tenant/support-consent-grants",
+      ],
+    });
     mountTenantPlatformRoutes(server, {} as DbClient, {
       platform: platformBackend,
       tenant: tenantBackend,
@@ -1158,7 +1167,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       const grants = await send("GET", "/api/v1/tenant/support-consent-grants", headersOf(ADMIN));
       tenantReads += grants.text;
       const grantReadAudit = await q(
-        "SELECT resource_kind FROM audit_event WHERE organization_id = $1 AND event_type = 'support_consent_grant.list_viewed' ORDER BY occurred_at DESC LIMIT 1",
+        "SELECT resource_kind FROM audit_event WHERE organization_id = $1 AND event_type = 'support_consent_grant.list_viewed' ORDER BY created_at DESC LIMIT 1",
         [TENANT_ORG],
       );
       expect(grantReadAudit).toHaveLength(1);
@@ -1395,11 +1404,14 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
           platform.db,
           { jobId: JOB_ID, reason: "test sweep", crossTenant: true },
           auditBypass,
-          async (tx) =>
-            runSupportSessionCloseCron({
-              candidates: await loadExpiredSessionCandidates(tx, clock),
+          async (tx) => {
+            const candidates = await loadExpiredSessionCandidates(tx, clock);
+            expect(candidates.some((candidate) => candidate.sessionId === due)).toBe(true);
+            return runSupportSessionCloseCron({
+              candidates: candidates.filter((candidate) => candidate.sessionId === due),
               serviceDeps: () => ports.bind(tx),
-            }),
+            });
+          },
         );
         expect(result.closedSessionIds).toEqual([due]);
         const rows = await q(

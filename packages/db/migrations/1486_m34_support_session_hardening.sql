@@ -122,6 +122,7 @@ BEGIN
 END $$;--> statement-breakpoint
 ALTER FUNCTION m34_record_support_session_close() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
 GRANT INSERT ON "support_session_event" TO chartwarden_audit_writer;--> statement-breakpoint
+GRANT INSERT ON "support_session_event_default" TO chartwarden_audit_writer;--> statement-breakpoint
 
 CREATE TRIGGER "trg_m34_record_support_session_close"
   AFTER UPDATE ON "support_session"
