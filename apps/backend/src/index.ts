@@ -7076,6 +7076,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             }),
           };
           onboardingWizard.bind(m34Onboarding.wizard);
+          if (!rateLimitStore) {
+            app.log.warn(
+              "M34 help-request filing limits use a per-replica in-memory store (no REDIS_URL): member and organization budgets are not shared across replicas or restarts",
+            );
+          }
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,
             // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).
@@ -7121,6 +7126,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 platformJobId: M34_PLATFORM_JOB_ID,
                 outbox: m34OutboxPublisher,
                 grants: createUnboundSupportGrantOperations(),
+                // Resolve lazily: M36 registers the seam during boot, after this module's imports are evaluated.
+                alerts: {
+                  emit: (organizationId, input) =>
+                    (getSeam("AlertEmitter") as AlertEmitter).emit(organizationId, input),
+                },
+                warn: (message, context) => app.log.warn(context, message),
               }),
               fileRateLimit: createRouteRateLimit({
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
@@ -9971,7 +9982,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     } else {
       app.log.warn(
-        "M34 tenant provisioning disabled: platform DB, provision gateway, and MINIO_* configuration are required",
+        "M34 tenant provisioning, platform sweeps, and the help-request retention/expiry sweep are disabled: platform DB, provision gateway, and MINIO_* configuration are required",
       );
     }
 

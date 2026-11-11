@@ -28,9 +28,9 @@ export type TenantHelpRequestStatus = (typeof TENANT_HELP_REQUEST_STATUSES)[numb
 export const TENANT_HELP_REQUEST_CLOSER_KINDS = ["tenant", "platform_ops", "system"] as const;
 export type TenantHelpRequestCloserKind = (typeof TENANT_HELP_REQUEST_CLOSER_KINDS)[number];
 
-/** How long a closed request's message and note are kept; after it the sweep replaces the message with {@link TENANT_HELP_REQUEST_PURGED_MESSAGE}. */
+/** How long a closed request's message and note are kept; after it the sweep nulls both at rest. */
 export const TENANT_HELP_REQUEST_TEXT_RETENTION_DAYS = 90;
-/** What a purged message reads as (migration 1483's guard trigger accepts exactly this text). */
+/** What the API projects for a message migration 1483 has nulled at rest. */
 export const TENANT_HELP_REQUEST_PURGED_MESSAGE = "[removed after 90 days]";
 
 /** The live statuses: the ones the unique index admits one of per tenant account. */
@@ -48,7 +48,7 @@ export const tenantHelpRequest = pgTable(
     // The wizard step the question is about (an onboarding_task_template key), or null for a general one.
     stepKey: text("step_key"),
     // Free text the member typed (btrim 8..1000, PHI-screened by the service). Never in audit detail, events, logs or errors.
-    message: text("message").notNull(),
+    message: text("message"),
     status: text("status").$type<TenantHelpRequestStatus>().notNull().default("open"),
     // Plain uuids like every M34 cross-module reference (no SQL FK to M2); the INSERT policy checks them against each other.
     requestedByMembershipId: uuid("requested_by_membership_id").notNull(),
@@ -69,7 +69,7 @@ export const tenantHelpRequest = pgTable(
     closedAt: timestamp("closed_at", { withTimezone: true }),
     // The operator's tenant-visible note on a Resolve (btrim 8..500, PHI-screened by the service); only an operator writes one.
     closeNote: text("close_note"),
-    // Migration 1483: stamped when the retention sweep replaced a closed request's message with the placeholder (90 days after it
+    // Migration 1483: stamped when the retention sweep nulled a closed request's message (90 days after it
     // closed). The guard trigger lets a closed request change in exactly this one way.
     messagePurgedAt: timestamp("message_purged_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

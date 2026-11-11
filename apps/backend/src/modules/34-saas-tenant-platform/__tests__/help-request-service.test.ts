@@ -56,6 +56,7 @@ let clock: Date;
 let state: ReturnType<typeof createMemoryHelpState>;
 let ops: ReturnType<typeof createMemorySupportGrantOperations>;
 let published: Published[];
+let alerts: Array<{ organizationId: string; input: Record<string, unknown> }>;
 
 function service() {
   return createHelpRequestService({
@@ -64,6 +65,11 @@ function service() {
     outbox: {
       async publish(_tx, input) {
         published.push(input);
+      },
+    },
+    alerts: {
+      async emit(organizationId, input) {
+        alerts.push({ organizationId, input });
       },
     },
     now: () => clock,
@@ -96,6 +102,7 @@ beforeEach(() => {
   state = createMemoryHelpState(() => clock);
   ops = createMemorySupportGrantOperations(state);
   published = [];
+  alerts = [];
 });
 
 describe("filing a request", () => {
@@ -143,6 +150,58 @@ describe("filing a request", () => {
     expect(JSON.stringify(event)).not.toContain("enrolment");
   });
 
+  it("raises the operator alert after the filing unit of work commits, with ids and codes only", async () => {
+    const view = await service().file(NURSE, { stepKey: "payer_enrollment", message: MESSAGE });
+    expect(alerts).toEqual([
+      {
+        organizationId: ORG,
+        input: {
+          eventType: "tenant.help_requested",
+          payload: {
+            helpRequestId: view.id,
+            tenantAccountId: MEMORY_HELP_ACCOUNT_ID,
+            orgId: ORG,
+            stepKey: "payer_enrollment",
+            requestedAt: NOW.toISOString(),
+          },
+          severity: "warn",
+          correlationId: `m34-help-request-${view.id}`,
+        },
+      },
+    ]);
+    expect(JSON.stringify(alerts)).not.toContain("enrolment letter");
+  });
+
+  it("does not raise the alert when the filing unit of work fails, and an alert failure cannot undo the filing", async () => {
+    const failingOutbox = createHelpRequestService({
+      runner: createMemoryHelpRequestRunner(state),
+      grants: ops,
+      outbox: { publish: async () => Promise.reject(new Error("publisher refused")) },
+      alerts: {
+        emit: async (organizationId, input) => {
+          alerts.push({ organizationId, input });
+        },
+      },
+      now: () => clock,
+    });
+    await expect(failingOutbox.file(NURSE, { message: MESSAGE })).rejects.toThrow(
+      "publisher refused",
+    );
+    expect(alerts).toEqual([]);
+
+    state.requests.clear();
+    const alertFailure = createHelpRequestService({
+      runner: createMemoryHelpRequestRunner(state),
+      grants: ops,
+      outbox: { publish: async () => undefined },
+      alerts: { emit: async () => Promise.reject(new Error("alert unavailable")) },
+      now: () => clock,
+    });
+    await expect(alertFailure.file(NURSE, { message: MESSAGE })).resolves.toMatchObject({
+      status: "open",
+    });
+  });
+
   it("accepts a general question with no step", async () => {
     const view = await service().file(NURSE, { message: MESSAGE });
     expect(view.stepKey).toBeNull();
@@ -168,6 +227,23 @@ describe("filing a request", () => {
     }
     expect(state.requests.size).toBe(0);
     expect(published).toHaveLength(0);
+  });
+
+  it("refuses labelled MRNs and dates of birth and strips display-format characters", async () => {
+    for (const text of ["Please check MRN 12-3456", "Patient DOB 03/04/1948 is wrong"]) {
+      const error = await refusal(service().file(NURSE, { message: text }));
+      expect(error).toMatchObject({ code: "EVIDENCE_LOOKS_LIKE_PHI", statusCode: 422 });
+      expect(JSON.stringify(error)).not.toContain(text);
+    }
+    const accepted = await service().file(NURSE, {
+      message: "MAC portal\u202E enrollment will not complete",
+    });
+    expect(accepted.message).toBe("MAC portal enrollment will not complete");
+  });
+
+  it("judges text length in Unicode code points, matching PostgreSQL", async () => {
+    const error = await refusal(service().file(NURSE, { message: "😀😀😀😀" }));
+    expect(error).toMatchObject({ code: "HELP_REQUEST_TEXT_INVALID", statusCode: 422 });
   });
 
   it("refuses a message that is too short once trimmed, or holds a NUL", async () => {
@@ -209,6 +285,7 @@ describe("filing a request", () => {
       },
       grants: ops,
       outbox: { publish: async () => undefined },
+      alerts: { emit: async () => undefined },
       now: () => clock,
     });
     const loser = await refusal(racing.file(NURSE_2, { message: "Another member asked at once" }));
@@ -300,6 +377,19 @@ describe("approving is consent", () => {
     expect(state.requests.get(request.id)?.status).toBe("open");
   });
 
+  it("refuses approval without a recent step-up even when the caller holds an approver role", async () => {
+    const request = await service().file(NURSE, { message: MESSAGE });
+    const staleAdmin = actor({
+      userId: "u-stale-admin",
+      roles: ["org_admin"],
+      stepUpRecent: false,
+    });
+    const error = await refusal(service().approve(staleAdmin, request.id, {}));
+    expect(error).toMatchObject({ statusCode: 403 });
+    expect(state.grants.size).toBe(0);
+    expect(state.requests.get(request.id)?.status).toBe("open");
+  });
+
   it("refuses hours outside 1 to 24", async () => {
     const request = await service().file(NURSE, { message: MESSAGE });
     for (const hours of [0, 25, 1.5]) {
@@ -338,6 +428,7 @@ describe("approving is consent", () => {
         },
       },
       outbox: { publish: async () => undefined },
+      alerts: { emit: async () => undefined },
       now: () => clock,
     });
     expect((await refusal(refusing.approve(ADMIN, request.id, {}))).code).toBe(

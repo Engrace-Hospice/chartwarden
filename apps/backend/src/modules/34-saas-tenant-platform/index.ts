@@ -289,7 +289,7 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * `registerTenantPlatformAbacPredicates`.
  */
 import type { HelpRequestService } from "./help/help-request-contract";
-import { createInMemoryHelpRequestService } from "./help/help-request-factory";
+import { createUnboundHelpRequestService } from "./help/help-request-factory";
 import { type OnboardingWizard, createOnboardingWizard } from "./onboarding/wizard-service";
 import {
   createMemoryOrgProfile,
@@ -329,8 +329,8 @@ export function mountTenantPlatformRoutes(
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     /**
-     * Slice 7 - help requests, both surfaces. `service` absent => the in-memory slice (route tests, no-db boot); the composition root
-     * binds `buildDrizzleHelpRequestService`. `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped).
+     * Slice 7 - help requests, both surfaces. `service` absent => a fail-closed 501 binding; route tests that need behavior inject the
+     * exported in-memory service explicitly. `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped).
      */
     help?: { service?: HelpRequestService; fileRateLimit?: HelpRequestRateLimit };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
@@ -367,7 +367,7 @@ export function mountTenantPlatformRoutes(
   _registerTenantKeyRingRoutes(app, { service: platformService });
   _registerOnboardingTemplateRoutes(app, { service: platformService });
   _registerSupportSessionRoutes(app, { service: platformService });
-  const helpService = services?.help?.service ?? createInMemoryHelpRequestService().service;
+  const helpService = services?.help?.service ?? createUnboundHelpRequestService();
   registerPlatformHelpRequestRoutes(app, { service: helpService });
   _registerSignupIntentRoutes(app, { service: platformService });
   _registerBaaRegisterRoutes(app, { service: platformService });
@@ -486,6 +486,7 @@ export {
   type DrizzleHelpRequestServiceDeps,
   buildDrizzleHelpRequestService,
   createInMemoryHelpRequestService,
+  createUnboundHelpRequestService,
 } from "./help/help-request-factory";
 export {
   createDrizzleHelpRequestRunner,

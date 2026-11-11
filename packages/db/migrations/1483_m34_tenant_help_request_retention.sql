@@ -1,15 +1,15 @@
--- compat: expand
+-- compat: contract
 -- M34 slice 7 (piece 7B), round 2: what migration 1482's review asked the database to hold.
 --
 -- 1. RETENTION OF FREE TEXT. A help request's message and an operator's close note are text a person typed; the PHI screen is a
 --    best-effort pattern match, so a name or a date of birth can still get through. The text is therefore kept only as long as it
---    is useful: 90 days after a request closes (resolved or cancelled) the sweep replaces the message with a fixed placeholder and
+--    is useful: 90 days after a request closes (resolved or cancelled) the sweep nulls the message and
 --    clears the note, stamping `message_purged_at`. The DATABASE holds the rule, not only the sweep: the guard trigger below lets a
---    closed request change in exactly this one way (the placeholder, a cleared note, the stamp, nothing else), never before the 90
+--    closed request change in exactly this one way (a cleared message and note, the stamp, nothing else), never before the 90
 --    days are up (the trigger reads the transaction's own `now()`), and never twice. The platform carrier gets the column UPDATE this
 --    needs on `message` and `message_purged_at` (`close_note` it already had); the tenant role gets nothing new, so a member can still
---    never edit a message. (`message` stays NOT NULL with its 8..1000 CHECK, so the purged text is a placeholder, not a NULL; every
---    response shape stays what it was.)
+--    never edit a message. The API projects a fixed retention placeholder for the now-null database value, preserving its response
+--    shape without retaining the person's text.
 --
 -- 2. THE GUARD TRIGGER PINS THE CONSENT COLUMNS ON EVERY MOVE BUT THE APPROVAL. 1482's trigger fixed an approved request's grant,
 --    approver and approval time; an `open` request could still be closed with those columns set to anything (reachable only with SQL
@@ -23,6 +23,7 @@
 --
 -- Idempotent (ADD COLUMN IF NOT EXISTS, CREATE OR REPLACE, DROP POLICY IF EXISTS, CREATE ... IF NOT EXISTS). 1482 is unchanged.
 ALTER TABLE "tenant_help_request" ADD COLUMN IF NOT EXISTS "message_purged_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "tenant_help_request" ALTER COLUMN "message" DROP NOT NULL;--> statement-breakpoint
 -- The sweep's scan: closed requests whose text has not been purged yet, oldest first.
 CREATE INDEX IF NOT EXISTS "tenant_help_request_purge_ix" ON "tenant_help_request" ("closed_at")
   WHERE "message_purged_at" IS NULL AND "status" IN ('resolved', 'cancelled');--> statement-breakpoint
@@ -38,7 +39,7 @@ BEGIN
     IF NEW.status = OLD.status
        AND OLD.message_purged_at IS NULL AND NEW.message_purged_at IS NOT NULL
        AND OLD.closed_at <= now() - interval '90 days'
-       AND NEW.message = '[removed after 90 days]' AND NEW.close_note IS NULL
+       AND NEW.message IS NULL AND NEW.close_note IS NULL
        AND NEW.closed_by_actor_kind IS NOT DISTINCT FROM OLD.closed_by_actor_kind
        AND NEW.closed_by_user_id IS NOT DISTINCT FROM OLD.closed_by_user_id
        AND NEW.closed_at IS NOT DISTINCT FROM OLD.closed_at

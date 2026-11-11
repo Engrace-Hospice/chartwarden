@@ -1,3 +1,4 @@
+import { schema } from "@chartwarden/db";
 // apps/backend/src/modules/34-saas-tenant-platform/help/help-request-sweep.ts — the help-request expiry sweep (slice 7, piece 7B).
 //
 // Every five minutes, on the audited platform credential (it reads and writes across tenants), the sweep ends two kinds of
@@ -6,7 +7,8 @@
 //   * an `approved` request whose consent grant has expired or been revoked is RESOLVED: the help it stood on is over.
 // The support-session close sweep (piece 7S) ends the sessions themselves; this job ends the REQUESTS, so it never touches the
 // support tables except to read the grant. A tick that finds nothing writes nothing. Its own queue, registered with the worker
-// registry in the composition root (never inside platform-sweeps-worker.ts).
+// registry in the composition root (never inside platform-sweeps-worker.ts). Even an empty tick writes the platform bypass-audit
+// row for entering the cross-tenant context; the request updates themselves remain set-based and idempotent.
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { HelpRequestRunner } from "./help-request-store";
 
@@ -16,6 +18,8 @@ export const HELP_REQUEST_SWEEP_QUEUE = "tenant.help_request_sweep";
 export const HELP_REQUEST_SWEEP_SCHEDULE = "*/5 * * * *";
 /** How long an unanswered request waits before it is cancelled. */
 export const HELP_REQUEST_OPEN_MAX_AGE_DAYS = 14;
+/** Free text is removed 90 days after close; migration 1483's trigger holds the same minimum. */
+export const HELP_REQUEST_TEXT_RETENTION_DAYS = schema.TENANT_HELP_REQUEST_TEXT_RETENTION_DAYS;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -24,6 +28,8 @@ export interface HelpRequestSweepResult {
   readonly cancelled: number;
   /** `approved` requests whose grant is no longer active, now resolved. */
   readonly resolved: number;
+  /** Closed requests whose member/operator text was nulled after the retention window. */
+  readonly purged: number;
 }
 
 /** One tick: both scans in ONE platform transaction (the bypass audit row says why it was opened). */
@@ -36,7 +42,8 @@ export function runHelpRequestSweep(
     const staleBefore = new Date(at.getTime() - HELP_REQUEST_OPEN_MAX_AGE_DAYS * MS_PER_DAY);
     const cancelled = await store.cancelStaleOpen(staleBefore, at);
     const resolved = await store.resolveGrantEnded(at);
-    return { cancelled, resolved };
+    const purged = await store.purgeClosedText(HELP_REQUEST_TEXT_RETENTION_DAYS, at);
+    return { cancelled, resolved, purged };
   });
 }
 

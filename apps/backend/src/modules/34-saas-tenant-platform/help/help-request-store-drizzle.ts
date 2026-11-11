@@ -300,7 +300,7 @@ export function createDrizzleHelpRequestStore(
       // selects a row the trigger would refuse.
       const purged = await tx.execute<{ id: string }>(sql`
         UPDATE tenant_help_request
-           SET message = ${schema.TENANT_HELP_REQUEST_PURGED_MESSAGE}, close_note = NULL, message_purged_at = ${at}, updated_at = ${at}
+           SET message = NULL, close_note = NULL, message_purged_at = ${at}, updated_at = ${at}
          WHERE status IN ('resolved', 'cancelled')
            AND message_purged_at IS NULL
            AND closed_at <= now() - make_interval(days => ${retentionDays})

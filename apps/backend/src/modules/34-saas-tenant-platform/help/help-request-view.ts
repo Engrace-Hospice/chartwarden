@@ -1,3 +1,4 @@
+import { schema } from "@chartwarden/db";
 // apps/backend/src/modules/34-saas-tenant-platform/help/help-request-view.ts — what each side is shown of a request (pure).
 //
 // The view is derived from the row, its grant and the grant's session summary, as of `now`; nothing here reads a database or names
@@ -87,7 +88,7 @@ export function toTenantView(
   return {
     id: row.id,
     stepKey: row.stepKey,
-    message: row.message,
+    message: row.message ?? schema.TENANT_HELP_REQUEST_PURGED_MESSAGE,
     status: row.status,
     phase: phaseOf(row, facts.session),
     requestedAt: iso(row.requestedAt),
@@ -111,7 +112,7 @@ export function toPlatformView(
     orgSlug: row.orgSlug,
     legalBusinessName: row.legalBusinessName,
     stepKey: row.stepKey,
-    message: row.message,
+    message: row.message ?? schema.TENANT_HELP_REQUEST_PURGED_MESSAGE,
     status: row.status,
     phase: phaseOf(row, facts.session),
     requestedAt: iso(row.requestedAt),

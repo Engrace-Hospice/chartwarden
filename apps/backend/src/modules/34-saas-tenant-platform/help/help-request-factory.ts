@@ -1,14 +1,19 @@
 // apps/backend/src/modules/34-saas-tenant-platform/help/help-request-factory.ts — the two ways the composition root builds the service.
 //
 // `buildDrizzleHelpRequestService` is the production one (the tenant pool and the audited platform credential, the real catalog-
-// validating publisher, piece 7S's grant operations); `createInMemoryHelpRequestService` is the slice `mountTenantPlatformRoutes`
-// falls back to when no database client is wired (route tests), with a fake grant bundle so approve and End help work end to end.
+// validating publisher, piece 7S's grant operations); `createInMemoryHelpRequestService` is injected explicitly by route tests,
+// with a fake grant bundle so approve and End help work end to end. A missing production binding fails closed.
 import type { DbClient } from "@chartwarden/db";
 import type { SupportGrantOperations } from "@chartwarden/saas-tenant-platform";
 import type { PlatformBypassAuditor } from "@chartwarden/tenancy";
+import { notBuilt } from "../not-built";
 import type { HelpRequestService } from "./help-request-contract";
 import { createMemorySupportGrantOperations } from "./help-request-grants-memory";
-import { type HelpOutboxPort, createHelpRequestService } from "./help-request-service";
+import {
+  type HelpAlertPort,
+  type HelpOutboxPort,
+  createHelpRequestService,
+} from "./help-request-service";
 import {
   type DrizzleHelpRequestRunnerDeps,
   createDrizzleHelpRequestRunner,
@@ -25,6 +30,8 @@ export interface DrizzleHelpRequestServiceDeps {
   readonly auditBypass: PlatformBypassAuditor<DbClient>;
   readonly platformJobId: string;
   readonly outbox: HelpOutboxPort;
+  readonly alerts: HelpAlertPort;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
   /** Piece 7S's bundle (`createUnboundSupportGrantOperations()` until it is bound: approving then answers 501). */
   readonly grants: SupportGrantOperations;
   readonly now?: () => Date;
@@ -45,6 +52,8 @@ export function buildDrizzleHelpRequestService(
     runner: createDrizzleHelpRequestRunner(runnerDeps),
     grants: deps.grants,
     outbox: deps.outbox,
+    alerts: deps.alerts,
+    ...(deps.warn ? { warn: deps.warn } : {}),
     now,
   });
 }
@@ -60,7 +69,23 @@ export function createInMemoryHelpRequestService(
     runner: createMemoryHelpRequestRunner(state),
     grants: createMemorySupportGrantOperations(state),
     outbox: { publish: async () => undefined },
+    alerts: { emit: async () => undefined },
     now: () => state.now(),
   });
   return { service, state };
+}
+
+/** Fail-closed route binding for a composition that omitted the database-backed help service. */
+export function createUnboundHelpRequestService(): HelpRequestService {
+  const refuse = async (): Promise<never> => {
+    throw notBuilt("tenant help requests");
+  };
+  return {
+    listForTenant: refuse,
+    file: refuse,
+    approve: refuse,
+    close: refuse,
+    listForPlatform: refuse,
+    resolve: refuse,
+  };
 }

@@ -17,7 +17,8 @@ export interface HelpRequestRow {
   readonly organizationId: string;
   readonly tenantAccountId: string;
   readonly stepKey: string | null;
-  readonly message: string;
+  /** Null only after the 90-day retention sweep; views project a fixed placeholder. */
+  readonly message: string | null;
   readonly status: HelpRequestStatus;
   readonly requestedByMembershipId: string;
   readonly requestedByUserId: string;
@@ -148,7 +149,7 @@ export interface HelpRequestStore {
   /** Resolve every `approved` request whose grant is expired or revoked as of `at`, closed by the system; the number resolved. */
   resolveGrantEnded(at: Date): Promise<number>;
   /**
-   * Replace the message of every closed request that closed more than `retentionDays` ago with the placeholder, clear its note and
+   * Null the message and note of every closed request that closed more than `retentionDays` ago and
    * stamp `message_purged_at`; the number purged. The database judges the age by its own clock (the guard trigger of migration 1483),
    * so a sweep and the trigger can never disagree at the edge.
    */

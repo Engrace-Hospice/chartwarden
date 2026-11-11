@@ -14,6 +14,7 @@ import {
   HELP_REQUEST_OPEN_MAX_AGE_DAYS,
   HELP_REQUEST_SWEEP_QUEUE,
   HELP_REQUEST_SWEEP_SCHEDULE,
+  HELP_REQUEST_TEXT_RETENTION_DAYS,
   runHelpRequestSweep,
 } from "../help/help-request-sweep";
 
@@ -45,6 +46,7 @@ function seed(over: Partial<HelpRequestRow>): HelpRequestRow {
     closedByUserId: null,
     closedAt: null,
     closeNote: null,
+    messagePurgedAt: null,
     ...over,
   };
   state.requests.set(row.id, row);
@@ -69,6 +71,7 @@ describe("the help-request sweep", () => {
     expect(HELP_REQUEST_SWEEP_QUEUE).toBe("tenant.help_request_sweep");
     expect(HELP_REQUEST_SWEEP_SCHEDULE).toBe("*/5 * * * *");
     expect(HELP_REQUEST_OPEN_MAX_AGE_DAYS).toBe(14);
+    expect(HELP_REQUEST_TEXT_RETENTION_DAYS).toBe(90);
   });
 
   it("cancels an open request older than 14 days and leaves a younger one", async () => {
@@ -77,7 +80,7 @@ describe("the help-request sweep", () => {
     // a request exactly at the edge is kept: it is not OLDER than 14 days
     const edge = seed({ requestedAt: new Date(NOW.getTime() - 14 * DAY) });
     const result = await runHelpRequestSweep(createMemoryHelpRequestRunner(state), () => NOW);
-    expect(result).toEqual({ cancelled: 1, resolved: 0 });
+    expect(result).toEqual({ cancelled: 1, resolved: 0, purged: 0 });
     expect(state.requests.get(stale.id)).toMatchObject({
       status: "cancelled",
       closedByActorKind: "system",
@@ -108,7 +111,7 @@ describe("the help-request sweep", () => {
     const revoked = approvedOn("g-revoked");
     const live = approvedOn("g-live");
     const result = await runHelpRequestSweep(createMemoryHelpRequestRunner(state), () => NOW);
-    expect(result).toEqual({ cancelled: 0, resolved: 2 });
+    expect(result).toEqual({ cancelled: 0, resolved: 2, purged: 0 });
     for (const row of [expired, revoked]) {
       expect(state.requests.get(row.id)).toMatchObject({
         status: "resolved",
@@ -129,11 +132,46 @@ describe("the help-request sweep", () => {
       closedAt: new Date(NOW.getTime() - 29 * DAY),
     });
     const runner = createMemoryHelpRequestRunner(state);
-    expect(await runHelpRequestSweep(runner, () => NOW)).toEqual({ cancelled: 1, resolved: 0 });
-    expect(await runHelpRequestSweep(runner, () => NOW)).toEqual({ cancelled: 0, resolved: 0 });
+    expect(await runHelpRequestSweep(runner, () => NOW)).toEqual({
+      cancelled: 1,
+      resolved: 0,
+      purged: 0,
+    });
+    expect(await runHelpRequestSweep(runner, () => NOW)).toEqual({
+      cancelled: 0,
+      resolved: 0,
+      purged: 0,
+    });
     expect(state.requests.get(ended.id)).toMatchObject({
       closedByActorKind: "tenant",
       closedByUserId: "u-1",
     });
+  });
+
+  it("nulls message and note 90 days after close and leaves newer text intact", async () => {
+    const old = seed({
+      status: "resolved",
+      closedByActorKind: "platform_ops",
+      closedByUserId: "u-ops",
+      closedAt: new Date(NOW.getTime() - 91 * DAY),
+      closeNote: "The enrollment mapping has been corrected",
+    });
+    const recent = seed({
+      status: "cancelled",
+      closedByActorKind: "tenant",
+      closedByUserId: "u-1",
+      closedAt: new Date(NOW.getTime() - 89 * DAY),
+    });
+    expect(await runHelpRequestSweep(createMemoryHelpRequestRunner(state), () => NOW)).toEqual({
+      cancelled: 0,
+      resolved: 0,
+      purged: 1,
+    });
+    expect(state.requests.get(old.id)).toMatchObject({
+      message: null,
+      closeNote: null,
+      messagePurgedAt: NOW,
+    });
+    expect(state.requests.get(recent.id)?.message).not.toBeNull();
   });
 });
