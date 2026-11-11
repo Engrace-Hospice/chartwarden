@@ -44,7 +44,7 @@ import {
   buildOrgSeedFactsReader,
 } from "../src/bootstrap/org-spine-facts";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { m34PlatformBypassAuditor, voidGoLiveOnBillingWrite } from "../src/index";
+import { guardGoLiveOnBillingWrite, m34PlatformBypassAuditor } from "../src/index";
 import { buildClearinghouseAuditPort } from "../src/m23-clearinghouse-audit";
 import {
   createContextActorResolver,
@@ -4232,10 +4232,17 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     const T_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a702";
     const ORG_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a703";
     const T_I = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a704";
+    const ORG_J = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a708";
+    const T_J = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a709";
     const PE_H = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a705";
+    const PE_REFUSED = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a706";
+    const PE_ROLLBACK = "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7a707";
     let adminH: TenantActor;
     let officerH: TenantActor;
     let adminI: TenantActor;
+    let officerI: TenantActor;
+    let adminJ: TenantActor;
+    let officerJ: TenantActor;
 
     /** A tenant ready to go live (every gating step done, a long BAA, an assigned officer) whose organization is `created`. */
     async function readyTenant(org: string, tenant: string, slug: string, label: string) {
@@ -4276,11 +4283,11 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           probes: { claimmd: async () => "ok" },
         }),
         audit: buildClearinghouseAuditPort(),
-        onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+        onOnboardingDataChanging: guardGoLiveOnBillingWrite,
       });
     const macCredentials = () =>
       buildDrizzleM23WriteService(app.db, {
-        onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+        onOnboardingDataChanging: guardGoLiveOnBillingWrite,
         secretCipher: buildMacSecretCipherFromEnv({
           M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 22).toString("base64"),
         }),
@@ -4340,11 +4347,14 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
 
     beforeAll(async () => {
       ({ orgAdmin: adminH, officer: officerH } = await readyTenant(ORG_H, T_H, "wiz-h", "h"));
-      ({ orgAdmin: adminI } = await readyTenant(ORG_I, T_I, "wiz-i", "i"));
+      ({ orgAdmin: adminI, officer: officerI } = await readyTenant(ORG_I, T_I, "wiz-i", "i"));
+      ({ orgAdmin: adminJ, officer: officerJ } = await readyTenant(ORG_J, T_J, "wiz-j", "j"));
       await admin.query(
         `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
-         VALUES ($1,$2,'999701','Hotel Hospice','1234567893','sealed-elsewhere','1231')`,
-        [PE_H, ORG_H],
+         VALUES ($1,$2,'999701','Hotel Hospice','1234567893','sealed-elsewhere','1231'),
+                ($3,$2,'999702','Hotel Hospice Two','1234567893','sealed-elsewhere','1231'),
+                ($4,$2,'999703','Hotel Hospice Three','1234567893','sealed-elsewhere','1231')`,
+        [PE_H, ORG_H, PE_REFUSED, PE_ROLLBACK],
       );
     }, 60_000);
 
@@ -4393,16 +4403,105 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       await expectVoidedBy(ORG_H, adminH);
     });
 
+    it("approval waits behind an actual M23 writer; the writer voids and approval then refuses", async () => {
+      await wizard(false).attestGoLive(officerJ, ORG_J, "all checks reviewed");
+      const base = createTenantClearinghouseService({
+        cipher: buildClearinghouseSecretCipher(Buffer.alloc(32, 24)),
+        probes: { claimmd: async () => "ok" },
+      });
+      let mutationEntered!: () => void;
+      let releaseMutation!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        mutationEntered = resolve;
+      });
+      const release = new Promise<void>((resolve) => {
+        releaseMutation = resolve;
+      });
+      const writer = buildDrizzleTenantClearinghouseRouteService({
+        db: app.db,
+        service: {
+          ...base,
+          async put(...args) {
+            // The route acquired M34's shared lock before it called this mutation.
+            mutationEntered();
+            await release;
+            return base.put(...args);
+          },
+        },
+        audit: buildClearinghouseAuditPort(),
+        onOnboardingDataChanging: guardGoLiveOnBillingWrite,
+      });
+      const writing = writer.put(
+        writeActor(adminJ, ORG_J),
+        { vendor: "claimmd", mode: "test", secret: "synthetic-claimmd-key-0002" },
+        undefined,
+      );
+      await entered;
+      const approving = wizard(false)
+        .approveGoLive("wiz-j", OPS, "reviewed the evidence and the BAA")
+        .then(
+          () => null,
+          (cause) => cause as ChartWardenError,
+        );
+      const settled = await Promise.race([
+        approving.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 750)),
+      ]);
+      expect(settled, "approval must wait for the in-flight M23 write").toBe(false);
+
+      releaseMutation();
+      await writing;
+      expect((await approving)?.code).toBe("GO_LIVE_NOT_ATTESTED");
+      expect(await latestAttestation(ORG_J)).toMatchObject({
+        status: "revoked",
+        revoked_by_user_id: adminJ.userId,
+      });
+    });
+
     it("a refused write changes nothing: the attestation stays pending (the void rolls back with the write)", async () => {
+      await macCredentials().upsertMacCredential(writeActor(adminH, ORG_H), {
+        ...MAC_ARGS,
+        providerEntityId: PE_REFUSED,
+      });
       await attestPending();
       await expect(
         // the credential row is bound to one MAC jurisdiction: a different one is a 409 before anything is written
         macCredentials().upsertMacCredential(writeActor(adminH, ORG_H), {
           ...MAC_ARGS,
+          providerEntityId: PE_REFUSED,
           macJurisdiction: "ngs_j6",
           expectedVersion: 1,
         }),
       ).rejects.toMatchObject({ statusCode: 409 });
+      expect((await latestAttestation(ORG_H)).status).toBe("pending");
+    });
+
+    it("a void-hook failure rolls the MAC credential write back and leaves the attestation pending", async () => {
+      await attestPending();
+      const service = buildDrizzleM23WriteService(app.db, {
+        onOnboardingDataChanging: async () => async () => {
+          throw new Error("synthetic void failure");
+        },
+        secretCipher: buildMacSecretCipherFromEnv({
+          M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 23).toString("base64"),
+        }),
+      });
+
+      await expect(
+        service.upsertMacCredential(writeActor(adminH, ORG_H), {
+          ...MAC_ARGS,
+          providerEntityId: PE_ROLLBACK,
+        }),
+      ).rejects.toThrow("synthetic void failure");
+
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM mac_submitter_credential WHERE provider_entity_id=$1",
+            [PE_ROLLBACK],
+          )
+        ).rows[0].n,
+      ).toBe(0);
       expect((await latestAttestation(ORG_H)).status).toBe("pending");
     });
 
@@ -4421,6 +4520,57 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         )
       ).rows[0].n;
       expect(after).toBe(before);
+    });
+
+    it.each(["active", "suspended", "closing"] as const)(
+      "the pre-write guard permits %s-tenant maintenance without voiding an attestation",
+      async (status) => {
+        await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_I]);
+        await admin.query(
+          `UPDATE tenant_go_live_attestation
+              SET status='revoked', revoked_by_user_id=$2, revoked_at=now(), revoke_reason='reset between test cases'
+            WHERE organization_id=$1 AND status='pending'`,
+          [ORG_I, adminI.userId],
+        );
+        await admin.query(
+          `UPDATE onboarding_task SET status='pending', started_at=NULL
+            WHERE organization_id=$1 AND template_key='go_live_checklist_complete'`,
+          [ORG_I],
+        );
+        await wizard(false).attestGoLive(officerI, ORG_I, "maintenance status case");
+        await admin.query("UPDATE tenant_account SET status=$2 WHERE id=$1", [T_I, status]);
+
+        await platform.db.transaction(async (tx) => {
+          const finalize = await guardGoLiveOnBillingWrite(tx, {
+            organizationId: ORG_I,
+            userId: adminI.userId,
+            membershipId: adminI.membershipId,
+          });
+          await finalize();
+        });
+
+        expect((await latestAttestation(ORG_I)).status).toBe("pending");
+        await admin.query(
+          `UPDATE tenant_go_live_attestation
+              SET status='revoked', revoked_by_user_id=$2, revoked_at=now(), revoke_reason='maintenance status case complete'
+            WHERE organization_id=$1 AND status='pending'`,
+          [ORG_I, adminI.userId],
+        );
+        await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_I]);
+      },
+    );
+
+    it("the pre-write guard treats a missing tenant account as maintenance and returns a no-op finalizer", async () => {
+      await expect(
+        platform.db.transaction(async (tx) => {
+          const finalize = await guardGoLiveOnBillingWrite(tx, {
+            organizationId: "a7a7a7a7-a7a7-47a7-87a7-a7a7a7a7afff",
+            userId: adminI.userId,
+            membershipId: adminI.membershipId,
+          });
+          await finalize();
+        }),
+      ).resolves.toBeUndefined();
     });
 
     it("GET /api/v1/auth/context says `onboarding` while the organization is created, then `live` after go-live approval", async () => {

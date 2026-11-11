@@ -510,6 +510,10 @@ export {
   createOnboardingTenantReader,
 } from "./onboarding/onboarding-tenant-reader";
 export { voidPendingGoLiveForDataChange } from "./onboarding/go-live-void";
+export {
+  ONBOARDING_WRITABLE_STATUSES,
+  lockTenantOnboardingShared,
+} from "./routes/platform/tenant-onboarding-lock";
 
 // Slice 7 - help requests: the service contract piece 7B implements, its failure codes and the filing cap's type.
 export type {

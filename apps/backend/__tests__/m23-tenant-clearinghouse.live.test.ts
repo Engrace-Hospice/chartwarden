@@ -1293,6 +1293,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       attempts: new InMemoryAttemptStore(),
       platformBinding,
       fallbackOrgIds: new Set([ORG_E]),
+      isOrganizationLive: async () => true,
     });
     const forOrg = runtime.binding.forOrg;
     expect((await forOrg?.(ORG_A))?.transport.vendor).toBe("claimmd");
@@ -1354,6 +1355,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       attempts: new InMemoryAttemptStore(),
       platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
       fallbackOrgIds: new Set(),
+      isOrganizationLive: async () => true,
     });
     const moved: number[] = [];
     await expect(
@@ -2891,6 +2893,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         attempts: new InMemoryAttemptStore(),
         platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
         fallbackOrgIds: new Set(),
+        // This describe exercises BAA-revocation/config state; organization lifecycle is held live throughout.
+        isOrganizationLive: async () => true,
       });
     const unbound = async (org: string) => runtime().binding.forOrg?.(org);
     /** The admin connection inside ONE transaction that carries the guard trigger's setting: what the config store sets for a service write. */

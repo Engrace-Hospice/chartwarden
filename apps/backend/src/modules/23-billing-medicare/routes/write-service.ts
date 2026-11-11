@@ -14,7 +14,7 @@ import type { repositories } from "@chartwarden/billing";
 import type { BillsOutsidePort } from "../services/external-notice-filing";
 import type { PriorLiveEndedStayPort } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
-import type { OnboardingDataChangedHook } from "./onboarding-data-change";
+import type { OnboardingDataChangeGuard } from "./onboarding-data-change";
 import type {
   ClaimDetailView,
   ClaimSubmissionKind,
@@ -159,12 +159,18 @@ export interface M23WriteServicePorts {
    */
   readonly macSandbox?: MacSandboxProbePort;
   /**
-   * Runs on the SAME transaction as a tenant-lane MAC credential save (`upsertMacCredential`), after it: the credential is onboarding
-   * step 8's data, so a pending go-live attestation is revoked with the write (M34's void, bound at the composition root; M23 does
-   * not import M34). A throw rolls the save back. The operator lane's `upsertMacCredentialOnTx` does NOT run it: that route voids on
-   * its own transaction. Unbound, a tenant could save a credential under a pending attestation.
+   * Runs on the SAME transaction before a tenant-lane MAC credential save and returns its post-write finalizer. The guard holds the
+   * shared go-live lock across the save; the finalizer revokes a pending attestation after the successful write. The operator lane's
+   * `upsertMacCredentialOnTx` does NOT run it: that route voids on its own transaction.
    */
-  readonly onOnboardingDataChanged?: OnboardingDataChangedHook;
+  readonly onOnboardingDataChanging?: OnboardingDataChangeGuard;
+  /** Post-commit, best-effort wizard settle after a tenant MAC credential save. */
+  readonly onMacCredentialChanged?: (organizationId: string) => Promise<void>;
+  /** The post-commit settle failed; the credential remains committed and the failure is logged without credential data. */
+  readonly logMacCredentialSettleError?: (
+    cause: unknown,
+    context: { readonly organizationId: string },
+  ) => void;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
 }

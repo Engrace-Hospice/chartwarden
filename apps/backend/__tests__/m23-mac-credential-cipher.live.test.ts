@@ -77,8 +77,12 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
   let handle: { db: DbClient; close: () => Promise<void> };
   const servers: FastifyInstance[] = [];
   const emitted: unknown[] = [];
+  const settleFailures: { cause: unknown; organizationId: string }[] = [];
 
-  function serverWith(env: Record<string, string | undefined>): FastifyInstance {
+  function serverWith(
+    env: Record<string, string | undefined>,
+    options: { readonly portalAnswers?: boolean; readonly settleFails?: boolean } = {},
+  ): FastifyInstance {
     registerEffectivePermissionResolver(
       createInMemoryEffectivePermissionStore([
         {
@@ -106,6 +110,25 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
       writeService: buildDrizzleM23WriteService(handle.db, {
         outbox: { publish: async (_tx, input) => void emitted.push(input) },
         ...(secretCipher ? { secretCipher } : {}),
+        ...(options.portalAnswers !== undefined
+          ? {
+              macSandbox: {
+                probe: async () => ({
+                  ok: options.portalAnswers === true,
+                  detail: "synthetic portal-health result",
+                }),
+              },
+            }
+          : {}),
+        ...(options.settleFails
+          ? {
+              onMacCredentialChanged: async () => {
+                throw new Error("synthetic settle failure");
+              },
+              logMacCredentialSettleError: (cause, context) =>
+                void settleFailures.push({ cause, ...context }),
+            }
+          : {}),
       }),
     });
     servers.push(app);
@@ -115,7 +138,7 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
   const stored = async () =>
     (
       await admin.query(
-        "SELECT client_secret_cipher, client_secret_dek_version, version FROM mac_submitter_credential WHERE provider_entity_id=$1",
+        "SELECT client_secret_cipher, client_secret_dek_version, last_sandbox_test_at, version FROM mac_submitter_credential WHERE provider_entity_id=$1",
         [PE],
       )
     ).rows;
@@ -255,8 +278,15 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
 
   it("re-seals on update (428 without If-Match, then a fresh ciphertext with it)", async () => {
     const env = { M24_CREDENTIAL_ENCRYPTION_KEY: KEK_B64 };
-    const app = serverWith(env);
+    const app = serverWith(env, { portalAnswers: true });
     const before = (await stored())[0];
+    const portalCheck = await app.inject({
+      method: "POST",
+      url: `/api/v1/billing/mac-credentials/${PE}/test`,
+      headers: headers(),
+    });
+    expect(portalCheck.statusCode, portalCheck.body).toBe(200);
+    expect((await stored())[0].last_sandbox_test_at).not.toBeNull();
     const noMatch = await app.inject({
       method: "POST",
       url: "/api/v1/billing/mac-credentials",
@@ -273,6 +303,7 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
     });
     expect(ok.statusCode).toBeLessThan(300);
     const after = (await stored())[0];
+    expect(after.last_sandbox_test_at).toBeNull();
     expect(after.client_secret_cipher).not.toBe(before.client_secret_cipher);
     expect(
       await buildMacSecretCipherFromEnv(env)?.decrypt(
@@ -281,6 +312,30 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
         after.client_secret_cipher,
       ),
     ).toBe(rotated);
+  });
+
+  it("keeps a committed credential when the post-commit onboarding settle fails, and reports the failure", async () => {
+    const app = serverWith({ M24_CREDENTIAL_ENCRYPTION_KEY: KEK_B64 }, { settleFails: true });
+    const providerEntityId = "dadadada-dada-4ada-8ada-dadadadadada";
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/billing/mac-credentials",
+      headers: headers(),
+      payload: { ...BODY, providerEntityId },
+    });
+
+    expect(res.statusCode, res.body).toBe(201);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM mac_submitter_credential WHERE provider_entity_id=$1",
+          [providerEntityId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(settleFailures).toHaveLength(1);
+    expect(settleFailures[0]?.organizationId).toBe(ORG);
+    expect((settleFailures[0]?.cause as Error).message).toBe("synthetic settle failure");
   });
 
   it("409s when an update names a different MAC jurisdiction than the stored credential", async () => {

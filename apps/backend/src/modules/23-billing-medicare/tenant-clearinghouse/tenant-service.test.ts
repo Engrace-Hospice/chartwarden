@@ -6,7 +6,10 @@ import type { M23WriteActor } from "../routes/actor";
 import type { ClearinghouseAuditPort } from "./audit-port";
 import { accountInUse } from "./credential-reservation";
 import type { TenantClearinghouseService } from "./service";
-import { buildDrizzleTenantClearinghouseRouteService } from "./tenant-service";
+import {
+  type TenantClearinghouseRouteService,
+  buildDrizzleTenantClearinghouseRouteService,
+} from "./tenant-service";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const ACTOR: M23WriteActor = {
@@ -111,7 +114,7 @@ const writesService = {
   activate: async () => ({ status: "active" }),
 } as unknown as TenantClearinghouseService;
 
-describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (a write voids a pending go-live attestation)", () => {
+describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanging (a write guards and voids a pending go-live attestation)", () => {
   const writes: [
     string,
     (r: ReturnType<typeof buildDrizzleTenantClearinghouseRouteService>) => Promise<unknown>,
@@ -139,7 +142,10 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (
         db,
         service: writesService,
         audit: { record: async () => undefined },
-        onOnboardingDataChanged: async (t, change) => void calls.push({ tx: t, change }),
+        onOnboardingDataChanging: async (t, change) => {
+          calls.push({ tx: t, change });
+          return async () => undefined;
+        },
       });
 
       await write(route);
@@ -162,7 +168,7 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (
         db: rowDb().db,
         service: writesService,
         audit: { record: async () => undefined },
-        onOnboardingDataChanged: async () => {
+        onOnboardingDataChanging: async () => async () => {
           throw new Error("void failed");
         },
         onChanged: async (organizationId) => void settled.push(organizationId),
@@ -174,7 +180,7 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (
     },
   );
 
-  it("a refused write (the service throws) never reaches the hook", async () => {
+  it("a refused write enters the guard but never reaches its finalizer", async () => {
     const calls: unknown[] = [];
     const route = buildDrizzleTenantClearinghouseRouteService({
       db: rowDb().db,
@@ -184,12 +190,24 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (
         },
       } as unknown as TenantClearinghouseService,
       audit: { record: async () => undefined },
-      onOnboardingDataChanged: async (_t, change) => void calls.push(change),
+      onOnboardingDataChanging: async (_t, change) => {
+        calls.push({ phase: "guard", change });
+        return async () => void calls.push({ phase: "finalize", change });
+      },
     });
 
     await expect(route.activate(ACTOR)).rejects.toThrow("CLEARINGHOUSE_NOT_VERIFIED");
 
-    expect(calls).toEqual([]);
+    expect(calls).toEqual([
+      {
+        phase: "guard",
+        change: {
+          organizationId: ORG,
+          userId: ACTOR.userId,
+          membershipId: ACTOR.membershipId,
+        },
+      },
+    ]);
   });
 
   it("is optional: a service built without it writes exactly as before", async () => {
@@ -200,5 +218,72 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanged (
     });
 
     await expect(route.activate(ACTOR)).resolves.toMatchObject({ status: "active" });
+  });
+
+  it.each([
+    ["put", (r: TenantClearinghouseRouteService) => r.put(ACTOR, BODY, 1)],
+    [
+      "recordBaa",
+      (r: TenantClearinghouseRouteService) =>
+        r.recordBaa(ACTOR, {
+          heldBy: "tenant",
+          effectiveDate: "2026-01-02",
+          documentRef: "BAA folder",
+        }),
+    ],
+  ] as const)(
+    "%s does not void when the service reports no changed fields",
+    async (_name, write) => {
+      const calls: unknown[] = [];
+      const unchanged = {
+        put: async () => ({ created: false, view: { status: "draft" }, changedFields: [] }),
+        recordBaa: async () => ({ view: { status: "draft" }, changedFields: [] }),
+      } as unknown as TenantClearinghouseService;
+      const route = buildDrizzleTenantClearinghouseRouteService({
+        db: rowDb().db,
+        service: unchanged,
+        audit: { record: async () => undefined },
+        onOnboardingDataChanging: async (_tx, change) => {
+          calls.push({ phase: "guard", change });
+          return async () => void calls.push({ phase: "finalize", change });
+        },
+      });
+
+      await write(route);
+
+      expect(calls).toEqual([
+        {
+          phase: "guard",
+          change: {
+            organizationId: ORG,
+            userId: ACTOR.userId,
+            membershipId: ACTOR.membershipId,
+          },
+        },
+      ]);
+    },
+  );
+
+  it("acquires the guard before the mutation and finalizes only after it", async () => {
+    const order: string[] = [];
+    const route = buildDrizzleTenantClearinghouseRouteService({
+      db: rowDb().db,
+      service: {
+        ...writesService,
+        activate: async () => {
+          order.push("write");
+          return { status: "active" };
+        },
+      } as unknown as TenantClearinghouseService,
+      audit: { record: async () => void order.push("audit") },
+      onOnboardingDataChanging: async () => {
+        order.push("guard");
+        return async () => void order.push("finalize");
+      },
+    });
+
+    await route.activate(ACTOR);
+
+    expect(order).toEqual(["guard", "write", "audit", "finalize"]);
   });
 });

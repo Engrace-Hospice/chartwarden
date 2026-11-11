@@ -65,6 +65,7 @@ async function setup(extra: Partial<Parameters<typeof createTenantClearinghouseR
     attempts: new InMemoryAttemptStore(),
     platformBinding,
     fallbackOrgIds: new Set([ORG_C]),
+    isOrganizationLive: async () => true,
     readRow: async (org) => rows.get(org) ?? null,
     ...extra,
   });

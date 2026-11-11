@@ -3154,6 +3154,8 @@ export interface RouteEnrichment {
   headers?: Record<string, { required?: boolean; description?: string }>;
   /** The route's actual success status code (`reply.code(...)`). Default 200 when omitted. */
   status?: 200 | 201 | 202 | 204;
+  /** Other success codes returning the same response schema (for routes whose create/update paths differ). */
+  additionalSuccessStatuses?: readonly (200 | 201 | 202 | 204)[];
   /** Human summary for the operation. */
   summary?: string;
 }
@@ -13959,6 +13961,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: UpsertMacCredentialBodySchema,
     headers: M23_MAC_CREDENTIAL_WRITE_HEADERS,
     status: 201,
+    additionalSuccessStatuses: [200],
     response: M23MacCredentialView,
   },
   "GET /api/v1/billing/validation-overrides": {

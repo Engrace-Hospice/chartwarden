@@ -203,13 +203,17 @@ export function createOrganizationStageReader(
     string,
     { readonly confined: boolean; readonly created: boolean; readonly at: number }
   >();
+  const generations = new Map<string, number>();
   /** One status read answers both questions, cached together. */
   async function stageOf(organizationId: string) {
     const hit = cache.get(organizationId);
     if (hit && now() - hit.at < ttlMs) return hit;
+    const generation = generations.get(organizationId) ?? 0;
     const status = await readStatus(organizationId);
     const entry = { confined: status !== "active", created: status === "created", at: now() };
-    cache.set(organizationId, entry);
+    // A lifecycle transition may invalidate while this read is in flight. Do not let the stale completion
+    // repopulate the cache after that invalidation.
+    if ((generations.get(organizationId) ?? 0) === generation) cache.set(organizationId, entry);
     return entry;
   }
   return {
@@ -221,6 +225,7 @@ export function createOrganizationStageReader(
     },
     invalidate(organizationId) {
       cache.delete(organizationId);
+      generations.set(organizationId, (generations.get(organizationId) ?? 0) + 1);
     },
   };
 }

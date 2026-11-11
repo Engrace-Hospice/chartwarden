@@ -394,17 +394,38 @@ describe("createOrganizationStageReader", () => {
     expect(await reader.isConfined(ORG)).toBe(false);
   });
 
+  it("does not repopulate a stale entry when invalidated during an in-flight read", async () => {
+    let release!: (status: "active") => void;
+    const first = new Promise<"active">((resolve) => {
+      release = resolve;
+    });
+    const read = vi
+      .fn<() => Promise<"active" | "suspended">>()
+      .mockImplementationOnce(() => first)
+      .mockResolvedValue("suspended");
+    const reader = createOrganizationStageReader(read, { ttlMs: 60_000 });
+
+    const inFlight = reader.isConfined(ORG);
+    reader.invalidate(ORG);
+    release("active");
+    expect(await inFlight).toBe(false);
+    expect(await reader.isConfined(ORG)).toBe(true);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("says `created` only for a created organization (one status read serves both questions), and invalidate resets it", async () => {
     let status: "created" | "active" | "suspended" | "closed" | null = "created";
     const read = vi.fn(async () => status);
     const reader = createOrganizationStageReader(read, { ttlMs: 60_000 });
-    expect(await reader.isCreated?.(ORG)).toBe(true);
+    const isCreated = reader.isCreated;
+    expect(isCreated).toBeDefined();
+    expect(await isCreated?.(ORG)).toBe(true);
     expect(await reader.isConfined(ORG)).toBe(true);
     expect(read).toHaveBeenCalledTimes(1);
     for (const other of ["active", "suspended", "closed", null] as const) {
       status = other;
       reader.invalidate(ORG);
-      expect(await reader.isCreated?.(ORG), String(other)).toBe(false);
+      expect(await isCreated?.(ORG), String(other)).toBe(false);
     }
   });
 

@@ -1240,7 +1240,7 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
-import type { OnboardingDataChangedHook } from "./modules/23-billing-medicare/routes/onboarding-data-change";
+import type { OnboardingDataChangeGuard } from "./modules/23-billing-medicare/routes/onboarding-data-change";
 import { m23RouteClasses } from "./modules/23-billing-medicare/routes/route-classes";
 import {
   buildClaim837iPersistencePort,
@@ -1686,6 +1686,7 @@ import {
   type BootstrapModule34Deps,
   M34_OUTBOX_EVENTS,
   M34_PLATFORM_JOB_ID,
+  ONBOARDING_WRITABLE_STATUSES,
   type SignupIntentRouteService,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
@@ -1717,6 +1718,7 @@ import {
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
+  lockTenantOnboardingShared,
   m34ProvisionGatewayConfigFromEnv,
   m34ResolverExtension,
   mountTenantPlatformRoutes,
@@ -1748,7 +1750,6 @@ import {
   readTenantGoLive,
 } from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
 import { createSettleOnboardingForOrg } from "./modules/34-saas-tenant-platform/onboarding/settle-for-org";
-import { lockTenantOnboardingShared } from "./modules/34-saas-tenant-platform/routes/platform/tenant-onboarding-lock";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -3214,15 +3215,27 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
 /**
  * A tenant-lane billing write (the clearinghouse choice, its BAA record, verify and activate; the MAC credential) is onboarding
  * data: a pending go-live attestation said that data was ready, so the write revokes it IN THE WRITE'S OWN TRANSACTION (M23 may
- * not import M34, so it takes this as `onOnboardingDataChanged`). The write and the void commit or roll back together; with
- * nothing pending it is a no-op. The operator's lane voids on its own transaction (`onboarding-data-service.ts`).
+ * not import M34, so it takes this as `onOnboardingDataChanging`). The guard acquires the shared lock and decides whether the
+ * organization is still onboarding before the mutation. Its returned finalizer runs only after an accepted write, so approval
+ * cannot overtake it; refused writes and unchanged choice/BAA writes revoke nothing, while accepted verify/activate may revoke again.
  */
-export const voidGoLiveOnBillingWrite: OnboardingDataChangedHook = async (tx, change) => {
-  await voidPendingGoLiveForDataChange(tx, {
-    organizationId: change.organizationId,
-    revokedByUserId: change.userId,
-    revokedByMembershipId: change.membershipId,
-  });
+export const guardGoLiveOnBillingWrite: OnboardingDataChangeGuard = async (tx, change) => {
+  await lockTenantOnboardingShared(tx, change.organizationId);
+  const [account] = await tx
+    .select({ status: schema.tenantAccount.status })
+    .from(schema.tenantAccount)
+    .where(eq(schema.tenantAccount.organizationId, change.organizationId))
+    .limit(1);
+  // A live/suspended/closing tenant may still maintain billing configuration. There is no pending onboarding
+  // attestation to invalidate there, and the shared lock makes this status decision atomic with go-live approval.
+  if (!account || !ONBOARDING_WRITABLE_STATUSES.has(account.status)) return async () => undefined;
+  return async () => {
+    await voidPendingGoLiveForDataChange(tx, {
+      organizationId: change.organizationId,
+      revokedByUserId: change.userId,
+      revokedByMembershipId: change.membershipId,
+    });
+  };
 };
 
 /**
@@ -4236,22 +4249,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       "M23_CLAIMMD_NOTICE_UPLOAD_ENABLED is not true: this organization's own Claim.MD account cannot send its NOE / NOTR (the upload is refused NOT_WIRED and the notice is not filed); set the flag before its CMS deadlines matter",
     );
   };
-  // A tenant may activate its clearinghouse during onboarding, before go-live approval; the send path itself refuses an organization
-  // that is not live (7A security review L1), so activation alone is never what lets a claim go out. Its own cached reader, not the
-  // authenticate hook's: workers resolve bindings too, and an activation shows here within the 5 s cache TTL (a hold, never a send).
-  const clearinghouseOrganizationStage = dbHandle
-    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
+  const readOrganizationStatus = dbHandle ? createOrganizationStatusReader(dbHandle.db) : undefined;
+  // Request confinement is briefly cached for request-path cost. The decisive worker transport check below deliberately uses the
+  // authoritative reader on every resolution: process-local invalidation cannot stop another replica from using a stale active entry.
+  const organizationStage = dbHandle
+    ? createOrganizationStageReader(readOrganizationStatus!)
     : undefined;
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
         cipher: clearinghouseSecretCipher,
-        ...(clearinghouseOrganizationStage
-          ? {
-              isOrganizationLive: async (organizationId: string) =>
-                !(await clearinghouseOrganizationStage.isConfined(organizationId)),
-            }
-          : {}),
+        isOrganizationLive: async (organizationId: string) => {
+          if (!readOrganizationStatus) throw new Error("organization status reader is not bound");
+          return (await readOrganizationStatus(organizationId)) === "active";
+        },
         attempts: createDrizzleAttemptStore(dbHandle.db),
         platformBinding: platformClearinghouseBinding,
         fallbackOrgIds: clearinghouseFallback.orgIds,
@@ -5632,9 +5643,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // A new tenant's first admin signs in while its organization is still `created` (go-live not yet approved): the authenticate
   // hook confines such a session to the onboarding allowlist (bootstrap/onboarding-org-gate.ts), and go-live approval activates
   // the organization. Cached briefly; evicted by every organization transition below.
-  const organizationStage = dbHandle
-    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
-    : undefined;
   const tenantOrigins = tenantHostResolver
     ? createTenantOriginMatcher({ baseDomain: tenantBaseDomain, resolver: tenantHostResolver })
     : undefined;
@@ -7774,7 +7782,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   service: tenantClearinghouseService,
                   audit: buildClearinghouseAuditPort(),
                   // Each write voids a pending go-live attestation in its own transaction (step 7's data changed).
-                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+                  onOnboardingDataChanging: guardGoLiveOnBillingWrite,
                   onChanged: settleOnboardingForOrg,
                   logError: (cause, context) =>
                     app.log.error(
@@ -7814,7 +7822,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 writeService: buildDrizzleM23WriteService(dbHandle.db, {
                   outbox: m23OutboxPublisher,
                   // The tenant's own MAC credential save voids a pending go-live attestation in the same transaction (step 8's data).
-                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+                  onOnboardingDataChanging: guardGoLiveOnBillingWrite,
+                  // Once that transaction commits, settle the credential step immediately; a failure is observable but never rolls back the save.
+                  onMacCredentialChanged: settleOnboardingForOrg,
+                  logMacCredentialSettleError: (cause, context) =>
+                    app.log.error(
+                      { err: cause, ...context },
+                      "tenant MAC credential: onboarding settle failed",
+                    ),
                   // Owner decision D4: an org that bills outside ChartWarden files its NOE / NOTR itself, so submit parks the
                   // notice and the tenant records the date. Read lazily per call (the reader seam registers after this is built);
                   // a throw fails closed with a typed 503, never a transmission.
