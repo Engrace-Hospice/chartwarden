@@ -13,7 +13,10 @@ const board = { orgId: ORG, patientId: P1, templateVersion: 1, items: [] };
 describe("withBoardOpenedEvent", () => {
   it("publishes once for a new board and nothing for the second death event or a replay", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
-    const store = withBoardOpenedEvent(createMemoryDeathBoardStore(() => new Date()), { publish });
+    const store = withBoardOpenedEvent(
+      createMemoryDeathBoardStore(() => new Date()),
+      { publish },
+    );
     const first = await store.createBoard({} as never, board);
     const second = await store.createBoard({} as never, board);
     expect(first.created).toBe(true);
@@ -48,7 +51,12 @@ describe("M36 death-notifications consumer", () => {
   it("throws on a malformed payload so the relay retries", async () => {
     const c = buildM36DeathNotificationsConsumer({ service: { fanOutInternal: vi.fn() } });
     await expect(
-      c.handle({ id: "e", eventType: "m36.death_board.opened", organizationId: ORG, payload: {} } as never),
+      c.handle({
+        id: "e",
+        eventType: "m36.death_board.opened",
+        organizationId: ORG,
+        payload: {},
+      } as never),
     ).rejects.toThrow(/boardId/);
   });
 });

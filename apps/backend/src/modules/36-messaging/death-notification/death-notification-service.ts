@@ -6,7 +6,7 @@
 //                    that entity (fail closed). Without one the row is blocked_no_baa, a supervisor is told, and the board item stays open.
 //   flagUnackedForOrg the stall sweep: an internal notice unacknowledged past the threshold tells the supervisors (deduped, once per notice).
 // HARD RULE: nothing here puts clinical content, an order or PHI in any message. Medication and equipment instructions never travel by message.
-import { type DbClient } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
@@ -97,7 +97,12 @@ export interface DeathNotificationDeps {
   /** The role keys the user holds (null when none can be read). */
   readonly roleKeysForUser: (orgId: string, userId: string) => Promise<readonly string[] | null>;
   /** BAA on file for the entity as of now. Throws read as NOT active. */
-  readonly isBaaActive: (orgId: string, kind: "funeral_home", entityId: string, asOf: Date) => Promise<boolean>;
+  readonly isBaaActive: (
+    orgId: string,
+    kind: "funeral_home",
+    entityId: string,
+    asOf: Date,
+  ) => Promise<boolean>;
   /** True when the MDM register holds a funeral_home record (any BAA status) for this id in this org. A throw reads as unknown. */
   readonly isKnownFuneralHome: (orgId: string, entityId: string) => Promise<boolean>;
   readonly funeralLinks?: FuneralLinkPort | undefined;
@@ -113,7 +118,11 @@ export interface DeathNotificationDeps {
 }
 
 export interface DeathNotificationService {
-  fanOutInternal(orgId: string, boardId: string, openedEventId: string): Promise<{ notified: number }>;
+  fanOutInternal(
+    orgId: string,
+    boardId: string,
+    openedEventId: string,
+  ): Promise<{ notified: number }>;
   list(
     actor: DeathBoardActor,
     boardId: string,
@@ -124,7 +133,11 @@ export interface DeathNotificationService {
   sendFuneralHome(
     actor: DeathBoardActor,
     boardId: string,
-    input: { funeralHomeEntityId: string; recipientEmail: string; correlationId?: string | undefined },
+    input: {
+      funeralHomeEntityId: string;
+      recipientEmail: string;
+      correlationId?: string | undefined;
+    },
   ): Promise<FuneralHomeSendResult>;
   /** Audit a caseload refusal of a funeral-home send (the route's ABAC denied; nothing was sent). Never throws. */
   auditCaseloadDenied(
@@ -144,9 +157,17 @@ export interface FuneralHomeSendResult {
 
 const notFound = (): NotFoundError => new NotFoundError("death_notification");
 const notRecipient = (): ChartWardenError =>
-  new ChartWardenError("DEATH_NOTIFICATION_NOT_RECIPIENT", "this notice is not addressed to you", 403);
+  new ChartWardenError(
+    "DEATH_NOTIFICATION_NOT_RECIPIENT",
+    "this notice is not addressed to you",
+    403,
+  );
 const notAckable = (): ChartWardenError =>
-  new ChartWardenError("DEATH_NOTIFICATION_STATE_CONFLICT", "the notice cannot be acknowledged now", 409);
+  new ChartWardenError(
+    "DEATH_NOTIFICATION_STATE_CONFLICT",
+    "the notice cannot be acknowledged now",
+    409,
+  );
 const linkUnavailable = (): ChartWardenError =>
   new ChartWardenError(
     "DEATH_NOTIFICATION_LINK_UNAVAILABLE",
@@ -182,7 +203,9 @@ export const normalizeRecipientEmail = (email: string): string => email.trim().t
 const isInternal = (kind: string): kind is DeathNotificationInternalKind =>
   (DEATH_NOTIFICATION_INTERNAL_KINDS as readonly string[]).includes(kind);
 
-export function createDeathNotificationService(deps: DeathNotificationDeps): DeathNotificationService {
+export function createDeathNotificationService(
+  deps: DeathNotificationDeps,
+): DeathNotificationService {
   const { store } = deps;
   const clock = deps.now ?? (() => new Date());
 
@@ -249,11 +272,20 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
     await emitInternalNotice(
       deps.alerts,
       orgId,
-      { kind, notificationId: row.id, recipientUserId: kind === "attending" && ref !== UNASSIGNED_REF ? ref : undefined },
+      {
+        kind,
+        notificationId: row.id,
+        recipientUserId: kind === "attending" && ref !== UNASSIGNED_REF ? ref : undefined,
+      },
       deps.warn,
     );
     await asSystem(orgId, async (tx) => {
-      const sent = await store.transition(tx, { orgId, id: row.id, to: "sent", sentOutboxEventId: openedEventId });
+      const sent = await store.transition(tx, {
+        orgId,
+        id: row.id,
+        to: "sent",
+        sentOutboxEventId: openedEventId,
+      });
       if (sent) await publish(tx, DEATH_NOTIFICATION_EVENTS.sent, sent);
     });
     return true;
@@ -272,18 +304,25 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
       if (!patientId) throw new Error("death notification: the board does not exist");
       const attending = await resolveAttending(orgId, patientId);
       const targets: ReadonlyArray<readonly [DeathNotificationInternalKind, string]> =
-        DEATH_NOTIFICATION_INTERNAL_KINDS.map((k) => [k, k === "attending" ? attending : UNASSIGNED_REF] as const);
+        DEATH_NOTIFICATION_INTERNAL_KINDS.map(
+          (k) => [k, k === "attending" ? attending : UNASSIGNED_REF] as const,
+        );
       let notified = 0;
       const failures: unknown[] = [];
       for (const [kind, ref] of targets) {
         try {
-          if (await notifyInternal(orgId, boardId, patientId, kind, ref, openedEventId)) notified += 1;
+          if (await notifyInternal(orgId, boardId, patientId, kind, ref, openedEventId))
+            notified += 1;
         } catch (err) {
           failures.push(err);
-          deps.warn?.("death notification: a recipient could not be notified", { org_id: orgId, kind });
+          deps.warn?.("death notification: a recipient could not be notified", {
+            org_id: orgId,
+            kind,
+          });
         }
       }
-      if (failures.length > 0) throw new Error(`death notification: ${failures.length} recipient(s) failed; retrying`);
+      if (failures.length > 0)
+        throw new Error(`death notification: ${failures.length} recipient(s) failed; retrying`);
       return { notified };
     },
 
@@ -347,7 +386,9 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
         await auditRefusal("unknown_funeral_home");
         throw unknownFuneralHome();
       }
-      const recipientHash = await deps.recipientHash(actor.orgId, normalizeRecipientEmail(input.recipientEmail)).catch(() => null);
+      const recipientHash = await deps
+        .recipientHash(actor.orgId, normalizeRecipientEmail(input.recipientEmail))
+        .catch(() => null);
       if (!recipientHash) throw linkUnavailable(); // no key, no send: nothing is minted without a joinable recipient digest
       const { row } = await asUser(actor, (tx) =>
         store.ensure(tx, {
@@ -369,14 +410,21 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
         }
         return { notification: toDto(row, false) };
       }
-      const baa = await deps.isBaaActive(actor.orgId, "funeral_home", entityId, clock()).catch(() => false);
+      const baa = await deps
+        .isBaaActive(actor.orgId, "funeral_home", entityId, clock())
+        .catch(() => false);
       if (!baa) {
         const blocked = await asUser(actor, async (tx) => {
           const moved =
             row.state === "blocked_no_baa"
               ? row
-              : await store.transition(tx, { orgId: actor.orgId, id: row.id, to: "blocked_no_baa" });
-          if (moved && row.state !== "blocked_no_baa") await publish(tx, DEATH_NOTIFICATION_EVENTS.blocked, moved);
+              : await store.transition(tx, {
+                  orgId: actor.orgId,
+                  id: row.id,
+                  to: "blocked_no_baa",
+                });
+          if (moved && row.state !== "blocked_no_baa")
+            await publish(tx, DEATH_NOTIFICATION_EVENTS.blocked, moved);
           return moved ?? row;
         });
         await auditRefusal("no_baa");
@@ -385,24 +433,34 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
       }
 
       // The atomic claim: of any number of concurrent sends exactly one wins and may mint a link.
-      const claimed = await asUser(actor, (tx) => store.claim(tx, { orgId: actor.orgId, id: row.id }));
+      const claimed = await asUser(actor, (tx) =>
+        store.claim(tx, { orgId: actor.orgId, id: row.id }),
+      );
       if (!claimed) {
         const current = await asUser(actor, (tx) => store.get(tx, actor.orgId, row.id));
         const lost = current ?? row;
-        return { notification: toDto(lost, false), ...(lost.state === "sending" ? { outcome: "in_flight" as const } : {}) };
+        return {
+          notification: toDto(lost, false),
+          ...(lost.state === "sending" ? { outcome: "in_flight" as const } : {}),
+        };
       }
       let linkId: string;
       try {
         ({ linkId } = await links.issue({ ...disclosure, recipientEmail: input.recipientEmail }));
       } catch {
         // A failed settle must not mask the typed refusal: the row then stays `sending` and the stall tick reconciles it.
-        await asUser(actor, (tx) => store.settle(tx, { orgId: actor.orgId, id: row.id, to: "failed" })).catch((settleErr: unknown) => {
-          deps.warn?.("death notification: a failed send could not be settled; the stall tick will reconcile it", {
-            org_id: actor.orgId,
-            board_id: boardId,
-            notification_id: row.id,
-            error: settleErr instanceof Error ? settleErr.name : "unknown",
-          });
+        await asUser(actor, (tx) =>
+          store.settle(tx, { orgId: actor.orgId, id: row.id, to: "failed" }),
+        ).catch((settleErr: unknown) => {
+          deps.warn?.(
+            "death notification: a failed send could not be settled; the stall tick will reconcile it",
+            {
+              org_id: actor.orgId,
+              board_id: boardId,
+              notification_id: row.id,
+              error: settleErr instanceof Error ? settleErr.name : "unknown",
+            },
+          );
         });
         throw linkFailed();
       }
@@ -423,14 +481,19 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
       } catch (err) {
         // The link is minted and delivered. The row stays `sending` (never re-claimable), so a retry cannot mint a second link. Pin the link id
         // on the row (best effort) so the disclosure stays joinable; the stall tick later revokes the link and frees the row for a re-send.
-        await asUser(actor, (tx) => store.recordLink(tx, { orgId: actor.orgId, id: row.id, linkId })).catch(() => null);
-        deps.warn?.("death notification: a funeral-home link was delivered but its sent state was not recorded", {
-          org_id: actor.orgId,
-          board_id: boardId,
-          notification_id: row.id,
-          link_id: linkId,
-          error: err instanceof Error ? err.name : "unknown",
-        });
+        await asUser(actor, (tx) =>
+          store.recordLink(tx, { orgId: actor.orgId, id: row.id, linkId }),
+        ).catch(() => null);
+        deps.warn?.(
+          "death notification: a funeral-home link was delivered but its sent state was not recorded",
+          {
+            org_id: actor.orgId,
+            board_id: boardId,
+            notification_id: row.id,
+            link_id: linkId,
+            error: err instanceof Error ? err.name : "unknown",
+          },
+        );
         throw sendUnconfirmed();
       }
     },
@@ -446,13 +509,16 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
           correlationId: a.correlationId,
         })
         .catch(() => {
-          deps.warn?.("death notification: a caseload refusal could not be audited", { org_id: actor.orgId });
+          deps.warn?.("death notification: a caseload refusal could not be audited", {
+            org_id: actor.orgId,
+          });
         });
     },
 
     async reconcileStrandedSendsForOrg(orgId) {
       const links = deps.funeralLinks;
-      if (!links || !(await deps.isEnabled(orgId).catch(() => false))) return { examined: 0, reconciled: 0 };
+      if (!links || !(await deps.isEnabled(orgId).catch(() => false)))
+        return { examined: 0, reconciled: 0 };
       const stale = await asSystem(orgId, (tx) =>
         store.staleSending(tx, orgId, DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES, STALL_FLAG_MAX),
       );
@@ -468,7 +534,9 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
             linkId: row.linkId,
             since: row.createdAt,
           });
-          const failed = await asSystem(orgId, (tx) => store.settle(tx, { orgId, id: row.id, to: "failed" }));
+          const failed = await asSystem(orgId, (tx) =>
+            store.settle(tx, { orgId, id: row.id, to: "failed" }),
+          );
           if (!failed) continue; // settled meanwhile
           reconciled += 1;
           await emitStrandedSendAlert(deps.alerts, orgId, row.id).catch(() => 0); // deduped per row; PHI-free fixed text
@@ -481,7 +549,10 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
           });
         }
       }
-      if (failures.length > 0) throw new Error(`death notification: ${failures.length} stranded send(s) could not be reconciled; retrying`);
+      if (failures.length > 0)
+        throw new Error(
+          `death notification: ${failures.length} stranded send(s) could not be reconciled; retrying`,
+        );
       return { examined: stale.length, reconciled };
     },
 

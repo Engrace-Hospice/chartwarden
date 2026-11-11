@@ -2,7 +2,7 @@
 // cascade. The flag `messaging.death_notifications` is read through the platform's FeatureFlagReaderPort (tenant row wins; absent = off), cached a few
 // seconds per org, and it also REQUIRES `messaging.death_board` (the cascade hangs off a board). The seams that are not M36's (care team, BAA register,
 // role keys, the M2 funeral link) arrive as injected ports so M36 imports no other module.
-import { type DbClient } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { DEATH_BOARD_FLAG_KEY, DEATH_NOTIFICATIONS_FLAG_KEY } from "@chartwarden/types";
@@ -10,8 +10,8 @@ import type { DeathBoardService } from "../death-board/death-board-service";
 import { createDbDeathBoardStore } from "../death-board/death-board-store";
 import type { HintOutboxPort } from "../message-hint-events";
 import { isActiveMessagingUser } from "../messaging-route-service-db";
-import { cacheFlagRead } from "../presence/binding";
 import type { Tx } from "../messaging-write-core";
+import { cacheFlagRead } from "../presence/binding";
 import type { DeathNotificationWarn } from "./death-notification-alerts";
 import {
   type DeathNotificationDeps,

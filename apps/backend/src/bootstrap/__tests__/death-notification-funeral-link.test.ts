@@ -7,11 +7,21 @@ const PATIENT = "00000000-0000-4000-8000-0000000000e1";
 const USER = "00000000-0000-4000-8000-00000000eee1";
 const FH = "00000000-0000-4000-8000-00000000f001";
 const LINK = "00000000-0000-4000-8000-00000000c001";
-const ARGS = { orgId: ORG, patientId: PATIENT, actorUserId: USER, recipientEmail: "d@funeral.example", funeralHomeEntityId: FH };
+const ARGS = {
+  orgId: ORG,
+  patientId: PATIENT,
+  actorUserId: USER,
+  recipientEmail: "d@funeral.example",
+  funeralHomeEntityId: FH,
+};
 
 function build(o: { deliverThrows?: boolean; recordThrows?: boolean; deceased?: boolean } = {}) {
   const order: string[] = [];
-  const create = vi.fn(async (_i: Record<string, unknown>) => ({ linkId: LINK, token: "tok", expiresAt: "2026-11-02T00:00:00.000Z" }));
+  const create = vi.fn(async (_i: Record<string, unknown>) => ({
+    linkId: LINK,
+    token: "tok",
+    expiresAt: "2026-11-02T00:00:00.000Z",
+  }));
   const revoke = vi.fn(async () => {
     order.push("revoke");
   });
@@ -44,8 +54,12 @@ describe("buildFuneralLinkPort", () => {
     const { port, create, invited, order } = build();
     const out = await port.issue(ARGS);
     expect(out).toEqual({ linkId: LINK });
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ kind: "funeral_home", funeralHomeEntityId: FH }));
-    expect(invited).toHaveBeenCalledWith(expect.objectContaining({ orgId: ORG, patientId: PATIENT, linkId: LINK, actorUserId: USER }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "funeral_home", funeralHomeEntityId: FH }),
+    );
+    expect(invited).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: ORG, patientId: PATIENT, linkId: LINK, actorUserId: USER }),
+    );
     expect(order).toEqual(["invited", "deliver"]);
   });
 
@@ -60,7 +74,9 @@ describe("buildFuneralLinkPort", () => {
     const { port, revoke, inviteRevoked, order } = build({ deliverThrows: true });
     await expect(port.issue(ARGS)).rejects.toThrow("mail down");
     expect(revoke).toHaveBeenCalledTimes(1);
-    expect(inviteRevoked).toHaveBeenCalledWith(expect.objectContaining({ orgId: ORG, patientId: PATIENT, linkId: LINK, actorUserId: USER }));
+    expect(inviteRevoked).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: ORG, patientId: PATIENT, linkId: LINK, actorUserId: USER }),
+    );
     expect(order).toEqual(["invited", "deliver", "revoke", "invite_revoked"]);
   });
 
@@ -72,7 +88,15 @@ describe("buildFuneralLinkPort", () => {
 
   it("passes a refusal through to the recorder", async () => {
     const { port, refused } = build();
-    await port.refused({ orgId: ORG, actorUserId: USER, patientId: PATIENT, funeralHomeEntityId: FH, reason: "no_baa" });
-    expect(refused).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_baa", funeralHomeEntityId: FH }));
+    await port.refused({
+      orgId: ORG,
+      actorUserId: USER,
+      patientId: PATIENT,
+      funeralHomeEntityId: FH,
+      reason: "no_baa",
+    });
+    expect(refused).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "no_baa", funeralHomeEntityId: FH }),
+    );
   });
 });

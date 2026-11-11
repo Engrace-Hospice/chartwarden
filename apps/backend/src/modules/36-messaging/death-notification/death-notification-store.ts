@@ -36,9 +36,17 @@ export interface DeathNotificationStore {
     },
   ): Promise<DeathNotificationRow | null>;
   /** While `sending`: pin the minted link id on the row so a delivered-but-unrecorded send stays joinable. Null when the row is not `sending`. */
-  recordLink(tx: Tx, a: { orgId: string; id: string; linkId: string }): Promise<DeathNotificationRow | null>;
+  recordLink(
+    tx: Tx,
+    a: { orgId: string; id: string; linkId: string },
+  ): Promise<DeathNotificationRow | null>;
   /** Funeral-home rows still `sending` after `olderThanMinutes` (the claim's updated_at), oldest first. */
-  staleSending(tx: Tx, orgId: string, olderThanMinutes: number, limit: number): Promise<DeathNotificationRow[]>;
+  staleSending(
+    tx: Tx,
+    orgId: string,
+    olderThanMinutes: number,
+    limit: number,
+  ): Promise<DeathNotificationRow[]>;
   get(tx: Tx, orgId: string, id: string): Promise<DeathNotificationRow | null>;
   listForBoard(tx: Tx, orgId: string, boardId: string): Promise<DeathNotificationRow[]>;
   /** pending|failed|blocked_no_baa -> `state`. Never touches an acked row. Returns the row, or null when nothing changed. */

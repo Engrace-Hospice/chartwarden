@@ -347,6 +347,8 @@ import {
 } from "@chartwarden/x12-837-client";
 import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-holders";
 import { createClaimMdProtectedPayloadCipher } from "./bootstrap/claimmd-payload-cipher";
+import { executedBaaGate } from "./bootstrap/death-notification-baa-gate";
+import { buildFuneralLinkPort } from "./bootstrap/death-notification-funeral-link";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -376,11 +378,13 @@ import { buildCriticalLabDeps, buildCriticalLabEscalate } from "./critical-lab-w
 import { buildM36ExportBinding } from "./m36-export-binding";
 import { buildM41OverrideAuditPort } from "./m41-override-audit";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
+import { FUNERAL_LINK_TTL_SEC } from "./modules/02-identity/identity-ports";
 import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
   createAuditorEnrolment,
   createAuditorLinkEmailDelivery,
+  createDbCollaboratorLinkStore,
   createDbPublicTenantLookups,
   createDrizzleIdentityEraserStore,
   createFuneralDisclosureRecorder,
@@ -398,7 +402,6 @@ import {
   mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
   registerAuditorEnrolmentRoutes,
-  createDbCollaboratorLinkStore,
   registerAuditorRedeemRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
@@ -1685,6 +1688,9 @@ import {
 } from "./modules/36-messaging/body-legacy-key-check";
 import { buildCareTeamReviewRouter } from "./modules/36-messaging/care-team-sync/binding";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import { createDbDeathBoardStore } from "./modules/36-messaging/death-board/death-board-store";
+import { withBoardOpenedEvent } from "./modules/36-messaging/death-notification/death-board-opened-store";
+import { ringRecipientHasher } from "./modules/36-messaging/death-notification/recipient-hash";
 import { sweepEmergenciesForOrg } from "./modules/36-messaging/emergency/emergency-sweep";
 import {
   registerM36EmergencySweepWorker,
@@ -1699,7 +1705,6 @@ import {
 } from "./modules/36-messaging/export/export-worker";
 import { createNameExclusions } from "./modules/36-messaging/global-search/name-exclusion";
 import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
-import { ringRecipientHasher } from "./modules/36-messaging/death-notification/recipient-hash";
 import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
   M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
@@ -1801,11 +1806,6 @@ import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/ou
 import { buildM36CriticalLabAlertConsumers } from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36DeathNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/death-notifications";
-import { withBoardOpenedEvent } from "./modules/36-messaging/death-notification/death-board-opened-store";
-import { createDbDeathBoardStore } from "./modules/36-messaging/death-board/death-board-store";
-import { executedBaaGate } from "./bootstrap/death-notification-baa-gate";
-import { buildFuneralLinkPort } from "./bootstrap/death-notification-funeral-link";
-import { FUNERAL_LINK_TTL_SEC } from "./modules/02-identity/identity-ports";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36EmergencyNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/emergency-notifications";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
@@ -5531,7 +5531,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           isBaaActive: executedBaaGate(() => createDbBaaStore(dbHandle.db)),
           // The funeral-home registry is M40's BAA register: a funeral home exists for the tenant when it has a record there (any status).
           isKnownFuneralHome: async (orgId, entityId) =>
-            (await createDbBaaStore(dbHandle.db).baaRecords(orgId, "funeral_home", entityId)).length > 0,
+            (await createDbBaaStore(dbHandle.db).baaRecords(orgId, "funeral_home", entityId))
+              .length > 0,
           // HMAC under the tenant ring key: no key, no funeral-home send (fail closed, before a link is minted).
           recipientHash: ringRecipientHasher(m36SearchKeys),
           funeralLinks: buildFuneralLinkPort({
@@ -12023,7 +12024,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             m36DeathBoard.service.flagStalledForOrg(orgId),
             m36DeathNotifications?.service.flagUnackedForOrg(orgId) ?? Promise.resolve(undefined),
             // Funeral-home sends stuck in `sending` past the timeout: revoke any orphan link, free the row for a re-send, alert the supervisors.
-            m36DeathNotifications?.service.reconcileStrandedSendsForOrg(orgId) ?? Promise.resolve(undefined),
+            m36DeathNotifications?.service.reconcileStrandedSendsForOrg(orgId) ??
+              Promise.resolve(undefined),
           ]);
           if (board.status === "rejected") throw board.reason;
           if (notices.status === "rejected") throw notices.reason;

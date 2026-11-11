@@ -426,13 +426,24 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
    * a link that carries a funeral home id needs the BAA reader bound AND answering true; a lookup that throws reads as lapsed. A refusal is the
    * redemption's own 410 and is audited. A link minted before migration 1306 (no entity id) has nothing to re-check.
    */
-  async function requireFuneralBaaInForce(request: FastifyRequest, organizationId: string): Promise<void> {
+  async function requireFuneralBaaInForce(
+    request: FastifyRequest,
+    organizationId: string,
+  ): Promise<void> {
     const principal = request.context.userId;
-    if (!deps.collaborators.funeralLinkForPrincipal || typeof principal !== "string" || principal.length === 0) return;
+    if (
+      !deps.collaborators.funeralLinkForPrincipal ||
+      typeof principal !== "string" ||
+      principal.length === 0
+    )
+      return;
     let inForce = false;
     let linkId: string | undefined;
     try {
-      const link = await deps.collaborators.funeralLinkForPrincipal({ organizationId, principalUserId: principal });
+      const link = await deps.collaborators.funeralLinkForPrincipal({
+        organizationId,
+        principalUserId: principal,
+      });
       linkId = link?.linkId;
       inForce =
         !link ||
@@ -446,7 +457,11 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
     if (inForce) return;
     await auditLinkRedemptionRefused(
       deps.audit,
-      auditContextFor(request, { organizationId, userId: null, actorKind: "external_collaborator" }),
+      auditContextFor(request, {
+        organizationId,
+        userId: null,
+        actorKind: "external_collaborator",
+      }),
       { linkId: linkId ?? principal, kind: "funeral_home", reason: "not_eligible" },
     ).catch(() => undefined);
     throw new ChartWardenError("LINK_EXPIRED", "link invalid or expired", 410);

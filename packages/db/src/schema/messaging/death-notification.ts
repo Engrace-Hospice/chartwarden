@@ -61,7 +61,10 @@ export const deathNotifications = pgTable(
       "death_notification_state_shape",
       sql`${t.state} IN ('pending', 'sending', 'sent', 'acked', 'failed', 'blocked_no_baa', 'not_applicable')`,
     ),
-    refShape: check("death_notification_ref_shape", sql`length(${t.recipientRef}) BETWEEN 1 AND 64`),
+    refShape: check(
+      "death_notification_ref_shape",
+      sql`length(${t.recipientRef}) BETWEEN 1 AND 64`,
+    ),
     ackedShape: check(
       "death_notification_acked_shape",
       sql`(${t.state} = 'acked') = (${t.ackedAt} IS NOT NULL) AND (${t.state} = 'acked') = (${t.ackedBy} IS NOT NULL)`,

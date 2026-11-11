@@ -43,7 +43,11 @@ const FH = "33333333-3333-4333-8333-333333333333";
 const FH_NO_BAA = "44444444-4444-4444-8444-444444444444";
 
 function makeServer(
-  opts: { deceasedReader?: boolean; onCaseload?: boolean; baaReader?: "ok" | "unbound" | "throws" } = {},
+  opts: {
+    deceasedReader?: boolean;
+    onCaseload?: boolean;
+    baaReader?: "ok" | "unbound" | "throws";
+  } = {},
 ) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
@@ -240,8 +244,16 @@ describe("POST /api/v1/funeral/invite", () => {
 
   it("a missing or malformed funeralHomeId is 422", async () => {
     const { app } = makeServer();
-    for (const payload of [{ patientId: DECEASED }, { patientId: DECEASED, funeralHomeId: "not-a-uuid" }]) {
-      const res = await app.inject({ method: "POST", url: "/api/v1/funeral/invite", headers: NURSE, payload });
+    for (const payload of [
+      { patientId: DECEASED },
+      { patientId: DECEASED, funeralHomeId: "not-a-uuid" },
+    ]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/funeral/invite",
+        headers: NURSE,
+        payload,
+      });
       expect(res.statusCode).toBe(422);
     }
     await app.close();

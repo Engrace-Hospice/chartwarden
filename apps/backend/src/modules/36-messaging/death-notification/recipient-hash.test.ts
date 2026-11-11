@@ -17,7 +17,10 @@ describe("recipient hash", () => {
     const seen: string[] = [];
     const ok = ringRecipientHasher({
       activeVersion: async () => "v7",
-      tagKey: async (_o, v) => (seen.push(v), KEY_A),
+      tagKey: async (_o, v) => {
+        seen.push(v);
+        return KEY_A;
+      },
     });
     expect(await ok("org", "d@funeral.example")).toBe(hmacRecipient(KEY_A, "d@funeral.example"));
     expect(seen).toEqual(["v7"]);

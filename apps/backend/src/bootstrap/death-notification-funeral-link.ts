@@ -70,7 +70,9 @@ export interface FuneralLinkPortInput {
   readonly sessionTtlSec: number;
   readonly recorder: FuneralDisclosureRecorderPort;
   /** Test override; production reads the active membership from the database. */
-  readonly activeMembershipId?: ((organizationId: string, userId: string) => Promise<string | null>) | undefined;
+  readonly activeMembershipId?:
+    | ((organizationId: string, userId: string) => Promise<string | null>)
+    | undefined;
 }
 
 const SYSTEM_USER_ID = "";
@@ -98,22 +100,31 @@ const LINKS = schema.collaboratorLinks;
 /** Revoke the still-live funeral links of (org, patient, funeral home) minted at or after `since`, plus `linkId` when known. */
 async function revokeOrphanLinks(
   input: FuneralLinkPortInput,
-  a: { orgId: string; patientId: string; funeralHomeEntityId: string; linkId: string | null; since: Date },
+  a: {
+    orgId: string;
+    patientId: string;
+    funeralHomeEntityId: string;
+    linkId: string | null;
+    since: Date;
+  },
 ): Promise<number> {
-  const rows = await withOrgContext(input.db, { organizationId: a.orgId, userId: SYSTEM_USER_ID }, (tx) =>
-    tx
-      .select({ id: LINKS.id })
-      .from(LINKS)
-      .where(
-        and(
-          eq(LINKS.organizationId, a.orgId),
-          eq(LINKS.patientId, a.patientId),
-          eq(LINKS.kind, "funeral_home"),
-          eq(LINKS.funeralHomeEntityId, a.funeralHomeEntityId),
-          isNull(LINKS.revokedAt),
-          gte(LINKS.createdAt, a.since),
+  const rows = await withOrgContext(
+    input.db,
+    { organizationId: a.orgId, userId: SYSTEM_USER_ID },
+    (tx) =>
+      tx
+        .select({ id: LINKS.id })
+        .from(LINKS)
+        .where(
+          and(
+            eq(LINKS.organizationId, a.orgId),
+            eq(LINKS.patientId, a.patientId),
+            eq(LINKS.kind, "funeral_home"),
+            eq(LINKS.funeralHomeEntityId, a.funeralHomeEntityId),
+            isNull(LINKS.revokedAt),
+            gte(LINKS.createdAt, a.since),
+          ),
         ),
-      ),
   );
   const ids = new Set(rows.map((r) => r.id));
   if (a.linkId) ids.add(a.linkId); // revoke is idempotent and org-scoped
@@ -126,7 +137,8 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
   const { delivery } = input;
   if (!delivery) return undefined;
   return {
-    refused: (a: Parameters<FuneralDisclosureRecorderPort["refused"]>[0]) => input.recorder.refused(a),
+    refused: (a: Parameters<FuneralDisclosureRecorderPort["refused"]>[0]) =>
+      input.recorder.refused(a),
     revokeOrphans: (a: Parameters<typeof revokeOrphanLinks>[1]) => revokeOrphanLinks(input, a),
     async issue(a: {
       orgId: string;
@@ -139,10 +151,9 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
       if (!(await input.isDeceased(a.orgId, a.patientId))) {
         throw new Error("funeral link refused: the patient is not deceased");
       }
-      const membershipId = await (input.activeMembershipId ?? ((o, u) => activeMembershipId(input.db, o, u)))(
-        a.orgId,
-        a.actorUserId,
-      );
+      const membershipId = await (
+        input.activeMembershipId ?? ((o, u) => activeMembershipId(input.db, o, u))
+      )(a.orgId, a.actorUserId);
       if (!membershipId) throw new Error("funeral link refused: no active membership");
       const link = await input.collaborators.create({
         organizationId: a.orgId,
@@ -171,8 +182,8 @@ export function buildFuneralLinkPort(input: FuneralLinkPortInput) {
       } catch (err) {
         await input.collaborators.revoke({ organizationId: a.orgId, linkId: link.linkId });
         // The trail must not show an undelivered invite as completed: record that the minted link was revoked (best effort; the send already failed).
-        await input
-          .recorder.inviteRevoked({
+        await input.recorder
+          .inviteRevoked({
             orgId: a.orgId,
             actorUserId: a.actorUserId,
             patientId: a.patientId,

@@ -5,7 +5,10 @@
 import { createHash } from "node:crypto";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import type { DeathNotificationInternalKind } from "@chartwarden/types";
-import { QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE, emitWithRecipientFallback } from "../alert-recipient-fallback";
+import {
+  QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE,
+  emitWithRecipientFallback,
+} from "../alert-recipient-fallback";
 
 export const DEATH_NOTIFICATION_ALERT_PREFIX = "m36.death_notification" as const;
 export const DEATH_NOTIFICATION_BLOCKED_ALERT = "m36.death_notification.blocked_no_baa" as const;
@@ -14,7 +17,8 @@ export const DEATH_NOTIFICATION_STRANDED_ALERT = "m36.death_notification.send_st
 export const DEATH_NOTIFICATION_DEEP_LINK = "/messaging/death-board";
 
 export const DEATH_NOTIFICATION_TEXT = {
-  notice: "A patient death has been recorded. Please open the checklist and acknowledge this notice.",
+  notice:
+    "A patient death has been recorded. Please open the checklist and acknowledge this notice.",
   blockedNoBaa:
     "A funeral home notice was not sent because no Business Associate Agreement is on file for it. Record the agreement or choose another funeral home.",
   strandedSend:
@@ -75,7 +79,11 @@ export async function emitInternalNotice(
       eventType: QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE,
       severity: "info",
       correlationId: `${correlationId}:fb`,
-      payload: { ...payload, eventType: QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE, originalEventType: deathNotificationAlertType(input.kind) },
+      payload: {
+        ...payload,
+        eventType: QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE,
+        originalEventType: deathNotificationAlertType(input.kind),
+      },
     });
     return sent.resolvedRecipientCount;
   }
@@ -124,7 +132,11 @@ export const emitUnackedAlert = (alerts: AlertEmitter, orgId: string, notificati
   );
 
 /** A funeral-home send that never completed was cancelled by the stall tick. Deduped per row; fixed text, no ids in it. */
-export const emitStrandedSendAlert = (alerts: AlertEmitter, orgId: string, notificationId: string) =>
+export const emitStrandedSendAlert = (
+  alerts: AlertEmitter,
+  orgId: string,
+  notificationId: string,
+) =>
   emitSupervisorAlert(
     alerts,
     orgId,

@@ -142,7 +142,9 @@ export function createDbCollaboratorLinkStore(
               expiresAt,
               sessionTtlSec,
               maxUses,
-              ...(input.funeralHomeEntityId ? { funeralHomeEntityId: input.funeralHomeEntityId } : {}),
+              ...(input.funeralHomeEntityId
+                ? { funeralHomeEntityId: input.funeralHomeEntityId }
+                : {}),
             })
             .returning({ id: LINKS.id, expiresAt: LINKS.expiresAt }),
       );
