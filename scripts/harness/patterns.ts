@@ -20,6 +20,7 @@
  */
 import { userInfo } from "node:os";
 
+import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
 import {
   PROTECTED_FRAGMENT,
   PROTECTED_SAMPLES,
@@ -906,10 +907,6 @@ function gitInvocation(args: readonly string[]): {
 /** `-c` keys that only change presentation. Any other key is a decision for the human. */
 const GIT_SAFE_CONFIG =
   /^(color\.[a-z0-9.-]+|advice\.[a-z0-9.-]+|core\.(quotepath|abbrev|precomposeunicode)|log\.date)$/i;
-/** `-c` keys that switch off the repo's hooks or make git run a program of the caller's choosing. */
-const GIT_EXEC_CONFIG =
-  /^(core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass)|alias\.|credential\.helper|diff\.external|protocol\.ext)/i;
-const configKey = (kv: string): string => kv.split("=")[0] ?? "";
 
 /** Environment overrides that change what git runs or which config it reads. */
 const GIT_ENV_OVERRIDE = /^GIT_/;
@@ -1738,6 +1735,10 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   }
   if (prog === "curl") return curlWrites(args);
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
+  if (prog === "git") {
+    const { sub, rest } = gitInvocation(args);
+    return gitFileWrites(sub, rest).map((f) => wt(f));
+  }
   const outputOptions = OUTPUT_OPTIONS.get(prog);
   if (outputOptions) {
     return outputOptions
@@ -2220,14 +2221,8 @@ function classifySegment(
         }
       }
     }
-    if (
-      sub === "config" &&
-      /core\.hooksPath/.test(argline) &&
-      !/(--get|--list|-l)\b/.test(argline) &&
-      !/core\.hooksPath\s+\.githooks\b/.test(argline)
-    ) {
-      return deny("Re-pointing core.hooksPath disables the repo's git hooks.");
-    }
+    const configDenial = sub === "config" ? gitConfigDenial(rest) : null;
+    if (configDenial) return deny(configDenial);
     if (sub === "push") {
       const refs = rest.filter((a) => !a.startsWith("-")); // remote, then refspecs
       const remoteRefs = refs.slice(1);
