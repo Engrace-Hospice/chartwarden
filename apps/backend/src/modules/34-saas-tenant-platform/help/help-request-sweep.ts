@@ -18,7 +18,7 @@ export const HELP_REQUEST_SWEEP_QUEUE = "tenant.help_request_sweep";
 export const HELP_REQUEST_SWEEP_SCHEDULE = "*/5 * * * *";
 /** How long an unanswered request waits before it is cancelled. */
 export const HELP_REQUEST_OPEN_MAX_AGE_DAYS = 14;
-/** Free text is removed 90 days after close; migration 1483's trigger holds the same minimum. */
+/** Free text is removed 90 days after close; migration 1485's trigger holds the same minimum. */
 export const HELP_REQUEST_TEXT_RETENTION_DAYS = schema.TENANT_HELP_REQUEST_TEXT_RETENTION_DAYS;
 
 const MS_PER_DAY = 86_400_000;

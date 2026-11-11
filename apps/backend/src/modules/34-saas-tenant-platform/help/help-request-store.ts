@@ -32,7 +32,7 @@ export interface HelpRequestRow {
   readonly closedByUserId: string | null;
   readonly closedAt: Date | null;
   readonly closeNote: string | null;
-  /** Stamped when the retention sweep replaced the message with the placeholder (migration 1483); null while the text is kept. */
+  /** Stamped when the retention sweep removed the message at rest (migration 1485); null while the text is kept. */
   readonly messagePurgedAt: Date | null;
 }
 
@@ -150,7 +150,7 @@ export interface HelpRequestStore {
   resolveGrantEnded(at: Date): Promise<number>;
   /**
    * Null the message and note of every closed request that closed more than `retentionDays` ago and
-   * stamp `message_purged_at`; the number purged. The database judges the age by its own clock (the guard trigger of migration 1483),
+   * stamp `message_purged_at`; the number purged. The database judges the age by its own clock (the guard trigger of migration 1485),
    * so a sweep and the trigger can never disagree at the edge.
    */
   purgeClosedText(retentionDays: number, at: Date): Promise<number>;

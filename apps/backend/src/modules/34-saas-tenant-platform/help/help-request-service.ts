@@ -252,7 +252,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
       store.afterCommit(async () => {
         try {
           await alerts.emit(actor.organizationId, {
-            eventType: "tenant.help_requested",
+            eventType: HELP_REQUEST_REQUESTED_EVENT,
             payload: alertPayload,
             severity: "warn",
             correlationId: `m34-help-request-${row.id}`,
@@ -370,7 +370,23 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         source: ending.source,
       },
     );
-    if (revoked.afterCommit) store.afterCommit(revoked.afterCommit);
+    if (revoked.afterCommit) {
+      store.afterCommit(async () => {
+        try {
+          await revoked.afterCommit?.();
+        } catch (error) {
+          deps.warn?.("M34 help-request revoke alert delivery failed after commit", {
+            helpRequestId: row.id,
+            organizationId: row.organizationId,
+            grantId: row.supportConsentGrantId,
+            errorCode:
+              typeof error === "object" && error !== null && "code" in error
+                ? String(error.code)
+                : "ALERT_EMIT_FAILED",
+          });
+        }
+      });
+    }
     const after = await store.findForUpdate(row.id);
     if (after?.status === "approved") {
       await store.markClosed(row.id, { ...ending.closing, from: "approved", to: "resolved" });

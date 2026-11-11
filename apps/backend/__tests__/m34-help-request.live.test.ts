@@ -414,6 +414,19 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
   });
 
   describe("the column-limited UPDATE and the guard trigger", () => {
+    it("refuses a live request whose message is null", async () => {
+      await reset();
+      expect(
+        await refused(() =>
+          asApp(ORG_A, U_NURSE, (tx) =>
+            tx.execute(sql`INSERT INTO tenant_help_request
+              (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id)
+              VALUES (${ORG_A}, ${T_A}, NULL, ${M_NURSE}, ${U_NURSE})`),
+          ),
+        ),
+      ).toBe("23514");
+    });
+
     it("lets the tenant role touch only the approve and close columns", async () => {
       await reset();
       const request = await filed();
@@ -657,7 +670,7 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
         severity: string;
         correlation_id: string;
       }>(
-        "SELECT id,payload,severity::text,correlation_id FROM alert WHERE organization_id=$1 AND event_type='tenant.help_requested'",
+        "SELECT id,payload,severity::text,correlation_id FROM alert WHERE organization_id=$1 AND event_type='m34.help_request.requested'",
         [ORG_A],
       );
       expect(alert).toHaveLength(1);
@@ -1055,6 +1068,66 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
         [stale],
       );
       expect(system[0]).toEqual({ actor_user_id: null, actor_kind: "system" });
+    });
+
+    it("refuses early deletion and nulls closed text at rest after 90 days", async () => {
+      await reset();
+      const old = (
+        await q<{ id: string }>(
+          `INSERT INTO tenant_help_request
+            (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id,
+             requested_at, status, closed_by_actor_kind, closed_by_user_id, closed_at, close_note)
+           VALUES ($1,$2,$3,$4,$5,now() - interval '100 days','cancelled','tenant',$5,
+                   now() - interval '91 days',$6) RETURNING id`,
+          [ORG_A, T_A, MESSAGE, M_NURSE, U_NURSE, NOTE],
+        )
+      )[0]?.id as string;
+      const fresh = (
+        await q<{ id: string }>(
+          `INSERT INTO tenant_help_request
+            (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id,
+             requested_at, status, closed_by_actor_kind, closed_by_user_id, closed_at, close_note)
+           VALUES ($1,$2,$3,$4,$5,now() - interval '2 days','cancelled','tenant',$5,
+                   now() - interval '1 day',$6) RETURNING id`,
+          [ORG_B, T_B, "Help with our provider entity please", M_B, U_B, NOTE],
+        )
+      )[0]?.id as string;
+
+      expect(
+        await refused(() =>
+          asCarrier((tx) =>
+            tx.execute(sql`UPDATE tenant_help_request
+              SET message = NULL, close_note = NULL, message_purged_at = now()
+              WHERE id = ${fresh}`),
+          ),
+        ),
+      ).toBe("23514");
+      expect(await runHelpRequestSweep(runner())).toEqual({ cancelled: 0, resolved: 0, purged: 1 });
+
+      const [purged] = await q<{
+        message: string | null;
+        close_note: string | null;
+        message_purged_at: Date | null;
+      }>("SELECT message,close_note,message_purged_at FROM tenant_help_request WHERE id=$1", [old]);
+      expect(purged).toMatchObject({ message: null, close_note: null });
+      expect(purged?.message_purged_at).not.toBeNull();
+      expect(
+        (
+          await q<{ message: string }>("SELECT message FROM tenant_help_request WHERE id=$1", [
+            fresh,
+          ])
+        )[0]?.message,
+      ).toBe("Help with our provider entity please");
+      expect((await service.listForTenant(NURSE, undefined, undefined)).items[0]?.message).toBe(
+        "[removed after 90 days]",
+      );
+      const [audit] = await q<{ after: Record<string, unknown> }>(
+        `SELECT after FROM audit_event
+          WHERE resource_kind='tenant_help_request' AND resource_id=$1 AND event_type='tenant_help_request.update'
+          ORDER BY created_at DESC LIMIT 1`,
+        [old],
+      );
+      expect(audit?.after).toMatchObject({ message: "<changed>", close_note: "<changed>" });
     });
   });
 

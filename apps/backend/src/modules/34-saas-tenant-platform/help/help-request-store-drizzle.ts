@@ -5,7 +5,7 @@
 // NOBYPASSRLS app role) or an audited `withPlatformContext` on the BYPASSRLS carrier (an operator's Resolve, the inbox and the
 // sweep). M34 owns every table touched here except the M1 spine read of the organization's slug, which the table-ownership gate
 // sanctions. Migration 1482 holds the rules the database owns (the column grants, the pinned policies, the state CHECKs and the guard
-// trigger); this file holds none of its own.
+// trigger); migration 1485 adds the null-at-rest retention invariant. This file holds none of its own.
 import { type DbClient, schema } from "@chartwarden/db";
 import type { LinkedHelpRequestPort } from "@chartwarden/saas-tenant-platform";
 import {
@@ -200,7 +200,19 @@ export function createDrizzleHelpRequestStore(
           .for("update");
       }
       await tx.select({ id: R.id }).from(R).where(eq(R.id, id)).for("update");
-      return byId(id);
+      const locked = await byId(id);
+      // We observed an open row before taking its request lock. If an approval committed while we waited, that transition created a
+      // grant which must have been locked first. Retrying the transaction is the only safe way to re-enter the canonical order.
+      if (row.status === "open" && locked?.status === "approved") {
+        throw Object.assign(
+          new Error("help request changed while acquiring canonical lock order"),
+          {
+            code: "40001",
+            severity: "ERROR",
+          },
+        );
+      }
+      return locked;
     },
 
     async markClosed(id, closing) {
@@ -296,7 +308,7 @@ export function createDrizzleHelpRequestStore(
     },
 
     async purgeClosedText(retentionDays, at) {
-      // The age is judged by the database's clock, the same `now()` the guard trigger (migration 1483) reads, so the sweep never
+      // The age is judged by the database's clock, the same `now()` the guard trigger (migration 1485) reads, so the sweep never
       // selects a row the trigger would refuse.
       const purged = await tx.execute<{ id: string }>(sql`
         UPDATE tenant_help_request

@@ -156,7 +156,7 @@ describe("filing a request", () => {
       {
         organizationId: ORG,
         input: {
-          eventType: "tenant.help_requested",
+          eventType: HELP_REQUEST_REQUESTED_EVENT,
           payload: {
             helpRequestId: view.id,
             tenantAccountId: MEMORY_HELP_ACCOUNT_ID,
@@ -499,6 +499,35 @@ describe("ending a request from the tenant", () => {
     });
   });
 
+  it("keeps a tenant close committed when the revoke alert fails after commit", async () => {
+    const warnings: Array<{ message: string; context: Record<string, unknown> }> = [];
+    const revoke = ops.revokeGrantAndCloseSessions;
+    const resilient = createHelpRequestService({
+      runner: createMemoryHelpRequestRunner(state),
+      grants: {
+        ...ops,
+        revokeGrantAndCloseSessions: async (...args) => ({
+          ...(await revoke(...args)),
+          afterCommit: async () =>
+            Promise.reject(Object.assign(new Error("down"), { code: "EPIPE" })),
+        }),
+      },
+      outbox: { publish: async () => undefined },
+      alerts: { emit: async () => undefined },
+      now: () => clock,
+      warn: (message, context) => warnings.push({ message, context }),
+    });
+    const request = await resilient.file(NURSE, { message: MESSAGE });
+    await resilient.approve(ADMIN, request.id, {});
+
+    await expect(resilient.close(NURSE, request.id)).resolves.toMatchObject({ status: "resolved" });
+    expect(state.requests.get(request.id)?.status).toBe("resolved");
+    expect(warnings).toContainEqual({
+      message: "M34 help-request revoke alert delivery failed after commit",
+      context: expect.objectContaining({ helpRequestId: request.id, errorCode: "EPIPE" }),
+    });
+  });
+
   it("is idempotent: ending an ended request answers it", async () => {
     const request = await service().file(NURSE, { message: MESSAGE });
     const first = await service().close(NURSE, request.id);
@@ -675,6 +704,36 @@ describe("the operators' side", () => {
     await service().approve(ADMIN, request.id, {});
     const view = await service().resolve(OPERATOR, request.id, { note: "Answered by phone" });
     expect(view).toMatchObject({ status: "resolved", closeNote: "Answered by phone" });
+  });
+
+  it("keeps an operator resolve committed when the revoke alert fails after commit", async () => {
+    const warnings: Array<{ message: string; context: Record<string, unknown> }> = [];
+    const revoke = ops.revokeGrantAndCloseSessions;
+    const resilient = createHelpRequestService({
+      runner: createMemoryHelpRequestRunner(state),
+      grants: {
+        ...ops,
+        revokeGrantAndCloseSessions: async (...args) => ({
+          ...(await revoke(...args)),
+          afterCommit: async () => Promise.reject(new Error("alert unavailable")),
+        }),
+      },
+      outbox: { publish: async () => undefined },
+      alerts: { emit: async () => undefined },
+      now: () => clock,
+      warn: (message, context) => warnings.push({ message, context }),
+    });
+    const request = await resilient.file(NURSE, { message: MESSAGE });
+    await resilient.approve(ADMIN, request.id, {});
+
+    await expect(
+      resilient.resolve(OPERATOR, request.id, { note: "Answered by phone" }),
+    ).resolves.toMatchObject({ status: "resolved" });
+    expect(state.requests.get(request.id)?.status).toBe("resolved");
+    expect(warnings[0]).toMatchObject({
+      message: "M34 help-request revoke alert delivery failed after commit",
+      context: { helpRequestId: request.id, errorCode: "ALERT_EMIT_FAILED" },
+    });
   });
 
   it("resolves an open request an operator answered without needing consent", async () => {
