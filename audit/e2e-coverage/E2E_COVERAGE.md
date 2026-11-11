@@ -124,8 +124,8 @@
 ## Viewports, admin/portal, authorization (#852)
 
 - **Six viewports** (320, 375, 768, 1024, 1440, 1920 wide) — `viewport-matrix.spec.ts`, run only by the `viewport-*` Playwright projects (`bun run test:e2e:viewports`): Home, census and a patient chart, axe plus a no-horizontal-document-scroll (WCAG 1.4.10) check. Not multiplied across the other specs.
-- **`admin`/`portal` apps** (39 + 18 registered screens) — `admin-console-smoke.spec.ts` and `portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth plus authenticated platform-ops and patient-self surfaces. CI starts all three SPAs and supplies `E2E_ADMIN_URL` / `E2E_PORTAL_URL`; local runs skip unless those URLs point at running servers. Credentials come from the synthetic seed, and portal password sign-in avoids a mail sink.
-- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: Clinician and Compliance Auditor denied on billing / agency-setup / audit / staff routes, Auditor and Administrator allowed where their permissions reach.
+- **`admin`/`portal` apps** (39 + 19 registered screens) — `admin-console-smoke.spec.ts` and `portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth plus authenticated platform-ops and patient-self surfaces. CI starts all three SPAs and supplies `E2E_ADMIN_URL` / `E2E_PORTAL_URL`; local runs skip unless those URLs point at running servers. Credentials come from the synthetic seed, and portal password sign-in avoids a mail sink.
+- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: the clinical-only Clinician is denied on billing, agency-setup, audit and staff reads; the Compliance Auditor is denied on billing and agency setup but allowed to read audit events; the Administrator is allowed across the matrix.
 
 ## Not measured here (by design)
 

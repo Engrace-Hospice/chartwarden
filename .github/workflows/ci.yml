@@ -1735,13 +1735,12 @@ jobs:
           scripts/object-store-conformance/rustfs-up.sh --down
 
   e2e:
-    # F-024 (#41, second half): the 18-test Playwright suite — and the SIX axe-core WCAG 2A/AA scans it
-    # carries, the repo's ENTIRE automated accessibility coverage — ran in no CI job. `test:e2e` was
+    # F-024 (#41, second half): the Playwright suite and its axe-core WCAG 2A/AA scans ran in no CI job.
+    # `test:e2e` was
     # invisible to `arch:live-suites` until #41 widened its detection, and was then explicitly DEFERRED
     # rather than wired, because the suite could not be run at all: `bun run db:reset` aborted partway
-    # through its seed chain (#39), and 10 of the 18 specs were red against selectors and a screen that
-    # had since been redesigned (#56). Both are fixed and the suite is 18/18, so the deferral is retired
-    # and this job replaces it.
+    # through its seed chain (#39), and several specs were red against selectors and a screen that had
+    # since been redesigned (#56). Both are fixed, so the deferral is retired and this job replaces it.
     #
     # This is the ONLY job that exercises the product the way a person uses it: a real Chromium against
     # the real Vite app, proxied to a real Fastify backend, over a real migrated and seeded Postgres.

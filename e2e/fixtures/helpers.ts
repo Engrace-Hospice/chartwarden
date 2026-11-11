@@ -120,14 +120,22 @@ export async function expectNoAxeViolations(
   page: Page,
   excludeSelectors: readonly string[] = [],
 ): Promise<void> {
+  const summary = await axeViolationSummaries(page, excludeSelectors);
+  expect(summary, `axe violations:\n${summary.join("\n")}`).toEqual([]);
+}
+
+/** Run the shared transition-safe axe scan and return one stable message per violation. */
+export async function axeViolationSummaries(
+  page: Page,
+  excludeSelectors: readonly string[] = [],
+): Promise<string[]> {
   await waitForTransitionsToSettle(page);
   let builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]);
   for (const selector of excludeSelectors) builder = builder.exclude(selector);
   const results = await builder.analyze();
-  const summary = results.violations.map(
+  return results.violations.map(
     (v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
   );
-  expect(summary, `axe violations:\n${summary.join("\n")}`).toEqual([]);
 }
 
 /**

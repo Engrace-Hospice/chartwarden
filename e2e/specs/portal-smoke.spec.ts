@@ -5,10 +5,9 @@
 // account, so this project covers authenticated screens without requiring a mail sink.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { PORTAL_ACCOUNT } from "../fixtures/credentials";
-import { expectRouteReached } from "../fixtures/helpers";
+import { axeViolationSummaries, expectRouteReached } from "../fixtures/helpers";
 
 test.skip(
   !process.env.E2E_PORTAL_URL,
@@ -52,12 +51,7 @@ test.describe("Portal — pre-auth smoke (#852)", () => {
       await expect(page.locator("#root > *").first()).toBeVisible();
       await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
       await expectRouteReached(page, route);
-      const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-      expect(
-        results.violations.map(
-          (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
-        ),
-      ).toEqual([]);
+      expect(await axeViolationSummaries(page)).toEqual([]);
     });
   }
 
@@ -88,12 +82,9 @@ test.describe("Portal — pre-auth smoke (#852)", () => {
         failures.push(`${route}: ${String(error)}`);
         continue;
       }
-      const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-      for (const violation of results.violations) {
-        failures.push(
-          `${route}: ${violation.id} — ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
-        );
-      }
+      failures.push(
+        ...(await axeViolationSummaries(page)).map((violation) => `${route}: ${violation}`),
+      );
     }
     expect(failures, failures.join("\n")).toEqual([]);
   });

@@ -122,6 +122,8 @@ const dynamicReasonFor = (s: RegisteredScreen): string =>
     ? "pre-auth token route: needs a live single-use invite/link token and a signed-out context"
     : "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet";
 const dynamicExcluded = webDynamic.filter((s) => !dynamicAxeReached.includes(s));
+const adminScreenCount = uiParity.screens.filter((s) => s.app === "admin").length;
+const portalScreenCount = uiParity.screens.filter((s) => s.app === "portal").length;
 
 interface Row {
   readonly id: string;
@@ -214,16 +216,12 @@ lines.push(
     "plus a no-horizontal-document-scroll (WCAG 1.4.10) check. Not multiplied across the other specs.",
 );
 lines.push(
-  "- **`admin`/`portal` apps** (39 + 18 registered screens) — `admin-console-smoke.spec.ts` and " +
-    "`portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth plus authenticated platform-ops and " +
-    "patient-self surfaces. CI starts all three SPAs and supplies `E2E_ADMIN_URL` / `E2E_PORTAL_URL`; " +
-    "local runs skip unless those URLs point at running servers. Credentials come from the synthetic " +
-    "seed, and portal password sign-in avoids a mail sink.",
+  `- **\`admin\`/\`portal\` apps** (${adminScreenCount} + ${portalScreenCount} registered screens) — \`admin-console-smoke.spec.ts\` and \`portal-smoke.spec.ts\` (\`bun run test:e2e:apps\`): pre-auth plus authenticated platform-ops and patient-self surfaces. CI starts all three SPAs and supplies \`E2E_ADMIN_URL\` / \`E2E_PORTAL_URL\`; local runs skip unless those URLs point at running servers. Credentials come from the synthetic seed, and portal password sign-in avoids a mail sink.`,
 );
 lines.push(
-  "- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: Clinician and Compliance Auditor " +
-    "denied on billing / agency-setup / audit / staff routes, Auditor and Administrator allowed where their " +
-    "permissions reach.",
+  "- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: the clinical-only Clinician is " +
+    "denied on billing, agency-setup, audit and staff reads; the Compliance Auditor is denied on billing " +
+    "and agency setup but allowed to read audit events; the Administrator is allowed across the matrix.",
 );
 lines.push("");
 lines.push("## Not measured here (by design)");

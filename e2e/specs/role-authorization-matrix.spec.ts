@@ -115,8 +115,8 @@ function expectAllowed(account: () => DemoAccount, cases: readonly Case[]): void
   }
 }
 
-test.describe("Authorization matrix (#852) — Clinician persona", () => {
-  expectDenied(CLINICIAN_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, STAFF]);
+test.describe("Authorization matrix (#852) — Clinician (clinical permissions only)", () => {
+  expectDenied(CLINICIAN_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, AUDIT_LOG, STAFF]);
 });
 
 test.describe("Authorization matrix (#852) — Compliance Auditor (compliance permissions only)", () => {
