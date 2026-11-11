@@ -1,6 +1,8 @@
 // @chartwarden/ui — InlineAlert (2026-09-25 redesign). A flat, token-only message line for a form or panel:
 // an error refusal (role="alert", announced at once) or a success/info notice (<output>, a polite live
 // region). No card, no border — a tinted strip, so it sits inside flat sections. Presentational only.
+// `live={false}` renders the same strip as a plain <p> for a caller that supplies the live region itself (an always-mounted
+// wrapper, or a region that also holds a list), so the text is announced once instead of twice.
 import type { JSX, ReactNode } from "react";
 import { t, tint } from "../theme/tokens";
 
@@ -10,6 +12,8 @@ export interface InlineAlertProps {
    * advisory that does not block the action (e.g. keyed rates that differ from a published reference).
    */
   tone?: "error" | "success" | "info" | "warning";
+  /** Default true. False drops the live-region role: the caller owns announcement (it wraps this in its own region). */
+  live?: boolean;
   children: ReactNode;
 }
 
@@ -26,7 +30,11 @@ const BACKGROUND = {
   warning: tint(t.warning),
 } as const;
 
-export function InlineAlert({ tone = "error", children }: InlineAlertProps): JSX.Element {
+export function InlineAlert({
+  tone = "error",
+  live = true,
+  children,
+}: InlineAlertProps): JSX.Element {
   const style = {
     display: "block",
     margin: 0,
@@ -36,6 +44,7 @@ export function InlineAlert({ tone = "error", children }: InlineAlertProps): JSX
     color: COLOR[tone],
     fontSize: "0.8125rem",
   } as const;
+  if (!live) return <p style={style}>{children}</p>;
   return tone === "error" ? (
     <p role="alert" style={style}>
       {children}

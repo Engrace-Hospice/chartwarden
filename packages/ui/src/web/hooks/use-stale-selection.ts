@@ -17,6 +17,11 @@ export interface StaleSelectionOptions {
   /** Param values that are not record ids (e.g. `new`), which never count as stale. */
   ignore?: readonly string[];
   message?: string;
+  /**
+   * How to clear a stale id. Defaults to replacing the param (so Back is not trapped); a screen on `useSelectionParam` passes its
+   * `close`, which pops the history entry the selection pushed instead of leaving a duplicate list entry behind.
+   */
+  clear?: () => void;
 }
 
 export const STALE_SELECTION_MESSAGE = "That record is no longer in this list.";
@@ -27,6 +32,7 @@ export function useStaleSelection({
   found,
   ignore = [],
   message = STALE_SELECTION_MESSAGE,
+  clear,
 }: StaleSelectionOptions): void {
   const [params, setParams] = useSearchParams();
   const toast = useOptionalToast();
@@ -44,14 +50,16 @@ export function useStaleSelection({
     const key = `${param}=${selected}`;
     if (handled.current === key) return;
     handled.current = key;
-    setParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete(param);
-        return next;
-      },
-      { replace: true },
-    );
+    if (clear) clear();
+    else
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.delete(param);
+          return next;
+        },
+        { replace: true },
+      );
     toast?.show(message, { tone: "info" });
-  }, [stale, param, selected, message, setParams, toast]);
+  }, [stale, param, selected, message, setParams, toast, clear]);
 }

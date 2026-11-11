@@ -6,12 +6,14 @@ import {
   SelectField,
   StatusPill,
   type StatusTone,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — Signup Intents queue (M34 Phase-3, §4.1 platform-ops; F02/ADR-0010).
@@ -22,7 +24,7 @@ import {
 // client; imports only @chartwarden/ui leaves + the Foundation tone map.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { SIGNUP_TONE, cap } from "./saas-status";
 
 // §3.11 wire vocab mirror — the route returns these intent statuses.
@@ -73,6 +75,10 @@ const STATUS_FILTERS: readonly (SignupIntentStatus | "all")[] = [
   "abandoned",
   "rejected",
 ];
+const STATUS_OPTIONS = STATUS_FILTERS.map((s) => ({
+  value: s,
+  label: s === "all" ? "All statuses" : cap(s),
+}));
 
 interface Banner {
   tone: "success" | "error";
@@ -81,8 +87,8 @@ interface Banner {
 
 export function Signups(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("intent");
+  // The open intent lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close: closeDrawer } = useSelectionParam("intent");
   const [intents, setIntents] = useState<SignupIntentView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -113,8 +119,6 @@ export function Signups(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const closeDrawer = (): void => setParams({});
 
   // Qualify enqueues the `tenant.provision` flow (§7.1); reject records the rationale on the intent.
   async function qualify(
@@ -157,7 +161,12 @@ export function Signups(): JSX.Element {
   const visible =
     statusFilter === "all" ? intents : intents.filter((i) => i.intentStatus === statusFilter);
   const selected = selectedId ? intents.find((i) => i.id === selectedId) : undefined;
-  useStaleSelection({ param: "intent", ready: loaded, found: selected !== undefined });
+  useStaleSelection({
+    param: "intent",
+    ready: loaded,
+    found: selected !== undefined,
+    clear: closeDrawer,
+  });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -167,20 +176,16 @@ export function Signups(): JSX.Element {
             <h1>Signup intents</h1>
             <p>The pre-provision intake funnel: qualify an intent to provision it, or reject it.</p>
           </div>
-          <div className="wx-list-toolbar-end">
-            <select
-              aria-label="Intent status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as SignupIntentStatus | "all")}
-            >
-              {STATUS_FILTERS.map((s) => (
-                <option key={s} value={s}>
-                  {s === "all" ? "All statuses" : cap(s)}
-                </option>
-              ))}
-            </select>
-          </div>
         </header>
+
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Intent status"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatusFilter(e.target.value as SignupIntentStatus | "all")}
+          />
+        </div>
 
         {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
 
@@ -189,7 +194,7 @@ export function Signups(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(i) => setParams({ intent: i.id })}
+          onSelect={(i) => select(i.id)}
           onRetry={() => void load()}
         />
       </div>
@@ -226,7 +231,7 @@ function IntentTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again
@@ -247,7 +252,7 @@ function IntentTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Signup intents</caption>
         <thead>
@@ -268,7 +273,7 @@ function IntentTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, i.id)}
               >
                 <td>
                   <span className="wx-row-title">{i.legalBusinessName}</span>
@@ -284,7 +289,7 @@ function IntentTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -337,11 +342,11 @@ function IntentDrawer({
           </div>
           <dl className="wx-kv">
             <dt>Intent id</dt>
-            <dd className="wx-data-md break-words">{intent.id}</dd>
+            <dd className="wx-data-md">{intent.id}</dd>
             <dt>Contact email</dt>
-            <dd className="wx-data-md break-words">{intent.contactEmail}</dd>
+            <dd className="wx-data-md">{intent.contactEmail}</dd>
             <dt>Intended first admin</dt>
-            <dd className="wx-data-md break-words">{intent.intendedFirstAdminEmail}</dd>
+            <dd className="wx-data-md">{intent.intendedFirstAdminEmail}</dd>
             <dt>Source</dt>
             <dd>{cap(intent.source)}</dd>
             <dt>Received</dt>
@@ -355,13 +360,13 @@ function IntentDrawer({
             {intent.rejectionReason ? (
               <>
                 <dt>Rejection reason</dt>
-                <dd className="break-words">{intent.rejectionReason}</dd>
+                <dd>{intent.rejectionReason}</dd>
               </>
             ) : null}
             {intent.tenantAccountId ? (
               <>
                 <dt>Tenant account</dt>
-                <dd className="wx-data-md break-words">{intent.tenantAccountId}</dd>
+                <dd className="wx-data-md">{intent.tenantAccountId}</dd>
               </>
             ) : null}
           </dl>

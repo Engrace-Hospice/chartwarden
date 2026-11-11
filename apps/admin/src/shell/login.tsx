@@ -48,12 +48,10 @@ export function Login(): JSX.Element {
 
   return (
     <CenteredCardLayout brand={<BrandLockup />}>
-      <form onSubmit={submit} ref={formRef} noValidate className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-lg font-semibold">Sign in</h1>
-          <p className="m-0 text-sm text-[var(--color-muted)]">
-            Platform-ops console. Sign in to continue.
-          </p>
+      <form onSubmit={submit} ref={formRef} noValidate className="wx-form-stack">
+        <div className="wx-auth-head">
+          <h1>Sign in</h1>
+          <p>Platform-ops console. Sign in to continue.</p>
         </div>
         <TextField
           label="Email"

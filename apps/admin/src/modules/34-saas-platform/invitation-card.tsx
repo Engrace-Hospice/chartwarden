@@ -8,6 +8,7 @@ import {
   LoadingSpinner,
   StatusPill,
   type StatusTone,
+  UnstyledList,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -38,7 +39,13 @@ function serverMessage(err: unknown): string | null {
 export function InvitationCard({
   orgSlug,
   tenantAccountId,
-}: { orgSlug: string; tenantAccountId: string }): JSX.Element {
+  headingLevel: Heading = "h3",
+}: {
+  orgSlug: string;
+  tenantAccountId: string;
+  /** h2 beside the hub's other h2 cards; h3 (the default) inside the onboarding wizard's step frame (an h2). */
+  headingLevel?: "h2" | "h3";
+}): JSX.Element {
   const client = useApiClient();
   const guard = useRequestGuard();
   const [rows, setRows] = useState<InvitationRow[] | null>(null);
@@ -98,15 +105,15 @@ export function InvitationCard({
   return (
     <section className="wx-drawer-card" aria-label="First-admin invitation">
       <div className="wx-drawer-card-head">
-        <h3>First-admin invitation</h3>
+        <Heading>First-admin invitation</Heading>
       </div>
       {loadError ? <InlineAlert tone="error">Could not load invitations.</InlineAlert> : null}
       {rows === null && !loadError ? <LoadingSpinner label="Loading invitations…" /> : null}
-      {rows?.length === 0 ? <p>No invitation on record.</p> : null}
+      {rows?.length === 0 ? <p className="wx-row-sub">No invitation on record.</p> : null}
       {rows && rows.length > 0 ? (
-        <ul className="wx-kv" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        <UnstyledList className="wx-fact-list">
           {rows.map((i) => (
-            <li key={i.id} className="flex flex-wrap items-center gap-2">
+            <li key={i.id} className="wx-drawer-title-row">
               <span>{i.firstAdminEmail}</span>
               <StatusPill label={i.status} tone={TONE[i.status] ?? "neutral"} />
               <span className="wx-nums wx-row-sub">
@@ -114,7 +121,7 @@ export function InvitationCard({
               </span>
             </li>
           ))}
-        </ul>
+        </UnstyledList>
       ) : null}
       {actionError ? <InlineAlert tone="error">{actionError}</InlineAlert> : null}
       {latest && (canResend || canRevoke) ? (

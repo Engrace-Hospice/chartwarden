@@ -7,6 +7,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  freshIdempotencyKeyHeaders,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM VALIDATION WORKLIST (R2,
@@ -204,6 +205,7 @@ export function ValidationWorklist(): JSX.Element {
       response,
     } = (await client.POST("/api/v1/claims/{id}/validate", {
       params: { path: { id: claimId } },
+      headers: freshIdempotencyKeyHeaders(), // validates the claim as it is now: never replay an earlier run
     } as never)) as {
       data?: { validationRunId?: string };
       error?: { error?: { code?: string } };
@@ -554,6 +556,7 @@ function OverrideModal({
     // NEXT validation run, so a re-run must follow immediately or the claim sits stuck forever (FLOW-008).
     const revalidated = (await client.POST("/api/v1/claims/{id}/validate", {
       params: { path: { id: claimId } },
+      headers: freshIdempotencyKeyHeaders(), // must see the override just recorded: never replay an earlier run
     } as never)) as { data?: { validationRunId?: string } };
     clearDraft(overrideDraftKey(claimId));
     setBusy(false);

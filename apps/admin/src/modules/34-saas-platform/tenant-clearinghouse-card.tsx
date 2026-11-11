@@ -191,7 +191,13 @@ function Body({
 export function TenantClearinghouseCard({
   orgSlug,
   tenantStatus,
-}: { orgSlug: string; tenantStatus: string }): JSX.Element {
+  headingLevel: Heading = "h3",
+}: {
+  orgSlug: string;
+  tenantStatus: string;
+  /** h2 beside the hub's other h2 cards; h3 (the default) when nested under another section's h2. */
+  headingLevel?: "h2" | "h3";
+}): JSX.Element {
   // A Re-verify from the release dialog comes back to the card open (the dialog reopens with the typed reason). Only on that return:
   // every mount consumes the release draft, so a draft left behind (Back from /step-up) is dropped by the next visit and never opens
   // the card on a later, unrelated step-up return; the audited clearinghouse read never happens without a click.
@@ -212,7 +218,7 @@ export function TenantClearinghouseCard({
     <>
       <section className="wx-drawer-card" aria-label="Clearinghouse">
         <div className="wx-drawer-card-head">
-          <h3>Clearinghouse</h3>
+          <Heading>Clearinghouse</Heading>
           <Button tone="secondary" size="sm" {...reveal.toggleProps} onClick={reveal.onToggle}>
             Show clearinghouse
           </Button>

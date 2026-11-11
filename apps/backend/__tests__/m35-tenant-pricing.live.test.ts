@@ -46,6 +46,7 @@ import {
   type ContractService,
   type PlatformContractView,
   buildContractService,
+  readBillingServiceMode,
 } from "../src/modules/35-subscription/pricing/contract-service";
 import {
   type CreatePricingPlanInput,

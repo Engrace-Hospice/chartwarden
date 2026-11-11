@@ -1,13 +1,15 @@
 import {
   Button,
-  Panel,
   SelectField,
   TextAreaField,
   TextField,
   focusFirstInvalid,
   isValid,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
+  useIdempotencyKeeper,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 New refund request (`/admin/refunds/new`,
@@ -23,8 +25,8 @@ import {
   checkRefundForm,
   refundFormErrors,
 } from "./form-rules";
-import { idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
+import { type Outcome, OutcomeBanner, writeFailure } from "./ui";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
 const KINDS = ["full", "partial", "credit_only"] as const;
@@ -49,53 +51,52 @@ export function RefundNew(): JSX.Element {
       },
   );
   const [attempted, setAttempted] = useState(false);
-  const formRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
+  // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
+  const captureFocus = useRestoreFocus(busy);
+  const keeper = useIdempotencyKeeper();
+  const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const detailShort = useMemo(() => form.detail.trim().length < MIN_REFUND_REASON, [form.detail]);
   const errors = attempted ? refundFormErrors(form) : {};
 
   const submit = useCallback(async () => {
+    if (busy || done) return;
     const { errors: problems, amountCents } = checkRefundForm(form);
     if (!isValid(problems) || amountCents === null) {
       setAttempted(true);
       focusFirstInvalid(formRef.current);
       return;
     }
+    captureFocus();
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/refunds", {
-      body: {
-        invoiceId: form.invoiceId.trim(),
-        amountCents,
-        kind: form.kind as "full" | "partial" | "credit_only",
-        reasonCode: form.reasonCode as
-          | "duplicate"
-          | "fraudulent"
-          | "requested_by_customer"
-          | "other",
-        reasonDetail: form.detail.trim(),
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(
-        failureOutcome(
-          res.error,
-          "Could not create the refund request (check the invoice id + fields).",
-        ),
-      );
+    const body = {
+      invoiceId: form.invoiceId.trim(),
+      amountCents,
+      kind: form.kind as "full" | "partial" | "credit_only",
+      reasonCode: form.reasonCode as "duplicate" | "fraudulent" | "requested_by_customer" | "other",
+      reasonDetail: form.detail.trim(),
+    };
+    // One key per request: a retry of the same unchanged request after "could not reach the server" replays it, so the server cannot
+    // file a second refund request if the first had landed; a changed request, or any answer, starts on a new key.
+    const sent = await sendWrite(keeper, JSON.stringify(body), (key) =>
+      client.POST("/api/admin/refunds", { body, headers: { "Idempotency-Key": key } }),
+    );
+    const failure = writeFailure(
+      sent,
+      "Could not create the refund request (check the invoice id + fields).",
+    );
+    if (failure) {
+      setOutcome(failure);
       setBusy(false);
       return;
     }
-    setOutcome({
-      ok: true,
-      message: "Refund request created — awaiting a distinct approver (four-eyes).",
-    });
     setBusy(false);
-    setTimeout(() => navigate("/admin/refunds"), 1000);
-  }, [client, form, navigate]);
+    finish("/admin/refunds", "Refund request created — awaiting a distinct approver (four-eyes).");
+  }, [busy, done, client, form, finish, captureFocus, keeper]);
 
   return (
     <div className="wx-list-drawer">
@@ -106,81 +107,88 @@ export function RefundNew(): JSX.Element {
             <p>A request only — a different operator approves it (four-eyes).</p>
           </div>
         </header>
-        <div className="max-w-2xl">
-          <Panel title="Refund request" icon="rotate-ccw">
-            <div className="grid gap-4" ref={formRef}>
+        <form
+          className="wx-drawer-card"
+          ref={formRef}
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <div className="wx-drawer-card-head">
+            <h2>Refund request</h2>
+          </div>
+          <div className="wx-form-stack">
+            <TextField
+              id="invoice-id"
+              label="Invoice id"
+              required
+              error={errors.invoiceId}
+              value={form.invoiceId}
+              onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
+              placeholder="Invoice UUID"
+            />
+            <div className="wx-form-grid">
               <TextField
-                id="invoice-id"
-                label="Invoice id"
+                id="amount"
+                label="Amount (USD)"
                 required
-                error={errors.invoiceId}
-                value={form.invoiceId}
-                onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
-                placeholder="Invoice UUID"
+                error={errors.amount}
+                value={form.amount}
+                inputMode="decimal"
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <TextField
-                  id="amount"
-                  label="Amount (USD)"
-                  required
-                  error={errors.amount}
-                  value={form.amount}
-                  inputMode="decimal"
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                />
-                <SelectField
-                  id="kind"
-                  label="Kind"
-                  value={form.kind}
-                  options={KIND_OPTIONS}
-                  onChange={(e) => setForm({ ...form, kind: e.target.value })}
-                />
-              </div>
               <SelectField
-                id="reason-code"
-                label="Reason code"
-                value={form.reasonCode}
-                options={REASON_OPTIONS}
-                onChange={(e) => setForm({ ...form, reasonCode: e.target.value })}
+                id="kind"
+                label="Kind"
+                value={form.kind}
+                options={KIND_OPTIONS}
+                onChange={(e) => setForm({ ...form, kind: e.target.value })}
               />
-              <div className="grid gap-1">
-                <TextAreaField
-                  id="detail"
-                  label="Reason detail"
-                  hint="Do not include patient information."
-                  required
-                  error={errors.detail}
-                  value={form.detail}
-                  onChange={(e) => setForm({ ...form, detail: e.target.value })}
-                  rows={4}
-                />
-                <span
-                  className={`wx-nums text-xs ${
-                    detailShort
-                      ? "text-[var(--color-error)]"
-                      : "text-[var(--color-on-surface-variant)]"
-                  }`}
-                >
-                  {form.detail.trim().length}/{MIN_REFUND_REASON} characters
-                </span>
-              </div>
-              {outcome ? (
-                <OutcomeBanner
-                  {...outcome}
-                  onReverify={() => stashStepUpMemoryDraft(REFUND_DRAFT_KEY, form)}
-                />
-              ) : null}
-              <div className="wx-action-row is-end">
-                <Button tone="tertiary" onClick={() => navigate("/admin/refunds")}>
-                  Cancel
-                </Button>
-                <Button loading={busy} onClick={() => void submit()}>
-                  Submit request
-                </Button>
-              </div>
             </div>
-          </Panel>
-        </div>
+            <SelectField
+              id="reason-code"
+              label="Reason code"
+              value={form.reasonCode}
+              options={REASON_OPTIONS}
+              onChange={(e) => setForm({ ...form, reasonCode: e.target.value })}
+            />
+            <TextAreaField
+              id="detail"
+              label="Reason detail"
+              hint={
+                <>
+                  Do not include patient information.{" "}
+                  {/* Neutral until a submit is attempted: an untouched form isn't an error yet. */}
+                  <span className={attempted && detailShort ? "wx-nums wx-text-error" : "wx-nums"}>
+                    {form.detail.trim().length}/{MIN_REFUND_REASON} characters
+                    {attempted && detailShort ? ` — too short, ${MIN_REFUND_REASON} needed` : ""}
+                  </span>
+                </>
+              }
+              required
+              error={errors.detail}
+              value={form.detail}
+              onChange={(e) => setForm({ ...form, detail: e.target.value })}
+              rows={4}
+            />
+            {outcome ? (
+              <OutcomeBanner
+                {...outcome}
+                onReverify={() => stashStepUpMemoryDraft(REFUND_DRAFT_KEY, form)}
+              />
+            ) : null}
+          </div>
+          <div className="wx-drawer-actions">
+            <Button type="submit" loading={busy || done}>
+              Submit request
+            </Button>
+            <Button tone="tertiary" onClick={() => navigate("/admin/refunds")}>
+              Cancel
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );

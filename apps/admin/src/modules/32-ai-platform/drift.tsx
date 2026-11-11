@@ -1,4 +1,4 @@
-import { StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import { StatusPill, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.8 drift overview (`/admin/ai-platform/drift`,
 // `ai.capability.read`).
@@ -123,7 +123,7 @@ export function DriftOverview(): JSX.Element {
               />
             ) : (
               <>
-                <div className="wx-list-table-wrap">
+                <TableScroll>
                   <table className="wx-list-table wx-list-table-static">
                     <caption className="wx-sr-only">Drift metrics by capability</caption>
                     <thead>
@@ -164,10 +164,10 @@ export function DriftOverview(): JSX.Element {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
 
                 <SectionTitle>Recent breach feed</SectionTitle>
-                <div className="wx-list-table-wrap">
+                <TableScroll>
                   <table className="wx-list-table wx-list-table-static">
                     <caption className="wx-sr-only">Recent breach feed</caption>
                     <thead>
@@ -198,7 +198,7 @@ export function DriftOverview(): JSX.Element {
                         ))}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               </>
             )}
           </>

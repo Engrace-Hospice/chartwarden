@@ -5,7 +5,7 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // announced (alert for urgent, status otherwise).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { HallucinationQueue } from "../hallucinations";
 import { InvocationSearch } from "../invocations";
@@ -71,10 +71,21 @@ function respond(path: string): Response {
 }
 
 function Search(): JSX.Element {
-  return <output data-testid="search">{useLocation().search}</output>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="search">{useLocation().search}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        history back
+      </button>
+    </>
+  );
 }
 
-function mount(ui: JSX.Element, url: string): void {
+const PREVIOUS_PATH = "/previous";
+
+/** `previous` seeds one earlier history entry (a different page), so a test can count how many Backs leave the screen. */
+function mount(ui: JSX.Element, url: string, previous?: string): void {
   const client = createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -84,8 +95,18 @@ function mount(ui: JSX.Element, url: string): void {
   });
   render(
     <ApiClientProvider client={client}>
-      <MemoryRouter initialEntries={[url]}>
-        {ui}
+      <MemoryRouter
+        initialEntries={previous ? [previous, url] : [url]}
+        initialIndex={previous ? 1 : 0}
+      >
+        {previous ? (
+          <Routes>
+            <Route path={previous} element={<p>previous page</p>} />
+            <Route path="*" element={ui} />
+          </Routes>
+        ) : (
+          ui
+        )}
         <Search />
       </MemoryRouter>
     </ApiClientProvider>,
@@ -145,6 +166,42 @@ describe.each(CASES)("$name list behaviour", ({ ui, param, id, drawer, rowText }
     mount(ui, `/x?${param}=missing`);
     await screen.findByRole("complementary", { name: drawer });
     await waitFor(() => expect(screen.getAllByRole("status").length).toBeGreaterThan(0));
+  });
+});
+
+describe.each(CASES)("$name drawer history", ({ ui, param, id, drawer, rowText }) => {
+  const search = (): URLSearchParams =>
+    new URLSearchParams(screen.getByTestId("search").textContent ?? "");
+  const closed = (): Promise<void> =>
+    waitFor(() => expect(screen.queryByRole("complementary", { name: drawer })).toBeNull());
+  const back = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+  };
+
+  it("opening then closing leaves no dead entry: one Back reaches the previous page", async () => {
+    mount(ui, "/x", PREVIOUS_PATH);
+    fireEvent.click((await screen.findByText(rowText)).closest("tr") as HTMLElement);
+    const aside = await screen.findByRole("complementary", { name: drawer });
+    expect(search().get(param)).toBe(id);
+    fireEvent.keyDown(aside, { key: "Escape" });
+    await closed();
+    await waitFor(() => expect(screen.getByTestId("search").textContent).toBe(""));
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("keeps the page's other params across open and close, and re-clicking the open row adds no entry", async () => {
+    mount(ui, "/x?keep=1", PREVIOUS_PATH);
+    const row = (await screen.findByText(rowText)).closest("tr") as HTMLElement;
+    fireEvent.click(row);
+    await screen.findByRole("complementary", { name: drawer });
+    fireEvent.click(row);
+    expect(search().get("keep")).toBe("1");
+    expect(search().get(param)).toBe(id);
+    // One entry was pushed: one Back closes the drawer, leaving the other param.
+    back();
+    await closed();
+    expect(screen.getByTestId("search").textContent).toBe("?keep=1");
   });
 });
 

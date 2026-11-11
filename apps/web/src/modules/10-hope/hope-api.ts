@@ -26,6 +26,7 @@
 //   • §2.3 / D9 Section Q, and the whole CMS pre-submission rule set. The client renders the findings
 //     `GET /validation` returns; it computes none of them.
 import type { ApiClient, operations } from "@chartwarden/ui";
+import { freshIdempotencyKeyHeaders } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,7 @@ export async function requestSummaryPdf(
   const { data, error, response } = await client.POST("/api/v1/hope/assessments/{id}/summary-pdf", {
     params: { path: { id } },
     body: {},
+    headers: freshIdempotencyKeyHeaders(), // a summary is built from the assessment as it is now: never replay an earlier answer
   });
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data as { assessmentId: string; requested: boolean } };
@@ -207,6 +209,8 @@ export async function assembleSubmission(
 ): Promise<WriteResult<SubmissionView>> {
   const { data, error, response } = await client.POST("/api/v1/hope/submissions/assemble", {
     body: { providerEntityId },
+    // The package is built from the records as they are now (after a correction): never replay an earlier (lost-reply) answer.
+    headers: freshIdempotencyKeyHeaders(),
   });
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data };
@@ -219,6 +223,7 @@ export async function regenerateSchedules(
 ): Promise<WriteResult<unknown>> {
   const { data, error, response } = await client.POST("/api/v1/hope/admin/regenerate-schedules", {
     body: { admissionId },
+    headers: freshIdempotencyKeyHeaders(), // regenerated from the admission as it is now: never replay an earlier answer
   });
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data };

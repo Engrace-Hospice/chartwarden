@@ -191,6 +191,9 @@ describe("TenantOnboardingWizard: reading", () => {
     renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, client);
     expect(await screen.findByText(/still provisioning/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Mark done/ })).toBeNull();
+    // The card sits directly under the page's h1 (above the step frame's h2), so its head is an h2, not an h3.
+    expect(screen.getByRole("heading", { level: 2, name: "Provisioning" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 3, name: "Provisioning" })).toBeNull();
   });
 });
 

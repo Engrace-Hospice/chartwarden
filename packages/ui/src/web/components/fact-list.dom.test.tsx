@@ -29,6 +29,11 @@ describe("FactList", () => {
     expect(items[3]?.textContent).not.toMatch(/Met|Not yet|Blocked/);
   });
 
+  it("states its list role, which Safari/VoiceOver drops from a marker-less <ul>", () => {
+    render(<FactList facts={[{ key: "a", label: "A fact", state: "ok" }]} />);
+    expect(screen.getByRole("list", { name: "Facts" }).getAttribute("role")).toBe("list");
+  });
+
   it("renders nothing for an empty list", () => {
     const { container } = render(<FactList facts={[]} />);
     expect(container.querySelector("ul")).toBeNull();

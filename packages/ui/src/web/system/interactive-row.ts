@@ -30,6 +30,8 @@ export interface InteractiveRowProps {
   role?: "button";
   tabIndex: 0;
   "aria-pressed"?: boolean;
+  /** The record's id, when the caller passed one: a stable handle to find this row again after the list re-renders. */
+  "data-row-id"?: string;
   onClick: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
 }
@@ -45,11 +47,14 @@ export interface InteractiveRowProps {
  * @param selected         whether this row's detail is the one currently open
  * @param containsControls set when the row holds its own links or buttons, which forbids the
  *                         `role="button"` announcement (a button may not wrap focusable content)
+ * @param rowId            the record's id, rendered as `data-row-id` so `useDrawerA11y` can hand focus back to
+ *                         this row even when the list re-renders and replaces the row's element
  */
 export function interactiveRowProps(
   onActivate: () => void,
   selected = false,
   containsControls = false,
+  rowId?: string,
 ): InteractiveRowProps {
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -62,11 +67,13 @@ export function interactiveRowProps(
     event.preventDefault();
     onActivate();
   };
-  if (containsControls) return { tabIndex: 0, onClick: onActivate, onKeyDown };
+  const identity = rowId === undefined ? {} : { "data-row-id": rowId };
+  if (containsControls) return { tabIndex: 0, ...identity, onClick: onActivate, onKeyDown };
   return {
     role: "button",
     tabIndex: 0,
     "aria-pressed": selected,
+    ...identity,
     onClick: onActivate,
     onKeyDown,
   };

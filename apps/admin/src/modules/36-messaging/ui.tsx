@@ -8,8 +8,12 @@ import {
   LoadingSpinner,
   useRequestGuard,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
+
+/** What the operator is told when a request got no answer at all (offline, reset): openapi-fetch rethrows rather than resolving an error. */
+export const UNREACHABLE_MESSAGE =
+  "Could not reach the server. Check your connection and try again.";
 
 /** The outcome of one read: data, a 403 (no access), or any other failure (optionally with a server message). */
 export type ReadResult<T> =
@@ -76,33 +80,6 @@ export function useLoad<T>(read: () => Promise<ReadResult<T>>): {
   return { state, reload, refresh, setData };
 }
 
-/**
- * Keeps keyboard focus through a pending state that disables or unmounts the focused control. Call the returned
- * `capture()` when the action starts; when `pending` clears, focus returns to the captured element (or `fallback`
- * if it is gone) provided focus was lost to the page body.
- */
-export function useRestoreFocus(
-  pending: boolean,
-  fallback?: () => HTMLElement | null | undefined,
-): () => void {
-  const was = useRef(false);
-  const captured = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (was.current && !pending) {
-      const active = document.activeElement;
-      const lost = !active || active === document.body || active.matches(":disabled");
-      const previous = captured.current;
-      const usable = previous?.isConnected && !previous.matches(":disabled");
-      if (lost) (usable ? previous : fallback?.())?.focus();
-    }
-    was.current = pending;
-  });
-  return useCallback(() => {
-    const active = document.activeElement;
-    captured.current = active instanceof HTMLElement && active !== document.body ? active : null;
-  }, []);
-}
-
 export function StateLoading({ label }: { label: string }): JSX.Element {
   return (
     <div className="wx-list-state">
@@ -116,7 +93,7 @@ export function StateError({
   onRetry,
 }: { message: string; onRetry: () => void }): JSX.Element {
   return (
-    <div className="wx-list-state" role="alert">
+    <div className="wx-list-state">
       <InlineAlert tone="error">{message}</InlineAlert>
       <Button tone="secondary" size="lg" onClick={onRetry}>
         Try again

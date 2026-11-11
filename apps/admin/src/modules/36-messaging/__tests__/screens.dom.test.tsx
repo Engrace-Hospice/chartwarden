@@ -130,6 +130,29 @@ describe("Alert deliveries", () => {
   });
 });
 
+describe("read-only tables", () => {
+  // `wx-list-table` gives every row a pointer cursor and a hover tint; these rows open nothing, so they use the static variant.
+  const isStatic = (table: HTMLElement): boolean =>
+    table.classList.contains("wx-list-table-static");
+
+  it("alert deliveries do not look clickable", async () => {
+    mount(() => json({ items: [delivery("d1")], nextBefore: null }), <AlertDeliveries />);
+    await screen.findByText("cat-d1");
+    expect(isStatic(screen.getByRole("table"))).toBe(true);
+  });
+
+  it("channel members do not look clickable", async () => {
+    mount(
+      () =>
+        json({ members: [{ userId: "u1", role: "owner", source: "manual", displayName: "Dana" }] }),
+      <ChannelMembers />,
+      `/m/${CH}`,
+    );
+    await screen.findByText("Dana");
+    expect(isStatic(screen.getByRole("table"))).toBe(true);
+  });
+});
+
 describe("Channel members", () => {
   const MEMBERS = {
     members: [
@@ -164,7 +187,7 @@ describe("Channel members", () => {
       `/m/${CH}`,
     );
     await screen.findByText("Dana Reyes");
-    fireEvent.change(screen.getByLabelText("User ID"), { target: { value: "u9" } });
+    fireEvent.change(screen.getByLabelText(/^User ID/), { target: { value: "u9" } });
     fireEvent.change(screen.getByLabelText("Role"), { target: { value: "read_only" } });
     fireEvent.click(screen.getByRole("button", { name: "Add member" }));
     await waitFor(() => expect(body).toEqual({ userId: "u9", role: "read_only" }));
@@ -193,9 +216,28 @@ describe("Channel members", () => {
       `/m/${CH}`,
     );
     await screen.findByText("Dana Reyes");
-    fireEvent.change(screen.getByLabelText("User ID"), { target: { value: "u9" } });
+    fireEvent.change(screen.getByLabelText(/^User ID/), { target: { value: "u9" } });
     fireEvent.click(screen.getByRole("button", { name: "Add member" }));
     expect(await screen.findByText(/do not have permission to add members/)).toBeTruthy();
+    expect(screen.getByText("Dana Reyes")).toBeTruthy();
+  });
+
+  it("releases the add form and names the problem when the request never gets an answer", async () => {
+    mount(
+      (req) => {
+        if (req.method === "POST") throw new TypeError("Failed to fetch");
+        return json(MEMBERS);
+      },
+      <ChannelMembers />,
+      `/m/${CH}`,
+    );
+    await screen.findByText("Dana Reyes");
+    fireEvent.change(screen.getByLabelText(/^User ID/), { target: { value: "u9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add member" }));
+    expect(await screen.findByText(/Could not reach the server/)).toBeTruthy();
+    const add = screen.getByRole("button", { name: "Add member" }) as HTMLButtonElement;
+    expect(add.disabled).toBe(false);
+    expect(add.getAttribute("aria-busy")).toBeNull();
     expect(screen.getByText("Dana Reyes")).toBeTruthy();
   });
 });

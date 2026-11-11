@@ -101,7 +101,9 @@ export function clearinghouseFacts(view: ClearinghouseView): Fact[] {
     },
     {
       key: "baa-verified",
-      label: view.baa?.revoked ? "The vendor BAA was revoked" : "An operator verified the vendor BAA",
+      label: view.baa?.revoked
+        ? "The vendor BAA was revoked"
+        : "An operator verified the vendor BAA",
       state: view.baa?.revoked ? "blocked" : view.baa?.verified ? "ok" : "pending",
       ...(view.baa?.revoked
         ? {

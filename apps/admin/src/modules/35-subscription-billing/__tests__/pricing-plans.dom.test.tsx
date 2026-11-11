@@ -9,7 +9,7 @@ import {
 // allows (and only to an operator holding plan.admin.write), asks for a reason before every write, sends one Idempotency-Key per
 // attempt, keeps a refusal in the dialog with the server's reason, and keeps a typed form across a step-up round trip.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type PricingPlan,
@@ -127,6 +127,19 @@ const WRITER: Actor = {
 const READER: Actor = { ...WRITER, permissions: ["plan.admin.read"] };
 let actor: Actor = WRITER;
 
+function History(): JSX.Element {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="search">{location.search}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        history back
+      </button>
+    </>
+  );
+}
+
 /** A path, or a path on the return from a successful step-up (the history state StepUpCard navigates back with). */
 type Entry = string | { pathname: string; search: string; state: typeof STEP_UP_RETURN_STATE };
 function returnedTo(path: string): Entry {
@@ -134,15 +147,25 @@ function returnedTo(path: string): Entry {
   return { pathname, search, state: STEP_UP_RETURN_STATE };
 }
 
-function mount(entry: Entry = "/admin/pricing-plans", as: Actor = WRITER): void {
+/** `withPrevious` seeds one earlier history entry (a different page), so a test can count how many Backs leave the screen. */
+function mount(
+  entry: Entry = "/admin/pricing-plans",
+  as: Actor = WRITER,
+  withPrevious = false,
+): void {
   actor = as;
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter
+        initialEntries={withPrevious ? ["/previous", entry] : [entry]}
+        initialIndex={withPrevious ? 1 : 0}
+      >
         <Routes>
+          <Route path="/previous" element={<p>previous page</p>} />
           <Route path="/admin/pricing-plans" element={<PricingPlans />} />
           <Route path="/step-up" element={<p>step-up page</p>} />
         </Routes>
+        <History />
       </MemoryRouter>
     </ApiClientProvider>,
   );
@@ -429,6 +452,18 @@ describe("PricingPlans", () => {
     list = [];
     mount();
     expect(await screen.findByText(/No price plans yet/)).toBeTruthy();
+  });
+
+  it("opening a plan then closing it leaves no dead history entry: one Back reaches the previous page", async () => {
+    mount("/admin/pricing-plans", WRITER, true);
+    fireEvent.click((await screen.findByText("Hospice core")).closest("tr") as HTMLElement);
+    fireEvent.keyDown(await drawer(), { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Price plan" })).toBeNull(),
+    );
+    expect(screen.getByTestId("search").textContent).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+    expect(await screen.findByText("previous page")).toBeTruthy();
   });
 
   it("a link to a plan that is not in the list opens no drawer", async () => {

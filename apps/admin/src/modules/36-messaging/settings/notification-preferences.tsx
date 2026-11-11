@@ -2,13 +2,13 @@
 // /api/v1/notifications/preferences`, notifications.preferences.manage; SELF-only). A routing grid (alert
 // category x severity -> channels), quiet hours and vacation forwarding, saved as one PUT. A 422
 // INVALID_ROUTING_MAP / 409 VACATION_FORWARD_* refusal surfaces its server message and keeps the draft.
-import { Button, TextField, useApiClient } from "@chartwarden/ui";
+import { Button, TextField, useApiClient, useRestoreFocus } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { renderLoadFallback, useLoad, useRestoreFocus } from "../ui";
+import { renderLoadFallback, useLoad } from "../ui";
 import { humanize } from "./alert-rules";
-import { asRead, toResult } from "./api";
+import { asRead, settleResult, toResult } from "./api";
 import { type QuietHours, QuietHoursEditor } from "./quiet-hours";
 import { type Banner, BannerView, PageHead } from "./ui";
 
@@ -73,12 +73,14 @@ export function NotificationPreferences(): JSX.Element {
     retry: reload,
   });
   return (
-    <div className="wx-list-drawer-main">
-      <PageHead
-        title="Notification preferences"
-        sub="Choose how and when you are alerted. These settings apply to you only."
-      />
-      {fallback ?? (state.kind === "ok" ? <PreferencesForm initial={state.data} /> : null)}
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="Notification preferences"
+          sub="Choose how and when you are alerted. These settings apply to you only."
+        />
+        {fallback ?? (state.kind === "ok" ? <PreferencesForm initial={state.data} /> : null)}
+      </div>
     </div>
   );
 }
@@ -96,21 +98,23 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
     captureFocus();
     setSaving(true);
     setBanner(null);
-    const res = await client.PUT("/api/v1/notifications/preferences", {
-      body: {
-        routingMap: draft.routingMap,
-        quietHours: draft.quietHours,
-        vacationForwardToUserId: draft.vacationForwardToUserId.trim() || null,
-        // An untouched date keeps the server's original timestamp.
-        vacationUntil:
-          draft.vacationUntil === ""
-            ? null
-            : draft.vacationUntil === dateOnly(initial.vacationUntil)
-              ? initial.vacationUntil
-              : draft.vacationUntil,
-      },
-    });
-    const result = toResult(res, "Could not save your preferences.");
+    const result = await settleResult(
+      client.PUT("/api/v1/notifications/preferences", {
+        body: {
+          routingMap: draft.routingMap,
+          quietHours: draft.quietHours,
+          vacationForwardToUserId: draft.vacationForwardToUserId.trim() || null,
+          // An untouched date keeps the server's original timestamp.
+          vacationUntil:
+            draft.vacationUntil === ""
+              ? null
+              : draft.vacationUntil === dateOnly(initial.vacationUntil)
+                ? initial.vacationUntil
+                : draft.vacationUntil,
+        },
+      }),
+      "Could not save your preferences.",
+    );
     setSaving(false);
     setBanner(
       result.ok
@@ -127,34 +131,45 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
   return (
     <form className="wx-form-stack" onSubmit={(e) => void save(e)} aria-busy={saving || undefined}>
       <BannerView banner={banner} />
-      <fieldset className="wx-drawer-card grid gap-4" disabled={saving}>
+      <fieldset className="wx-drawer-card" disabled={saving}>
         <legend>Delivery channels by alert type</legend>
         {CATEGORIES.map((category) => (
-          <fieldset key={category} className="grid gap-1">
+          <fieldset key={category} className="wx-form-stack">
             <legend>{humanize(category)}</legend>
-            {SEVERITIES.map((severity) => (
-              <div key={severity} className="flex flex-wrap items-center gap-2">
-                <span className="w-20">{humanize(severity)}</span>
-                {CHANNELS.map((channel) => (
-                  <label key={channel} className="inline-flex min-h-11 min-w-11 items-center gap-1">
-                    <input
-                      type="checkbox"
-                      className="size-5"
-                      aria-label={`${humanize(category)} ${severity} via ${humanize(channel)}`}
-                      checked={draft.routingMap[category]?.[severity]?.includes(channel) ?? false}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        setDraft((d) => ({
-                          ...d,
-                          routingMap: toggleChannel(d.routingMap, category, severity, channel, on),
-                        }));
-                      }}
-                    />
-                    {humanize(channel)}
-                  </label>
-                ))}
-              </div>
-            ))}
+            <dl className="wx-kv is-middle">
+              {SEVERITIES.map((severity) => (
+                <div key={severity}>
+                  <dt>{humanize(severity)}</dt>
+                  <dd className="wx-drawer-title-row">
+                    {CHANNELS.map((channel) => (
+                      <label key={channel} className="wx-action-check">
+                        <input
+                          type="checkbox"
+                          aria-label={`${humanize(category)} ${severity} via ${humanize(channel)}`}
+                          checked={
+                            draft.routingMap[category]?.[severity]?.includes(channel) ?? false
+                          }
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setDraft((d) => ({
+                              ...d,
+                              routingMap: toggleChannel(
+                                d.routingMap,
+                                category,
+                                severity,
+                                channel,
+                                on,
+                              ),
+                            }));
+                          }}
+                        />
+                        {humanize(channel)}
+                      </label>
+                    ))}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </fieldset>
         ))}
       </fieldset>

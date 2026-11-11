@@ -205,7 +205,7 @@ function TenantOverviewFor(): JSX.Element {
     return (
       <div className="wx-list-drawer">
         <div className="wx-list-drawer-main">
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">{error ?? "No tenant."}</InlineAlert>
             {notFound ? null : (
               <Button tone="secondary" onClick={() => void load()}>
@@ -240,10 +240,15 @@ function TenantOverviewFor(): JSX.Element {
         </header>
 
         {tenant.status === "provisioning" ? (
-          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void load(true)} />
+          <ProvisioningCard
+            key={orgSlug}
+            orgSlug={orgSlug}
+            headingLevel="h2"
+            onChanged={() => void load(true)}
+          />
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="wx-card-grid">
           <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />
           <OnboardingCard
             tenant={tenant}
@@ -256,7 +261,11 @@ function TenantOverviewFor(): JSX.Element {
             }
           />
           <ContractCard orgSlug={orgSlug} />
-          <TenantClearinghouseCard orgSlug={orgSlug} tenantStatus={tenant.status} />
+          <TenantClearinghouseCard
+            orgSlug={orgSlug}
+            tenantStatus={tenant.status}
+            headingLevel="h2"
+          />
           <KeyRingCard
             tenant={tenant}
             onRotate={() => {
@@ -266,7 +275,7 @@ function TenantOverviewFor(): JSX.Element {
           />
           <SupportCard tenant={tenant} />
           <ExportsCard />
-          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} />
+          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} headingLevel="h2" />
         </div>
       </div>
 
@@ -304,13 +313,15 @@ function TenantOverviewFor(): JSX.Element {
         title="Cryptographic shred"
         epcs
         attestation={
-          <>
-            This permanently destroys the DEK for <strong>{tenant.legalBusinessName}</strong> (
-            <span className="wx-data-md">{tenant.orgSlug}</span>). All tenant PHI becomes
-            cryptographically irrecoverable. This cannot be undone.
+          <div className="wx-form-stack">
+            <p>
+              This permanently destroys the DEK for <strong>{tenant.legalBusinessName}</strong> (
+              <span className="wx-data-md">{tenant.orgSlug}</span>). All tenant PHI becomes
+              cryptographically irrecoverable. This cannot be undone.
+            </p>
             {/* The two values the route REQUIRES. They live in the attestation slot rather than in
                 CeremonyModal itself so the shared component (15 other call sites) is untouched. */}
-            <div className="mt-3 grid gap-3">
+            <div className="wx-form-stack">
               <TextField
                 id="shred-cert-id"
                 label="M4 destruction-certificate id"
@@ -332,7 +343,7 @@ function TenantOverviewFor(): JSX.Element {
               />
               {shredError ? <InlineAlert tone="error">{shredError}</InlineAlert> : null}
             </div>
-          </>
+          </div>
         }
         legalText="I confirm the retention period has elapsed, no legal hold is active, and the M4 destruction certificate is approved."
         signer={{ name: "Platform Operator", role: "platform_ops" }}
@@ -382,7 +393,7 @@ function Card({
   return (
     <section className="wx-drawer-card">
       <div className="wx-drawer-card-head">
-        <h3>{title}</h3>
+        <h2>{title}</h2>
         {cta}
       </div>
       {children}
@@ -462,14 +473,14 @@ function OnboardingCard({
     >
       {inWizard ? (
         <>
-          <span className="wx-nums text-sm">
+          <span className="wx-nums">
             {done} of {total} steps done
           </span>
           <progress
+            className="wx-progress-bar"
             value={pct}
             max={100}
             aria-label={`${pct}% complete`}
-            className="h-2 w-full appearance-none overflow-hidden rounded-full [&::-moz-progress-bar]:bg-[var(--color-primary)] [&::-webkit-progress-bar]:bg-[var(--color-surface-container)] [&::-webkit-progress-value]:bg-[var(--color-primary)]"
           />
           {awaitingApproval ? (
             <InlineAlert tone="warning">
@@ -482,7 +493,7 @@ function OnboardingCard({
           )}
         </>
       ) : (
-        <span className="text-sm">
+        <span className="wx-row-sub">
           {tenant.status === "active"
             ? "Onboarding is complete."
             : "Onboarding is closed for this tenant."}
@@ -542,7 +553,7 @@ function ContractBody({ orgSlug }: { orgSlug: string }): JSX.Element {
   return sub.data.contract ? (
     <ContractSummary contract={sub.data.contract} />
   ) : (
-    <span className="text-sm">No contract is signed yet. It is signed at onboarding step 2.</span>
+    <span>No contract is signed yet. It is signed at onboarding step 2.</span>
   );
 }
 
@@ -565,7 +576,7 @@ function KeyRingCard({
       }
     >
       {!kr ? (
-        <span className="text-sm">No key ring provisioned.</span>
+        <span>No key ring provisioned.</span>
       ) : destroyed ? (
         <p className="wx-source-line">
           <Glyph name="lock" size={16} label="DEK destroyed" />
@@ -613,7 +624,7 @@ function SupportCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
         <dt>BAA status</dt>
         <dd>
           {tenant.baa ? (
-            <span className="flex flex-wrap items-center gap-2">
+            <span className="wx-drawer-title-row">
               <StatusPill
                 label={cap(tenant.baa.status)}
                 tone={BAA_TONE[tenant.baa.status] ?? "neutral"}

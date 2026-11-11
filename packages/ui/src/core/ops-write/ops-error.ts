@@ -14,6 +14,7 @@
 //   not-found / forbidden / unavailable / network, and unknown for the rest
 // Nothing is retried on the operator's behalf: a pinned write that was refused must be confirmed again against what was re-read.
 import { envelopeErrorMessage } from "../error-message";
+import { isInFlightDuplicate, isKeyStuck } from "./idempotency-key";
 
 export type OpsFailureKind =
   | "step-up"
@@ -100,6 +101,18 @@ const STALE_PIN_409_CODES: ReadonlySet<string> = new Set([
   "TENANT_STATUS_CHANGED",
   "STALE_VERSION",
 ]);
+/**
+ * The server's own sentence for an in-flight duplicate is an implementation detail ("Idempotency-Key request is still being processed").
+ * The operator's situation: an earlier try of this same change is still being saved, and re-sending it now would not help.
+ */
+const IN_FLIGHT_COPY =
+  "That change is still being saved. Wait a moment, then check the record before trying again.";
+/**
+ * The server's sentence for a stuck key tells a client how to treat an Idempotency-Key, which is not the operator's question: did my change
+ * save? The key is already spent, nothing is retried for them, and the next step is to look at the record before trying again.
+ */
+const KEY_STUCK_COPY =
+  "We could not confirm whether that change was saved. Check the record before trying again.";
 /** A 413 with no envelope is a proxy (nginx's body cap) refusing before the app saw the request; it gets a code the caller's copy can name. */
 const PAYLOAD_TOO_LARGE_CODE = "PAYLOAD_TOO_LARGE";
 /** The API's own 429 code; a 429 with no envelope (nginx's per-address limit sends an HTML page) is given the same one. */
@@ -194,6 +207,8 @@ export function describeOpsError(
           ? `Too many attempts. Wait ${waitWords(retryAfterSeconds)}, then try again.`
           : ((code !== null ? copy[code] : undefined) ?? GENERIC[kind])
         : ((code !== null ? copy[code] : undefined) ??
+          (status !== null && isKeyStuck(status, error) ? KEY_STUCK_COPY : undefined) ??
+          (status !== null && isInFlightDuplicate(status, error) ? IN_FLIGHT_COPY : undefined) ??
           envelopeErrorMessage(error) ??
           GENERIC[kind]),
     fieldErrors,

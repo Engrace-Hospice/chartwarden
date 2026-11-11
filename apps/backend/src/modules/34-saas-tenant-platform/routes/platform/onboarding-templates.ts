@@ -15,8 +15,8 @@ import {
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { splitReason } from "./onboarding-data-typebox";
 import { screenFreeText, screenNames } from "../free-text";
+import { splitReason } from "./onboarding-data-typebox";
 import {
   OnboardingTemplateListQuerySchema,
   UpsertOnboardingTemplateRequest,

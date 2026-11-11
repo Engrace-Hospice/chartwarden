@@ -8,7 +8,9 @@ import {
   LoadingSpinner,
   Panel,
   StatusPill,
+  newIdempotencyKey,
   useApiClient,
+  useAttemptKey,
   useClaimsBilling,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
@@ -16,7 +18,9 @@ import type { paths } from "@chartwarden/ui";
 // things a biller needs before it can go out: the PAYER and PLAN, the AUTHORIZATION on file, the COORDINATION OF BENEFITS, and the
 // VALIDATION (with audited overrides of soft blocks). Lines are the priced level-of-care stretches.
 //   GET  /api/v1/billing/commercial/claims/{id}            claim, plan, authorizations, lines, latest validation (read-audited)
-//   POST .../validate | .../ready | .../void                the lifecycle (Idempotency-Key is added by the client)
+//   POST .../validate | .../ready | .../void                the lifecycle. The routes declare the Idempotency-Key header, so it is named here:
+//                                                           one key per intent from useAttemptKey for the writes (ready, void, the corrected
+//                                                           draft, submit), a new one per click for validate, which only recomputes.
 // An authorization is shown by status and period, never its number. A blocked "ready" is a 409 whose message tells the user what
 // to fix; it is shown inline, never as a toast. Authorization to write is the server's; the buttons follow the session's grants.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -89,6 +93,7 @@ const ACTION_NOTICE: Record<Action, string> = {
 
 function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
   const client = useApiClient();
+  const attempt = useAttemptKey();
   // ADR-0110 — marking ready (and so sending) is new claims-billing work; validate and void stay open.
   const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
@@ -157,9 +162,15 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
     setActionError(null);
     setNotice(null);
     try {
-      const { error, response } = await client.POST(ACTION_PATH[action], {
-        params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } },
-      });
+      const send = (idempotencyKey: string) =>
+        client.POST(ACTION_PATH[action], {
+          params: { path: { id: claimId }, header: { "Idempotency-Key": idempotencyKey } },
+        });
+      // Ready and void change the claim: one key per intent. Validate only recomputes, so every click is a new request.
+      const { error, response } =
+        action === "validate"
+          ? await send(newIdempotencyKey()) // idempotency: fresh per click (re-run): validating reads the claim as it is now
+          : await attempt.run(`${action}|${claimId}`, send);
       if (error) {
         const env = (error as { error?: { code?: string; message?: string } }).error;
         const redirect = authFailureRedirect(response.status, env?.code, window.location.pathname);
@@ -189,12 +200,16 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
     setCorrectionBusy(true);
     setActionError(null);
     try {
-      const { data, error, response } = await client.POST(
-        "/api/v1/billing/commercial/claims/{id}/corrections/clearinghouse-rejection",
-        {
-          params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } },
-          body: { reasonCode: correctionReason },
-        },
+      const { data, error, response } = await attempt.run(
+        `correction|${claimId}|${correctionReason}`,
+        (idempotencyKey) =>
+          client.POST(
+            "/api/v1/billing/commercial/claims/{id}/corrections/clearinghouse-rejection",
+            {
+              params: { path: { id: claimId }, header: { "Idempotency-Key": idempotencyKey } },
+              body: { reasonCode: correctionReason },
+            },
+          ),
       );
       if (error || !data) {
         const env = (error as { error?: { code?: string; message?: string } } | undefined)?.error;
@@ -247,9 +262,10 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
     setSendGateBusy(true);
     setSendGateError(null);
     try {
-      const { data, error, response } = await client.POST(
-        "/api/v1/billing/commercial/claims/{id}/submit",
-        { params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } } },
+      const { data, error, response } = await attempt.run(`submit|${claimId}`, (idempotencyKey) =>
+        client.POST("/api/v1/billing/commercial/claims/{id}/submit", {
+          params: { path: { id: claimId }, header: { "Idempotency-Key": idempotencyKey } },
+        }),
       );
       if (error || !data) {
         const env = (error as { error?: { code?: string; message?: string } } | undefined)?.error;

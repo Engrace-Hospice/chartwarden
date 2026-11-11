@@ -7,6 +7,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
+  useIdempotencyKeeper,
 } from "@chartwarden/ui";
 // apps/web/src/modules/37-ipu — the M37 write ceremonies (#91).
 //
@@ -559,6 +560,7 @@ export function ReassessRestraintModal({
 }): JSX.Element | null {
   const client = useApiClient();
   const { busy, error, run } = useCeremony<unknown>(open, onDone, onClose);
+  const keeper = useIdempotencyKeeper();
   const [outcome, setOutcome] = useState<"continue" | "modify" | "release">("continue");
   const [notes, setNotes] = useState("");
 
@@ -609,13 +611,21 @@ export function ReassessRestraintModal({
             tone="primary"
             onClick={() =>
               void run(() =>
-                reassessRestraint(client, restraint.id, {
-                  outcome,
-                  // The next due instant is computed from the restraint's OWN interval, so the cadence
-                  // a physician set is what the board counts down to.
-                  nextDueAt: new Date(Date.now() + intervalMinutes * 60_000).toISOString(),
-                  ...(notes.trim() ? { notes: notes.trim() } : {}),
-                }),
+                reassessRestraint(
+                  client,
+                  restraint.id,
+                  keeper,
+                  `${restraint.id}|${outcome}|${notes.trim()}`,
+                  (stampedAt) => ({
+                    outcome,
+                    // The next due instant is computed from the restraint's OWN interval, so the cadence a physician set is what
+                    // the board counts down to. It counts from the intent's first attempt, so a retry repeats the same bytes.
+                    nextDueAt: new Date(
+                      Date.parse(stampedAt) + intervalMinutes * 60_000,
+                    ).toISOString(),
+                    ...(notes.trim() ? { notes: notes.trim() } : {}),
+                  }),
+                ),
               )
             }
             disabled={busy}

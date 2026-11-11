@@ -26,7 +26,7 @@ const show = (f: OpsFailure) =>
   );
 
 describe("FailureNotice", () => {
-  it("a conflict with details is ONE alert, the details a list outside any paragraph", () => {
+  it("a conflict with details is ONE alert holding the summary and the details list, the list outside any paragraph", () => {
     const { container } = show(
       failure({
         kind: "conflict",
@@ -41,8 +41,12 @@ describe("FailureNotice", () => {
         ],
       }),
     );
+    const alert = screen.getByRole("alert");
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(within(container).getByText("the latest platform BAA must be executed")).toBeTruthy();
+    // The details are announced with the summary: they are inside the one live region.
+    expect(within(alert).getByText("Approval was refused.")).toBeTruthy();
+    expect(within(alert).getByRole("list")).toBeTruthy();
+    expect(within(alert).getByText("the latest platform BAA must be executed")).toBeTruthy();
     expect(container.querySelectorAll("p ul, p div, p a")).toHaveLength(0);
   });
 

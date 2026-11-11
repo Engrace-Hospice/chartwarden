@@ -1,13 +1,20 @@
 import {
   Button,
+  InlineAlert,
   StatusPill,
+  TableScroll,
   TextField,
+  type WriteResponse,
   focusFirstInvalid,
   parsePriceCents,
   parseWholeNumber,
+  sendWrite,
+  settleRead,
   stashStepUpMemoryDraft,
   useApiClient,
+  useIdempotencyKeeper,
   useRequestGuard,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -20,15 +27,16 @@ import type { operations } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { cap, formatCents, idempotencyKey } from "./status";
+import { cap, formatCents } from "./status";
 import {
   DrawerHead,
   type Outcome,
   OutcomeBanner,
+  StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
   isNotFound,
+  writeFailure,
 } from "./ui";
 
 type PlanDetail =
@@ -74,33 +82,56 @@ function PlanEditBody(): JSX.Element {
   const [notFound, setNotFound] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
+  // A write landed but the reload that follows it did not: the page keeps the plan it shows and offers a reload.
+  const [reloadFailed, setReloadFailed] = useState(false);
+  // One Idempotency-Key per request: a retry of the same unchanged write after "could not reach the server" replays it.
+  const keeper = useIdempotencyKeeper();
+  const meterRowRef = useRef<HTMLFormElement>(null);
+  // Activate, Deprecate and Add meter disable while in flight (dropping focus), and a save reloads the page: focus goes back to
+  // the control that was pressed, else to the new meter's first field.
+  const captureFocus = useRestoreFocus(busy, () => meterRowRef.current?.querySelector("input"));
   // A step-up refusal sends the operator to /step-up and back; the typed meter comes back once.
   const restoredMeter = useStepUpMemoryDraft<MeterDraft>(meterDraftKey(id ?? ""));
   const [meter, setMeter] = useState<MeterDraft>(restoredMeter ?? BLANK_METER);
 
   const guard = useRequestGuard();
-  const load = useCallback(async () => {
-    const isCurrent = guard();
-    if (!id) {
-      setError("No plan selected.");
+  /**
+   * Read the plan. `silent` (the reload after a write) keeps the plan on screen instead of swapping in the loading frame, and a
+   * failure leaves it there. A rejected request (offline) is a failed read, never an exception. Resolves to whether the plan is current.
+   */
+  const load = useCallback(
+    async (silent = false): Promise<boolean> => {
+      const isCurrent = guard();
+      if (!id) {
+        setError("No plan selected.");
+        setLoading(false);
+        return false;
+      }
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+        setNotFound(false);
+      }
+      const { status, res } = await settleRead(
+        client.GET("/api/admin/plans/{id}", { params: { path: { id } } }),
+        "empty",
+      );
+      if (!isCurrent()) return true;
+      if (status !== "ok" || !res || res.error) {
+        if (silent) return false;
+        // A 404 is final: retrying cannot bring the record back, so no "Try again" (#597, F-044).
+        const gone = res !== undefined && isNotFound(res);
+        setNotFound(gone);
+        setError(gone ? "Plan not found." : "Plan unavailable.");
+        setLoading(false);
+        return false;
+      }
+      setPlan(res.data);
       setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setNotFound(false);
-    const res = await client.GET("/api/admin/plans/{id}", { params: { path: { id } } });
-    if (!isCurrent()) return;
-    if (res.error) {
-      // A 404 is final: retrying cannot bring the record back, so no "Try again" (#597, F-044).
-      setNotFound(isNotFound(res));
-      setError(isNotFound(res) ? "Plan not found." : "Plan unavailable.");
-      setLoading(false);
-      return;
-    }
-    setPlan(res.data);
-    setLoading(false);
-  }, [client, id, guard]);
+      return true;
+    },
+    [client, id, guard],
+  );
 
   useEffect(() => {
     void load();
@@ -108,27 +139,42 @@ function PlanEditBody(): JSX.Element {
 
   const run = useCallback(
     async (
-      fn: () => Promise<{ error?: unknown }>,
+      fingerprint: string,
+      call: (idempotencyKey: string) => Promise<WriteResponse>,
       okMsg: string,
       failMsg: string,
     ): Promise<boolean> => {
+      captureFocus();
       setBusy(true);
       setOutcome(null);
-      const res = await fn();
-      setOutcome(res.error ? failureOutcome(res.error, failMsg) : { ok: true, message: okMsg });
-      if (!res.error) await load();
+      setReloadFailed(false);
+      const failure = writeFailure(await sendWrite(keeper, fingerprint, call), failMsg);
+      if (failure) {
+        setOutcome(failure);
+        setBusy(false);
+        return false;
+      }
+      // The write landed: say so first, then reload in place. `load` never throws, so `busy` always clears, and a reload that
+      // fails is shown beside the success rather than replacing the page with a bare error.
+      setOutcome({ ok: true, message: okMsg });
+      setReloadFailed(!(await load(true)));
       setBusy(false);
-      return !res.error;
+      return true;
     },
-    [load],
+    [load, captureFocus, keeper],
   );
+
+  const reloadPlan = useCallback(async () => {
+    setBusy(true);
+    setReloadFailed(!(await load(true)));
+    setBusy(false);
+  }, [load]);
 
   const [meterAttempted, setMeterAttempted] = useState(false);
   const meterIssues = meterAttempted ? meterErrors(meter) : {};
-  const meterRowRef = useRef<HTMLDivElement>(null);
 
   const addMeter = useCallback(async () => {
-    if (!id) return;
+    if (!id || busy) return;
     setMeterAttempted(true);
     const issues = meterErrors(meter);
     const inclusive = parseWholeNumber(meter.inclusive);
@@ -143,19 +189,21 @@ function PlanEditBody(): JSX.Element {
       focusFirstInvalid(meterRowRef.current);
       return;
     }
+    const body = {
+      eventType: meter.eventType.trim(),
+      label: meter.eventType.trim(),
+      inclusiveQuantity: inclusive,
+      overageUnitPriceCents: overage,
+      billingAggregation: "sum" as const,
+      warningThresholdPercent: threshold,
+    };
     const added = await run(
-      () =>
+      `meter:${id}:${JSON.stringify(body)}`,
+      (key) =>
         client.POST("/api/admin/plans/{id}/meters", {
           params: { path: { id } },
-          body: {
-            eventType: meter.eventType.trim(),
-            label: meter.eventType.trim(),
-            inclusiveQuantity: inclusive,
-            overageUnitPriceCents: overage,
-            billingAggregation: "sum",
-            warningThresholdPercent: threshold,
-          },
-          headers: { "Idempotency-Key": idempotencyKey() },
+          body,
+          headers: { "Idempotency-Key": key },
         }),
       `Meter "${meter.eventType}" added.`,
       "Could not add the meter (check the fields).",
@@ -163,33 +211,35 @@ function PlanEditBody(): JSX.Element {
     if (!added) return; // a refused meter keeps what was typed, to fix and retry
     setMeter(BLANK_METER);
     setMeterAttempted(false);
-  }, [client, id, meter, run]);
+  }, [busy, client, id, meter, run]);
 
   const activate = useCallback(() => {
-    if (!id) return;
+    if (!id || busy) return;
     void run(
-      () =>
+      `activate:${id}`,
+      (key) =>
         client.POST("/api/admin/plans/{id}/activate", {
           params: { path: { id } },
-          headers: { "Idempotency-Key": idempotencyKey() },
+          headers: { "Idempotency-Key": key },
         }),
       "Plan activated — queued for Stripe sync (product/price).",
       "Could not activate this plan.",
     );
-  }, [client, id, run]);
+  }, [busy, client, id, run]);
 
   const deprecate = useCallback(() => {
-    if (!id) return;
+    if (!id || busy) return;
     void run(
-      () =>
+      `deprecate:${id}`,
+      (key) =>
         client.POST("/api/admin/plans/{id}/deprecate", {
           params: { path: { id } },
-          headers: { "Idempotency-Key": idempotencyKey() },
+          headers: { "Idempotency-Key": key },
         }),
       "Plan deprecated.",
       "Could not deprecate this plan.",
     );
-  }, [client, id, run]);
+  }, [busy, client, id, run]);
 
   const frame = (content: JSX.Element): JSX.Element => (
     <div className="wx-list-drawer">
@@ -239,47 +289,71 @@ function PlanEditBody(): JSX.Element {
             onReverify={() => stashStepUpMemoryDraft(meterDraftKey(id ?? ""), meter)}
           />
         ) : null}
-        <h2 className="m-0 text-base font-semibold">Usage meters</h2>
+        {reloadFailed ? (
+          <div className="wx-action-row is-middle">
+            <InlineAlert tone="warning">
+              The change was saved, but the plan could not be reloaded: what is shown may be out of
+              date.
+            </InlineAlert>
+            <Button tone="secondary" size="sm" disabled={busy} onClick={() => void reloadPlan()}>
+              Reload plan
+            </Button>
+          </div>
+        ) : null}
+        <h2 className="wx-action-title">Usage meters</h2>
         {plan.meters.length === 0 ? (
-          <p className="m-0 text-sm">No meters yet — add one below.</p>
+          <StateEmpty icon="bar-chart">No meters yet — add one below.</StateEmpty>
         ) : (
           <MetersTable meters={plan.meters} currencyCode={plan.currencyCode} />
         )}
-        <div
+        <form
           ref={meterRowRef}
-          className="grid max-w-3xl items-end gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]"
+          className="wx-drawer-card"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addMeter();
+          }}
         >
-          <TextField
-            label="Event type"
-            value={meter.eventType}
-            onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
-            error={meterIssues.eventType}
-          />
-          <TextField
-            label="Included qty"
-            value={meter.inclusive}
-            inputMode="numeric"
-            error={meterIssues.inclusive}
-            onChange={(e) => setMeter({ ...meter, inclusive: e.target.value })}
-          />
-          <TextField
-            label="Overage $/unit"
-            value={meter.overage}
-            inputMode="decimal"
-            error={meterIssues.overage}
-            onChange={(e) => setMeter({ ...meter, overage: e.target.value })}
-          />
-          <TextField
-            label="Warn %"
-            value={meter.threshold}
-            inputMode="numeric"
-            error={meterIssues.threshold}
-            onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
-          />
-          <Button onClick={() => void addMeter()} disabled={busy}>
-            Add meter
-          </Button>
-        </div>
+          <div className="wx-form-grid">
+            <TextField
+              label="Event type"
+              required
+              value={meter.eventType}
+              onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
+              error={meterIssues.eventType}
+            />
+            <TextField
+              label="Included qty"
+              required
+              value={meter.inclusive}
+              inputMode="numeric"
+              error={meterIssues.inclusive}
+              onChange={(e) => setMeter({ ...meter, inclusive: e.target.value })}
+            />
+            <TextField
+              label="Overage $/unit"
+              required
+              value={meter.overage}
+              inputMode="decimal"
+              error={meterIssues.overage}
+              onChange={(e) => setMeter({ ...meter, overage: e.target.value })}
+            />
+            <TextField
+              label="Warn %"
+              required
+              value={meter.threshold}
+              inputMode="numeric"
+              error={meterIssues.threshold}
+              onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
+            />
+          </div>
+          <div className="wx-drawer-actions">
+            <Button type="submit" disabled={busy}>
+              Add meter
+            </Button>
+          </div>
+        </form>
       </div>
       <PlanSummary plan={plan} />
     </div>
@@ -291,7 +365,7 @@ function MetersTable({
   currencyCode,
 }: { meters: readonly Meter[]; currencyCode: string }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Usage meters</caption>
         <thead>
@@ -320,7 +394,7 @@ function MetersTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

@@ -12,6 +12,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
+  useAttemptKey,
   useDrawerA11y,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — HOSPICE RATES (M23 F-210 + FY2027 workstream E; 2026-09-25 redesign,
@@ -44,7 +45,6 @@ import {
   nonCompliantUpdatePct,
   referenceColumn,
 } from "./rate-reference";
-import { useAttemptKey } from "./use-attempt-key";
 
 /** GET /billing/rate-tables → `rateTables[]`. */
 interface RateTableVersion {
