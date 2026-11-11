@@ -209,3 +209,43 @@ describe("Claude's own edit tools ask about every protected path (the real hook)
     expect(answer(r)).toBe("ask");
   });
 });
+
+describe("a Codex apply_patch is refused for the newly protected paths too (the real hook)", () => {
+  const patch = (path: string) =>
+    ["*** Begin Patch", `*** Add File: ${path}`, "+x", "*** End Patch"].join("\n");
+  const run = (path: string) => {
+    const r = spawnSync("bun", [GUARD, "--codex"], {
+      input: JSON.stringify({
+        hook_event_name: "PreToolUse",
+        session_id: "protected-paths-codex",
+        tool_name: "apply_patch",
+        tool_input: { command: patch(path) },
+        cwd: ROOT,
+      }),
+      encoding: "utf8",
+      env: { ...process.env, CW_AGENT_LEDGER: "off", CW_HARNESS_ROOT_FOR_TESTS: ROOT },
+    });
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+  };
+  it.each([
+    ".git/config",
+    ".git/hooks/pre-commit",
+    "apps/web/CLAUDE.md",
+    ".codex/prompts/x.md",
+    ".claude/commands/deploy.md",
+    ".mcp.json",
+  ])("refuses a patch that adds %s", (path) => {
+    const r = run(path);
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+  });
+  it.each(["apps/web/src/new-file.ts", "docs/notes.md", ".agents/plans/p.md"])(
+    "allows a patch that adds %s: exit 0, no output",
+    (path) => {
+      const r = run(path);
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toBe("");
+      expect(r.stderr).toBe("");
+    },
+  );
+});
