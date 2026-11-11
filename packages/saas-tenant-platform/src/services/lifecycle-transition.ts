@@ -252,7 +252,7 @@ export function transitionTenant(
         { kind: "status_event" },
         { kind: "set_timestamp", field: "activatedAt" },
         { kind: "outbox", event: "m34.tenant.activated" },
-        { kind: "alert", alertKey: "tenant.onboarding_completed", audience: ["platform_ops"] },
+        { kind: "alert", alertKey: "m34.tenant.onboarding_completed", audience: ["platform_ops"] },
         { kind: "welcome_email" },
       ]);
     }
@@ -265,7 +265,7 @@ export function transitionTenant(
         { kind: "session_cascade", scope: "active_organization" },
         {
           kind: "alert",
-          alertKey: "tenant.suspension_initiated",
+          alertKey: "m34.tenant.suspension_initiated",
           audience: ["tenant_compliance_officer", "platform_security_owner"],
         },
         { kind: "outbox", event: "m34.tenant.suspension_initiated" },
@@ -285,7 +285,7 @@ export function transitionTenant(
       return result(from, event.type, "at_risk", [
         { kind: "status_event" },
         { kind: "outbox", event: "m34.tenant.at_risk" },
-        { kind: "alert", alertKey: "tenant.at_risk_flagged", audience: ["platform_ops"] },
+        { kind: "alert", alertKey: "m34.tenant.at_risk", audience: ["platform_ops"] },
       ]);
     }
 
@@ -305,7 +305,7 @@ export function transitionTenant(
         { kind: "session_cascade", scope: "active_organization" },
         {
           kind: "alert",
-          alertKey: "tenant.suspension_initiated",
+          alertKey: "m34.tenant.suspension_initiated",
           audience: ["tenant_compliance_officer", "platform_security_owner"],
         },
         { kind: "outbox", event: "m34.tenant.suspension_initiated" },
@@ -320,7 +320,7 @@ export function transitionTenant(
         { kind: "session_cascade", scope: "active_organization" },
         {
           kind: "alert",
-          alertKey: "tenant.offboarding_initiated",
+          alertKey: "m34.tenant.offboarding_initiated",
           audience: ["platform_ops", "tenant_compliance_officer"],
         },
         { kind: "outbox", event: "m34.tenant.offboarding_initiated" },
@@ -346,7 +346,7 @@ export function transitionTenant(
         { kind: "outbox", event: "m34.tenant.retained" },
         {
           kind: "alert",
-          alertKey: "tenant.retention_countdown",
+          alertKey: "m34.tenant.retention_window_approaching",
           audience: ["tenant_compliance_officer"],
         },
       ]);
@@ -371,7 +371,7 @@ export function transitionTenant(
         { kind: "outbox", event: "m34.tenant.destruction_pending" },
         {
           kind: "alert",
-          alertKey: "tenant.shred_pending_approval",
+          alertKey: "m34.tenant.destruction_pending",
           audience: ["platform_security_owner"],
         },
       ]);

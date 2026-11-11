@@ -77,6 +77,9 @@ export const ApproveHelpRequestRequest = Type.Object({
   ),
 });
 
+/** `POST /api/v1/tenant/help-requests/:id/close` carries no mutable fields. */
+export const CloseHelpRequestRequest = Type.Object({}, { additionalProperties: false });
+
 /** `POST /api/v1/platform/help-requests/:id/resolve`. */
 export const ResolveHelpRequestRequest = Type.Object({
   note: Type.String({ minLength: HELP_NOTE_MIN, maxLength: HELP_NOTE_MAX }),

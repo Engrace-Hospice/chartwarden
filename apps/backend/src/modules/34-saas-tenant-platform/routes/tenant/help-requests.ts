@@ -22,6 +22,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { HelpRequestService } from "../../help/help-request-contract";
 import {
   ApproveHelpRequestRequest,
+  CloseHelpRequestRequest,
   FileHelpRequestRequest,
   HelpRequestParamsSchema,
   TenantHelpRequestListQuerySchema,
@@ -89,6 +90,7 @@ export function registerTenantHelpRequestRoutes(
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(HelpRequestParamsSchema, request.params);
+      parse(CloseHelpRequestRequest, request.body ?? {});
       return service.close(actor, id);
     },
   );

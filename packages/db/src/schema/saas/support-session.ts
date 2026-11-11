@@ -6,7 +6,7 @@
 // be a CHECK). `close_reason` records how the session ended (manual|expired|grant_revoked|forced_terminated).
 // RLS + grants + the M4 write-audit trigger land in 0052/0053.
 import { sql } from "drizzle-orm";
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { supportConsentGrant } from "./support-consent-grant";
 
@@ -34,6 +34,9 @@ export const supportSession = pgTable(
       t.startedAt,
     ),
     activeIdx: index("support_session_active_idx").on(t.expiresAt).where(sql`closed_at IS NULL`),
+    oneOpenActorGrantIdx: uniqueIndex("support_session_one_open_actor_grant_idx")
+      .on(t.supportConsentGrantId, t.actorMembershipId)
+      .where(sql`closed_at IS NULL`),
   }),
 );
 

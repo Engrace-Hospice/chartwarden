@@ -49,7 +49,7 @@ import {
 } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, desc, eq, not, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lt, lte, not, or, sql } from "drizzle-orm";
 import type { OnboardingBaaDocumentPort } from "../../../../bootstrap/onboarding-baa-document-port";
 import { isTenantSlugTaken } from "../../../../bootstrap/tenant-slug-registry";
 import {
@@ -1108,21 +1108,49 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
       assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list support sessions", async (tx) => {
+        const size = pageSizeOf(limit);
+        const anchor = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
+        const now = deps.supportSessionPorts.now();
+        const statusWhere =
+          filter.status === "open"
+            ? and(isNull(SS.closedAt), gt(SS.expiresAt, now))
+            : filter.status === "expired"
+              ? and(isNull(SS.closedAt), lte(SS.expiresAt, now))
+              : filter.status === "closed"
+                ? isNotNull(SS.closedAt)
+                : undefined;
+        const cursorWhere = anchor
+          ? or(
+              lt(SS.startedAt, new Date(anchor.createdAt)),
+              and(eq(SS.startedAt, new Date(anchor.createdAt)), lt(SS.id, anchor.id)),
+            )
+          : undefined;
         const rows = await tx
           .select({ s: SS, grant: SCG })
           .from(SS)
           .innerJoin(SCG, eq(SS.supportConsentGrantId, SCG.id))
-          .orderBy(desc(SS.startedAt), desc(SS.id));
-        const now = deps.supportSessionPorts.now();
-        const views: SupportSessionView[] = rows
-          .filter((r) =>
-            filter.tenantAccountId ? r.grant.tenantAccountId === filter.tenantAccountId : true,
+          .where(
+            and(
+              filter.tenantAccountId
+                ? eq(SCG.tenantAccountId, filter.tenantAccountId)
+                : undefined,
+              statusWhere,
+              cursorWhere,
+            ),
           )
-          .map((r) => sessionView(r.s, r.grant, now))
-          .filter((v) => (filter.status ? v.status === filter.status : true));
+          .orderBy(desc(SS.startedAt), desc(SS.id))
+          .limit(size + 1);
+        const views: SupportSessionView[] = rows
+          .slice(0, size)
+          .map((r) => sessionView(r.s, r.grant, now));
         const withCursor = views.map((v) => ({ ...v, createdAt: v.startedAt }));
-        const p = paginate(PLATFORM_CURSOR_SCOPE, withCursor, cursor, limit);
-        return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
+        const last = withCursor.at(-1);
+        const hasMore = rows.length > size;
+        return {
+          items: withCursor.map(({ createdAt: _c, ...v }) => v),
+          hasMore,
+          nextCursor: hasMore && last ? encodeKeyset(PLATFORM_CURSOR_SCOPE, last) : null,
+        };
       });
     },
 
@@ -1136,8 +1164,16 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       return inPlatformCtx("platform-ops list support session events", async (tx) => {
         const session = await new SupportRepository(tx).findSessionById(sessionId);
         if (!session) throw new NotFoundError("support session");
-        const rows = await new SupportRepository(tx).listSessionEvents(sessionId, { limit: 200 });
-        const views = rows.map((e) => ({
+        const size = pageSizeOf(limit);
+        const anchor = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
+        const rows = await new SupportRepository(tx).listSessionEvents(sessionId, {
+          limit: size + 1,
+          organizationId: session.organizationId,
+          ...(anchor
+            ? { cursor: { occurredAt: new Date(anchor.createdAt), id: anchor.id } }
+            : {}),
+        });
+        const views = rows.slice(0, size).map((e) => ({
           id: e.id,
           supportSessionId: e.supportSessionId,
           eventKind: e.eventKind,
@@ -1147,8 +1183,13 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           actorIp: e.actorIp ?? null,
           createdAt: isoReq(e.occurredAt),
         }));
-        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
-        return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
+        const last = views.at(-1);
+        const hasMore = rows.length > size;
+        return {
+          items: views.map(({ createdAt: _c, ...v }) => v),
+          hasMore,
+          nextCursor: hasMore && last ? encodeKeyset(PLATFORM_CURSOR_SCOPE, last) : null,
+        };
       });
     },
 
@@ -1180,7 +1221,6 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           id: g.id,
           tenantAccountId: g.tenantAccountId,
           scope: g.scope,
-          grantReason: g.grantReason,
           issuedAt: isoReq(g.issuedAt),
           expiresAt: isoReq(g.expiresAt),
           revokedAt: iso(g.revokedAt),

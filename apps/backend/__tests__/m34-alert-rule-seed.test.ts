@@ -17,6 +17,8 @@ import {
   PLATFORM_OPS_ROLE_KEY as AUTH_OPS_KEY,
   PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
 } from "@chartwarden/auth";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   M34_ALERT_RESOLVER_NAMES,
@@ -30,6 +32,25 @@ import {
 import { M34_ACTIVATION_STUCK_EVENT } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 
 describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
+  it("seeds every literal alert key emitted by the M34 service layer", () => {
+    const root = join(__dirname, "../../..");
+    const files = [
+      "packages/saas-tenant-platform/src/services/support-session-service.ts",
+      "packages/saas-tenant-platform/src/services/support-grant-service.ts",
+      "packages/saas-tenant-platform/src/services/lifecycle-transition.ts",
+      "packages/saas-tenant-platform/src/services/onboarding-advance-worker.ts",
+    ];
+    const emitted = new Set<string>();
+    for (const file of files) {
+      const source = readFileSync(join(root, file), "utf8");
+      for (const match of source.matchAll(/alertKey:\s*"([^"]+)"/g)) {
+        if (match[1]) emitted.add(match[1]);
+      }
+    }
+    const seeded = new Set(M34_ALERT_RULES.map((rule) => rule.eventType));
+    for (const eventType of emitted) expect(seeded.has(eventType), eventType).toBe(true);
+  });
+
   it("routes tenant-org rules at the audience role, never platform_ops", () => {
     expect(TENANT_ALERT_AUDIENCE_ROLE_KEY).toBe(PLATFORM_ALERT_AUDIENCE_ROLE_KEY);
     expect(PLATFORM_OPS_ROLE_KEY).toBe(AUTH_OPS_KEY);

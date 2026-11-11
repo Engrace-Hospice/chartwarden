@@ -33,7 +33,13 @@ import {
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
-import { assertPageCursor, paginate } from "../keyset-page";
+import {
+  assertPageCursor,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+  paginate,
+} from "../keyset-page";
 import type {
   BaaRecordView,
   DownloadUrlView,
@@ -146,12 +152,10 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     },
 
     async revokeConsentGrant(organizationId, grantId, actor, reason) {
-      return inOrgCtx(organizationId, async (tx) => {
-        const linkedHelpRequests = deps.linkedHelpRequestsFor?.(tx);
-        // The cascade: the grant is revoked and EVERY session open on it ends (ledger, audit, outbox, grantor alert), the linked
-        // help request resolves, and a later start is refused. One transaction, as the tenant's own role.
+      const result = await inOrgCtx(organizationId, async (tx) => {
+        // The security boundary commits first: revoke the grant and end every covered session atomically.
         await deps.supportOps.revokeGrantAndCloseSessions(
-          { ...deps.supportOps.depsFor(tx), ...(linkedHelpRequests ? { linkedHelpRequests } : {}) },
+          deps.supportOps.depsFor(tx),
           {
             grantId,
             organizationId,
@@ -165,6 +169,24 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         if (!row) throw new NotFoundError("support consent grant");
         return grantView(row, deps.now());
       });
+      // Help-request bookkeeping is a collaborator, not part of the consent boundary. Run it after
+      // the revoke commits so its failure can never roll consent back or leave a support window open.
+      if (deps.linkedHelpRequestsFor) {
+        try {
+          await inOrgCtx(organizationId, (tx) =>
+            deps.linkedHelpRequestsFor!(tx).resolveForRevokedGrant({
+              grantId,
+              organizationId,
+              source: "tenant",
+              closedByUserId: actor.userId,
+              note: null,
+            }),
+          );
+        } catch {
+          // The linked request can be reconciled independently; consent revocation remains successful.
+        }
+      }
+      return result;
     },
 
     // ── support sessions on this organization (read-only; RLS scopes them; never an operator id, name or address) ──
@@ -173,17 +195,30 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
       assertPageCursor(organizationId, cursor);
       return inOrgCtx(organizationId, async (tx) => {
         const repo = new SupportRepository(tx);
-        const sessions = await repo.listSessions();
-        const stats = await repo.opsWriteStats(sessions.map((x) => x.id));
+        const size = pageSizeOf(limit);
+        const anchor = decodeKeyset(organizationId, cursor);
+        const sessions = await repo.listSessions({
+          limit: size + 1,
+          ...(anchor
+            ? { cursor: { startedAt: new Date(anchor.createdAt), id: anchor.id } }
+            : {}),
+        });
+        const pageRows = sessions.slice(0, size);
+        const stats = await repo.opsWriteStats(pageRows.map((x) => x.id));
         const now = deps.now();
-        const views = sessions
+        const views = pageRows
           .map((x) => ({
             ...tenantSessionView(x, stats.get(x.id), now),
             createdAt: isoReq(x.startedAt),
           }))
           .sort(byCreatedDesc);
-        const page = paginate(organizationId, views, cursor, limit);
-        return { ...page, items: page.items.map(({ createdAt: _c, ...v }) => v) };
+        const last = views.at(-1);
+        const hasMore = sessions.length > size;
+        return {
+          items: views.map(({ createdAt: _c, ...v }) => v),
+          hasMore,
+          nextCursor: hasMore && last ? encodeKeyset(organizationId, last) : null,
+        };
       });
     },
 
@@ -197,13 +232,26 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         if (!session || session.organizationId !== organizationId) {
           throw new NotFoundError("support session");
         }
-        // ponytail: the ledger read is capped at the repository's 200 rows; page in SQL if one session outgrows it.
-        const rows = await repo.listSessionEvents(sessionId, { limit: 200 });
+        const size = pageSizeOf(limit);
+        const anchor = decodeKeyset(organizationId, cursor);
+        const rows = await repo.listSessionEvents(sessionId, {
+          limit: size + 1,
+          organizationId,
+          ...(anchor
+            ? { cursor: { occurredAt: new Date(anchor.createdAt), id: anchor.id } }
+            : {}),
+        });
         const views = rows
+          .slice(0, size)
           .map((e) => ({ ...tenantEventView(e), createdAt: isoReq(e.occurredAt) }))
           .sort(byCreatedDesc);
-        const page = paginate(organizationId, views, cursor, limit);
-        return { ...page, items: page.items.map(({ createdAt: _c, ...v }) => v) };
+        const last = views.at(-1);
+        const hasMore = rows.length > size;
+        return {
+          items: views.map(({ createdAt: _c, ...v }) => v),
+          hasMore,
+          nextCursor: hasMore && last ? encodeKeyset(organizationId, last) : null,
+        };
       });
     },
 

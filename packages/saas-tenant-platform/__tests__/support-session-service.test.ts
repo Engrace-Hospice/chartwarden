@@ -227,6 +227,7 @@ describe("startSupportSession — the organization is the grant's", () => {
       event: "m34.support_session.started",
       organizationId: TENANT_ORG,
     });
+    expect(h.log.outbox.at(-1)?.payload).not.toHaveProperty("actorMembershipId");
     expect(h.log.alerts.at(-1)).toMatchObject({
       alertKey: "m34.support_session.started",
       organizationId: TENANT_ORG,
@@ -295,6 +296,18 @@ describe("startSupportSession — the organization is the grant's", () => {
     ).rejects.toMatchObject({ code: "SUPPORT_SESSION_ACTOR_NOT_DISTINCT", statusCode: 403 });
     expect(h.repo.sessions.size).toBe(0);
   });
+
+  it("fails closed when the grantor membership cannot be resolved to a person", async () => {
+    const h = harness();
+    const grant = await grantOf(h);
+    await expect(
+      startSupportSession(
+        { ...h.deps, members: { userIdOf: async () => null } },
+        startInput(grant.id),
+      ),
+    ).rejects.toMatchObject({ code: "SUPPORT_SESSION_ACTOR_NOT_DISTINCT" });
+    expect(h.repo.sessions.size).toBe(0);
+  });
 });
 
 describe("elevateSupportSession", () => {
@@ -338,6 +351,20 @@ describe("elevateSupportSession", () => {
       event: "m34.support_session.elevated",
       organizationId: TENANT_ORG,
     });
+    expect(h.log.outbox.at(-1)?.payload).not.toHaveProperty("actorMembershipId");
+  });
+
+  it("refuses elevation by an operator who does not own the session", async () => {
+    const h = harness();
+    const grant = await grantOf(h);
+    const started = await startSupportSession(h.deps, startInput(grant.id));
+    await expect(
+      elevateSupportSession(h.deps, {
+        supportSessionId: started.sessionId,
+        actorMembershipId: uuid(),
+      }),
+    ).rejects.toMatchObject({ code: "SUPPORT_SESSION_NOT_OPEN" });
+    expect(h.repo.events.some((e) => e.eventKind === "session.elevate")).toBe(false);
   });
 
   it("refuses a closed session and a Part 2-heightened one", async () => {
@@ -666,8 +693,8 @@ describe("revokeGrantAndCloseSessions — the cascade", () => {
       revocationReason: "support is finished",
     });
     const closes = h.repo.events.filter((e) => e.eventKind === "session.close");
-    expect(closes).toHaveLength(2);
-    expect(closes.every((e) => e.organizationId === TENANT_ORG)).toBe(true);
+    // Grant-revocation close evidence is database-generated; the tenant service cannot forge it.
+    expect(closes).toHaveLength(0);
     const expired = h.log.outbox.filter((o) => o.event === "m34.support_session.expired");
     expect(expired.map((o) => o.payload.closeReason)).toEqual(["grant_revoked", "grant_revoked"]);
     expect(h.log.outbox.at(-1)).toMatchObject({

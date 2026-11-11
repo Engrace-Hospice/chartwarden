@@ -129,12 +129,11 @@ export interface SupportSessionView {
   readonly closeReason: string | null;
   readonly status: "open" | "expired" | "closed";
 }
-/** A tenant's consent grant as an operator sees it (slice 7; 7S implements the read). No grantor, no patients in scope. */
+/** A tenant's consent grant as an operator sees it. No free text, grantor, or patients in scope. */
 export interface PlatformSupportConsentGrantView {
   readonly id: string;
   readonly tenantAccountId: string;
   readonly scope: "organization_scoped" | "patient_scoped" | "assist";
-  readonly grantReason: string;
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly revokedAt: string | null;
@@ -993,7 +992,6 @@ export function createInMemoryTenantPlatformBackend(
           id: g.id,
           tenantAccountId: g.tenantAccountId,
           scope: g.scope ?? "organization_scoped",
-          grantReason: g.grantReason ?? "support",
           issuedAt: g.issuedAt ?? at,
           expiresAt: g.expiresAt,
           revokedAt: g.revokedAt ?? null,

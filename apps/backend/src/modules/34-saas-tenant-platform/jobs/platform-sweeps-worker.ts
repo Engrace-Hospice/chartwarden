@@ -145,7 +145,9 @@ export async function loadExpiredSessionCandidates(
     })
     .from(S)
     .innerJoin(G, eq(G.id, S.supportConsentGrantId))
-    .where(and(isNull(S.closedAt), lte(S.expiresAt, now)));
+    .where(and(isNull(S.closedAt), lte(S.expiresAt, now)))
+    .orderBy(S.expiresAt, S.id)
+    .limit(200);
   return rows;
 }
 

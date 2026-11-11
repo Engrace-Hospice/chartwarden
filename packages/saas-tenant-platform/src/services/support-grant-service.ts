@@ -9,7 +9,7 @@
 //   * THE REVOKE CASCADE. Revoking a grant ends every session open on it (ledger `session.close`, critical audit, outbox
 //     `m34.support_session.expired` with closeReason `grant_revoked`, the grantor alert), marks the grant revoked, emits
 //     `m34.support_consent_grant.revoked` and lets the help request linked to the grant resolve itself through a port
-//     (`LinkedHelpRequestPort`, piece 7B's), all in the caller's transaction. A LATER start on the grant is
+//     (`LinkedHelpRequestPort`, piece 7B's). Route adapters resolve that collaborator after the security transaction commits. A LATER start on the grant is
 //     `SUPPORT_GRANT_INACTIVE` 409 (the start reads the grant under a SHARE lock; this revoke's UPDATE is the other half of it).
 //   * THE HELP SCREENS' SESSION SUMMARY: the one session of a grant a screen shows, with no operator identity in it.
 //

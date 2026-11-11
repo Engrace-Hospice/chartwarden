@@ -536,8 +536,8 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         expect(
           (
             await c.query(
-              "UPDATE support_consent_grant SET revoked_at = now(), revocation_reason = 'resolved' WHERE id = $1",
-              [grantId],
+              "UPDATE support_consent_grant SET revoked_at = now(), revoked_by_membership_id = $2, revocation_reason = 'resolved' WHERE id = $1",
+              [grantId, OPERATOR.membership],
             )
           ).rowCount,
         ).toBe(1);
@@ -570,33 +570,15 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         ]) {
           await expect(c.query(sql, [grantId])).rejects.toMatchObject({ code: "42501" });
         }
-        // the ledger: only the cascade's row, and never with a patient
-        await expect(
-          c.query(
-            "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,'ops.write')",
-            [TENANT_ORG, sessionId],
-          ),
-        ).rejects.toThrow(/row-level security/);
-        await expect(
-          c.query(
-            "INSERT INTO support_session_event (organization_id,support_session_id,event_kind,patient_id) VALUES ($1,$2,'session.close',gen_random_uuid())",
-            [TENANT_ORG, sessionId],
-          ),
-        ).rejects.toThrow(/row-level security/);
-        await expect(
-          c.query(
-            "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,'session.close')",
-            [OTHER_ORG, sessionId],
-          ),
-        ).rejects.toThrow(/row-level security/);
-        expect(
-          (
-            await c.query(
-              "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,'session.close')",
-              [TENANT_ORG, sessionId],
-            )
-          ).rowCount,
-        ).toBe(1);
+        // Close evidence is database-owned: the tenant cannot insert any ledger kind, even session.close.
+        for (const eventKind of ["ops.write", "session.close"]) {
+          await expect(
+            c.query(
+              "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,$3)",
+              [TENANT_ORG, sessionId, eventKind],
+            ),
+          ).rejects.toMatchObject({ code: "42501" });
+        }
       });
     });
 
@@ -636,16 +618,16 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         expect(
           (
             await c.query(
-              "UPDATE support_consent_grant SET revoked_at = now(), revocation_reason = 'done' WHERE id = $1",
-              [grantId],
+              "UPDATE support_consent_grant SET revoked_at = now(), revoked_by_membership_id = $2, revocation_reason = 'done' WHERE id = $1",
+              [grantId, ADMIN.membership],
             )
           ).rowCount,
         ).toBe(1);
         expect(
           (
             await c.query(
-              "UPDATE support_consent_grant SET revoked_at = now(), revocation_reason = 'again' WHERE id = $1",
-              [grantId],
+              "UPDATE support_consent_grant SET revoked_at = now(), revoked_by_membership_id = $2, revocation_reason = 'again' WHERE id = $1",
+              [grantId, ADMIN.membership],
             )
           ).rowCount,
         ).toBe(0);
@@ -1128,6 +1110,13 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
     it("never names the operator, their user or their address anywhere the tenant reads", async () => {
       const grants = await send("GET", "/api/v1/tenant/support-consent-grants", headersOf(ADMIN));
       tenantReads += grants.text;
+      const genericAuditProjection = await q(
+        `SELECT before, after, context FROM audit_event
+          WHERE organization_id = $1
+            AND resource_kind IN ('support_session', 'support_session_event')`,
+        [TENANT_ORG],
+      );
+      tenantReads += JSON.stringify(genericAuditProjection);
       for (const secret of [
         OPERATOR.membership,
         OPERATOR.user,
@@ -1146,8 +1135,6 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
   describe("the revoke cascade", () => {
     it("closes every open session, writes ledger / audit / outbox through the real publisher, alerts, resolves the linked request, refuses a later start", async () => {
       const grantId = (await issue(ADMIN, "organization_scoped")).body.id;
-      const a = (await start(grantId)).body.sessionId;
-      const b = (await start(grantId)).body.sessionId;
       const closedAlready = (await start(grantId)).body.sessionId;
       await send(
         "POST",
@@ -1155,6 +1142,8 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         headersOf(OPERATOR),
         {},
       );
+      const a = (await start(grantId, OPERATOR)).body.sessionId;
+      const b = (await start(grantId, OPERATOR_TWO)).body.sessionId;
       alerts.length = 0;
       linked.length = 0;
 
@@ -1312,29 +1301,22 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
   // ── the sweep ────────────────────────────────────────────────────────────────────────────────────────────
 
   describe("the expiry sweep", () => {
-    it("closes what is due, on the GRANT's organization (even for a row recorded under another one), through the shared ports", async () => {
+    it("closes what is due on the grant's organization, while the composite FK refuses a mismatched tenant", async () => {
       const grantId = (await issue(ADMIN, "organization_scoped")).body.id;
       const due = (await start(grantId)).body.sessionId;
-      const later = (await start(grantId)).body.sessionId;
-      // a legacy row recorded under the OPERATOR's organization (what the old route wrote): the sweep still answers in the tenant's
-      const legacy = (
-        await q<{ id: string }>(
+      await expect(
+        q<{ id: string }>(
           `INSERT INTO support_session (organization_id,support_consent_grant_id,actor_membership_id,started_at,expires_at)
            VALUES ($1,$2,$3, $4, $5) RETURNING id`,
           [
             OPERATOR_ORG,
             grantId,
             OPERATOR.membership,
-            new Date(clock.getTime() - 3 * HOUR),
+            clock,
             new Date(clock.getTime() + HOUR),
           ],
-        )
-      )[0]?.id as string;
-      // time passes: everything started above is past its 8 hours except what the next line keeps open
-      await q("UPDATE support_session SET expires_at = $2 WHERE id = $1", [
-        later,
-        new Date(clock.getTime() + 20 * HOUR),
-      ]);
+        ),
+      ).rejects.toThrow();
       const before = clock;
       clock = new Date(before.getTime() + 9 * HOUR);
       try {
@@ -1349,24 +1331,21 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
               serviceDeps: () => ports.bind(tx),
             }),
         );
-        expect(result.closedSessionIds).toEqual(expect.arrayContaining([due, legacy]));
-        expect(result.closedSessionIds).not.toContain(later);
+        expect(result.closedSessionIds).toEqual([due]);
         const rows = await q(
           "SELECT id, close_reason FROM support_session WHERE id = ANY($1::uuid[])",
-          [[due, later, legacy]],
+          [[due]],
         );
         const byId = Object.fromEntries(rows.map((r) => [r.id, r.close_reason]));
         expect(byId[due]).toBe("expired");
-        expect(byId[legacy]).toBe("expired");
-        expect(byId[later]).toBeNull();
         const ledger = await q(
           "SELECT organization_id FROM support_session_event WHERE event_kind = 'session.close' AND support_session_id = ANY($1::uuid[])",
-          [[due, legacy]],
+          [[due]],
         );
-        expect(ledger.map((l) => l.organization_id)).toEqual([TENANT_ORG, TENANT_ORG]);
+        expect(ledger.map((l) => l.organization_id)).toEqual([TENANT_ORG]);
         const events = await q(
           "SELECT organization_id, payload FROM outbox_event WHERE event_type = 'm34.support_session.expired' AND aggregate_id = ANY($1::uuid[])",
-          [[due, legacy]],
+          [[due]],
         );
         expect(
           events.every(

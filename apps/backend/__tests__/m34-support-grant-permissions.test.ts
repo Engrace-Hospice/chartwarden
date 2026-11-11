@@ -131,6 +131,27 @@ describe("migration 1485 (the assist scope)", () => {
   });
 });
 
+describe("migration 1486 (support-session hardening)", () => {
+  const sql = migration("1486_m34_support_session_hardening.sql");
+
+  it("binds each session to its grant's organization and caps one open window per actor/grant", () => {
+    expect(sql).toContain('FOREIGN KEY ("support_consent_grant_id", "organization_id")');
+    expect(sql).toContain('"support_session_one_open_actor_grant_idx"');
+  });
+
+  it("makes revoke and close evidence database-owned and immutable", () => {
+    expect(sql).toContain('REVOKE INSERT ON "support_session_event" FROM chartwarden_app');
+    expect(sql).toContain('CREATE TRIGGER "trg_m34_record_support_session_close"');
+    expect(sql).toContain("a revoked support consent grant is immutable");
+    expect(sql).toContain("a closed support session is immutable");
+  });
+
+  it("scrubs operator membership and IP from the generic tenant-visible audit projection", () => {
+    expect(sql).toContain("ARRAY['actor_membership_id']::text[]");
+    expect(sql).toContain("ARRAY['actor_ip']::text[]");
+  });
+});
+
 describe("the provisioning script's carrier grants", () => {
   const script = readFileSync(join(ROOT, "scripts/db/provision-runtime-roles.ts"), "utf8");
 

@@ -6,7 +6,7 @@
 // window and the scope↔patient-ids coupling are CHECK invariants. The grantor is a tenant
 // compliance_officer membership (ABAC). RLS + grants + the M4 write-audit trigger land in 0052/0053.
 import { sql } from "drizzle-orm";
-import { check, index, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 // `assist` (migration 1485) is the non-PHI scope an onboarding help request creates: a session on it can never be elevated.
@@ -38,6 +38,7 @@ export const supportConsentGrant = pgTable(
   },
   (t) => ({
     tenantIssuedIdx: index("support_grant_tenant_issued_idx").on(t.tenantAccountId, t.issuedAt),
+    idOrgUnique: unique("support_consent_grant_id_org_unique").on(t.id, t.organizationId),
     expiresAtCheck: check(
       "support_grant_expires_check",
       sql`${t.expiresAt} <= ${t.issuedAt} + interval '72 hours'`,

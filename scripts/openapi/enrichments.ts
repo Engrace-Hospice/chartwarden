@@ -1538,6 +1538,8 @@ import {
   OnboardingTemplateListQuerySchema as M34OnboardingTemplateListQuerySchema,
   OnboardingTemplateListResponseSchema as M34OnboardingTemplateListResponseSchema,
   OnboardingTemplateViewSchema as M34OnboardingTemplateViewSchema,
+  PlatformSupportConsentGrantListQuerySchema as M34PlatformSupportConsentGrantListQuerySchema,
+  PlatformSupportConsentGrantListResponseSchema as M34PlatformSupportConsentGrantListResponseSchema,
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
   TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
@@ -1594,12 +1596,28 @@ import {
   TenantExportJobListResponseSchema as M34ScopedTenantExportJobListResponseSchema,
   SupportConsentGrantListResponseSchema as M34SupportConsentGrantListResponseSchema,
   SupportConsentGrantViewSchema as M34SupportConsentGrantViewSchema,
+  TenantSupportSessionEventListResponseSchema as M34TenantSupportSessionEventListResponseSchema,
+  TenantSupportSessionListQuerySchema as M34TenantSupportSessionListQuerySchema,
+  TenantSupportSessionListResponseSchema as M34TenantSupportSessionListResponseSchema,
   BaaRecordViewSchema as M34TenantBaaRecordViewSchema,
   TenantExportJobViewSchema as M34TenantExportJobViewSchema,
   TenantExportListQuerySchema as M34TenantExportListQuerySchema,
   TenantExportRequest as M34TenantExportRequest,
   SupportConsentGrantRequest as M34TenantSupportConsentGrantRequest,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+
+import {
+  ApproveHelpRequestRequest as M34ApproveHelpRequestRequest,
+  CloseHelpRequestRequest as M34CloseHelpRequestRequest,
+  FileHelpRequestRequest as M34FileHelpRequestRequest,
+  HelpRequestViewSchema as M34HelpRequestViewSchema,
+  PlatformHelpRequestListQuerySchema as M34PlatformHelpRequestListQuerySchema,
+  PlatformHelpRequestListResponseSchema as M34PlatformHelpRequestListResponseSchema,
+  PlatformHelpRequestViewSchema as M34PlatformHelpRequestViewSchema,
+  ResolveHelpRequestRequest as M34ResolveHelpRequestRequest,
+  TenantHelpRequestListQuerySchema as M34TenantHelpRequestListQuerySchema,
+  TenantHelpRequestListResponseSchema as M34TenantHelpRequestListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/help-request-typebox";
 
 import {
   ComplianceOfficerResponseSchema as M34ComplianceOfficerResponseSchema,
@@ -10875,6 +10893,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M34OnboardingBlockRequest,
     response: M34WizardStepViewSchema,
   },
+  "POST /api/v1/tenant/onboarding/:taskId/skip": {
+    summary: "Skip an allowlisted tenant onboarding step with step-up and a recorded rationale",
+    body: M34SkipOnboardingTaskRequest,
+    response: M34WizardStepViewSchema,
+  },
   "PATCH /api/v1/tenant/org-profile": {
     summary: "Set the organization's display name and IANA time zone during onboarding (org_admin)",
     body: M34OrgProfileRequest,
@@ -10910,6 +10933,36 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more",
     body: M34RevokeConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
+  },
+  "GET /api/v1/tenant/support-sessions": {
+    summary: "Tenant-visible support sessions, with operator identity removed (cursor-paginated)",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionListResponseSchema,
+  },
+  "GET /api/v1/tenant/support-sessions/:id/events": {
+    summary: "Tenant-visible support-session ledger, with operator identity removed (cursor-paginated)",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionEventListResponseSchema,
+  },
+  "GET /api/v1/tenant/help-requests": {
+    summary: "Tenant's current and previous onboarding help requests",
+    query: M34TenantHelpRequestListQuerySchema,
+    response: M34TenantHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/tenant/help-requests": {
+    summary: "File a non-PHI onboarding help request",
+    body: M34FileHelpRequestRequest,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/approve": {
+    summary: "Approve a help request and issue its time-boxed non-PHI assist grant",
+    body: M34ApproveHelpRequestRequest,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/close": {
+    summary: "Close the tenant's help request and revoke any linked support access",
+    body: M34CloseHelpRequestRequest,
+    response: M34HelpRequestViewSchema,
   },
 
   // ── platform-ops tenant lifecycle (§4.1) ──
@@ -10990,6 +11043,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
     body: M34CloseSessionRequest,
     response: M34CloseSessionAckSchema,
+  },
+  "GET /api/v1/platform/support-consent-grants": {
+    summary: "Active or historical consent grants available to the support-session picker",
+    query: M34PlatformSupportConsentGrantListQuerySchema,
+    response: M34PlatformSupportConsentGrantListResponseSchema,
+  },
+  "GET /api/v1/platform/help-requests": {
+    summary: "Cross-tenant onboarding help inbox",
+    query: M34PlatformHelpRequestListQuerySchema,
+    response: M34PlatformHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/platform/help-requests/:id/resolve": {
+    summary: "Resolve an onboarding help request and revoke its linked support access",
+    body: M34ResolveHelpRequestRequest,
+    response: M34PlatformHelpRequestViewSchema,
   },
 
   // ── platform-ops onboarding-template catalog ──

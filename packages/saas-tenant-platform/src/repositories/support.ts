@@ -23,11 +23,25 @@ export interface SupportEventCursor {
   readonly id: string;
 }
 
+/** Keyset cursor for support sessions (newest-first by startedAt, id). */
+export interface SupportSessionCursor {
+  readonly startedAt: Date;
+  readonly id: string;
+}
+
 function eventOlderThan(cursor?: SupportEventCursor): SQL | undefined {
   if (!cursor) return undefined;
   return or(
     lt(E.occurredAt, cursor.occurredAt),
     and(eq(E.occurredAt, cursor.occurredAt), lt(E.id, cursor.id)),
+  );
+}
+
+function sessionOlderThan(cursor?: SupportSessionCursor): SQL | undefined {
+  if (!cursor) return undefined;
+  return or(
+    lt(S.startedAt, cursor.startedAt),
+    and(eq(S.startedAt, cursor.startedAt), lt(S.id, cursor.id)),
   );
 }
 
@@ -96,19 +110,6 @@ export class SupportRepository {
       .from(G)
       .where(and(eq(G.tenantAccountId, tenantAccountId), isNull(G.revokedAt), gt(G.expiresAt, now)))
       .orderBy(desc(G.issuedAt));
-  }
-
-  /** Revoke a consent grant (stamps revokedAt / revokedByMembershipId / revocationReason). */
-  async revokeConsentGrant(
-    id: string,
-    patch: Pick<
-      schema.NewSupportConsentGrant,
-      "revokedAt" | "revokedByMembershipId" | "revocationReason"
-    >,
-  ): Promise<schema.SupportConsentGrant> {
-    const [row] = await this.db.update(G).set(patch).where(eq(G.id, id)).returning();
-    if (!row) throw new Error(`support_consent_grant ${id} not found for revoke`);
-    return row;
   }
 
   // ── support_session ────────────────────────────────────────────────────────────────────────
@@ -205,9 +206,17 @@ export class SupportRepository {
     );
   }
 
-  /** Every session of an organization, newest first (RLS scopes the tenant lane; the caller paginates). */
-  async listSessions(): Promise<readonly schema.SupportSession[]> {
-    return this.db.select().from(S).orderBy(desc(S.startedAt), desc(S.id));
+  /** A bounded keyset page of sessions (RLS scopes the tenant lane). */
+  async listSessions(
+    opts: { limit?: number; cursor?: SupportSessionCursor } = {},
+  ): Promise<readonly schema.SupportSession[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 201);
+    return this.db
+      .select()
+      .from(S)
+      .where(sessionOlderThan(opts.cursor))
+      .orderBy(desc(S.startedAt), desc(S.id))
+      .limit(limit);
   }
 
   /** Open (not-yet-closed) sessions for a tenant, newest-first. */
@@ -219,16 +228,6 @@ export class SupportRepository {
       .where(and(eq(G.tenantAccountId, tenantAccountId), isNull(S.closedAt)))
       .orderBy(desc(S.startedAt))
       .then((rows) => rows.map((r) => r.support_session));
-  }
-
-  /** Close a session (manual | expired | grant_revoked | forced_terminated). */
-  async closeSession(
-    id: string,
-    patch: Pick<schema.NewSupportSession, "closedAt" | "closeReason">,
-  ): Promise<schema.SupportSession> {
-    const [row] = await this.db.update(S).set(patch).where(eq(S.id, id)).returning();
-    if (!row) throw new Error(`support_session ${id} not found for close`);
-    return row;
   }
 
   // ── support_session_event ───────────────────────────────────────────────────────────────────
@@ -245,13 +244,19 @@ export class SupportRepository {
   /** Newest-first keyset page of a session's event ledger. */
   async listSessionEvents(
     supportSessionId: string,
-    opts: { limit?: number; cursor?: SupportEventCursor } = {},
+    opts: { limit?: number; cursor?: SupportEventCursor; organizationId?: string } = {},
   ): Promise<readonly schema.SupportSessionEvent[]> {
-    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 201);
     return this.db
       .select()
       .from(E)
-      .where(and(eq(E.supportSessionId, supportSessionId), eventOlderThan(opts.cursor)))
+      .where(
+        and(
+          eq(E.supportSessionId, supportSessionId),
+          opts.organizationId ? eq(E.organizationId, opts.organizationId) : undefined,
+          eventOlderThan(opts.cursor),
+        ),
+      )
       .orderBy(desc(E.occurredAt), desc(E.id))
       .limit(limit);
   }

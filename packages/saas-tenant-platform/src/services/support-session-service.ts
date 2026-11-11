@@ -30,6 +30,9 @@ export const SUPPORT_SESSION_MAX_DURATION_MS = 8 * 60 * 60 * 1000;
 /** The §7.4 step-5 PHI-write elevation window (passkey-recent-2min step-up opens a short write window). */
 export const SUPPORT_SESSION_ELEVATION_WINDOW_MS = 2 * 60 * 1000;
 
+/** Maximum candidates processed by one expiry-sweep transaction. */
+export const SUPPORT_SESSION_SWEEP_BATCH_SIZE = 200;
+
 /** The `actor_kind` every PHI access inside a support session is audited under (§7.4 step 4 / §7.4 acc.). */
 export const SUPPORT_SESSION_ACTOR_KIND = "platform_ops_via_support_session" as const;
 
@@ -251,7 +254,7 @@ export async function startSupportSession(
   );
   const grantorUserId = await deps.members.userIdOf(grant.grantorMembershipId);
   require_(
-    grantorUserId === null || grantorUserId !== input.actorUserId,
+    grantorUserId !== null && grantorUserId !== input.actorUserId,
     "SUPPORT_SESSION_ACTOR_NOT_DISTINCT",
     "the support-session actor must be a different person from the consent-grant grantor (D16)",
   );
@@ -297,7 +300,6 @@ export async function startSupportSession(
       sessionId: session.id,
       grantId: grant.id,
       tenantAccountId: grant.tenantAccountId,
-      actorMembershipId: input.actorMembershipId,
       scope: grant.scope,
       startedAt: now.toISOString(),
     },
@@ -344,6 +346,11 @@ export async function elevateSupportSession(
   require_(session !== null, "SUPPORT_SESSION_NOT_OPEN", "support_session not found");
   const grant = await deps.repo.findConsentGrantById(session.supportConsentGrantId);
   require_(grant !== null, "SUPPORT_GRANT_NOT_FOUND", "support_consent_grant not found");
+  require_(
+    session.actorMembershipId === input.actorMembershipId,
+    "SUPPORT_SESSION_NOT_OPEN",
+    "the support session belongs to another operator",
+  );
 
   // Slice 7 — an `assist` grant is non-PHI by construction: there is nothing to elevate for. Judged first, so the answer does not
   // depend on whether the session happens to be open.
@@ -392,7 +399,6 @@ export async function elevateSupportSession(
       sessionId: session.id,
       grantId: session.supportConsentGrantId,
       tenantAccountId: grant.tenantAccountId,
-      actorMembershipId: input.actorMembershipId,
       elevatedAt: now.toISOString(),
       elevationExpiresAt: elevationExpiresAt.toISOString(),
     },
@@ -447,14 +453,18 @@ export async function endSupportSession(
   });
   if (closed === null) return null;
 
-  await deps.repo.appendSessionEvent({
-    organizationId: input.organizationId,
-    supportSessionId: input.sessionId,
-    eventKind: "session.close",
-    occurredAt: input.now,
-    actorIp: input.actorIp ?? null,
-    context: { closeReason: input.reason },
-  });
+  // A grant-revoked close is written by the database transition trigger. Tenant callers have no
+  // INSERT privilege on the ledger, so the evidence cannot be supplied or forged by request data.
+  if (input.reason !== "grant_revoked") {
+    await deps.repo.appendSessionEvent({
+      organizationId: input.organizationId,
+      supportSessionId: input.sessionId,
+      eventKind: "session.close",
+      occurredAt: input.now,
+      actorIp: input.actorIp ?? null,
+      context: { closeReason: input.reason },
+    });
+  }
 
   await deps.audit.emitCriticalAudit({
     action: CLOSE_AUDIT_ACTION[input.reason],
@@ -574,7 +584,8 @@ export async function closeExpiredSupportSessions(
   const due = candidates
     .filter((c) => c.expiresAt.getTime() <= now.getTime())
     .slice()
-    .sort((a, b) => (a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0));
+    .sort((a, b) => (a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0))
+    .slice(0, SUPPORT_SESSION_SWEEP_BATCH_SIZE);
 
   for (const candidate of due) {
     const alert = await endSupportSession(deps, {

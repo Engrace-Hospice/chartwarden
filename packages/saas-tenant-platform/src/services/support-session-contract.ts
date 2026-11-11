@@ -86,8 +86,8 @@ export interface RevokeGrantAndCloseSessionsResult {
 
 /**
  * The port through which the revoke cascade ends the help request linked to the grant (`tenant_help_request.
- * support_consent_grant_id`). 7B implements it over its own table, in the SAME transaction as the revoke, so 7S never touches
- * that table. A grant with no request, or a request already ended, is a no-op returning null.
+ * support_consent_grant_id`). 7B implements it over its own table. Route adapters invoke it after the consent revoke commits,
+ * so a collaborator failure cannot restore consent or reopen a support window. A missing/already-ended request is a no-op.
  */
 export interface LinkedHelpRequestPort {
   resolveForRevokedGrant(input: {

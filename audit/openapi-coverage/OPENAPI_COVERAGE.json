@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 2068,
-    "enriched": 2068,
+    "routes": 2078,
+    "enriched": 2078,
     "deficit": 0,
-    "mutating": 1187,
+    "mutating": 1192,
     "mutatingNoBody": 1,
-    "gets": 828,
+    "gets": 833,
     "getsNoResponse": 9
   },
   "modules": [
@@ -331,12 +331,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 97,
-      "enriched": 97,
+      "routes": 107,
+      "enriched": 107,
       "deficit": 0,
-      "mutating": 63,
+      "mutating": 68,
       "mutatingNoBody": 0,
-      "gets": 33,
+      "gets": 38,
       "getsNoResponse": 0
     },
     {
