@@ -190,6 +190,8 @@ function checkPatch(text: string, root: string, base: string, log: Log): void {
 }
 
 const NOT_TEXT = "was not text, so the guard cannot judge it";
+/** Claude Code's tools that write a file. */
+const EDIT_TOOLS: ReadonlySet<string> = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 /** Lines of an MCP input resolved on disk in one call; past it the call is refused (the work must fit the hook's timeout). */
 const MAX_MCP_PATH_LINES = 20_000;
 
@@ -482,6 +484,16 @@ function judge(hook: HookInput): void {
       log("deny", reason, target);
       respond("deny", reason);
     }
+  }
+  // Claude's own edit tools: `permissions.ask` in settings.json names fewer paths than the harness protects, so
+  // the same protected-path rule that judges a shell write and a Codex patch judges these.
+  const protectedHit = EDIT_TOOLS.has(tool)
+    ? [target, realTarget].find(isProtectedPath)
+    : undefined;
+  if (protectedHit) {
+    const reason = `\`${protectedHit}\` is part of the agent harness or the compliance record (or a file git, bun or an agent loads and runs). A human approves edits to it.`;
+    log("ask", reason, protectedHit);
+    respond("ask", reason);
   }
 }
 
