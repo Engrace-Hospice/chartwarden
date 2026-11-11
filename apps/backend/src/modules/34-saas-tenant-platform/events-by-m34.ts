@@ -429,7 +429,7 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m34.help_request.requested",
     moduleOwner: "m34",
     description:
-      "A member of a tenant filed a help request (`POST /tenant/help-requests`); M36 raises the `tenant.help_requested` alert to the platform operators. Ids and the step key only: the member's message never leaves the `tenant_help_request` row.",
+      "A member of a tenant filed a help request (`POST /tenant/help-requests`); after commit the M34 producer calls M36's AlertEmitter seam for the `tenant.help_requested` operator alert. Ids and the step key only: the member's message never enters this event or alert payload.",
     payloadSchema: Type.Object({
       helpRequestId: id,
       tenantAccountId: id,

@@ -68,7 +68,7 @@ export function createMemoryHelpState(now: () => Date = () => new Date()): Memor
   };
 }
 
-const { TENANT_HELP_REQUEST_LIVE_IDX, TENANT_HELP_REQUEST_PURGED_MESSAGE: PURGED_MESSAGE } = schema;
+const { TENANT_HELP_REQUEST_LIVE_IDX } = schema;
 const LIVE: ReadonlySet<HelpRequestStatus> = new Set(["open", "approved"]);
 
 /** Newest first, by the keyset the SQL orders on: (requested_at DESC, id DESC). */
@@ -263,7 +263,7 @@ function createStore(
       for (const r of state.requests.values()) {
         const closed = r.status === "resolved" || r.status === "cancelled";
         if (closed && r.messagePurgedAt === null && r.closedAt && r.closedAt.getTime() <= cutoff) {
-          put({ ...r, message: PURGED_MESSAGE, closeNote: null, messagePurgedAt: at });
+          put({ ...r, message: null, closeNote: null, messagePurgedAt: at });
           n += 1;
         }
       }

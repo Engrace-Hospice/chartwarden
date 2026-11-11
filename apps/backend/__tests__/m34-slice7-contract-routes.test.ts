@@ -143,6 +143,7 @@ function makeServer(
     fileRateLimit?: boolean;
     wizard?: OnboardingWizard;
     createdOrg?: boolean;
+    bindHelp?: boolean;
     tenantSeed?: Parameters<typeof createInMemoryTenantBackend>[0];
     platformSeed?: Parameters<typeof createInMemoryTenantPlatformBackend>[0];
   } = {},
@@ -199,18 +200,22 @@ function makeServer(
     ...(opts.wizard ? { onboarding: { wizard: opts.wizard } } : {}),
     tenant: createInMemoryTenantBackend(opts.tenantSeed ?? {}),
     platform: createInMemoryTenantPlatformBackend(opts.platformSeed ?? {}),
-    help: {
-      service: help.service,
-      ...(opts.fileRateLimit
-        ? {
-            fileRateLimit: createRouteRateLimit({
-              store: createInMemoryRateLimitStore(),
-              limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
-              keyPrefix: "m34-help-request-test",
-            }),
-          }
-        : {}),
-    },
+    ...(opts.bindHelp === false
+      ? {}
+      : {
+          help: {
+            service: help.service,
+            ...(opts.fileRateLimit
+              ? {
+                  fileRateLimit: createRouteRateLimit({
+                    store: createInMemoryRateLimitStore(),
+                    limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
+                    keyPrefix: "m34-help-request-test",
+                  }),
+                }
+              : {}),
+          },
+        }),
   });
   const send = (
     method: "GET" | "POST",
@@ -885,6 +890,12 @@ describe("platform help requests", () => {
 });
 
 describe("mounting", () => {
+  it("fails closed instead of serving the in-memory help backend when composition omits the service", async () => {
+    const { app, send } = makeServer({ bindHelp: false });
+    await expectNotBuilt(await send("GET", "/api/v1/tenant/help-requests", ADMIN));
+    await app.close();
+  });
+
   it("registers every slice 7 route, declaring the audited reads and leaving the tenant poll un-audited", async () => {
     const { app, registered } = makeServer();
     const find = (method: string, url: string) =>
@@ -912,6 +923,18 @@ describe("mounting", () => {
       ["POST", "/api/v1/platform/help-requests/:id/resolve"],
     ] as const) {
       expect(find(method, url), `${method} ${url}`).toBeDefined();
+    }
+    for (const url of [
+      "/api/v1/tenant/help-requests",
+      "/api/v1/tenant/help-requests/:id/approve",
+      "/api/v1/tenant/help-requests/:id/close",
+      "/api/v1/platform/help-requests/:id/resolve",
+    ]) {
+      expect(
+        (find("POST", url)?.config as { noIdempotencyCapture?: boolean } | undefined)
+          ?.noIdempotencyCapture,
+        url,
+      ).toBe(true);
     }
     await app.close();
   });

@@ -7161,6 +7161,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             }),
           };
           onboardingWizard.bind(m34Onboarding.wizard);
+          if (!rateLimitStore) {
+            app.log.warn(
+              "M34 help-request filing limits use a per-replica in-memory store (no REDIS_URL): member and organization budgets are not shared across replicas or restarts",
+            );
+          }
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,
             // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).
@@ -7218,6 +7223,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 platformJobId: M34_PLATFORM_JOB_ID,
                 outbox: m34OutboxPublisher,
                 grants: m34SupportOps,
+                // Resolve lazily: M36 registers the seam during boot, after this module's imports are evaluated.
+                alerts: {
+                  emit: (organizationId, input) =>
+                    (getSeam("AlertEmitter") as AlertEmitter).emit(organizationId, input),
+                },
+                warn: (message, context) => app.log.warn(context, message),
               }),
               fileRateLimit: createRouteRateLimit({
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
@@ -10067,22 +10078,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         registerM34OnboardingAdvanceWorker(m34SweepDeps),
       ];
       m34Workers.push(...m34SweepWorkers);
-      // Slice 7: the help-request sweep (cancels a request nobody answered in 14 days, resolves one whose grant has ended). Its own
-      // queue and job, registered here beside the sweeps; it ends REQUESTS and leaves the support sessions to the close sweep.
-      const m34HelpRequestSweep = registerM34HelpRequestSweepWorker({
-        connection: queueConnection,
-        runner: createDrizzleHelpRequestRunner({
-          db: dbHandle.db,
-          platformDb: platformDbHandle.db,
-          auditBypass: m34PlatformBypassAuditor,
-          platformJobId: M34_PLATFORM_JOB_ID,
-        }),
-      });
-      m34Workers.push(m34HelpRequestSweep);
-      const m34HelpRequestSweepSchedule = await scheduleM34HelpRequestSweepJob(queueConnection);
-      app.addHook("onClose", () =>
-        Promise.all([m34HelpRequestSweep.close(), m34HelpRequestSweepSchedule.close()]),
-      );
       const m34SweepSchedules = await scheduleM34PlatformSweepJobs(queueConnection);
       const m34SweepSchedulesInfo = describeM34SweepSchedules();
       app.log.info(
@@ -10101,8 +10096,30 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     } else {
       app.log.warn(
-        "M34 tenant provisioning disabled: platform DB, provision gateway, and MINIO_* configuration are required",
+        "M34 tenant provisioning and platform sweeps are disabled: platform DB, provision gateway, and MINIO_* configuration are required",
       );
+    }
+
+    // Help-request text can be accepted without the provisioning gateway or object storage. Its expiry and retention sweep therefore
+    // depends only on the two database lanes it actually uses, and must remain live when optional provisioning integrations are off.
+    if (platformDbHandle) {
+      const m34HelpRequestSweep = registerM34HelpRequestSweepWorker({
+        connection: queueConnection,
+        runner: createDrizzleHelpRequestRunner({
+          db: dbHandle.db,
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          platformJobId: M34_PLATFORM_JOB_ID,
+        }),
+      });
+      m34Workers.push(m34HelpRequestSweep);
+      attachDlqAlertsToAll([m34HelpRequestSweep], "m34");
+      const m34HelpRequestSweepSchedule = await scheduleM34HelpRequestSweepJob(queueConnection);
+      app.addHook("onClose", () =>
+        Promise.all([m34HelpRequestSweep.close(), m34HelpRequestSweepSchedule.close()]),
+      );
+    } else {
+      app.log.warn("M34 help-request retention/expiry sweep is disabled: platform DB is required");
     }
 
     // ── GAP-059 — M35 worker set: dunning engine, usage aggregator, payment-method expiry watch, revenue

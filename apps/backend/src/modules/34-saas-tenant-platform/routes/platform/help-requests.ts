@@ -68,7 +68,10 @@ export function registerPlatformHelpRequestRoutes(
 
   app.post(
     "/api/v1/platform/help-requests/:id/resolve",
-    { preHandler: [CLOSE, ABAC_CLOSE, NO_AI, IDEMPOTENT] },
+    {
+      config: { noIdempotencyCapture: true },
+      preHandler: [CLOSE, ABAC_CLOSE, NO_AI, IDEMPOTENT],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(HelpRequestParamsSchema, request.params);

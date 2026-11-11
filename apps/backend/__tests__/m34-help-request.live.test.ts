@@ -40,6 +40,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { wireM34AlertRuleSeed } from "../src/modules/34-saas-tenant-platform/alert-rule-seed-persister";
 import { createDrizzleSaasTenantPlatformEraseStore } from "../src/modules/34-saas-tenant-platform/erasers/saas-tenant-platform-eraser";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import type { HelpRequestService } from "../src/modules/34-saas-tenant-platform/help/help-request-contract";
@@ -49,6 +50,7 @@ import {
   createLinkedHelpRequestPort,
 } from "../src/modules/34-saas-tenant-platform/help/help-request-store-drizzle";
 import { runHelpRequestSweep } from "../src/modules/34-saas-tenant-platform/help/help-request-sweep";
+import { createDrizzleAlertEmitter } from "../src/modules/36-messaging/alert-emitter-drizzle";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -189,6 +191,8 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
   const filed = async (actor = NURSE, message = MESSAGE, stepKey?: string) =>
     service.file(actor, { message, ...(stepKey ? { stepKey } : {}) });
   const reset = async () => {
+    await admin.query("DELETE FROM notification_delivery");
+    await admin.query("DELETE FROM alert");
     await admin.query("DELETE FROM tenant_help_request");
     await admin.query("DELETE FROM support_consent_grant");
     await admin.query("DELETE FROM outbox_event WHERE event_type = 'm34.help_request.requested'");
@@ -271,6 +275,17 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
       "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
       [PLATFORM_ORG, M_OPS_HOME, platformOps],
     );
+    const alertAudience = (
+      await q<{ id: string }>(
+        `INSERT INTO role (organization_id, key, name, category, scope_level)
+         VALUES (NULL, 'platform_alert_audience', 'platform_alert_audience', 'platform_staff', 'organization')
+         ON CONFLICT (key) WHERE organization_id IS NULL DO UPDATE SET name = excluded.name RETURNING id`,
+      )
+    )[0]?.id;
+    await admin.query(
+      "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+      [ORG_A, M_OPS_IN_A, alertAudience],
+    );
 
     tenantPool = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -290,6 +305,8 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
     platformUrl.password = PLATFORM_PASSWORD;
     platformPool = createDbClient({ connectionString: platformUrl.toString() });
     registerPlatformJob(JOB_ID);
+    await wireM34AlertRuleSeed(tenantPool.db);
+    const alerts = createDrizzleAlertEmitter(tenantPool.db);
 
     // The real, catalog-validating publisher: a payload that does not conform to the event rolls the request back.
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M34_OUTBOX_EVENTS]));
@@ -301,6 +318,7 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
       outbox: {
         publish: (tx, event) => publisher.publish(tx, { ...event, callerModule: "m34" }),
       },
+      alerts,
       grants: grantOps,
     });
   }, 300_000);
@@ -396,6 +414,19 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
   });
 
   describe("the column-limited UPDATE and the guard trigger", () => {
+    it("refuses a live request whose message is null", async () => {
+      await reset();
+      expect(
+        await refused(() =>
+          asApp(ORG_A, U_NURSE, (tx) =>
+            tx.execute(sql`INSERT INTO tenant_help_request
+              (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id)
+              VALUES (${ORG_A}, ${T_A}, NULL, ${M_NURSE}, ${U_NURSE})`),
+          ),
+        ),
+      ).toBe("23514");
+    });
+
     it("lets the tenant role touch only the approve and close columns", async () => {
       await reset();
       const request = await filed();
@@ -633,6 +664,27 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
         stepKey: "mac_configured",
       });
       expect(JSON.stringify(events[0]?.payload)).not.toContain("enrolment");
+      const alert = await q<{
+        id: string;
+        payload: Record<string, unknown>;
+        severity: string;
+        correlation_id: string;
+      }>(
+        "SELECT id,payload,severity::text,correlation_id FROM alert WHERE organization_id=$1 AND event_type='m34.help_request.requested'",
+        [ORG_A],
+      );
+      expect(alert).toHaveLength(1);
+      expect(alert[0]).toMatchObject({
+        severity: "warn",
+        correlation_id: `m34-help-request-${view.id}`,
+      });
+      expect(alert[0]?.payload).toMatchObject({ helpRequestId: view.id, orgId: ORG_A });
+      expect(JSON.stringify(alert[0]?.payload)).not.toContain("enrolment");
+      const deliveries = await q<{ recipient_user_id: string; channel: string }>(
+        "SELECT recipient_user_id,channel::text FROM notification_delivery WHERE alert_id=$1",
+        [alert[0]?.id],
+      );
+      expect(deliveries).toContainEqual({ recipient_user_id: U_OPS, channel: "in_app" });
       const audit = await q<{
         actor_user_id: string;
         actor_kind: string;
@@ -984,7 +1036,7 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
         )
       )[0]?.id as string;
       const result = await runHelpRequestSweep(runner());
-      expect(result).toEqual({ cancelled: 1, resolved: 1 });
+      expect(result).toEqual({ cancelled: 1, resolved: 1, purged: 0 });
       const rows = await q<{
         id: string;
         status: string;
@@ -1003,7 +1055,7 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
       });
       // idempotent, and a fresh open request or a live grant is left alone
       const fresh = await filed();
-      expect(await runHelpRequestSweep(runner())).toEqual({ cancelled: 0, resolved: 0 });
+      expect(await runHelpRequestSweep(runner())).toEqual({ cancelled: 0, resolved: 0, purged: 0 });
       expect(
         (
           await q<{ status: string }>("SELECT status FROM tenant_help_request WHERE id = $1", [
@@ -1016,6 +1068,66 @@ describe.skipIf(!DB_URL)("M34 help requests, LIVE Postgres on the real roles", (
         [stale],
       );
       expect(system[0]).toEqual({ actor_user_id: null, actor_kind: "system" });
+    });
+
+    it("refuses early deletion and nulls closed text at rest after 90 days", async () => {
+      await reset();
+      const old = (
+        await q<{ id: string }>(
+          `INSERT INTO tenant_help_request
+            (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id,
+             requested_at, status, closed_by_actor_kind, closed_by_user_id, closed_at, close_note)
+           VALUES ($1,$2,$3,$4,$5,now() - interval '100 days','cancelled','platform_ops',$7,
+                   now() - interval '91 days',$6) RETURNING id`,
+          [ORG_A, T_A, MESSAGE, M_NURSE, U_NURSE, NOTE, U_OPS],
+        )
+      )[0]?.id as string;
+      const fresh = (
+        await q<{ id: string }>(
+          `INSERT INTO tenant_help_request
+            (organization_id, tenant_account_id, message, requested_by_membership_id, requested_by_user_id,
+             requested_at, status, closed_by_actor_kind, closed_by_user_id, closed_at, close_note)
+           VALUES ($1,$2,$3,$4,$5,now() - interval '2 days','cancelled','platform_ops',$7,
+                   now() - interval '1 day',$6) RETURNING id`,
+          [ORG_B, T_B, "Help with our provider entity please", M_B, U_B, NOTE, U_OPS],
+        )
+      )[0]?.id as string;
+
+      expect(
+        await refused(() =>
+          asCarrier((tx) =>
+            tx.execute(sql`UPDATE tenant_help_request
+              SET message = NULL, close_note = NULL, message_purged_at = now()
+              WHERE id = ${fresh}`),
+          ),
+        ),
+      ).toBe("23514");
+      expect(await runHelpRequestSweep(runner())).toEqual({ cancelled: 0, resolved: 0, purged: 1 });
+
+      const [purged] = await q<{
+        message: string | null;
+        close_note: string | null;
+        message_purged_at: Date | null;
+      }>("SELECT message,close_note,message_purged_at FROM tenant_help_request WHERE id=$1", [old]);
+      expect(purged).toMatchObject({ message: null, close_note: null });
+      expect(purged?.message_purged_at).not.toBeNull();
+      expect(
+        (
+          await q<{ message: string }>("SELECT message FROM tenant_help_request WHERE id=$1", [
+            fresh,
+          ])
+        )[0]?.message,
+      ).toBe("Help with our provider entity please");
+      expect((await service.listForTenant(NURSE, undefined, undefined)).items[0]?.message).toBe(
+        "[removed after 90 days]",
+      );
+      const [audit] = await q<{ after: Record<string, unknown> }>(
+        `SELECT after FROM audit_event
+          WHERE resource_kind='tenant_help_request' AND resource_id=$1 AND event_type='tenant_help_request.update'
+          ORDER BY created_at DESC LIMIT 1`,
+        [old],
+      );
+      expect(audit?.after).toMatchObject({ message: "<changed>", close_note: "<changed>" });
     });
   });
 

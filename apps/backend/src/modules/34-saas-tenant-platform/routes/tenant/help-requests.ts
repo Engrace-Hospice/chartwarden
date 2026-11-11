@@ -57,6 +57,7 @@ export function registerTenantHelpRequestRoutes(
   app.post(
     "/api/v1/tenant/help-requests",
     {
+      config: { noIdempotencyCapture: true },
       preHandler: [
         SESSION,
         NO_AI,
@@ -74,7 +75,10 @@ export function registerTenantHelpRequestRoutes(
 
   app.post(
     "/api/v1/tenant/help-requests/:id/approve",
-    { preHandler: [ISSUE, STEP_UP_ISSUE, NO_AI, IDEMPOTENT] },
+    {
+      config: { noIdempotencyCapture: true },
+      preHandler: [ISSUE, STEP_UP_ISSUE, NO_AI, IDEMPOTENT],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(HelpRequestParamsSchema, request.params);
@@ -85,7 +89,10 @@ export function registerTenantHelpRequestRoutes(
 
   app.post(
     "/api/v1/tenant/help-requests/:id/close",
-    { preHandler: [SESSION, NO_AI, IDEMPOTENT] },
+    {
+      config: { noIdempotencyCapture: true },
+      preHandler: [SESSION, NO_AI, IDEMPOTENT],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(HelpRequestParamsSchema, request.params);

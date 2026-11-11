@@ -77,11 +77,27 @@ export interface HelpOutboxPort {
   ): Promise<void>;
 }
 
+/** M36's synchronous alert seam. The implementation opens its own transaction, so callers register it after commit. */
+export interface HelpAlertPort {
+  emit(
+    organizationId: string,
+    input: {
+      readonly eventType: string;
+      readonly payload: Record<string, unknown>;
+      readonly severity: "warn";
+      readonly correlationId: string;
+    },
+  ): Promise<unknown>;
+}
+
 export interface HelpRequestServiceDeps {
   readonly runner: HelpRequestRunner;
   /** 7S's bundle: `issueAssistGrant`, `revokeGrantAndCloseSessions`, `sessionSummaryForGrant` (and the deps builder they take). */
   readonly grants: SupportGrantOperations;
   readonly outbox: HelpOutboxPort;
+  readonly alerts: HelpAlertPort;
+  /** Best-effort side effects report ids and codes only; never the member's text. */
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
   readonly now: () => Date;
 }
 
@@ -133,7 +149,7 @@ const isLiveRequestRace = (error: unknown): boolean =>
   classifyDatabaseError(error)?.constraint === schema.TENANT_HELP_REQUEST_LIVE_IDX;
 
 export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequestService {
-  const { runner, grants, outbox, now } = deps;
+  const { runner, grants, outbox, alerts, now } = deps;
 
   /** The grants and the session summaries behind some rows, read once per request on the open transaction. */
   async function factsFor(store: HelpRequestStore, rows: readonly HelpRequestRow[]) {
@@ -141,7 +157,8 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
       ...new Set(rows.flatMap((r) => (r.supportConsentGrantId ? [r.supportConsentGrantId] : []))),
     ];
     const grantRows = await store.grantsById(grantIds);
-    // ponytail: one summary read per grant (the contract's unit); a page is at most the page size and a tenant has one live request.
+    // The frozen 7S contract exposes one summary read. Both help lists cap pages below, bounding this fan-out until integration can
+    // replace it with a batch read.
     const sessions = new Map<string, Awaited<ReturnType<typeof grants.sessionSummaryForGrant>>>();
     for (const id of grantIds) sessions.set(id, await grants.sessionSummaryForGrant(store.tx, id));
     const at = now();
@@ -225,6 +242,32 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         aggregateKind: HELP_REQUEST_AGGREGATE,
         aggregateId: row.id,
       });
+      const alertPayload = {
+        helpRequestId: row.id,
+        tenantAccountId,
+        orgId: actor.organizationId,
+        stepKey,
+        requestedAt: row.requestedAt.toISOString(),
+      };
+      store.afterCommit(async () => {
+        try {
+          await alerts.emit(actor.organizationId, {
+            eventType: HELP_REQUEST_REQUESTED_EVENT,
+            payload: alertPayload,
+            severity: "warn",
+            correlationId: `m34-help-request-${row.id}`,
+          });
+        } catch (error) {
+          deps.warn?.("M34 help-request alert delivery failed after commit", {
+            helpRequestId: row.id,
+            organizationId: actor.organizationId,
+            errorCode:
+              typeof error === "object" && error !== null && "code" in error
+                ? String(error.code)
+                : "ALERT_EMIT_FAILED",
+          });
+        }
+      });
       return tenantViewOf(store, row, actor.userId);
     });
   }
@@ -244,7 +287,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
           "only an open help request can be approved",
         );
       }
-      // The consent: the grant is created (and its event and alert emitted) on THIS transaction, so a failure below undoes it.
+      // The consent grant and event are created on THIS transaction; its alert is returned and registered only after commit below.
       const grant = await grants.issueAssistGrant(grants.depsFor(store.tx), {
         organizationId: row.organizationId,
         tenantAccountId: row.tenantAccountId,
@@ -252,8 +295,8 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         grantorRoles: actor.roles,
         hours,
         reason: `help request ${row.id}`,
+        helpRequestId: row.id,
       });
-      if (grant.afterCommit) store.afterCommit(grant.afterCommit);
       const approvedAt = now();
       const approved = await store.markApproved(row.id, {
         grantId: grant.grantId,
@@ -265,6 +308,23 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
           "HELP_REQUEST_NOT_OPEN",
           "only an open help request can be approved",
         );
+      }
+      if (grant.afterCommit) {
+        store.afterCommit(async () => {
+          try {
+            await grant.afterCommit?.();
+          } catch (error) {
+            deps.warn?.("M34 help-request grant alert delivery failed after commit", {
+              helpRequestId: row.id,
+              organizationId: row.organizationId,
+              grantId: grant.grantId,
+              errorCode:
+                typeof error === "object" && error !== null && "code" in error
+                  ? String(error.code)
+                  : "ALERT_EMIT_FAILED",
+            });
+          }
+        });
       }
       return toTenantView(
         approved,
@@ -310,7 +370,23 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         source: ending.source,
       },
     );
-    if (revoked.afterCommit) store.afterCommit(revoked.afterCommit);
+    if (revoked.afterCommit) {
+      store.afterCommit(async () => {
+        try {
+          await revoked.afterCommit?.();
+        } catch (error) {
+          deps.warn?.("M34 help-request revoke alert delivery failed after commit", {
+            helpRequestId: row.id,
+            organizationId: row.organizationId,
+            grantId: row.supportConsentGrantId,
+            errorCode:
+              typeof error === "object" && error !== null && "code" in error
+                ? String(error.code)
+                : "ALERT_EMIT_FAILED",
+          });
+        }
+      });
+    }
     const after = await store.findForUpdate(row.id);
     if (after?.status === "approved") {
       await store.markClosed(row.id, { ...ending.closing, from: "approved", to: "resolved" });
@@ -322,7 +398,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
       assertMemberSession(actor);
       // judged before any transaction opens: a bad cursor reaches no database
       const after = afterOf(decodeKeyset(actor.organizationId, cursor));
-      const size = pageSizeOf(limit);
+      const size = Math.min(pageSizeOf(limit), 20);
       return runner.asMember(
         memberContext(actor),
         async (store): Promise<TenantHelpRequestListView> => {
@@ -386,6 +462,9 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
           "only an organization administrator or the compliance officer can consent to help",
         );
       }
+      if (!actor.stepUpRecent) {
+        throw new ForbiddenError("approving help requires a recent step-up authentication");
+      }
       const hours = input.hours ?? HELP_APPROVE_HOURS_DEFAULT;
       if (
         !Number.isInteger(hours) ||
@@ -448,7 +527,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
     async listForPlatform(actor, filter: PlatformHelpRequestFilter, cursor, limit) {
       // judged before the platform transaction (a cross-tenant bypass that writes an audit row) opens
       const after = afterOf(decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor));
-      const size = pageSizeOf(limit);
+      const size = Math.min(pageSizeOf(limit), 20);
       return runner.asPlatform(
         { userId: actor.userId, reason: "m34 help request inbox" },
         async (store): Promise<CursorPage<PlatformHelpRequestView>> => {

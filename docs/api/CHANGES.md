@@ -20,7 +20,8 @@ or “No contract.” The same view lists any onboarding steps the tenant skippe
 
 ## 2026-11-10 — Help requests are live (slice 7, piece 7B)
 
-The six help-request routes announced below now answer for real; their shapes did not change. What an integrator can rely on:
+The six help-request routes are live over the integrated support-grant operation bundle; their shapes did not change. What an
+integrator can rely on:
 
 - **Who may use them.** Only a human on a `staff` session who is an active member of the organization: an AI principal, an auditor or
   family session and ChartWarden's own operators (who are members of every tenant) get `403` on all four tenant routes. Approve and
@@ -30,16 +31,19 @@ The six help-request routes announced below now answer for real; their shapes di
   `409 HELP_REQUEST_ALREADY_OPEN` with the live request's id in `details[0].message` (also for two members filing at once). New
   codes: `409 HELP_REQUEST_NOT_OPEN` (approve of a request that is not open), `409 HELP_REQUEST_ENDED` (an operator's Resolve of one
   that has ended), `422 HELP_REQUEST_STEP_UNKNOWN` (`stepKey` names no onboarding step). A message or note that looks like a
-  patient identifier is `422 EVIDENCE_LOOKS_LIKE_PHI`; it is never echoed, logged, audited or put in an event.
+  patient identifier (SSN, MBI, labelled MRN or date of birth shape) is `422 EVIDENCE_LOOKS_LIKE_PHI`; it is never echoed, logged,
+  audited or put in an event. Mutating responses are excluded from the idempotency response cache so the text is not copied there.
 - **End help is idempotent.** Ending an ended request answers it. An `open` request ends `cancelled`, an `approved` one `resolved`
   (its consent grant is revoked and its open sessions closed). An operator's Resolve of an `open` request (answered without
   consent) also ends it `resolved`, with no grant.
-- **It ends by itself.** A request nobody answered for 14 days is cancelled and one whose consent grant expired or was revoked is
-  resolved, both with `closedBy: "system"` (every five minutes).
+- **It ends and ages out by itself.** A request nobody answered for 14 days is cancelled and one whose consent grant expired or was
+  revoked is resolved, both with `closedBy: "system"` (every five minutes). Ninety days after close, the message and operator note
+  are nulled at rest; reads project a fixed retention placeholder for the removed message.
 - **Operators.** `GET /platform/help-requests` is an audited cross-tenant read; a row's `supportConsentGrantId` is what Start posts.
   A tenant is told `ChartWarden operations`, never an operator id, name or organization.
-- **Ledger.** Filing emits `m34.help_request.requested` (ids and the step key only) and raises the `tenant.help_requested` alert to
-  the operators. While the organization is still onboarding the four tenant routes are on the pre-activation allowlist.
+- **Ledger.** Filing emits `m34.help_request.requested` (ids and the step key only) and, after the filing commits, calls the M36 alert
+  seam to raise `tenant.help_requested` to the operators. While the organization is still onboarding the four tenant routes are on
+  the pre-activation allowlist.
 
 ---
 
